@@ -4,7 +4,6 @@ members = [
     "savings_goals",
     "bill_payments",
     "insurance",
-    "family_wallet",
 ]
 resolver = "2"
 

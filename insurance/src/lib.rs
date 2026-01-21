@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, vec, Env, Map, Symbol, Vec, String,
+    contract, contractimpl, contracttype, symbol_short, Env, Map, Vec, String,
 };
 
 #[derive(Clone)]
@@ -183,6 +183,4 @@ impl Insurance {
     }
 }
 
-#[cfg(test)]
-mod test;
 
