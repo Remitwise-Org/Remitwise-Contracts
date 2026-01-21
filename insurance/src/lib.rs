@@ -1,8 +1,29 @@
 #![no_std]
+//! # Insurance Contract
+//!
+//! This contract manages insurance policies with monthly premium payments.
+//! It tracks policy status, coverage amounts, and premium payment schedules.
+//!
+//! ## Features
+//! - Create insurance policies with configurable coverage
+//! - Monthly premium payments
+//! - Policy activation/deactivation
+//! - Track payment schedules
+
 use soroban_sdk::{
     contract, contractimpl, symbol_short, vec, Env, Map, Symbol, Vec, String,
 };
 
+/// Represents an insurance policy with coverage and premium details
+///
+/// # Fields
+/// * `id` - Unique identifier for the policy
+/// * `name` - Name/description of the policy
+/// * `coverage_type` - Type of coverage (e.g., "health", "emergency", "education")
+/// * `monthly_premium` - Monthly premium amount in stroops
+/// * `coverage_amount` - Total coverage amount available
+/// * `active` - Whether the policy is currently active
+/// * `next_payment_date` - Unix timestamp of next premium payment due date
 #[derive(Clone)]
 #[contracttype]
 pub struct InsurancePolicy {
@@ -18,14 +39,22 @@ pub struct InsurancePolicy {
 #[contract]
 pub struct Insurance;
 
-#[contractimpl]
-impl Insurance {
-    /// Create a new insurance policy
-    /// 
+/// Smart contract for managing insurance policies and premium payments
+///
+/// This contract provides comprehensive insurance management functionality
+/// including policy creation, premium payment tracking, and policy status management.
+#[contraCreates a new insurance policy and sets the first payment due date
+    /// to 30 days from the current block timestamp.
+    ///
     /// # Arguments
-    /// * `name` - Name of the policy
-    /// * `coverage_type` - Type of coverage (e.g., "health", "emergency")
-    /// * `monthly_premium` - Monthly premium amount
+    /// * `env` - Soroban environment context
+    /// * `name` - Name of the policy (e.g., "Family Health Insurance")
+    /// * `coverage_type` - Type of coverage (e.g., "health", "emergency", "education")
+    /// * `monthly_premium` - Monthly premium amount in stroops
+    /// * `coverage_amount` - Total coverage amount available
+    /// 
+    /// # Returns
+    /// The ID of the created policy as u32y premium amount
     /// * `coverage_amount` - Total coverage amount
     /// 
     /// # Returns
@@ -72,11 +101,21 @@ impl Insurance {
     
     /// Pay monthly premium for a policy
     /// 
+    /// Marks a monthly premium as paid and advances the next payment date
+    /// to 30 days from the current block timestamp.
+    ///
     /// # Arguments
-    /// * `policy_id` - ID of the policy
+    /// * `env` - Soroban environment context
+    /// * `policy_id` - ID of the policy to pay premium for
     /// 
     /// # Returns
-    /// True if payment was successful, false otherwise
+    /// True if payment was successful, false if:
+    /// - Policy not found
+    /// - Policy is inactive
+    ///
+    /// # Error Codes
+    /// - Implicit error: Policy not found (returns false)
+    /// - Implicit error: Policy inactive (returns false)
     pub fn pay_premium(env: Env, policy_id: u32) -> bool {
         let mut policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -102,11 +141,14 @@ impl Insurance {
     
     /// Get a policy by ID
     /// 
+    /// Retrieves a specific policy from storage.
+    ///
     /// # Arguments
+    /// * `env` - Soroban environment context
     /// * `policy_id` - ID of the policy
     /// 
     /// # Returns
-    /// InsurancePolicy struct or None if not found
+    /// Option<InsurancePolicy> - Some(policy) if found, None otherwise
     pub fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -119,8 +161,10 @@ impl Insurance {
     
     /// Get all active policies
     /// 
+    /// Retrieves all policies that are currently active.
+    ///
     /// # Returns
-    /// Vec of active InsurancePolicy structs
+    /// Vec<InsurancePolicy> - Vector of all active policies
     pub fn get_active_policies(env: Env) -> Vec<InsurancePolicy> {
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -147,8 +191,11 @@ impl Insurance {
     
     /// Get total monthly premium for all active policies
     /// 
+    /// Sums the monthly premiums of all currently active policies.
+    /// Useful for budgeting and cash flow analysis.
+    ///
     /// # Returns
-    /// Total monthly premium amount
+    /// i128 - Total monthly premium amount in stroops
     pub fn get_total_monthly_premium(env: Env) -> i128 {
         let active = Self::get_active_policies(env);
         let mut total = 0i128;
@@ -160,11 +207,14 @@ impl Insurance {
     
     /// Deactivate a policy
     /// 
+    /// Sets a policy's active status to false, preventing further premium payments.
+    ///
     /// # Arguments
-    /// * `policy_id` - ID of the policy
+    /// * `env` - Soroban environment context
+    /// * `policy_id` - ID of the policy to deactivate
     /// 
     /// # Returns
-    /// True if deactivation was successful
+    /// True if deactivation was successful, false if policy not found
     pub fn deactivate_policy(env: Env, policy_id: u32) -> bool {
         let mut policies: Map<u32, InsurancePolicy> = env
             .storage()

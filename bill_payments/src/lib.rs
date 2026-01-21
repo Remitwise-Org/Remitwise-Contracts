@@ -1,10 +1,52 @@
 #![no_std]
+//! # Bill Payments Contract
+//!
+//! This contract manages bill payments including creation, tracking, and payment of bills.
+//! It supports both one-time and recurring bills with automatic renewal functionality.
+//!
+//! ## Features
+//! - Create bills with customizable amounts and due dates
+//! - Mark bills as paid
+//! - Automatic recurring bill creation
+//! - Query unpaid bills and total amounts
+
 use soroban_sdk::{
     contract, contractimpl, symbol_short, vec, Env, Map, Symbol, Vec, String,
 };
 
-#[derive(Clone)]
-#[contracttype]
+/// Represents a bill with its associated metadata
+///
+/// # Fields
+/// * `id` - Unique identifier for the bill
+/// Smart contract for managing bill payments
+///
+/// This contract provides functionality to create, track, and manage both
+/// one-time and recurring bills. It maintains a map of bills indexed by ID
+/// and Creates a new bill entry in the contract storage and returns its ID.
+    /// For recurring bills, a next bill will be automatically created when paid.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment context
+    /// * `name` - Name of the bill (e.g., "Electricity", "School Fees")
+    /// * `amount` - Amount to pay (in stroops)
+    /// * `due_date` - Due date as Unix timestamp (seconds since epoch)
+    /// * `recurring` - Whether this is a recurring bill
+    /// * `frequency_days` - Frequency in days for recurring bills (e.g., 30 for monthly)
+    /// 
+    /// # Returns
+    /// The ID of the created bill as u32
+    ///
+    /// # Example
+    /// ```ignore
+    /// let bill_id = BillPayments::create_bill(
+    ///     env,
+    ///     String::from_small_str("Electricity"),
+    ///     100_000_000, // 10 USDC (assuming 8 decimals)
+    ///     1704067200,  // 2024-01-01
+    ///     true,
+    ///     30
+    /// );
+    /// ```
 pub struct Bill {
     pub id: u32,
     pub name: String,
@@ -55,11 +97,21 @@ impl BillPayments {
         let bill = Bill {
             id: next_id,
             name: name.clone(),
-            amount,
-            due_date,
-            recurring,
-            frequency_days,
-            paid: false,
+        Marks an existing bill as paid. If the bill is recurring, automatically
+    /// creates a new bill instance for the next payment cycle.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment context
+    /// * `bill_id` - ID of the bill to mark as paid
+    /// 
+    /// # Returns
+    /// True if payment was successful, false if:
+    /// - Bill not found
+    /// - Bill already paid
+    ///
+    /// # Error Codes
+    /// - Implicit error: Bill not found (returns false)
+    /// - Implicit error: Bill already paid (returns false)
         };
         
         bills.set(next_id, bill);
@@ -123,11 +175,14 @@ impl BillPayments {
     
     /// Get a bill by ID
     /// 
+    /// Retrieves a specific bill from storage by its ID.
+    ///
     /// # Arguments
-    /// * `bill_id` - ID of the bill
+    /// * `env` - Soroban environment context
+    /// * `bill_id` - ID of the bill to retrieve
     /// 
     /// # Returns
-    /// Bill struct or None if not found
+    /// Option<Bill> - Some(Bill) if found, None otherwise
     pub fn get_bill(env: Env, bill_id: u32) -> Option<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -140,8 +195,11 @@ impl BillPayments {
     
     /// Get all unpaid bills
     /// 
+    /// Retrieves all bills that have not been marked as paid.
+    /// This is useful for dashboard displays and payment reminders.
+    ///
     /// # Returns
-    /// Vec of unpaid Bill structs
+    /// Vec<Bill> - Vector of all unpaid bills
     pub fn get_unpaid_bills(env: Env) -> Vec<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -165,8 +223,11 @@ impl BillPayments {
         }
         result
     }
-    
-    /// Get total amount of unpaid bills
+    Sums up the amounts of all unpaid bills.
+    /// Useful for calculating remaining payment obligations.
+    ///
+    /// # Returns
+    /// i128 - Total amount of all unpaid bills in stroops
     /// 
     /// # Returns
     /// Total amount of all unpaid bills
