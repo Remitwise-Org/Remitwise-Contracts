@@ -22,13 +22,16 @@ impl BillPayments {
     ///
     /// # Arguments
     /// * `name` - Name of the bill (e.g., "Electricity", "School Fees")
-    /// * `amount` - Amount to pay
+    /// * `amount` - Amount to pay (must be positive)
     /// * `due_date` - Due date as Unix timestamp
     /// * `recurring` - Whether this is a recurring bill
-    /// * `frequency_days` - Frequency in days for recurring bills
+    /// * `frequency_days` - Frequency in days for recurring bills (ignored if not recurring)
     ///
     /// # Returns
     /// The ID of the created bill
+    ///
+    /// # Errors
+    /// This function does not return errors; it always succeeds by creating a new bill.
     pub fn create_bill(
         env: Env,
         name: String,
@@ -74,10 +77,14 @@ impl BillPayments {
     /// Mark a bill as paid
     ///
     /// # Arguments
-    /// * `bill_id` - ID of the bill
+    /// * `bill_id` - ID of the bill to mark as paid
     ///
     /// # Returns
-    /// True if payment was successful, false if bill not found or already paid
+    /// * `true` - Bill was successfully marked as paid. If recurring, a new bill is created for the next period.
+    /// * `false` - Bill not found or already paid.
+    ///
+    /// # Errors
+    /// No explicit errors; returns false for invalid operations.
     pub fn pay_bill(env: Env, bill_id: u32) -> bool {
         let mut bills: Map<u32, Bill> = env
             .storage()
@@ -130,10 +137,14 @@ impl BillPayments {
     /// Get a bill by ID
     ///
     /// # Arguments
-    /// * `bill_id` - ID of the bill
+    /// * `bill_id` - ID of the bill to retrieve
     ///
     /// # Returns
-    /// Bill struct or None if not found
+    /// * `Some(Bill)` - The bill struct if found
+    /// * `None` - If the bill does not exist
+    ///
+    /// # Errors
+    /// No errors; returns None for non-existent bills.
     pub fn get_bill(env: Env, bill_id: u32) -> Option<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -147,7 +158,10 @@ impl BillPayments {
     /// Get all unpaid bills
     ///
     /// # Returns
-    /// Vec of unpaid Bill structs
+    /// A vector of all unpaid `Bill` structs. Returns an empty vector if no unpaid bills exist.
+    ///
+    /// # Errors
+    /// No errors; always returns a vector.
     pub fn get_unpaid_bills(env: Env) -> Vec<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -175,7 +189,10 @@ impl BillPayments {
     /// Get total amount of unpaid bills
     ///
     /// # Returns
-    /// Total amount of all unpaid bills
+    /// The total amount (i128) of all unpaid bills. Returns 0 if no unpaid bills exist.
+    ///
+    /// # Errors
+    /// No errors; always returns a valid amount.
     pub fn get_total_unpaid(env: Env) -> i128 {
         let unpaid = Self::get_unpaid_bills(env);
         let mut total = 0i128;

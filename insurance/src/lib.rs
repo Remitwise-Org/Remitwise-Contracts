@@ -21,13 +21,16 @@ impl Insurance {
     /// Create a new insurance policy
     ///
     /// # Arguments
-    /// * `name` - Name of the policy
+    /// * `name` - Name of the policy (e.g., "Health Insurance")
     /// * `coverage_type` - Type of coverage (e.g., "health", "emergency")
-    /// * `monthly_premium` - Monthly premium amount
-    /// * `coverage_amount` - Total coverage amount
+    /// * `monthly_premium` - Monthly premium amount (must be positive)
+    /// * `coverage_amount` - Total coverage amount (must be positive)
     ///
     /// # Returns
-    /// The ID of the created policy
+    /// The ID of the created policy. The policy is set as active with next payment date 30 days from now.
+    ///
+    /// # Errors
+    /// This function does not return errors; it always succeeds by creating a new policy.
     pub fn create_policy(
         env: Env,
         name: String,
@@ -75,10 +78,14 @@ impl Insurance {
     /// Pay monthly premium for a policy
     ///
     /// # Arguments
-    /// * `policy_id` - ID of the policy
+    /// * `policy_id` - ID of the policy to pay premium for
     ///
     /// # Returns
-    /// True if payment was successful, false otherwise
+    /// * `true` - Premium was successfully paid, next payment date updated to 30 days from now
+    /// * `false` - Policy not found or not active
+    ///
+    /// # Errors
+    /// No explicit errors; returns false for invalid operations.
     pub fn pay_premium(env: Env, policy_id: u32) -> bool {
         let mut policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -107,10 +114,14 @@ impl Insurance {
     /// Get a policy by ID
     ///
     /// # Arguments
-    /// * `policy_id` - ID of the policy
+    /// * `policy_id` - ID of the policy to retrieve
     ///
     /// # Returns
-    /// InsurancePolicy struct or None if not found
+    /// * `Some(InsurancePolicy)` - The policy struct if found
+    /// * `None` - If the policy does not exist
+    ///
+    /// # Errors
+    /// No errors; returns None for non-existent policies.
     pub fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -124,7 +135,10 @@ impl Insurance {
     /// Get all active policies
     ///
     /// # Returns
-    /// Vec of active InsurancePolicy structs
+    /// A vector of all active `InsurancePolicy` structs. Returns an empty vector if no active policies exist.
+    ///
+    /// # Errors
+    /// No errors; always returns a vector.
     pub fn get_active_policies(env: Env) -> Vec<InsurancePolicy> {
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -152,7 +166,10 @@ impl Insurance {
     /// Get total monthly premium for all active policies
     ///
     /// # Returns
-    /// Total monthly premium amount
+    /// The total monthly premium amount (i128) for all active policies. Returns 0 if no active policies exist.
+    ///
+    /// # Errors
+    /// No errors; always returns a valid amount.
     pub fn get_total_monthly_premium(env: Env) -> i128 {
         let active = Self::get_active_policies(env);
         let mut total = 0i128;
@@ -165,10 +182,14 @@ impl Insurance {
     /// Deactivate a policy
     ///
     /// # Arguments
-    /// * `policy_id` - ID of the policy
+    /// * `policy_id` - ID of the policy to deactivate
     ///
     /// # Returns
-    /// True if deactivation was successful
+    /// * `true` - Policy was successfully deactivated
+    /// * `false` - Policy not found
+    ///
+    /// # Errors
+    /// No explicit errors; returns false for non-existent policies.
     pub fn deactivate_policy(env: Env, policy_id: u32) -> bool {
         let mut policies: Map<u32, InsurancePolicy> = env
             .storage()
