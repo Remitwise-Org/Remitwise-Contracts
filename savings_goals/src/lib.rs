@@ -74,7 +74,6 @@ impl SavingsGoalContract {
         next_id
     }
 
-
     /// Add funds to a savings goal
     pub fn add_to_goal(env: Env, goal_id: u32, amount: i128) -> i128 {
         assert!(amount > 0, "Amount must be positive");
@@ -105,7 +104,6 @@ impl SavingsGoalContract {
         goals.get(goal_id)
     }
 
-
     /// Get all savings goals
     pub fn get_all_goals(env: Env) -> Vec<SavingsGoal> {
         let storage = env.storage().persistent();
@@ -118,7 +116,6 @@ impl SavingsGoalContract {
         }
         vec
     }
-
 
     /// Check if a goal is completed
     pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
