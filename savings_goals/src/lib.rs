@@ -21,11 +21,14 @@ impl SavingsGoals {
     ///
     /// # Arguments
     /// * `name` - Name of the goal (e.g., "Education", "Medical")
-    /// * `target_amount` - Target amount to save
+    /// * `target_amount` - Target amount to save (must be positive)
     /// * `target_date` - Target date as Unix timestamp
     ///
     /// # Returns
-    /// The ID of the created goal
+    /// The ID of the created goal. The goal starts with current_amount = 0 and is locked.
+    ///
+    /// # Errors
+    /// This function does not return errors; it always succeeds by creating a new goal.
     pub fn create_goal(env: Env, name: String, target_amount: i128, target_date: u64) -> u32 {
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
@@ -63,11 +66,14 @@ impl SavingsGoals {
     /// Add funds to a savings goal
     ///
     /// # Arguments
-    /// * `goal_id` - ID of the goal
-    /// * `amount` - Amount to add
+    /// * `goal_id` - ID of the goal to add funds to
+    /// * `amount` - Amount to add (must be positive)
     ///
     /// # Returns
-    /// Updated current amount
+    /// The updated current amount of the goal, or -1 if the goal does not exist.
+    ///
+    /// # Errors
+    /// Returns -1 for non-existent goals; otherwise succeeds.
     pub fn add_to_goal(env: Env, goal_id: u32, amount: i128) -> i128 {
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
@@ -90,10 +96,14 @@ impl SavingsGoals {
     /// Get a savings goal by ID
     ///
     /// # Arguments
-    /// * `goal_id` - ID of the goal
+    /// * `goal_id` - ID of the goal to retrieve
     ///
     /// # Returns
-    /// SavingsGoal struct or None if not found
+    /// * `Some(SavingsGoal)` - The goal struct if found
+    /// * `None` - If the goal does not exist
+    ///
+    /// # Errors
+    /// No errors; returns None for non-existent goals.
     pub fn get_goal(env: Env, goal_id: u32) -> Option<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
@@ -107,7 +117,10 @@ impl SavingsGoals {
     /// Get all savings goals
     ///
     /// # Returns
-    /// Vec of all SavingsGoal structs
+    /// A vector of all `SavingsGoal` structs. Returns an empty vector if no goals exist.
+    ///
+    /// # Errors
+    /// No errors; always returns a vector.
     pub fn get_all_goals(env: Env) -> Vec<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
@@ -132,10 +145,14 @@ impl SavingsGoals {
     /// Check if a goal is completed
     ///
     /// # Arguments
-    /// * `goal_id` - ID of the goal
+    /// * `goal_id` - ID of the goal to check
     ///
     /// # Returns
-    /// True if current_amount >= target_amount
+    /// * `true` - If current_amount >= target_amount
+    /// * `false` - If goal not found or not completed
+    ///
+    /// # Errors
+    /// Returns false for non-existent goals.
     pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
         if let Some(goal) = Self::get_goal(env, goal_id) {
             goal.current_amount >= goal.target_amount
