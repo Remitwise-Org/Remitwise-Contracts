@@ -25,6 +25,7 @@ pub enum SavingsError {
 // ============================================================================
 #[derive(Clone)]
 #[contracttype]
+#[derive(Clone)]
 pub struct SavingsGoal {
     pub id: u64,                // Changed from u32 to u64 (native word size)
     pub target_amount: i128,    // Large values first
@@ -304,3 +305,6 @@ impl SavingsGoals {
     }
 
 }
+
+#[cfg(test)]
+mod test;
