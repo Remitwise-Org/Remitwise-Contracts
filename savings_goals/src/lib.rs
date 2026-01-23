@@ -176,6 +176,12 @@ impl SavingsGoals {
         //  Extend TTL
         env.storage().instance().extend_ttl(100, 100);
 
+        // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("savings"), SavingsEvent::GoalCreated),
+            (next_id, owner),
+        );
+
         next_id
     }
 

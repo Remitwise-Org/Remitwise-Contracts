@@ -264,6 +264,7 @@ impl Insurance {
     // ========================================================================
     pub fn create_policy(
         env: Env,
+        owner: Address,
         name: String,
         coverage_type: String,
         monthly_premium: i128,
@@ -329,6 +330,12 @@ impl Insurance {
 
         //  Extend TTL for frequently accessed data
         env.storage().instance().extend_ttl(100, 100);
+
+        // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("insure"), InsuranceEvent::PolicyCreated),
+            (next_id, owner),
+        );
 
         next_id
     }

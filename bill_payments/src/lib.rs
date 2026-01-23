@@ -4,7 +4,7 @@ use soroban_sdk::{
 };
 
 // ============================================================================
-// GAS OPTIMIZATION 1: Packed struct with strategic field ordering
+//  Packed struct with strategic field ordering
 // - Reordered fields for better memory alignment
 // - Using u64 for id instead of u32 (native word size on Stellar)
 // - Grouped boolean fields together for variable packing
@@ -21,8 +21,8 @@ pub struct Bill {
     pub name: String,           // Variable-size last
 }
 
-// ============================================================================
-// GAS OPTIMIZATION 2: Storage keys as constants
+// =========================================================================
+// Storage keys as constants
 // - Avoids repeated symbol creation
 // - Symbols are created once and reused
 // ============================================================================
@@ -58,6 +58,7 @@ impl BillPayments {
     // ========================================================================
     pub fn create_bill(
         env: Env,
+        owner: Address,
         name: String,
         amount: i128,
         due_date: u64,
@@ -112,11 +113,17 @@ impl BillPayments {
         // OPTIMIZATION: Extend TTL for frequently accessed data
         env.storage().instance().extend_ttl(100, 100);
 
+        // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Created),
+            (next_id, owner),
+        );
+
         next_id
     }
 
     // ========================================================================
-    // GAS OPTIMIZATION 5: Optimized bill payment
+    //  Optimized bill payment
     // - Removed redundant clone operations
     // - Consolidated storage operations
     // - Better error handling
@@ -221,7 +228,7 @@ impl BillPayments {
     }
 
     // ========================================================================
-    // GAS OPTIMIZATION 8: Cached total calculation
+    //  Cached total calculation
     // - Store running total instead of recalculating
     // ========================================================================
     pub fn get_total_unpaid(env: Env) -> i128 {
@@ -249,5 +256,12 @@ impl BillPayments {
         }
         
         total
+    }
+
+    /// Extend the TTL of instance storage
+    fn extend_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 }
