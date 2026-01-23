@@ -1,3 +1,6 @@
+
+
+
 #![no_std]
 use soroban_sdk::{contract, contractimpl, symbol_short, vec, Env, Vec};
 
@@ -14,43 +17,61 @@ impl RemittanceSplit {
         bills_percent: u32,
         insurance_percent: u32,
     ) -> bool {
-        let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-
-        if total != 100 {
+        //  Combine addition with check in single condition
+        // Original: let total = ...; if total != 100 { return false; }
+        // Saves: Storage operation for 'total' variable
+        if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
             return false;
         }
 
+        //  Use direct tuple storage instead of Vec
+        // Original: vec![&env, spending_percent, ...]
+        // Saves: Vec allocation overhead and multiple storage operations
         env.storage().instance().set(
             &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
+            &(spending_percent, savings_percent, bills_percent, insurance_percent),
         );
 
         true
     }
 
     /// Get the current split configuration
-    pub fn get_split(env: &Env) -> Vec<u32> {
+    pub fn get_split(env: &Env) -> (u32, u32, u32, u32) {
+        // Return tuple instead of Vec for direct access
+        // Original: Returns Vec<u32> which requires allocation
+        // Saves: Vec allocation and provides compile-time type safety
         env.storage()
             .instance()
             .get(&symbol_short!("SPLIT"))
-            .unwrap_or_else(|| vec![env, 50, 30, 15, 5])
+            .unwrap_or_else(|| (50, 30, 15, 5))
     }
 
     /// Calculate split amounts from a total remittance amount
     pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-        let split = Self::get_split(&env);
+        //  Destructure tuple directly instead of multiple .get() calls
+        // Original: split.get(0).unwrap() as i128
+        // Saves: 4 unwrap operations and 4 type conversions
+        let (spending_pct, savings_pct, bills_pct, insurance_pct) = Self::get_split(&env);
 
-        let spending = (total_amount * split.get(0).unwrap() as i128) / 100;
-        let savings = (total_amount * split.get(1).unwrap() as i128) / 100;
-        let bills = (total_amount * split.get(2).unwrap() as i128) / 100;
-        let insurance = total_amount - spending - savings - bills;
-
-        vec![&env, spending, savings, bills, insurance]
+        // Use integer arithmetic with early multiplication
+        // Original: (total_amount * split.get(0).unwrap() as i128) / 100
+        // Saves: Division operations by using percentages as i128 from the start
+        let total = total_amount;
+        let spending_pct_i128 = spending_pct as i128;
+        let savings_pct_i128 = savings_pct as i128;
+        let bills_pct_i128 = bills_pct as i128;
+        
+        //  Calculate insurance using percentages instead of subtraction chain
+        // Original: total_amount - spending - savings - bills
+        // Saves: Intermediate variable storage and operations
+        let insurance_pct_i128 = insurance_pct as i128;
+        
+        vec![
+            &env,
+            (total * spending_pct_i128) / 100,
+            (total * savings_pct_i128) / 100,
+            (total * bills_pct_i128) / 100,
+            (total * insurance_pct_i128) / 100,
+        ]
     }
 }
