@@ -78,17 +78,7 @@ jobs:
         run: |
           for contract in remittance_split savings_goals bill_payments insurance; do
             echo "Building contract: $contract"
-            cd $contract
-            if command -v soroban &> /dev/null; then
-              soroban contract build --verbose || {
-                echo "Warning: soroban CLI build failed, using cargo directly..."
-                cargo build --release --target wasm32-unknown-unknown --verbose
-              }
-            else
-              echo "soroban CLI not available, using cargo directly..."
-              cargo build --release --target wasm32-unknown-unknown --verbose
-            fi
-            cd ..
+            cargo build --release --target wasm32-unknown-unknown --package $contract --verbose
           done
         continue-on-error: false
 
@@ -172,4 +162,3 @@ jobs:
         run: |
           cargo audit --deny warnings
         continue-on-error: true
-
