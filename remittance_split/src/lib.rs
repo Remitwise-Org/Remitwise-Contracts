@@ -1,6 +1,3 @@
-
-
-
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, vec, Address, Env, Vec};
 
@@ -58,14 +55,22 @@ impl RemittanceSplit {
         bills_percent: u32,
         insurance_percent: u32,
     ) -> bool {
-        //  Combine addition with check in single condition
+        // Verify owner authorization
+        owner.require_auth();
+
+        // Check if already initialized
+        if env.storage().instance().has(&symbol_short!("CONFIG")) {
+            panic!("Split already initialized, use update_split instead");
+        }
+
+        // Combine addition with check in single condition
         // Original: let total = ...; if total != 100 { return false; }
         // Saves: Storage operation for 'total' variable
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
             return false;
         }
 
-        //  Use direct tuple storage instead of Vec
+        // Use direct tuple storage instead of Vec
         // Original: vec![&env, spending_percent, ...]
         // Saves: Vec allocation overhead and multiple storage operations
         env.storage().instance().set(
@@ -73,9 +78,93 @@ impl RemittanceSplit {
             &(spending_percent, savings_percent, bills_percent, insurance_percent),
         );
 
+        // Store config with owner information
+        let config = SplitConfig {
+            owner: owner.clone(),
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+            initialized: true,
+        };
+        env.storage().instance().set(&symbol_short!("CONFIG"), &config);
+
+        // Extend TTL for instance storage
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
         // Emit event for audit trail
         env.events()
-            .publish((symbol_short!("split"), SplitEvent::Updated), caller);
+            .publish((symbol_short!("split"), SplitEvent::Initialized), owner);
+
+        true
+    }
+
+    /// Update an existing split configuration
+    ///
+    /// # Arguments
+    /// * `owner` - Address of the split owner (must match stored owner and authorize)
+    /// * `spending_percent` - New percentage for spending (0-100)
+    /// * `savings_percent` - New percentage for savings (0-100)
+    /// * `bills_percent` - New percentage for bills (0-100)
+    /// * `insurance_percent` - New percentage for insurance (0-100)
+    ///
+    /// # Returns
+    /// True if update was successful
+    pub fn update_split(
+        env: Env,
+        owner: Address,
+        spending_percent: u32,
+        savings_percent: u32,
+        bills_percent: u32,
+        insurance_percent: u32,
+    ) -> bool {
+        // Verify owner authorization
+        owner.require_auth();
+
+        // Check if initialized
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .unwrap_or_else(|| panic!("Split not initialized"));
+
+        // Verify caller is the owner
+        if config.owner != owner {
+            panic!("Only owner can update split configuration");
+        }
+
+        // Validate percentages sum to 100
+        if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
+            return false;
+        }
+
+        // Update storage
+        env.storage().instance().set(
+            &symbol_short!("SPLIT"),
+            &(spending_percent, savings_percent, bills_percent, insurance_percent),
+        );
+
+        // Update config
+        let updated_config = SplitConfig {
+            owner: owner.clone(),
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+            initialized: true,
+        };
+        env.storage().instance().set(&symbol_short!("CONFIG"), &updated_config);
+
+        // Extend TTL
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        // Emit event
+        env.events()
+            .publish((symbol_short!("split"), SplitEvent::Updated), owner);
 
         true
     }
@@ -110,7 +199,12 @@ impl RemittanceSplit {
     /// # Panics
     /// - If total_amount is not positive
     pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-        //  Destructure tuple directly instead of multiple .get() calls
+        // Validate input
+        if total_amount <= 0 {
+            panic!("Total amount must be positive");
+        }
+
+        // Destructure tuple directly instead of multiple .get() calls
         // Original: split.get(0).unwrap() as i128
         // Saves: 4 unwrap operations and 4 type conversions
         let (spending_pct, savings_pct, bills_pct, insurance_pct) = Self::get_split(&env);
@@ -123,11 +217,15 @@ impl RemittanceSplit {
         let savings_pct_i128 = savings_pct as i128;
         let bills_pct_i128 = bills_pct as i128;
         
-        //  Calculate insurance using percentages instead of subtraction chain
+        // Calculate insurance using percentages instead of subtraction chain
         // Original: total_amount - spending - savings - bills
         // Saves: Intermediate variable storage and operations
         let insurance_pct_i128 = insurance_pct as i128;
         
+        // Emit event
+        env.events()
+            .publish((symbol_short!("split"), SplitEvent::Calculated), total_amount);
+
         vec![
             &env,
             (total * spending_pct_i128) / 100,

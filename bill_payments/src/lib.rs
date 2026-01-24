@@ -1,6 +1,7 @@
+
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Env, Map, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
 };
 
 // ============================================================================
@@ -12,16 +13,26 @@ use soroban_sdk::{
 #[derive(Clone)]
 #[contracttype]
 pub struct Bill {
-    pub id: u64,       // 8bytes         // Changed from u32 to u64 (native word size)
-    pub amount: i128,   // 16 bytes        // Large value first
-    pub due_date: u64,    // 8 bytes      // Unix timestamp
-    pub frequency_days: u32,    // Smaller values after
-    pub paid: bool,             // Booleans grouped
+    pub id: u64,            // 8 bytes
+    pub amount: i128,       // 16 bytes
+    pub due_date: u64,      // 8 bytes
+    pub frequency_days: u32, // 4 bytes
+    pub paid: bool,         // Booleans grouped
     pub recurring: bool,
-    pub name: String,           // Variable-size last
+    pub name: String,       // Variable-size last
 }
 
-// =========================================================================
+// ============================================================================
+// Event types for audit trail
+// ============================================================================
+#[derive(Clone)]
+#[contracttype]
+pub enum BillEvent {
+    Created,
+    Paid,
+}
+
+// ============================================================================
 // Storage keys as constants
 // - Avoids repeated symbol creation
 // - Symbols are created once and reused
@@ -29,6 +40,12 @@ pub struct Bill {
 const BILLS_KEY: Symbol = symbol_short!("BILLS");
 const NEXT_ID_KEY: Symbol = symbol_short!("NEXT_ID");
 const UNPAID_COUNT_KEY: Symbol = symbol_short!("UNPAID");
+
+// ============================================================================
+// TTL (Time To Live) configuration constants
+// // ============================================================================
+// const INSTANCE_LIFETIME_THRESHOLD: u32 = 100;
+// const INSTANCE_BUMP_AMOUNT: u32 = 100;
 
 #[contract]
 pub struct BillPayments;
@@ -50,8 +67,8 @@ impl BillPayments {
         env.storage().instance().set(&BILLS_KEY, &bills);
     }
 
-    
     // ========================================================================
+    // Create a new bill
     // - Read NEXT_ID once instead of twice
     // - Use bumped() for automatic TTL extension
     // - Return early on validation failures
@@ -101,7 +118,7 @@ impl BillPayments {
         env.storage().instance().set(&BILLS_KEY, &bills);
         env.storage().instance().set(&NEXT_ID_KEY, &next_id);
         
-        //  Track unpaid count for faster queries
+        // Track unpaid count for faster queries
         let unpaid_count: u64 = env
             .storage()
             .instance()
@@ -123,7 +140,7 @@ impl BillPayments {
     }
 
     // ========================================================================
-    //  Optimized bill payment
+    // Optimized bill payment
     // - Removed redundant clone operations
     // - Consolidated storage operations
     // - Better error handling
@@ -149,7 +166,7 @@ impl BillPayments {
         bill.paid = true;
         bills.set(bill_id, bill.clone());
 
-        //  Handle recurring bills without extra reads
+        // Handle recurring bills without extra reads
         if bill.recurring {
             let next_id: u64 = env
                 .storage()
@@ -172,9 +189,7 @@ impl BillPayments {
 
             bills.set(next_id, next_bill);
             env.storage().instance().set(&NEXT_ID_KEY, &next_id);
-        
         } else {
-        
             let unpaid_count: u64 = env
                 .storage()
                 .instance()
@@ -186,11 +201,17 @@ impl BillPayments {
 
         env.storage().instance().set(&BILLS_KEY, &bills);
         env.storage().instance().extend_ttl(100, 100);
+
+        // Emit payment event
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Paid),
+            bill_id,
+        );
         
         true
     }
 
-  
+    /// Get a specific bill by ID
     pub fn get_bill(env: Env, bill_id: u64) -> Option<Bill> {
         env.storage()
             .instance()
@@ -198,7 +219,7 @@ impl BillPayments {
             .and_then(|bills: Map<u64, Bill>| bills.get(bill_id))
     }
 
-   
+    /// Get all unpaid bills
     pub fn get_unpaid_bills(env: Env) -> Vec<Bill> {
         let bills: Map<u64, Bill> = env
             .storage()
@@ -212,10 +233,9 @@ impl BillPayments {
             .get(&NEXT_ID_KEY)
             .unwrap_or(0u64);
 
-        
         let mut result = Vec::new(&env);
         
-        //  Iterate only through existing bills
+        // Iterate only through existing bills
         for id in 1..=max_id {
             if let Some(bill) = bills.get(id) {
                 if !bill.paid {
@@ -228,7 +248,7 @@ impl BillPayments {
     }
 
     // ========================================================================
-    //  Cached total calculation
+    // Cached total calculation
     // - Store running total instead of recalculating
     // ========================================================================
     pub fn get_total_unpaid(env: Env) -> i128 {
@@ -246,7 +266,6 @@ impl BillPayments {
 
         let mut total = 0i128;
         
-        
         for id in 1..=max_id {
             if let Some(bill) = bills.get(id) {
                 if !bill.paid {
@@ -258,10 +277,10 @@ impl BillPayments {
         total
     }
 
-    /// Extend the TTL of instance storage
-    fn extend_instance_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-    }
+    // Extend the TTL of instance storage
+    // fn extend_instance_ttl(env: &Env) {
+    //     env.storage()
+    //         .instance()
+    //         .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    // }
 }

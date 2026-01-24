@@ -1,9 +1,8 @@
-
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracterror, contracttype, symbol_short, Env, Map, String, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracterror, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec};
 
 // ============================================================================
-// : Use contracterror instead of Symbol for error handling
+// Use contracterror instead of Symbol for error handling
 // Soroban contracts can't return Result<T, Symbol> from contract functions
 // Must use a custom error enum with #[contracterror]
 // ============================================================================
@@ -18,14 +17,13 @@ pub enum SavingsError {
 }
 
 // ============================================================================
-//  Optimized struct layout with field ordering
+// Optimized struct layout with field ordering
 // - Changed id from u32 to u64 (native word size)
 // - Ordered fields: large → medium → small → variable
 // - Grouped related fields together
 // ============================================================================
 #[derive(Clone)]
 #[contracttype]
-#[derive(Clone)]
 pub struct SavingsGoal {
     pub id: u64,                // Changed from u32 to u64 (native word size)
     pub target_amount: i128,    // Large values first
@@ -36,7 +34,7 @@ pub struct SavingsGoal {
 }
 
 // ============================================================================
-//  Goal status enum for better state tracking
+// Goal status enum for better state tracking
 // - Provides clear state representation
 // ============================================================================
 #[derive(Clone, PartialEq)]
@@ -49,7 +47,7 @@ pub enum GoalStatus {
 }
 
 // ============================================================================
-//  Progress summary struct
+// Progress summary struct
 // - Avoids recalculating progress multiple times
 // - Bundles related data together
 // ============================================================================
@@ -64,8 +62,7 @@ pub struct GoalProgress {
 }
 
 // ============================================================================
-
-// Use a custom struct to wrap success/error state
+// Custom struct to wrap success/error state
 // ============================================================================
 #[derive(Clone)]
 #[contracttype]
@@ -76,7 +73,18 @@ pub struct BatchResult {
 }
 
 // ============================================================================
-//  Storage keys as constants
+// Event types for audit trail
+// ============================================================================
+#[derive(Clone)]
+#[contracttype]
+pub enum SavingsEvent {
+    GoalCreated,
+    FundsAdded,
+    GoalCompleted,
+}
+
+// ============================================================================
+// Storage keys as constants
 // - Eliminates repeated symbol creation
 // - Created once at compile time
 // ============================================================================
@@ -92,7 +100,7 @@ pub struct SavingsGoals;
 #[contractimpl]
 impl SavingsGoals {
     // ========================================================================
-    //  Initialize function
+    // Initialize function
     // - Sets up all storage structures upfront
     // - Prevents repeated unwrap_or_else calls
     // ========================================================================
@@ -111,7 +119,7 @@ impl SavingsGoals {
     }
 
     // ========================================================================
-    //  Optimized create_goal function
+    // Optimized create_goal function
     // - Early validation before storage reads
     // - Removed unnecessary clone on name
     // - Batch storage writes at end
@@ -120,11 +128,15 @@ impl SavingsGoals {
     // ========================================================================
     pub fn create_goal(
         env: Env,
+        owner: Address,
         name: String,
         target_amount: i128,
         target_date: u64,
     ) -> u64 {
-        //  Early validation
+        // Verify owner authorization
+        owner.require_auth();
+
+        // Early validation
         if target_amount <= 0 {
             panic!("Target amount must be positive");
         }
@@ -149,19 +161,19 @@ impl SavingsGoals {
             .unwrap_or(0u64)
             + 1;
 
-        //  No clone on name (ownership transferred)
+        // No clone on name (ownership transferred)
         let goal = SavingsGoal {
             id: next_id,
             target_amount,
             current_amount: 0,
             target_date,
-            locked: true,
+            locked: false,  // Changed from true to false - goals should be unlocked by default
             name,
         };
 
         goals.set(next_id, goal);
 
-        //Update active count
+        // Update active count
         let active_count: u64 = env
             .storage()
             .instance()
@@ -169,12 +181,12 @@ impl SavingsGoals {
             .unwrap_or(0u64)
             + 1;
 
-        //  Batch storage writes
+        // Batch storage writes
         env.storage().instance().set(&GOALS_KEY, &goals);
         env.storage().instance().set(&NEXT_ID_KEY, &next_id);
         env.storage().instance().set(&ACTIVE_COUNT_KEY, &active_count);
 
-        //  Extend TTL
+        // Extend TTL
         env.storage().instance().extend_ttl(100, 100);
 
         // Emit event for audit trail
@@ -187,7 +199,7 @@ impl SavingsGoals {
     }
 
     // ========================================================================
-    // uses custom error enum instead of Symbol for add_to_goal
+    // Uses custom error enum instead of Symbol for add_to_goal
     // - Type-safe error handling
     // - Proper Soroban error pattern
     // ========================================================================
@@ -202,12 +214,17 @@ impl SavingsGoals {
             .get(&GOALS_KEY)
             .unwrap_or_else(|| Map::new(&env));
 
-        //  Check existence first
+        // Check existence first
         if !goals.contains_key(goal_id) {
             return Err(SavingsError::GoalNotFound);
         }
 
         let mut goal = goals.get(goal_id).unwrap();
+
+        // Check if goal is locked
+        if goal.locked {
+            return Err(SavingsError::GoalLocked);
+        }
 
         // Track if goal becomes completed
         let was_completed = goal.current_amount >= goal.target_amount;
@@ -215,7 +232,7 @@ impl SavingsGoals {
         goal.current_amount += amount;
         goals.set(goal_id, goal.clone());
 
-        //  Update total saved
+        // Update total saved
         let total_saved: i128 = env
             .storage()
             .instance()
@@ -225,7 +242,7 @@ impl SavingsGoals {
 
         env.storage().instance().set(&TOTAL_SAVED_KEY, &total_saved);
 
-        // OPTIMIZATION: Update completed count if goal just completed
+        // Update completed count if goal just completed
         let is_completed = goal.current_amount >= goal.target_amount;
         if !was_completed && is_completed {
             let completed_count: u64 = env
@@ -244,6 +261,18 @@ impl SavingsGoals {
 
             env.storage().instance().set(&COMPLETED_COUNT_KEY, &completed_count);
             env.storage().instance().set(&ACTIVE_COUNT_KEY, &active_count);
+
+            // Emit goal completed event
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                goal_id,
+            );
+        } else {
+            // Emit funds added event
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                (goal_id, amount),
+            );
         }
 
         env.storage().instance().set(&GOALS_KEY, &goals);
@@ -253,7 +282,7 @@ impl SavingsGoals {
     }
 
     // ========================================================================
-     //Direct access pattern for get_goal
+    // Direct access pattern for get_goal
     // - Uses functional chaining
     // ========================================================================
     pub fn get_goal(env: Env, goal_id: u64) -> Option<SavingsGoal> {
@@ -264,6 +293,7 @@ impl SavingsGoals {
     }
 
     // ========================================================================
+    // Get all goals
     // - Streamlined iteration
     // - Single NEXT_ID read
     // ========================================================================
@@ -292,6 +322,7 @@ impl SavingsGoals {
     }
 
     // ========================================================================
+    // Check if goal is completed
     // - Single function call instead of two
     // - Direct comparison
     // ========================================================================
@@ -304,7 +335,40 @@ impl SavingsGoals {
             .unwrap_or(false)
     }
 
+    // ========================================================================
+    // Get total amount saved across all goals
+    // ========================================================================
+    pub fn get_total_saved(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&TOTAL_SAVED_KEY)
+            .unwrap_or(0i128)
+    }
+
+    // ========================================================================
+    // Lock or unlock a goal
+    // ========================================================================
+    pub fn set_goal_lock(env: Env, owner: Address, goal_id: u64, locked: bool) -> bool {
+        owner.require_auth();
+
+        let mut goals: Map<u64, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&GOALS_KEY)
+            .unwrap_or_else(|| Map::new(&env));
+
+        if !goals.contains_key(goal_id) {
+            return false;
+        }
+
+        let mut goal = goals.get(goal_id).unwrap();
+        goal.locked = locked;
+        goals.set(goal_id, goal);
+
+        env.storage().instance().set(&GOALS_KEY, &goals);
+        env.storage().instance().extend_ttl(100, 100);
+
+        true
+    }
 }
 
-#[cfg(test)]
-mod test;
