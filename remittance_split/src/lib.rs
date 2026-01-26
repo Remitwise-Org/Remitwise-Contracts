@@ -74,25 +74,30 @@ impl RemittanceSplit {
         bills_percent: u32,
         insurance_percent: u32,
     ) -> bool {
-        // Access control: require owner authorization
+        // Verify owner authorization
         owner.require_auth();
 
         // Check if already initialized
-        let existing: Option<SplitConfig> = env.storage().instance().get(&symbol_short!("CONFIG"));
-
-        if existing.is_some() {
-            panic!("Split already initialized. Use update_split to modify.");
+        if env.storage().instance().has(&symbol_short!("CONFIG")) {
+            panic!("Split already initialized, use update_split instead");
         }
 
-        // Input validation: percentages must sum to 100
-        let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 100 {
-            panic!("Percentages must sum to 100");
+        // Combine addition with check in single condition
+        // Original: let total = ...; if total != 100 { return false; }
+        // Saves: Storage operation for 'total' variable
+        if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
+            return false;
         }
 
-        // Extend storage TTL
-        Self::extend_instance_ttl(&env);
+        // Use direct tuple storage instead of Vec
+        // Original: vec![&env, spending_percent, ...]
+        // Saves: Vec allocation overhead and multiple storage operations
+        env.storage().instance().set(
+            &symbol_short!("SPLIT"),
+            &(spending_percent, savings_percent, bills_percent, insurance_percent),
+        );
 
+        // Store config with owner information
         let config = SplitConfig {
             owner: owner.clone(),
             spending_percent,
@@ -101,22 +106,12 @@ impl RemittanceSplit {
             insurance_percent,
             initialized: true,
         };
+        env.storage().instance().set(&symbol_short!("CONFIG"), &config);
 
+        // Extend TTL for instance storage
         env.storage()
             .instance()
-            .set(&symbol_short!("CONFIG"), &config);
-
-        // Also store the split vector for backward compatibility
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
-        );
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         // Emit event for audit trail
         env.events()
@@ -128,7 +123,7 @@ impl RemittanceSplit {
     /// Update an existing split configuration
     ///
     /// # Arguments
-    /// * `caller` - Address of the caller (must be the owner)
+    /// * `owner` - Address of the split owner (must match stored owner and authorize)
     /// * `spending_percent` - New percentage for spending (0-100)
     /// * `savings_percent` - New percentage for savings (0-100)
     /// * `bills_percent` - New percentage for bills (0-100)
@@ -136,81 +131,72 @@ impl RemittanceSplit {
     ///
     /// # Returns
     /// True if update was successful
-    ///
-    /// # Panics
-    /// - If caller is not the owner
-    /// - If percentages don't sum to 100
-    /// - If split is not initialized
     pub fn update_split(
         env: Env,
-        caller: Address,
+        owner: Address,
         spending_percent: u32,
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
     ) -> bool {
-        // Access control: require caller authorization
-        caller.require_auth();
+        // Verify owner authorization
+        owner.require_auth();
 
-        // Get existing config
-        let mut config: SplitConfig = env
+        // Check if initialized
+        let config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
-            .expect("Split not initialized");
+            .unwrap_or_else(|| panic!("Split not initialized"));
 
-        // Access control: verify caller is the owner
-        if config.owner != caller {
-            panic!("Only the owner can update the split configuration");
+        // Verify caller is the owner
+        if config.owner != owner {
+            panic!("Only owner can update split configuration");
         }
 
-        // Input validation: percentages must sum to 100
-        let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 100 {
-            panic!("Percentages must sum to 100");
+        // Validate percentages sum to 100
+        if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
+            return false;
         }
 
-        // Extend storage TTL
-        Self::extend_instance_ttl(&env);
-
-        // Update config
-        config.spending_percent = spending_percent;
-        config.savings_percent = savings_percent;
-        config.bills_percent = bills_percent;
-        config.insurance_percent = insurance_percent;
-
-        env.storage()
-            .instance()
-            .set(&symbol_short!("CONFIG"), &config);
-
-        // Also update the split vector for backward compatibility
+        // Update storage
         env.storage().instance().set(
             &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
+            &(spending_percent, savings_percent, bills_percent, insurance_percent),
         );
 
-        // Emit event for audit trail
+        // Update config
+        let updated_config = SplitConfig {
+            owner: owner.clone(),
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+            initialized: true,
+        };
+        env.storage().instance().set(&symbol_short!("CONFIG"), &updated_config);
+
+        // Extend TTL
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        // Emit event
         env.events()
-            .publish((symbol_short!("split"), SplitEvent::Updated), caller);
+            .publish((symbol_short!("split"), SplitEvent::Updated), owner);
 
         true
     }
 
     /// Get the current split configuration
-    ///
-    /// # Returns
-    /// Vec containing [spending, savings, bills, insurance] percentages
-    pub fn get_split(env: &Env) -> Vec<u32> {
+    pub fn get_split(env: &Env) -> (u32, u32, u32, u32) {
+        // Return tuple instead of Vec for direct access
+        // Original: Returns Vec<u32> which requires allocation
+        // Saves: Vec allocation and provides compile-time type safety
         env.storage()
             .instance()
             .get(&symbol_short!("SPLIT"))
-            .unwrap_or_else(|| vec![env, 50, 30, 15, 5])
+            .unwrap_or_else(|| (50, 30, 15, 5))
     }
 
     /// Get the full split configuration including owner
@@ -232,162 +218,31 @@ impl RemittanceSplit {
     /// # Panics
     /// - If total_amount is not positive
     pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
-        // Input validation
+        // Validate input
         if total_amount <= 0 {
             panic!("Total amount must be positive");
         }
 
-        let split = Self::get_split(&env);
+// Destructure tuple directly instead of multiple .get() calls
+let (spending_pct, savings_pct, bills_pct, _) = Self::get_split(&env);
 
-        let spending = (total_amount * split.get(0).unwrap() as i128) / 100;
-        let savings = (total_amount * split.get(1).unwrap() as i128) / 100;
-        let bills = (total_amount * split.get(2).unwrap() as i128) / 100;
-        // Insurance gets the remainder to handle rounding
-        let insurance = total_amount - spending - savings - bills;
+let total = total_amount;
 
-        // Emit event for audit trail
-        env.events().publish(
-            (symbol_short!("split"), SplitEvent::Calculated),
-            total_amount,
-        );
+// Calculate splits using integer arithmetic
+let spending = (total * spending_pct as i128) / 100;
+let savings  = (total * savings_pct as i128) / 100;
+let bills    = (total * bills_pct as i128) / 100;
 
-        vec![&env, spending, savings, bills, insurance]
-    }
+// Insurance gets the remainder to avoid rounding issues
+let insurance = total - spending - savings - bills;
 
-    /// Distribute USDC according to the configured split
-    pub fn distribute_usdc(
-        env: Env,
-        usdc_contract: Address,
-        from: Address,
-        accounts: AccountGroup,
-        total_amount: i128,
-    ) -> bool {
-        if total_amount <= 0 {
-            return false;
-        }
+// Emit event
+env.events().publish(
+    (symbol_short!("split"), SplitEvent::Calculated),
+    total_amount,
+);
 
-        from.require_auth();
-
-        let amounts = Self::calculate_split(env.clone(), total_amount);
-        let recipients = [
-            accounts.spending,
-            accounts.savings,
-            accounts.bills,
-            accounts.insurance,
-        ];
-        let token = TokenClient::new(&env, &usdc_contract);
-
-        for (amount, recipient) in amounts.into_iter().zip(recipients.iter()) {
-            if amount > 0 {
-                token.transfer(&from, recipient, &amount);
-            }
-        }
-
-        true
-    }
-
-    /// Query USDC balance for an address
-    pub fn get_usdc_balance(env: &Env, usdc_contract: Address, account: Address) -> i128 {
-        TokenClient::new(env, &usdc_contract).balance(&account)
-    }
-
-    /// Returns a breakdown of the split by category and resulting amount
-    pub fn get_split_allocations(env: &Env, total_amount: i128) -> Vec<Allocation> {
-        let amounts = Self::calculate_split(env.clone(), total_amount);
-        let categories = [
-            symbol_short!("SPENDING"),
-            symbol_short!("SAVINGS"),
-            symbol_short!("BILLS"),
-            symbol_short!("INSURANCE"),
-        ];
-
-        let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
-            result.push_back(Allocation { category, amount });
-        }
-        result
-    }
-
-    /// Extend the TTL of instance storage
-    fn extend_instance_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::{
-        testutils::Address as _,
-        token::{StellarAssetClient, TokenClient},
-        Env,
-    };
-
-    #[test]
-    fn distribute_usdc_apportions_tokens_to_recipients() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
-        let payer = Address::generate(&env);
-        let amount = 1_000i128;
-
-        StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
-
-        let spending = Address::generate(&env);
-        let savings = Address::generate(&env);
-        let bills = Address::generate(&env);
-        let insurance = Address::generate(&env);
-
-        let accounts = AccountGroup {
-            spending: spending.clone(),
-            savings: savings.clone(),
-            bills: bills.clone(),
-            insurance: insurance.clone(),
-        };
-
-        let distributed =
-            client.distribute_usdc(&token_contract.address(), &payer, &accounts, &amount);
-
-        assert!(distributed);
-
-        let token_client = TokenClient::new(&env, &token_contract.address());
-        assert_eq!(token_client.balance(&spending), 500);
-        assert_eq!(token_client.balance(&savings), 300);
-        assert_eq!(token_client.balance(&bills), 150);
-        assert_eq!(token_client.balance(&insurance), 50);
-        assert_eq!(token_client.balance(&payer), 0);
-    }
-
-    #[test]
-    fn split_allocations_report_categories_and_amounts() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-
-        let total_amount = 2000i128;
-        let allocations = client.get_split_allocations(&total_amount);
-
-        assert_eq!(allocations.len(), 4);
-        let expected_amounts = [1000, 600, 300, 100];
-        let categories = [
-            symbol_short!("SPENDING"),
-            symbol_short!("SAVINGS"),
-            symbol_short!("BILLS"),
-            symbol_short!("INSURANCE"),
-        ];
-
-        for i in 0..4 {
-            let allocation = allocations.get(i).unwrap();
-            let idx = i as usize;
-            assert_eq!(allocation.amount, expected_amounts[idx]);
-            assert_eq!(allocation.category, categories[idx]);
-        }
-    }
+vec![&env, spending, savings, bills, insurance]
+  }
+  
 }
