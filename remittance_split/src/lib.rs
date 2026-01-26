@@ -1,5 +1,24 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, vec, Address, Env, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, token::TokenClient, vec, Address, Env,
+    Symbol, Vec,
+};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Allocation {
+    pub category: Symbol,
+    pub amount: i128,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct AccountGroup {
+    pub spending: Address,
+    pub savings: Address,
+    pub bills: Address,
+    pub insurance: Address,
+}
 
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
@@ -204,34 +223,26 @@ impl RemittanceSplit {
             panic!("Total amount must be positive");
         }
 
-        // Destructure tuple directly instead of multiple .get() calls
-        // Original: split.get(0).unwrap() as i128
-        // Saves: 4 unwrap operations and 4 type conversions
-        let (spending_pct, savings_pct, bills_pct, insurance_pct) = Self::get_split(&env);
+// Destructure tuple directly instead of multiple .get() calls
+let (spending_pct, savings_pct, bills_pct, _) = Self::get_split(&env);
 
-        // Use integer arithmetic with early multiplication
-        // Original: (total_amount * split.get(0).unwrap() as i128) / 100
-        // Saves: Division operations by using percentages as i128 from the start
-        let total = total_amount;
-        let spending_pct_i128 = spending_pct as i128;
-        let savings_pct_i128 = savings_pct as i128;
-        let bills_pct_i128 = bills_pct as i128;
-        
-        // Calculate insurance using percentages instead of subtraction chain
-        // Original: total_amount - spending - savings - bills
-        // Saves: Intermediate variable storage and operations
-        let insurance_pct_i128 = insurance_pct as i128;
-        
-        // Emit event
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::Calculated), total_amount);
+let total = total_amount;
 
-        vec![
-            &env,
-            (total * spending_pct_i128) / 100,
-            (total * savings_pct_i128) / 100,
-            (total * bills_pct_i128) / 100,
-            (total * insurance_pct_i128) / 100,
-        ]
-    }
+// Calculate splits using integer arithmetic
+let spending = (total * spending_pct as i128) / 100;
+let savings  = (total * savings_pct as i128) / 100;
+let bills    = (total * bills_pct as i128) / 100;
+
+// Insurance gets the remainder to avoid rounding issues
+let insurance = total - spending - savings - bills;
+
+// Emit event
+env.events().publish(
+    (symbol_short!("split"), SplitEvent::Calculated),
+    total_amount,
+);
+
+vec![&env, spending, savings, bills, insurance]
+  }
+  
 }
