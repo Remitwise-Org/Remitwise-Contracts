@@ -183,3 +183,148 @@ fn test_multiple_goals_management() {
     assert_eq!(g1.current_amount, 500);
     assert_eq!(g2.current_amount, 1500);
 }
+
+#[test]
+fn test_withdraw_from_goal() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "W"), &1000, &2000000000);
+    
+    // Unlock first (created locked)
+    client.unlock_goal(&user, &id);
+
+    client.add_to_goal(&user, &id, &500);
+    
+    let new_balance = client.withdraw_from_goal(&user, &id, &200);
+    assert_eq!(new_balance, 300);
+
+    let goal = client.get_goal(&id).unwrap();
+    assert_eq!(goal.current_amount, 300);
+}
+
+#[test]
+#[should_panic(expected = "Insufficient balance")]
+fn test_withdraw_too_much() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "W"), &1000, &2000000000);
+    
+    client.unlock_goal(&user, &id);
+    client.add_to_goal(&user, &id, &100);
+    
+    client.withdraw_from_goal(&user, &id, &200);
+}
+
+#[test]
+#[should_panic(expected = "Cannot withdraw from a locked goal")]
+fn test_withdraw_locked() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "L"), &1000, &2000000000);
+    
+    // Goal is locked by default
+    client.add_to_goal(&user, &id, &500);
+    client.withdraw_from_goal(&user, &id, &100);
+}
+
+#[test]
+#[should_panic(expected = "Only the goal owner can withdraw funds")]
+fn test_withdraw_unauthorized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+    
+    client.unlock_goal(&user, &id);
+    client.add_to_goal(&user, &id, &500);
+    
+    client.withdraw_from_goal(&other, &id, &100);
+}
+
+#[test]
+fn test_lock_unlock_goal() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Lock"), &1000, &2000000000);
+
+    let goal = client.get_goal(&id).unwrap();
+    assert!(goal.locked);
+
+    client.unlock_goal(&user, &id);
+    let goal = client.get_goal(&id).unwrap();
+    assert!(!goal.locked);
+
+    client.lock_goal(&user, &id);
+    let goal = client.get_goal(&id).unwrap();
+    assert!(goal.locked);
+}
+
+#[test]
+fn test_full_withdrawal() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "W"), &1000, &2000000000);
+    
+    client.unlock_goal(&user, &id);
+    client.add_to_goal(&user, &id, &500);
+    
+    // Withdraw everything
+    let new_balance = client.withdraw_from_goal(&user, &id, &500);
+    assert_eq!(new_balance, 0);
+
+    let goal = client.get_goal(&id).unwrap();
+    assert_eq!(goal.current_amount, 0);
+    assert!(!client.is_goal_completed(&id));
+}
+
+#[test]
+fn test_exact_goal_completion() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Exact"), &1000, &2000000000);
+    
+    // Add 500 twice
+    client.add_to_goal(&user, &id, &500);
+    assert!(!client.is_goal_completed(&id));
+    
+    client.add_to_goal(&user, &id, &500);
+    assert!(client.is_goal_completed(&id));
+    
+    let goal = client.get_goal(&id).unwrap();
+    assert_eq!(goal.current_amount, 1000);
+}

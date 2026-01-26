@@ -417,4 +417,108 @@ mod testsuit {
         let all = client.get_all_bills();
         assert_eq!(all.len(), 3);
     }
+
+    #[test]
+    fn test_pay_bill_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+        );
+
+        let result = client.try_pay_bill(&other, &bill_id);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_recurring_bill_cancellation() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Rent"),
+            &1000,
+            &1000000,
+            &true, // Recurring
+            &30,
+        );
+
+        // Cancel the bill
+        client.cancel_bill(&bill_id);
+
+        // Verify it's gone
+        let bill = client.get_bill(&bill_id);
+        assert!(bill.is_none());
+
+        // Verify paying it fails
+        let result = client.try_pay_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_pay_overdue_bill() {
+        let env = Env::default();
+        set_time(&env, 2_000_000); // Set time past due date
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Late"),
+            &500,
+            &1000000, // Due in past
+            &false,
+            &0,
+        );
+
+        // Verify it shows up in overdue
+        let overdue = client.get_overdue_bills();
+        assert_eq!(overdue.len(), 1);
+
+        // Pay it
+        client.pay_bill(&owner, &bill_id);
+        
+        // Verify it's no longer overdue (because it's paid)
+        let overdue_after = client.get_overdue_bills();
+        assert_eq!(overdue_after.len(), 0);
+    }
+
+    #[test]
+    fn test_short_recurrence() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Daily"),
+            &10,
+            &1000000,
+            &true, // Recurring
+            &1,    // Daily
+        );
+
+        client.pay_bill(&owner, &bill_id);
+
+        let next_bill = client.get_bill(&2).unwrap();
+        assert_eq!(next_bill.due_date, 1000000 + 86400); // Exactly 1 day later
+    }
 }
