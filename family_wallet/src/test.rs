@@ -135,7 +135,12 @@ fn test_withdraw_below_threshold_no_multisig() {
     // Withdraw amount below threshold (should execute immediately)
     let recipient = Address::generate(&env);
     let withdraw_amount = 500_0000000;
-    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &withdraw_amount);
+    let tx_id = client.withdraw(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &withdraw_amount,
+    );
 
     // Should return 0 for immediate execution
     assert_eq!(tx_id, 0);
@@ -181,7 +186,12 @@ fn test_withdraw_above_threshold_requires_multisig() {
     // Propose withdrawal above threshold
     let recipient = Address::generate(&env);
     let withdraw_amount = 2000_0000000;
-    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &withdraw_amount);
+    let tx_id = client.withdraw(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &withdraw_amount,
+    );
 
     // Should return transaction ID (not 0)
     assert!(tx_id > 0);
@@ -246,7 +256,12 @@ fn test_multisig_threshold_validation() {
     // Propose withdrawal
     let recipient = Address::generate(&env);
     let withdraw_amount = 2000_0000000;
-    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &withdraw_amount);
+    let tx_id = client.withdraw(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &withdraw_amount,
+    );
 
     // Owner already signed, need 2 more
     client.sign_transaction(&member1, &tx_id);
@@ -338,7 +353,10 @@ fn test_propose_split_config_change() {
     // Verify pending
     let pending_tx = client.get_pending_transaction(&tx_id);
     assert!(pending_tx.is_some());
-    assert_eq!(pending_tx.unwrap().tx_type, TransactionType::SplitConfigChange);
+    assert_eq!(
+        pending_tx.unwrap().tx_type,
+        TransactionType::SplitConfigChange
+    );
 
     // Second signature should execute
     client.sign_transaction(&member1, &tx_id);
@@ -364,13 +382,7 @@ fn test_propose_role_change() {
 
     // Configure multi-sig for role changes
     let signers = vec![&env, owner.clone(), member1.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &2,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
 
     // Propose role change
     let tx_id = client.propose_role_change(&owner, &member2, &FamilyRole::Admin);
@@ -471,12 +483,8 @@ fn test_emergency_mode_direct_transfer_within_limits() {
     // One-click emergency transfer within limits
     let recipient = Address::generate(&env);
     let amount = 1500_0000000;
-    let tx_id = client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &amount,
-    );
+    let tx_id =
+        client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &amount);
 
     // Should execute immediately (no pending transaction id)
     assert_eq!(tx_id, 0);
@@ -514,12 +522,7 @@ fn test_emergency_transfer_exceeds_limit() {
 
     let recipient = Address::generate(&env);
     // This should exceed max_amount and panic
-    client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &2000_0000000);
 }
 
 #[test]
@@ -550,21 +553,12 @@ fn test_emergency_transfer_cooldown_enforced() {
     let amount = 1000_0000000;
 
     // First emergency transfer should succeed
-    let tx_id = client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &amount,
-    );
+    let tx_id =
+        client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &amount);
     assert_eq!(tx_id, 0);
 
     // Second immediate emergency transfer should fail due to cooldown
-    client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &amount,
-    );
+    client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &amount);
 }
 
 #[test]
@@ -593,12 +587,7 @@ fn test_emergency_transfer_min_balance_enforced() {
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);
-    client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &1000_0000000,
-    );
+    client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &1000_0000000);
 }
 
 #[test]
@@ -667,7 +656,13 @@ fn test_different_thresholds_for_different_transaction_types() {
 
     client.init(&owner, &initial_members);
 
-    let all_signers = vec![&env, owner.clone(), member1.clone(), member2.clone(), member3.clone()];
+    let all_signers = vec![
+        &env,
+        owner.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+    ];
 
     // Configure different thresholds for different transaction types
     client.configure_multisig(

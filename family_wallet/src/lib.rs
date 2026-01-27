@@ -38,9 +38,9 @@ pub enum FamilyRole {
 #[contracttype]
 #[derive(Clone)]
 pub struct MultiSigConfig {
-    pub threshold: u32,              // Number of signatures required (e.g., 2 for 2-of-3)
-    pub signers: Vec<Address>,        // List of authorized signers
-    pub spending_limit: i128,         // Amount threshold requiring multi-sig
+    pub threshold: u32,        // Number of signatures required (e.g., 2 for 2-of-3)
+    pub signers: Vec<Address>, // List of authorized signers
+    pub spending_limit: i128,  // Amount threshold requiring multi-sig
 }
 
 /// Pending transaction awaiting signatures
@@ -50,7 +50,7 @@ pub struct PendingTransaction {
     pub tx_id: u64,
     pub tx_type: TransactionType,
     pub proposer: Address,
-    pub signatures: Vec<Address>,      // Vec instead of Set (Soroban doesn't have Set)
+    pub signatures: Vec<Address>, // Vec instead of Set (Soroban doesn't have Set)
     pub created_at: u64,
     pub expires_at: u64,
     pub data: TransactionData,
@@ -60,11 +60,11 @@ pub struct PendingTransaction {
 #[contracttype]
 #[derive(Clone)]
 pub enum TransactionData {
-    Withdrawal(Address, Address, i128),  // (token, recipient, amount)
+    Withdrawal(Address, Address, i128), // (token, recipient, amount)
     SplitConfigChange(u32, u32, u32, u32), // (spending, savings, bills, insurance)
-    RoleChange(Address, FamilyRole),     // (member, new_role)
+    RoleChange(Address, FamilyRole),    // (member, new_role)
     EmergencyTransfer(Address, Address, i128), // (token, recipient, amount)
-    PolicyCancellation(u32),             // (policy_id)
+    PolicyCancellation(u32),            // (policy_id)
 }
 
 /// Family member information
@@ -128,10 +128,7 @@ impl FamilyWallet {
         owner.require_auth();
 
         // Check if already initialized
-        let existing: Option<Address> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("OWNER"));
+        let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
 
         if existing.is_some() {
             panic!("Wallet already initialized");
@@ -189,16 +186,16 @@ impl FamilyWallet {
             TransactionType::EmergencyTransfer,
             TransactionType::PolicyCancellation,
         ] {
-            env.storage().instance().set(
-                &Self::get_config_key(tx_type),
-                &default_config.clone(),
-            );
+            env.storage()
+                .instance()
+                .set(&Self::get_config_key(tx_type), &default_config.clone());
         }
 
         // Initialize pending transactions map
-        env.storage()
-            .instance()
-            .set(&symbol_short!("PEND_TXS"), &Map::<u64, PendingTransaction>::new(&env));
+        env.storage().instance().set(
+            &symbol_short!("PEND_TXS"),
+            &Map::<u64, PendingTransaction>::new(&env),
+        );
 
         // Initialize executed transactions map (for replay prevention)
         env.storage()
@@ -302,7 +299,9 @@ impl FamilyWallet {
         // For withdrawals, use LargeWithdrawal config to check spending limit
         // For other types, use their own config
         let config_key = match tx_type {
-            TransactionType::RegularWithdrawal => Self::get_config_key(TransactionType::LargeWithdrawal),
+            TransactionType::RegularWithdrawal => {
+                Self::get_config_key(TransactionType::LargeWithdrawal)
+            }
             _ => Self::get_config_key(tx_type),
         };
 
@@ -393,9 +392,7 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .expect("Pending transactions map not initialized");
 
-        let mut pending_tx = pending_txs
-            .get(tx_id)
-            .expect("Transaction not found");
+        let mut pending_tx = pending_txs.get(tx_id).expect("Transaction not found");
 
         // Check if transaction expired
         let current_time = env.ledger().timestamp();
@@ -526,7 +523,12 @@ impl FamilyWallet {
             env,
             proposer,
             TransactionType::SplitConfigChange,
-            TransactionData::SplitConfigChange(spending_percent, savings_percent, bills_percent, insurance_percent),
+            TransactionData::SplitConfigChange(
+                spending_percent,
+                savings_percent,
+                bills_percent,
+                insurance_percent,
+            ),
         )
     }
 
@@ -733,9 +735,7 @@ impl FamilyWallet {
 
     /// Get multi-sig configuration for a transaction type
     pub fn get_multisig_config(env: Env, tx_type: TransactionType) -> Option<MultiSigConfig> {
-        env.storage()
-            .instance()
-            .get(&Self::get_config_key(tx_type))
+        env.storage().instance().get(&Self::get_config_key(tx_type))
     }
 
     /// Get family member information
@@ -759,9 +759,7 @@ impl FamilyWallet {
 
     /// Get current emergency configuration
     pub fn get_emergency_config(env: Env) -> Option<EmergencyConfig> {
-        env.storage()
-            .instance()
-            .get(&symbol_short!("EM_CONF"))
+        env.storage().instance().get(&symbol_short!("EM_CONF"))
     }
 
     /// Check if emergency mode is currently enabled
@@ -865,8 +863,14 @@ impl FamilyWallet {
         require_auth: bool,
     ) -> u64 {
         match (tx_type, data) {
-            (TransactionType::RegularWithdrawal, TransactionData::Withdrawal(token, recipient, amount)) |
-            (TransactionType::LargeWithdrawal, TransactionData::Withdrawal(token, recipient, amount)) => {
+            (
+                TransactionType::RegularWithdrawal,
+                TransactionData::Withdrawal(token, recipient, amount),
+            )
+            | (
+                TransactionType::LargeWithdrawal,
+                TransactionData::Withdrawal(token, recipient, amount),
+            ) => {
                 // Execute withdrawal - require proposer to authorize the transfer if needed
                 if require_auth {
                     proposer.require_auth();
@@ -897,7 +901,10 @@ impl FamilyWallet {
                 }
                 0
             }
-            (TransactionType::EmergencyTransfer, TransactionData::EmergencyTransfer(token, recipient, amount)) => {
+            (
+                TransactionType::EmergencyTransfer,
+                TransactionData::EmergencyTransfer(token, recipient, amount),
+            ) => {
                 // Execute emergency transfer - require proposer to authorize the transfer if needed
                 if require_auth {
                     proposer.require_auth();
