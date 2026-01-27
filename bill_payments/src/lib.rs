@@ -1,4 +1,3 @@
-
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
@@ -30,6 +29,15 @@ pub struct Bill {
 pub enum BillEvent {
     Created,
     Paid,
+}
+
+// ============================================================================
+// Error types
+// ============================================================================
+#[derive(Clone)]
+#[contracttype]
+pub enum Error {
+    InvalidAmount,
 }
 
 // ============================================================================
@@ -84,7 +92,7 @@ impl BillPayments {
     ) -> u64 {
         // Early validation before any storage reads
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            panic!("Invalid amount");
         }
 
         // OPTIMIZATION: Single storage read with bumped TTL
@@ -102,7 +110,6 @@ impl BillPayments {
             .unwrap_or(0u64)
             + 1;
 
-        let current_time = env.ledger().timestamp();
         let bill = Bill {
             id: next_id,
             name,
@@ -111,8 +118,6 @@ impl BillPayments {
             recurring,
             frequency_days,
             paid: false,
-            created_at: current_time,
-            paid_at: None,
         };
 
         bills.set(next_id, bill);
@@ -139,7 +144,7 @@ impl BillPayments {
             (next_id, owner),
         );
 
-        Ok(next_id)
+        next_id
     }
 
     // ========================================================================
@@ -166,7 +171,6 @@ impl BillPayments {
             return false;
         }
 
-        let current_time = env.ledger().timestamp();
         bill.paid = true;
         bills.set(bill_id, bill.clone());
 
@@ -189,8 +193,6 @@ impl BillPayments {
                 recurring: true,
                 frequency_days: bill.frequency_days,
                 paid: false,
-                created_at: current_time,
-                paid_at: None,
             };
             bills.set(next_id, next_bill);
             env.storage().instance().set(&NEXT_ID_KEY, &next_id);
