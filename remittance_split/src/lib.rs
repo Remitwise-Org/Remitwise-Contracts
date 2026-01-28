@@ -50,22 +50,16 @@ pub struct RemittanceSplit;
 
 #[contractimpl]
 impl RemittanceSplit {
-    /// Initialize a remittance split configuration
+    /// Set or update the split percentages used to allocate remittances.
     ///
     /// # Arguments
-    /// * `owner` - Address of the split owner (must authorize)
-    /// * `spending_percent` - Percentage for spending (0-100)
-    /// * `savings_percent` - Percentage for savings (0-100)
-    /// * `bills_percent` - Percentage for bills (0-100)
-    /// * `insurance_percent` - Percentage for insurance (0-100)
+    /// * `spending_percent` - Percent allocated to spending
+    /// * `savings_percent` - Percent allocated to savings
+    /// * `bills_percent` - Percent allocated to bills
+    /// * `insurance_percent` - Percent allocated to insurance
     ///
     /// # Returns
-    /// True if initialization was successful
-    ///
-    /// # Panics
-    /// - If owner doesn't authorize the transaction
-    /// - If percentages don't sum to 100
-    /// - If split is already initialized (use update_split instead)
+    /// `true` when the inputs are valid and stored, `false` otherwise.
     pub fn initialize_split(
         env: Env,
         owner: Address,
@@ -85,9 +79,13 @@ impl RemittanceSplit {
         }
 
         // Input validation: percentages must sum to 100
-        let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 100 {
-            panic!("Percentages must sum to 100");
+        if !Self::is_valid_split(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
+            panic!("Percentages must sum to 100 and be valid");
         }
 
         // Extend storage TTL
@@ -165,9 +163,13 @@ impl RemittanceSplit {
         }
 
         // Input validation: percentages must sum to 100
-        let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 100 {
-            panic!("Percentages must sum to 100");
+        if !Self::is_valid_split(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
+            panic!("Percentages must sum to 100 and be valid");
         }
 
         // Extend storage TTL
@@ -210,7 +212,7 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .get(&symbol_short!("SPLIT"))
-            .unwrap_or_else(|| vec![env, 50, 30, 15, 5])
+            .unwrap_or_else(|| vec![&env, 50, 30, 15, 5])
     }
 
     /// Get the full split configuration including owner
@@ -239,9 +241,9 @@ impl RemittanceSplit {
 
         let split = Self::get_split(&env);
 
-        let spending = (total_amount * split.get(0).unwrap() as i128) / 100;
-        let savings = (total_amount * split.get(1).unwrap() as i128) / 100;
-        let bills = (total_amount * split.get(2).unwrap() as i128) / 100;
+        let spending = Self::split_amount(total_amount, split.get(0).unwrap());
+        let savings = Self::split_amount(total_amount, split.get(1).unwrap());
+        let bills = Self::split_amount(total_amount, split.get(2).unwrap());
         // Insurance gets the remainder to handle rounding
         let insurance = total_amount - spending - savings - bills;
 
