@@ -239,8 +239,14 @@ impl FamilyWallet {
     ) -> bool {
         caller.require_auth();
 
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .expect("Wallet not initialized");
+
         // Verify caller is Owner or Admin
-        if !Self::is_owner_or_admin(&env, &caller) {
+        if !Self::is_owner_or_admin_in_members(&members, &caller) {
             panic!("Only Owner or Admin can configure multi-sig");
         }
 
@@ -250,12 +256,6 @@ impl FamilyWallet {
         }
 
         // Validate signers are family members
-        let members: Map<Address, FamilyMember> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
-
         for signer in signers.iter() {
             if members.get(signer.clone()).is_none() {
                 panic!("Signer must be a family member");
@@ -950,6 +950,13 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| Map::new(env));
 
+        Self::is_owner_or_admin_in_members(&members, address)
+    }
+
+    fn is_owner_or_admin_in_members(
+        members: &Map<Address, FamilyMember>,
+        address: &Address,
+    ) -> bool {
         if let Some(member) = members.get(address.clone()) {
             matches!(member.role, FamilyRole::Owner | FamilyRole::Admin)
         } else {

@@ -204,17 +204,9 @@ impl Insurance {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut result = Vec::new(&env);
-        let max_id = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
-            .unwrap_or(0u32);
-
-        for i in 1..=max_id {
-            if let Some(policy) = policies.get(i) {
-                if policy.active && policy.owner == owner {
-                    result.push_back(policy);
-                }
+        for (_, policy) in policies.iter() {
+            if policy.active && policy.owner == owner {
+                result.push_back(policy);
             }
         }
         result
@@ -228,10 +220,17 @@ impl Insurance {
     /// # Returns
     /// Total monthly premium amount for the owner's active policies
     pub fn get_total_monthly_premium(env: Env, owner: Address) -> i128 {
-        let active = Self::get_active_policies(env, owner);
         let mut total = 0i128;
-        for policy in active.iter() {
-            total += policy.monthly_premium;
+        let policies: Map<u32, InsurancePolicy> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POLICIES"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        for (_, policy) in policies.iter() {
+            if policy.active && policy.owner == owner {
+                total += policy.monthly_premium;
+            }
         }
         total
     }

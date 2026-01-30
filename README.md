@@ -100,6 +100,20 @@ cargo test
 - The suite covers minting the payer account, splitting across spending/savings/bills/insurance, and asserting balances along with the new allocation metadata helper.
 - The same command is intended for CI so it runs without manual setup; re-run locally whenever split logic changes or new USDC paths are added.
 
+## Gas Benchmarks
+
+See `docs/gas-optimization.md` for methodology, before/after results, and assumptions.
+
+Run the deterministic gas benchmarks:
+
+```bash
+RUST_TEST_THREADS=1 cargo test -p bill_payments --test gas_bench -- --nocapture
+RUST_TEST_THREADS=1 cargo test -p savings_goals --test gas_bench -- --nocapture
+RUST_TEST_THREADS=1 cargo test -p insurance --test gas_bench -- --nocapture
+RUST_TEST_THREADS=1 cargo test -p family_wallet --test gas_bench -- --nocapture
+RUST_TEST_THREADS=1 cargo test -p remittance_split --test gas_bench -- --nocapture
+```
+
 ## Deployment
 
 See the [Deployment Guide](DEPLOYMENT.md) for comprehensive deployment instructions.

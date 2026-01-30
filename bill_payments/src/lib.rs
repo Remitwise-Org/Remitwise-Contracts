@@ -244,17 +244,9 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut result = Vec::new(&env);
-        let max_id = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
-            .unwrap_or(0u32);
-
-        for i in 1..=max_id {
-            if let Some(bill) = bills.get(i) {
-                if !bill.paid && bill.owner == owner {
-                    result.push_back(bill);
-                }
+        for (_, bill) in bills.iter() {
+            if !bill.paid && bill.owner == owner {
+                result.push_back(bill);
             }
         }
         result
@@ -273,17 +265,9 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut result = Vec::new(&env);
-        let max_id = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
-            .unwrap_or(0u32);
-
-        for i in 1..=max_id {
-            if let Some(bill) = bills.get(i) {
-                if !bill.paid && bill.due_date < current_time {
-                    result.push_back(bill);
-                }
+        for (_, bill) in bills.iter() {
+            if !bill.paid && bill.due_date < current_time {
+                result.push_back(bill);
             }
         }
         result
@@ -297,10 +281,17 @@ impl BillPayments {
     /// # Returns
     /// Total amount of all unpaid bills belonging to the owner
     pub fn get_total_unpaid(env: Env, owner: Address) -> i128 {
-        let unpaid = Self::get_unpaid_bills(env, owner);
         let mut total = 0i128;
-        for bill in unpaid.iter() {
-            total += bill.amount;
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        for (_, bill) in bills.iter() {
+            if !bill.paid && bill.owner == owner {
+                total += bill.amount;
+            }
         }
         total
     }
@@ -346,16 +337,8 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut result = Vec::new(&env);
-        let max_id = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
-            .unwrap_or(0u32);
-
-        for i in 1..=max_id {
-            if let Some(bill) = bills.get(i) {
-                result.push_back(bill);
-            }
+        for (_, bill) in bills.iter() {
+            result.push_back(bill);
         }
         result
     }

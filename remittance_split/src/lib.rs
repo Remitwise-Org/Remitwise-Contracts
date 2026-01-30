@@ -72,7 +72,7 @@ pub struct RemittanceSplit;
 
 #[contractimpl]
 impl RemittanceSplit {
-    /// Initialize a remittance split configuration
+    /// Set or update the split percentages used to allocate remittances.
     ///
     /// # Arguments
     /// * `owner` - Address of the split owner (must authorize)
@@ -231,7 +231,7 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .get(&symbol_short!("SPLIT"))
-            .unwrap_or_else(|| vec![env, 50, 30, 15, 5])
+            .unwrap_or_else(|| vec![&env, 50, 30, 15, 5])
     }
 
     /// Get the full split configuration including owner
