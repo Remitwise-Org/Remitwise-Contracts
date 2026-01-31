@@ -1,8 +1,22 @@
-#![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token::TokenClient, vec, Address, Env, Map,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
+    Address, Env, Map, Symbol, Vec,
 };
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RemittanceSplitError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    InvalidPercentages = 3,
+    InvalidAmount = 4,
+    Overflow = 5,
+    Unauthorized = 6,
+    InvalidNonce = 7,
+    UnsupportedVersion = 8,
+    ChecksumMismatch = 9,
+}
 
 #[derive(Clone)]
 #[contracttype]
@@ -98,20 +112,20 @@ impl RemittanceSplit {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> bool {
+    ) -> Result<bool, RemittanceSplitError> {
         owner.require_auth();
-        Self::require_nonce(&env, &owner, nonce);
+        Self::require_nonce(&env, &owner, nonce)?;
 
         let existing: Option<SplitConfig> = env.storage().instance().get(&symbol_short!("CONFIG"));
         if existing.is_some() {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
-            panic!("Split already initialized. Use update_split to modify.");
+            return Err(RemittanceSplitError::AlreadyInitialized);
         }
 
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
         if total != 100 {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
-            panic!("Percentages must sum to 100");
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         Self::extend_instance_ttl(&env);
@@ -139,12 +153,12 @@ impl RemittanceSplit {
             ],
         );
 
-        Self::increment_nonce(&env, &owner);
+        Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
         env.events()
             .publish((symbol_short!("split"), SplitEvent::Initialized), owner);
 
-        true
+        Ok(true)
     }
 
     /// Update an existing split configuration
@@ -173,25 +187,25 @@ impl RemittanceSplit {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> bool {
+    ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
-        Self::require_nonce(&env, &caller, nonce);
+        Self::require_nonce(&env, &caller, nonce)?;
 
         let mut config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
-            .expect("Split not initialized");
+            .ok_or(RemittanceSplitError::NotInitialized)?;
 
         if config.owner != caller {
             Self::append_audit(&env, symbol_short!("update"), &caller, false);
-            panic!("Only the owner can update the split configuration");
+            return Err(RemittanceSplitError::Unauthorized);
         }
 
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
         if total != 100 {
             Self::append_audit(&env, symbol_short!("update"), &caller, false);
-            panic!("Percentages must sum to 100");
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         Self::extend_instance_ttl(&env);
@@ -215,12 +229,12 @@ impl RemittanceSplit {
             ],
         );
 
-        Self::increment_nonce(&env, &caller);
+        Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("update"), &caller, true);
         env.events()
             .publish((symbol_short!("split"), SplitEvent::Updated), caller);
 
-        true
+        Ok(true)
     }
 
     /// Get the current split configuration
@@ -253,9 +267,12 @@ impl RemittanceSplit {
     /// # Panics
     /// - If total_amount is not positive
     /// - On integer overflow
-    pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
+    pub fn calculate_split(
+        env: Env,
+        total_amount: i128,
+    ) -> Result<Vec<i128>, RemittanceSplitError> {
         if total_amount <= 0 {
-            panic!("Total amount must be positive");
+            return Err(RemittanceSplitError::InvalidAmount);
         }
 
         let split = Self::get_split(&env);
@@ -266,27 +283,27 @@ impl RemittanceSplit {
         let spending = total_amount
             .checked_mul(s0)
             .and_then(|n| n.checked_div(100))
-            .expect("overflow in split calculation");
+            .ok_or(RemittanceSplitError::Overflow)?;
         let savings = total_amount
             .checked_mul(s1)
             .and_then(|n| n.checked_div(100))
-            .expect("overflow in split calculation");
+            .ok_or(RemittanceSplitError::Overflow)?;
         let bills = total_amount
             .checked_mul(s2)
             .and_then(|n| n.checked_div(100))
-            .expect("overflow in split calculation");
+            .ok_or(RemittanceSplitError::Overflow)?;
         let insurance = total_amount
             .checked_sub(spending)
             .and_then(|n| n.checked_sub(savings))
             .and_then(|n| n.checked_sub(bills))
-            .expect("overflow in split calculation");
+            .ok_or(RemittanceSplitError::Overflow)?;
 
         env.events().publish(
             (symbol_short!("split"), SplitEvent::Calculated),
             total_amount,
         );
 
-        vec![&env, spending, savings, bills, insurance]
+        Ok(vec![&env, spending, savings, bills, insurance])
     }
 
     /// Distribute USDC according to the configured split
@@ -297,16 +314,16 @@ impl RemittanceSplit {
         nonce: u64,
         accounts: AccountGroup,
         total_amount: i128,
-    ) -> bool {
+    ) -> Result<bool, RemittanceSplitError> {
         if total_amount <= 0 {
             Self::append_audit(&env, symbol_short!("distrib"), &from, false);
-            return false;
+            return Err(RemittanceSplitError::InvalidAmount);
         }
 
         from.require_auth();
-        Self::require_nonce(&env, &from, nonce);
+        Self::require_nonce(&env, &from, nonce)?;
 
-        let amounts = Self::calculate_split(env.clone(), total_amount);
+        let amounts = Self::calculate_split(env.clone(), total_amount)?;
         let recipients = [
             accounts.spending,
             accounts.savings,
@@ -321,9 +338,9 @@ impl RemittanceSplit {
             }
         }
 
-        Self::increment_nonce(&env, &from);
+        Self::increment_nonce(&env, &from)?;
         Self::append_audit(&env, symbol_short!("distrib"), &from, true);
-        true
+        Ok(true)
     }
 
     /// Query USDC balance for an address
@@ -332,8 +349,11 @@ impl RemittanceSplit {
     }
 
     /// Returns a breakdown of the split by category and resulting amount
-    pub fn get_split_allocations(env: &Env, total_amount: i128) -> Vec<Allocation> {
-        let amounts = Self::calculate_split(env.clone(), total_amount);
+    pub fn get_split_allocations(
+        env: &Env,
+        total_amount: i128,
+    ) -> Result<Vec<Allocation>, RemittanceSplitError> {
+        let amounts = Self::calculate_split(env.clone(), total_amount)?;
         let categories = [
             symbol_short!("SPENDING"),
             symbol_short!("SAVINGS"),
@@ -345,7 +365,7 @@ impl RemittanceSplit {
         for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
             result.push_back(Allocation { category, amount });
         }
-        result
+        Ok(result)
     }
 
     /// Get current nonce for an address (next call must use this value for replay protection).
@@ -356,18 +376,25 @@ impl RemittanceSplit {
     }
 
     /// Export current config as snapshot for backup/migration (owner only).
-    pub fn export_snapshot(env: Env, caller: Address) -> Option<ExportSnapshot> {
+    pub fn export_snapshot(
+        env: Env,
+        caller: Address,
+    ) -> Result<Option<ExportSnapshot>, RemittanceSplitError> {
         caller.require_auth();
-        let config: SplitConfig = env.storage().instance().get(&symbol_short!("CONFIG"))?;
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
         if config.owner != caller {
-            panic!("Only the owner can export snapshot");
+            return Err(RemittanceSplitError::Unauthorized);
         }
         let checksum = Self::compute_checksum(SNAPSHOT_VERSION, &config);
-        Some(ExportSnapshot {
+        Ok(Some(ExportSnapshot {
             version: SNAPSHOT_VERSION,
             checksum,
             config,
-        })
+        }))
     }
 
     /// Import snapshot (restore config). Validates version and checksum. Owner only; contract must already be initialized.
@@ -376,28 +403,28 @@ impl RemittanceSplit {
         caller: Address,
         nonce: u64,
         snapshot: ExportSnapshot,
-    ) -> bool {
+    ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
-        Self::require_nonce(&env, &caller, nonce);
+        Self::require_nonce(&env, &caller, nonce)?;
 
         if snapshot.version != SNAPSHOT_VERSION {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            panic!("Unsupported snapshot version");
+            return Err(RemittanceSplitError::UnsupportedVersion);
         }
         let expected = Self::compute_checksum(snapshot.version, &snapshot.config);
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            panic!("Snapshot checksum mismatch");
+            return Err(RemittanceSplitError::ChecksumMismatch);
         }
 
         let existing: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
-            .expect("Split not initialized");
+            .ok_or(RemittanceSplitError::NotInitialized)?;
         if existing.owner != caller {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            panic!("Only the owner can import snapshot");
+            return Err(RemittanceSplitError::Unauthorized);
         }
 
         let total = snapshot.config.spending_percent
@@ -406,7 +433,7 @@ impl RemittanceSplit {
             + snapshot.config.insurance_percent;
         if total != 100 {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            panic!("Invalid snapshot: percentages must sum to 100");
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         Self::extend_instance_ttl(&env);
@@ -424,9 +451,9 @@ impl RemittanceSplit {
             ],
         );
 
-        Self::increment_nonce(&env, &caller);
+        Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
-        true
+        Ok(true)
     }
 
     /// Return recent audit log entries (from_index, limit capped at MAX_AUDIT_ENTRIES).
@@ -448,16 +475,23 @@ impl RemittanceSplit {
         out
     }
 
-    fn require_nonce(env: &Env, address: &Address, expected: u64) {
+    fn require_nonce(
+        env: &Env,
+        address: &Address,
+        expected: u64,
+    ) -> Result<(), RemittanceSplitError> {
         let current = Self::get_nonce(env.clone(), address.clone());
         if expected != current {
-            panic!("Invalid nonce: expected {}, got {}", current, expected);
+            return Err(RemittanceSplitError::InvalidNonce);
         }
+        Ok(())
     }
 
-    fn increment_nonce(env: &Env, address: &Address) {
+    fn increment_nonce(env: &Env, address: &Address) -> Result<(), RemittanceSplitError> {
         let current = Self::get_nonce(env.clone(), address.clone());
-        let next = current.checked_add(1).expect("nonce overflow");
+        let next = current
+            .checked_add(1)
+            .ok_or(RemittanceSplitError::Overflow)?;
         let mut nonces: Map<Address, u64> = env
             .storage()
             .instance()
@@ -467,6 +501,7 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("NONCES"), &nonces);
+        Ok(())
     }
 
     fn compute_checksum(version: u32, config: &SplitConfig) -> u64 {
