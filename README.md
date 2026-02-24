@@ -226,6 +226,41 @@ This is a basic MVP implementation. Future enhancements:
 - Multi-signature support for family wallets
 - Emergency mode with priority processing
 
+## Security
+
+### Threat Model
+
+A comprehensive security review and threat model is available in [THREAT_MODEL.md](THREAT_MODEL.md). This document identifies:
+
+- **Critical Assets**: User funds, configuration, identity, and data
+- **Threat Scenarios**: Unauthorized access, reentrancy, DoS, economic attacks
+- **Existing Mitigations**: Authorization patterns, pause mechanisms, input validation
+- **Security Gaps**: Areas requiring immediate attention before mainnet deployment
+
+**Key Security Issues:**
+- [SECURITY-001] Add Authorization to Reporting Contract Queries (HIGH)
+- [SECURITY-002] Implement Reentrancy Protection in Orchestrator (HIGH)
+- [SECURITY-003] Add Rate Limiting to Emergency Transfers (HIGH)
+- [SECURITY-004] Replace Checksum with Cryptographic Hash (MEDIUM)
+- [SECURITY-005] Implement Storage Bounds and Entity Limits (MEDIUM)
+
+See the [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE) directory for detailed security issue descriptions.
+
+### Security Best Practices
+
+When integrating with these contracts:
+
+1. **Always verify caller authorization** before performing sensitive operations
+2. **Monitor events** for suspicious activity patterns
+3. **Implement rate limiting** at the application layer
+4. **Use multi-signature** for high-value operations
+5. **Regular security audits** before major releases
+6. **Incident response plan** for security events
+
+### Reporting Security Issues
+
+If you discover a security vulnerability, please email security@remitwise.com instead of using the public issue tracker.
+
 ## License
 
 MIT
