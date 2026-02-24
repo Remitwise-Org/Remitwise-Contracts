@@ -432,7 +432,7 @@ impl SavingsGoalContract {
         if let Some(flags_addr) = feature_flags_addr {
             // Import the feature flags client
             let flags_client = feature_flags::FeatureFlagsContractClient::new(&env, &flags_addr);
-            
+
             if flags_client.is_enabled(&String::from_str(&env, "strict_goal_dates")) {
                 let current_time = env.ledger().timestamp();
                 if target_date <= current_time {
@@ -1363,7 +1363,10 @@ impl SavingsGoalContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Ledger}, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Env, String,
+    };
 
     fn make_env() -> Env {
         Env::default()
@@ -1512,29 +1515,29 @@ mod test {
     fn test_create_goal_with_flags_disabled() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let contract_id = env.register_contract(None, SavingsGoalContract);
         let client = SavingsGoalContractClient::new(&env, &contract_id);
-        
+
         let flags_id = env.register_contract(None, feature_flags::FeatureFlagsContract);
         let flags_client = feature_flags::FeatureFlagsContractClient::new(&env, &flags_id);
-        
+
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
-        
+
         client.init();
         flags_client.initialize(&admin);
-        
+
         // Set strict_goal_dates to false
         flags_client.set_flag(
             &String::from_str(&env, "strict_goal_dates"),
             &false,
             &String::from_str(&env, "Strict date validation"),
         );
-        
+
         // Should allow past date when flag is disabled
         let past_date = 1000u64;
-        
+
         let goal_id = client.create_goal_with_flags(
             &user,
             &String::from_str(&env, "Test Goal"),
@@ -1542,7 +1545,7 @@ mod test {
             &past_date,
             &Some(flags_id.clone()),
         );
-        
+
         assert!(goal_id > 0);
     }
 
@@ -1550,29 +1553,29 @@ mod test {
     fn test_create_goal_with_flags_enabled_future_date() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let contract_id = env.register_contract(None, SavingsGoalContract);
         let client = SavingsGoalContractClient::new(&env, &contract_id);
-        
+
         let flags_id = env.register_contract(None, feature_flags::FeatureFlagsContract);
         let flags_client = feature_flags::FeatureFlagsContractClient::new(&env, &flags_id);
-        
+
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
-        
+
         client.init();
         flags_client.initialize(&admin);
-        
+
         // Set strict_goal_dates to true
         flags_client.set_flag(
             &String::from_str(&env, "strict_goal_dates"),
             &true,
             &String::from_str(&env, "Strict date validation"),
         );
-        
+
         // Should allow future date when flag is enabled
         let future_date = 2000u64;
-        
+
         let goal_id = client.create_goal_with_flags(
             &user,
             &String::from_str(&env, "Test Goal"),
@@ -1580,7 +1583,7 @@ mod test {
             &future_date,
             &Some(flags_id.clone()),
         );
-        
+
         assert!(goal_id > 0);
     }
 
@@ -1589,34 +1592,34 @@ mod test {
     fn test_create_goal_with_flags_enabled_past_date_fails() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         // Set ledger time to 2000
         env.ledger().with_mut(|li| {
             li.timestamp = 2000;
         });
-        
+
         let contract_id = env.register_contract(None, SavingsGoalContract);
         let client = SavingsGoalContractClient::new(&env, &contract_id);
-        
+
         let flags_id = env.register_contract(None, feature_flags::FeatureFlagsContract);
         let flags_client = feature_flags::FeatureFlagsContractClient::new(&env, &flags_id);
-        
+
         let admin = Address::generate(&env);
         let user = Address::generate(&env);
-        
+
         client.init();
         flags_client.initialize(&admin);
-        
+
         // Set strict_goal_dates to true
         flags_client.set_flag(
             &String::from_str(&env, "strict_goal_dates"),
             &true,
             &String::from_str(&env, "Strict date validation"),
         );
-        
+
         // Should reject past date (1000) when current time is 2000 and flag is enabled
         let past_date = 1000u64;
-        
+
         client.create_goal_with_flags(
             &user,
             &String::from_str(&env, "Test Goal"),
@@ -1630,17 +1633,17 @@ mod test {
     fn test_create_goal_with_flags_no_flags_addr() {
         let env = Env::default();
         env.mock_all_auths();
-        
+
         let contract_id = env.register_contract(None, SavingsGoalContract);
         let client = SavingsGoalContractClient::new(&env, &contract_id);
-        
+
         let user = Address::generate(&env);
-        
+
         client.init();
-        
+
         // Should work with past date when no flags address provided
         let past_date = 1000u64;
-        
+
         let goal_id = client.create_goal_with_flags(
             &user,
             &String::from_str(&env, "Test Goal"),
@@ -1648,8 +1651,7 @@ mod test {
             &past_date,
             &None,
         );
-        
+
         assert!(goal_id > 0);
     }
 }
-

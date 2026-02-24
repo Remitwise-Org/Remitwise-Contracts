@@ -55,7 +55,7 @@ impl FeatureFlagsContract {
         }
 
         env.storage().instance().set(&Self::STORAGE_ADMIN, &admin);
-        
+
         // Initialize empty flags map
         let flags: Map<String, FeatureFlag> = Map::new(&env);
         env.storage().instance().set(&Self::STORAGE_FLAGS, &flags);
@@ -99,7 +99,7 @@ impl FeatureFlagsContract {
     /// Check if a feature flag is enabled (public read)
     pub fn is_enabled(env: Env, key: String) -> bool {
         let flags = Self::get_flags(&env);
-        
+
         match flags.get(key) {
             Some(flag) => flag.enabled,
             None => false, // Default to disabled if flag doesn't exist
@@ -123,7 +123,7 @@ impl FeatureFlagsContract {
         admin.require_auth();
 
         let mut flags = Self::get_flags(&env);
-        
+
         if !flags.contains_key(key.clone()) {
             panic!("Feature flag not found");
         }
@@ -149,7 +149,9 @@ impl FeatureFlagsContract {
         let admin = Self::get_admin(&env);
         admin.require_auth();
 
-        env.storage().instance().set(&Self::STORAGE_ADMIN, &new_admin);
+        env.storage()
+            .instance()
+            .set(&Self::STORAGE_ADMIN, &new_admin);
         Self::extend_instance_ttl(&env);
     }
 
