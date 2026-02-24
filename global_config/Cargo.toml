@@ -1,5 +1,5 @@
 [package]
-name = "bill_payments"
+name = "global_config"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,8 +10,4 @@ crate-type = ["cdylib", "rlib"]
 soroban-sdk = "21.0.0"
 
 [dev-dependencies]
-proptest = "1.10.0"
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
-global_config = { path = "../global_config" }
-
-

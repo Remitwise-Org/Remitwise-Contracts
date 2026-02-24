@@ -4,8 +4,8 @@ mod events;
 use events::{EventCategory, EventPriority, RemitwiseEvents};
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
 // Storage TTL constants
@@ -73,6 +73,8 @@ pub enum Error {
     BatchTooLarge = 9,
     BatchValidationFailed = 10,
     InvalidLimit = 11,
+    /// A config-contract sync was requested but no config contract address is stored.
+    ConfigContractNotSet = 12,
 }
 
 #[contracttype]
@@ -104,6 +106,26 @@ pub struct StorageStats {
     pub total_unpaid_amount: i128,
     pub total_archived_amount: i128,
     pub last_updated: u64,
+}
+
+// -----------------------------------------------------------------------
+// Cross-contract interface: GlobalConfig
+// -----------------------------------------------------------------------
+
+/// Mirrors `global_config::ConfigValue` for cross-contract deserialization.
+/// The XDR encoding is identical as long as variants appear in the same order.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub enum GlobalConfigValue {
+    U32(u32),
+    I128(i128),
+    Bool(bool),
+}
+
+/// Minimal client interface for the GlobalConfig contract.
+#[contractclient(name = "GlobalConfigClient")]
+pub trait GlobalConfigTrait {
+    fn get_config(env: Env, key: Symbol) -> Option<GlobalConfigValue>;
 }
 
 #[contract]
@@ -142,13 +164,22 @@ impl BillPayments {
         Ok(())
     }
 
-    /// Clamp a caller-supplied limit to [1, MAX_PAGE_LIMIT].
+    /// Clamp a caller-supplied limit to [1, effective_max_page_limit].
     /// A value of 0 is treated as DEFAULT_PAGE_LIMIT.
-    fn clamp_limit(limit: u32) -> u32 {
+    ///
+    /// The ceiling is the cached value synced from the GlobalConfig contract
+    /// (key `"max_page_lmt"`), falling back to the hard-coded `MAX_PAGE_LIMIT`
+    /// when no sync has been performed.
+    fn clamp_limit(env: &Env, limit: u32) -> u32 {
+        let max: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PG_LIMIT"))
+            .unwrap_or(MAX_PAGE_LIMIT);
         if limit == 0 {
-            DEFAULT_PAGE_LIMIT
-        } else if limit > MAX_PAGE_LIMIT {
-            MAX_PAGE_LIMIT
+            DEFAULT_PAGE_LIMIT.min(max)
+        } else if limit > max {
+            max
         } else {
             limit
         }
@@ -342,6 +373,65 @@ impl BillPayments {
     }
 
     // -----------------------------------------------------------------------
+    // Global config integration
+    // -----------------------------------------------------------------------
+
+    /// Store the address of the deployed GlobalConfig contract.
+    ///
+    /// Only the upgrade admin may call. Once set, `sync_limits_from_config`
+    /// can be used to pull limit values into local storage.
+    pub fn set_config_contract(
+        env: Env,
+        caller: Address,
+        config_id: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).ok_or(Error::Unauthorized)?;
+        if admin != caller {
+            return Err(Error::Unauthorized);
+        }
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("CFG_CTR"), &config_id);
+        Ok(())
+    }
+
+    /// Read `max_page_lmt` from the configured GlobalConfig contract and cache
+    /// it locally under `"PG_LIMIT"`.
+    ///
+    /// After a successful sync, `clamp_limit` uses the cached value instead of
+    /// the hard-coded `MAX_PAGE_LIMIT` constant. Only the upgrade admin may
+    /// call.
+    pub fn sync_limits_from_config(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).ok_or(Error::Unauthorized)?;
+        if admin != caller {
+            return Err(Error::Unauthorized);
+        }
+        let config_id: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CFG_CTR"))
+            .ok_or(Error::ConfigContractNotSet)?;
+
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        let config_client = GlobalConfigClient::new(&env, &config_id);
+        let key = Symbol::new(&env, "max_page_lmt");
+        if let Some(GlobalConfigValue::U32(limit)) = config_client.get_config(&key) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("PG_LIMIT"), &limit);
+        }
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
     // Core bill operations
     // -----------------------------------------------------------------------
 
@@ -506,7 +596,7 @@ impl BillPayments {
     /// `BillPage { items, next_cursor, count }`.
     /// When `next_cursor == 0` there are no more pages.
     pub fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -535,7 +625,7 @@ impl BillPayments {
     /// Same cursor/limit semantics as `get_unpaid_bills`.
     pub fn get_all_bills_for_owner(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage {
         owner.require_auth();
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -563,7 +653,7 @@ impl BillPayments {
     ///
     /// Same cursor/limit semantics.
     pub fn get_overdue_bills(env: Env, cursor: u32, limit: u32) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let current_time = env.ledger().timestamp();
         let bills: Map<u32, Bill> = env
             .storage()
@@ -601,7 +691,7 @@ impl BillPayments {
             return Err(Error::Unauthorized);
         }
 
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -688,7 +778,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> ArchivedBillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let archived: Map<u32, ArchivedBill> = env
             .storage()
             .instance()
