@@ -84,7 +84,11 @@ fn stress_200_bills_single_user() {
 
     // Verify aggregate total
     let total = client.get_total_unpaid(&owner);
-    assert_eq!(total, 200 * 100i128, "get_total_unpaid must sum all 200 bills");
+    assert_eq!(
+        total,
+        200 * 100i128,
+        "get_total_unpaid must sum all 200 bills"
+    );
 
     // Exhaust all pages with MAX_PAGE_LIMIT (50) — should take exactly 4 pages
     let mut collected = 0u32;
@@ -328,8 +332,14 @@ fn stress_archive_100_paid_bills() {
 
     // Verify storage stats
     let stats = client.get_storage_stats();
-    assert_eq!(stats.active_bills, 0, "No active bills should remain after full archive");
-    assert_eq!(stats.archived_bills, 100, "Storage stats must show 100 archived bills");
+    assert_eq!(
+        stats.active_bills, 0,
+        "No active bills should remain after full archive"
+    );
+    assert_eq!(
+        stats.archived_bills, 100,
+        "Storage stats must show 100 archived bills"
+    );
 
     // Verify paginated access to archived bills
     let mut archived_seen = 0u32;
@@ -487,8 +497,9 @@ fn bench_archive_paid_bills_100() {
         client.pay_bill(&owner, &id);
     }
 
-    let (cpu, mem, result) =
-        measure(&env, || client.archive_paid_bills(&owner, &2_000_000_000u64));
+    let (cpu, mem, result) = measure(&env, || {
+        client.archive_paid_bills(&owner, &2_000_000_000u64)
+    });
     assert_eq!(result, 100);
 
     println!(

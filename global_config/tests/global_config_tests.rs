@@ -70,11 +70,8 @@ fn test_set_admin_transfers_control() {
     assert_eq!(client.get_admin(), Some(new_admin.clone()));
 
     // Old admin can no longer write
-    let result = client.try_set_config(
-        &admin,
-        &Symbol::new(&env, "some_key"),
-        &ConfigValue::U32(1),
-    );
+    let result =
+        client.try_set_config(&admin, &Symbol::new(&env, "some_key"), &ConfigValue::U32(1));
     assert_eq!(result, Err(Ok(ConfigError::Unauthorized)));
 }
 
@@ -185,11 +182,7 @@ fn test_unauthorized_set_config_fails() {
 
     client.initialize(&admin);
 
-    let result = client.try_set_config(
-        &stranger,
-        &Symbol::new(&env, "key"),
-        &ConfigValue::U32(1),
-    );
+    let result = client.try_set_config(&stranger, &Symbol::new(&env, "key"), &ConfigValue::U32(1));
     assert_eq!(result, Err(Ok(ConfigError::Unauthorized)));
 }
 
@@ -237,10 +230,6 @@ fn test_set_config_before_init_fails() {
     let (_, client) = deploy(&env);
     let caller = Address::generate(&env);
 
-    let result = client.try_set_config(
-        &caller,
-        &Symbol::new(&env, "key"),
-        &ConfigValue::U32(1),
-    );
+    let result = client.try_set_config(&caller, &Symbol::new(&env, "key"), &ConfigValue::U32(1));
     assert_eq!(result, Err(Ok(ConfigError::NotInitialized)));
 }

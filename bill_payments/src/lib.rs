@@ -386,11 +386,7 @@ impl BillPayments {
     ///
     /// Only the upgrade admin may call. Once set, `sync_limits_from_config`
     /// can be used to pull limit values into local storage.
-    pub fn set_config_contract(
-        env: Env,
-        caller: Address,
-        config_id: Address,
-    ) -> Result<(), Error> {
+    pub fn set_config_contract(env: Env, caller: Address, config_id: Address) -> Result<(), Error> {
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(Error::Unauthorized)?;
         if admin != caller {

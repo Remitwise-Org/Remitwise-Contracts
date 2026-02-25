@@ -24,13 +24,7 @@ fn make_env() -> Env {
 
 /// Deploy both contracts and wire them together.
 /// Returns (bills_client, config_client, upgrade_admin).
-fn setup(
-    env: &Env,
-) -> (
-    BillPaymentsClient<'_>,
-    GlobalConfigClient<'_>,
-    Address,
-) {
+fn setup(env: &Env) -> (BillPaymentsClient<'_>, GlobalConfigClient<'_>, Address) {
     let bills_id = env.register_contract(None, BillPayments);
     let bills = BillPaymentsClient::new(env, &bills_id);
 

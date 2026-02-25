@@ -159,9 +159,6 @@ impl GlobalConfig {
     // -----------------------------------------------------------------------
 
     pub fn version(env: Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&DataKey::Version)
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::Version).unwrap_or(0)
     }
 }
