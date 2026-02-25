@@ -917,7 +917,7 @@ fn test_data_persists_across_repeated_operations() {
     let owner = Address::generate(&env);
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);
-    let member3 = Address::generate(&env);
+    let _member3 = Address::generate(&env);
 
     // Phase 1: Initialize wallet at seq 100
     // TTL goes from 100 → 518,400. live_until = 518,500

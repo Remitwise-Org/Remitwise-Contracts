@@ -14,6 +14,27 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// Minimum supported schema version for import.
 pub const MIN_SUPPORTED_VERSION: u32 = 1;
 
+/// Versioned migration event payload meant for indexing and historical tracking.
+///
+/// # Indexer Migration Guidance
+/// - **v1**: Indexers should match on `MigrationEvent::V1`. This is the fundamental schema containing baseline metadata (contract, type, version, timestamp).
+/// - **v2+**: Future schemas will add new variants (e.g., `MigrationEvent::V2`) potentially mapping to new data structures.
+/// Indexers must be prepared to handle unknown variants gracefully (e.g., by logging a warning/alert) rather than crashing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MigrationEvent {
+    V1(MigrationEventV1),
+    // V2(MigrationEventV2), // Add in the future when schema changes and update indexers
+}
+
+/// Base migration event containing metadata about the migration operation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MigrationEventV1 {
+    pub contract_id: String,
+    pub migration_type: String, // e.g., "export", "import", "upgrade"
+    pub version: u32,
+    pub timestamp_ms: u64,
+}
+
 /// Export format for snapshot data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportFormat {
@@ -393,5 +414,30 @@ mod tests {
         assert_eq!(goals.len(), 1);
         assert_eq!(goals[0].name, "Emergency");
         assert_eq!(goals[0].target_amount, 1000);
+    }
+
+    #[test]
+    fn migration_event_serialization() {
+        let event = MigrationEvent::V1(MigrationEventV1 {
+            contract_id: "CABCD".into(),
+            migration_type: "export".into(),
+            version: SCHEMA_VERSION,
+            timestamp_ms: 123456789,
+        });
+
+        // Ensure we can serialize cleanly for indexers.
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""V1":{"#));
+        assert!(json.contains(r#""contract_id":"CABCD""#));
+        assert!(json.contains(r#""version":1"#));
+
+        let loaded: MigrationEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, loaded);
+
+        if let MigrationEvent::V1(v1) = loaded {
+            assert_eq!(v1.version, SCHEMA_VERSION);
+        } else {
+            panic!("Expected V1 event");
+        }
     }
 }

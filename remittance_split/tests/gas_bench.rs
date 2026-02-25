@@ -57,12 +57,12 @@ fn bench_distribute_usdc_worst_case() {
         insurance: <Address as AddressTrait>::generate(&env),
     };
 
-    let nonce = 0u64;
+    let _nonce = 0u64;
     let (cpu, mem, distributed) = measure(&env, || {
         client.distribute_usdc(
             &token_contract.address(),
             &payer,
-            &nonce,
+            &_nonce,
             &accounts,
             &amount,
         )

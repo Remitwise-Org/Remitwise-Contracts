@@ -1,0 +1,42 @@
+[
+  {
+    "contract": "bill_payments",
+    "method": "get_total_unpaid",
+    "scenario": "100_bills_50_cancelled",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Worst-case scenario with 100 bills, 50 cancelled"
+  },
+  {
+    "contract": "savings_goals",
+    "method": "get_all_goals",
+    "scenario": "100_goals_single_owner",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Retrieve 100 goals for a single owner"
+  },
+  {
+    "contract": "insurance",
+    "method": "get_total_monthly_premium",
+    "scenario": "100_active_policies",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Calculate total premium for 100 active policies"
+  },
+  {
+    "contract": "family_wallet",
+    "method": "configure_multisig",
+    "scenario": "9_signers_threshold_all",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Configure multisig with 9 signers requiring all signatures"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "distribute_usdc",
+    "scenario": "4_recipients_all_nonzero",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Distribute USDC to 4 recipients with non-zero amounts"
+  }
+]

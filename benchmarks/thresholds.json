@@ -1,0 +1,46 @@
+{
+  "default": {
+    "cpu_percent": 10,
+    "mem_percent": 10,
+    "description": "Default threshold: 10% increase triggers regression warning"
+  },
+  "contract_specific": {
+    "bill_payments": {
+      "cpu_percent": 15,
+      "mem_percent": 10,
+      "description": "Bill payments may have higher CPU variance due to iteration"
+    },
+    "savings_goals": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for savings goals"
+    },
+    "insurance": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for insurance"
+    },
+    "family_wallet": {
+      "cpu_percent": 12,
+      "mem_percent": 10,
+      "description": "Slightly higher CPU threshold for multisig operations"
+    },
+    "remittance_split": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for remittance split"
+    }
+  },
+  "method_specific": {
+    "get_total_unpaid": {
+      "cpu_percent": 15,
+      "mem_percent": 10,
+      "description": "Higher CPU threshold for aggregation operations"
+    },
+    "get_all_goals": {
+      "cpu_percent": 12,
+      "mem_percent": 12,
+      "description": "Slightly higher thresholds for bulk retrieval"
+    }
+  }
+}

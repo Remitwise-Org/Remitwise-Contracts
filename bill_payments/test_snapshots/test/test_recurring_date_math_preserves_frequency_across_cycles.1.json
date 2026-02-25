@@ -33,6 +33,9 @@
                 },
                 {
                   "u32": 7
+                },
+                {
+                  "string": "XLM"
                 }
               ]
             }
@@ -155,6 +158,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "currency"
+                                    },
+                                    "val": {
+                                      "string": "XLM"
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "due_date"
                                     },
                                     "val": {
@@ -253,6 +264,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "currency"
+                                    },
+                                    "val": {
+                                      "string": "XLM"
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "due_date"
                                     },
                                     "val": {
@@ -347,6 +366,14 @@
                                     },
                                     "val": {
                                       "u64": 0
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "currency"
+                                    },
+                                    "val": {
+                                      "string": "XLM"
                                     }
                                   },
                                   {
@@ -604,6 +631,9 @@
                 },
                 {
                   "u32": 7
+                },
+                {
+                  "string": "XLM"
                 }
               ]
             }
@@ -936,6 +966,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "currency"
+                  },
+                  "val": {
+                    "string": "XLM"
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "due_date"
                   },
                   "val": {
@@ -1075,6 +1113,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "currency"
+                  },
+                  "val": {
+                    "string": "XLM"
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "due_date"
                   },
                   "val": {
@@ -1210,6 +1256,14 @@
                   },
                   "val": {
                     "u64": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "currency"
+                  },
+                  "val": {
+                    "string": "XLM"
                   }
                 },
                 {

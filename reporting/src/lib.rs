@@ -140,6 +140,50 @@ pub struct ContractAddresses {
 
 /// Events emitted by the reporting contract
 #[contracttype]
+#[derive(Clone, Copy)]
+pub enum ReportingError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+    AddressesNotConfigured = 4,
+}
+
+impl From<ReportingError> for soroban_sdk::Error {
+    fn from(err: ReportingError) -> Self {
+        match err {
+            ReportingError::AlreadyInitialized => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidAction,
+            )),
+            ReportingError::NotInitialized => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::MissingValue,
+            )),
+            ReportingError::Unauthorized => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidAction,
+            )),
+            ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::MissingValue,
+            )),
+        }
+    }
+}
+
+impl From<&ReportingError> for soroban_sdk::Error {
+    fn from(err: &ReportingError) -> Self {
+        (*err).into()
+    }
+}
+
+impl From<soroban_sdk::Error> for ReportingError {
+    fn from(_err: soroban_sdk::Error) -> Self {
+        ReportingError::Unauthorized
+    }
+}
+
+#[contracttype]
 #[derive(Clone)]
 pub enum ReportEvent {
     ReportGenerated,
@@ -243,13 +287,25 @@ pub struct ReportingContract;
 
 #[contractimpl]
 impl ReportingContract {
-    /// Initialize the reporting contract with admin
-    pub fn init(env: Env, admin: Address) -> bool {
+    /// Initialize the reporting contract with an admin address.
+    ///
+    /// # Arguments
+    /// * `admin` - Address of the contract administrator (must authorize)
+    ///
+    /// # Returns
+    /// `Ok(())` on successful initialization
+    ///
+    /// # Errors
+    /// * `AlreadyInitialized` - If the contract has already been initialized
+    ///
+    /// # Panics
+    /// * If `admin` does not authorize the transaction
+    pub fn init(env: Env, admin: Address) -> Result<(), ReportingError> {
         admin.require_auth();
 
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
         if existing.is_some() {
-            panic!("Contract already initialized");
+            return Err(ReportingError::AlreadyInitialized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -257,10 +313,28 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("ADMIN"), &admin);
 
-        true
+        Ok(())
     }
 
-    /// Configure contract addresses (admin only)
+    /// Configure addresses for all related contracts (admin only).
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the administrator (must authorize)
+    /// * `remittance_split` - Address of the remittance split contract
+    /// * `savings_goals` - Address of the savings goals contract
+    /// * `bill_payments` - Address of the bill payments contract
+    /// * `insurance` - Address of the insurance contract
+    /// * `family_wallet` - Address of the family wallet contract
+    ///
+    /// # Returns
+    /// `Ok(())` on successful configuration
+    ///
+    /// # Errors
+    /// * `NotInitialized` - If contract has not been initialized
+    /// * `Unauthorized` - If caller is not the admin
+    ///
+    /// # Panics
+    /// * If `caller` does not authorize the transaction
     pub fn configure_addresses(
         env: Env,
         caller: Address,
@@ -269,17 +343,17 @@ impl ReportingContract {
         bill_payments: Address,
         insurance: Address,
         family_wallet: Address,
-    ) -> bool {
+    ) -> Result<(), ReportingError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .expect("Contract not initialized");
+            .ok_or(ReportingError::NotInitialized)?;
 
         if caller != admin {
-            panic!("Only admin can configure addresses");
+            return Err(ReportingError::Unauthorized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -301,7 +375,7 @@ impl ReportingContract {
             caller,
         );
 
-        true
+        Ok(())
     }
 
     /// Generate remittance summary report

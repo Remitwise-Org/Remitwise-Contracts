@@ -1140,7 +1140,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
 
     // archive_old_reports calls extend_instance_ttl first (bumps to 518,400),
     // then extend_archive_ttl which is a no-op (TTL already above threshold)
-    let archived = client.archive_old_reports(&admin, &2000000000);
+    let _archived = client.archive_old_reports(&admin, &2000000000);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(

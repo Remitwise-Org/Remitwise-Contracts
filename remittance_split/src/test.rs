@@ -168,6 +168,85 @@ fn test_calculate_split_rounding() {
     assert_eq!(amounts.get(1).unwrap(), 33);
     assert_eq!(amounts.get(2).unwrap(), 33);
     assert_eq!(amounts.get(3).unwrap(), 1);
+
+    // Verify invariant: sum == total_amount
+    let sum: i128 = amounts.into_iter().sum();
+    assert_eq!(sum, 100);
+}
+
+#[test]
+fn test_calculate_split_rounding_rigorous() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Case 1: 33/33/33/1 split, total 100
+    // Each 33% of 100 is 33. Insurance gets remainder: 100 - 33 - 33 - 33 = 1.
+    client.initialize_split(&owner, &0, &33, &33, &33, &1);
+    let amounts = client.calculate_split(&100);
+    let sum: i128 = amounts.clone().into_iter().sum();
+    assert_eq!(
+        sum, 100,
+        "Sum must exactly equal total_amount for 33/33/33/1 split"
+    );
+    assert_eq!(
+        amounts.get(3).unwrap(),
+        1,
+        "Insurance should be the remainder (1)"
+    );
+
+    // Case 2: 25/25/25/25 split, total 99
+    // Each 25% of 99 is (99 * 25) / 100 = 24.
+    // Spending: 24, Savings: 24, Bills: 24
+    // Insurance (remainder) = 99 - 24 - 24 - 24 = 27.
+    let nonce = client.get_nonce(&owner);
+    let result = client.try_update_split(&owner, &nonce, &25, &25, &25, &25);
+    assert!(result.is_ok(), "update_split Case 2 failed: {:?}", result);
+    let amounts = client.calculate_split(&99);
+    let sum: i128 = amounts.clone().into_iter().sum();
+    assert_eq!(
+        sum, 99,
+        "Sum must exactly equal total_amount (99) for 25/25/25/25 split"
+    );
+    assert_eq!(
+        amounts.get(3).unwrap(),
+        27,
+        "Insurance should absorb the rounding remainder (27)"
+    );
+
+    // Case 3: 100/0/0/0 split, total 1000
+    // Spending: 1000, others 0. Remainder: 1000 - 1000 - 0 - 0 = 0.
+    let nonce = client.get_nonce(&owner);
+    let result = client.try_update_split(&owner, &nonce, &100, &0, &0, &0);
+    assert!(result.is_ok(), "update_split Case 3 failed: {:?}", result);
+    let amounts = client.calculate_split(&1000);
+    let sum: i128 = amounts.clone().into_iter().sum();
+    assert_eq!(sum, 1000);
+    assert_eq!(amounts.get(0).unwrap(), 1000);
+    assert_eq!(amounts.get(1).unwrap(), 0);
+    assert_eq!(amounts.get(2).unwrap(), 0);
+    assert_eq!(amounts.get(3).unwrap(), 0);
+
+    // Case 4: Uneven split with large non-divisible amount
+    // 30/30/30/10 split, total 1,000,001
+    // Spending: (1,000,001 * 30) / 100 = 300,000
+    // Savings: 300,000
+    // Bills: 300,000
+    // Insurance = 1,000,001 - 900,000 = 100,001
+    let nonce = client.get_nonce(&owner);
+    let result = client.try_update_split(&owner, &nonce, &30, &30, &30, &10);
+    assert!(result.is_ok(), "update_split Case 4 failed: {:?}", result);
+    let amounts = client.calculate_split(&1000001);
+    let sum: i128 = amounts.into_iter().sum();
+    assert_eq!(
+        sum, 1000001,
+        "Sum must exactly match even with large prime-like amounts"
+    );
+
+    // Documenting that the contract assigns the remainder to insurance to avoid rounding drift.
 }
 
 #[test]

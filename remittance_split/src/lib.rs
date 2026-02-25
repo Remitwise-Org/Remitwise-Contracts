@@ -1,4 +1,5 @@
 #![no_std]
+mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -431,48 +432,8 @@ impl RemittanceSplit {
         env: Env,
         total_amount: i128,
     ) -> Result<Vec<i128>, RemittanceSplitError> {
-        if total_amount <= 0 {
-            return Err(RemittanceSplitError::InvalidAmount);
-        }
-
-        let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
-
-        let spending = total_amount
-            .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let savings = total_amount
-            .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let bills = total_amount
-            .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let insurance = total_amount
-            .checked_sub(spending)
-            .and_then(|n| n.checked_sub(savings))
-            .and_then(|n| n.checked_sub(bills))
-            .ok_or(RemittanceSplitError::Overflow)?;
-
-        let event = SplitCalculatedEvent {
-            total_amount,
-            spending_amount: spending,
-            savings_amount: savings,
-            bills_amount: bills,
-            insurance_amount: insurance,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((SPLIT_CALCULATED,), event);
-        env.events().publish(
-            (symbol_short!("split"), SplitEvent::Calculated),
-            total_amount,
-        );
-
-        Ok(vec![&env, spending, savings, bills, insurance])
+        let amounts = Self::calculate_split_amounts(&env, total_amount, true)?;
+        Ok(vec![&env, amounts[0], amounts[1], amounts[2], amounts[3]])
     }
 
     pub fn distribute_usdc(
@@ -491,19 +452,20 @@ impl RemittanceSplit {
         from.require_auth();
         Self::require_nonce(&env, &from, nonce)?;
 
-        let amounts = Self::calculate_split(env.clone(), total_amount)?;
-        let recipients = [
-            accounts.spending,
-            accounts.savings,
-            accounts.bills,
-            accounts.insurance,
-        ];
+        let amounts = Self::calculate_split_amounts(&env, total_amount, false)?;
         let token = TokenClient::new(&env, &usdc_contract);
 
-        for (amount, recipient) in amounts.into_iter().zip(recipients.iter()) {
-            if amount > 0 {
-                token.transfer(&from, recipient, &amount);
-            }
+        if amounts[0] > 0 {
+            token.transfer(&from, &accounts.spending, &amounts[0]);
+        }
+        if amounts[1] > 0 {
+            token.transfer(&from, &accounts.savings, &amounts[1]);
+        }
+        if amounts[2] > 0 {
+            token.transfer(&from, &accounts.bills, &amounts[2]);
+        }
+        if amounts[3] > 0 {
+            token.transfer(&from, &accounts.insurance, &amounts[3]);
         }
 
         Self::increment_nonce(&env, &from)?;
@@ -535,9 +497,16 @@ impl RemittanceSplit {
     }
 
     pub fn get_nonce(env: Env, address: Address) -> u64 {
+        Self::get_nonce_value(&env, &address)
+    }
+
+    fn get_nonce_value(env: &Env, address: &Address) -> u64 {
         let nonces: Option<Map<Address, u64>> =
             env.storage().instance().get(&symbol_short!("NONCES"));
-        nonces.as_ref().and_then(|m| m.get(address)).unwrap_or(0)
+        nonces
+            .as_ref()
+            .and_then(|m: &Map<Address, u64>| m.get(address.clone()))
+            .unwrap_or(0)
     }
 
     pub fn export_snapshot(
@@ -642,7 +611,7 @@ impl RemittanceSplit {
         address: &Address,
         expected: u64,
     ) -> Result<(), RemittanceSplitError> {
-        let current = Self::get_nonce(env.clone(), address.clone());
+        let current = Self::get_nonce_value(env, address);
         if expected != current {
             return Err(RemittanceSplitError::InvalidNonce);
         }
@@ -650,7 +619,7 @@ impl RemittanceSplit {
     }
 
     fn increment_nonce(env: &Env, address: &Address) -> Result<(), RemittanceSplitError> {
-        let current = Self::get_nonce(env.clone(), address.clone());
+        let current = Self::get_nonce_value(env, address);
         let next = current
             .checked_add(1)
             .ok_or(RemittanceSplitError::Overflow)?;
@@ -704,6 +673,58 @@ impl RemittanceSplit {
         env.storage().instance().set(&symbol_short!("AUDIT"), &log);
     }
 
+    fn calculate_split_amounts(
+        env: &Env,
+        total_amount: i128,
+        emit_events: bool,
+    ) -> Result<[i128; 4], RemittanceSplitError> {
+        if total_amount <= 0 {
+            return Err(RemittanceSplitError::InvalidAmount);
+        }
+
+        let split = Self::get_split(env);
+        let s0 = split.get(0).unwrap() as i128;
+        let s1 = split.get(1).unwrap() as i128;
+        let s2 = split.get(2).unwrap() as i128;
+
+        let spending = total_amount
+            .checked_mul(s0)
+            .and_then(|n| n.checked_div(100))
+            .ok_or(RemittanceSplitError::Overflow)?;
+        let savings = total_amount
+            .checked_mul(s1)
+            .and_then(|n| n.checked_div(100))
+            .ok_or(RemittanceSplitError::Overflow)?;
+        let bills = total_amount
+            .checked_mul(s2)
+            .and_then(|n| n.checked_div(100))
+            .ok_or(RemittanceSplitError::Overflow)?;
+        let insurance = total_amount
+            .checked_sub(spending)
+            .and_then(|n| n.checked_sub(savings))
+            .and_then(|n| n.checked_sub(bills))
+            .ok_or(RemittanceSplitError::Overflow)?;
+
+        if emit_events {
+            let event = SplitCalculatedEvent {
+                total_amount,
+                spending_amount: spending,
+                savings_amount: savings,
+                bills_amount: bills,
+                insurance_amount: insurance,
+                timestamp: env.ledger().timestamp(),
+            };
+            env.events().publish((SPLIT_CALCULATED,), event);
+            env.events().publish(
+                (symbol_short!("split"), SplitEvent::Calculated),
+                total_amount,
+            );
+        }
+
+        Ok([spending, savings, bills, insurance])
+    }
+
+    /// Extend the TTL of instance storage
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
@@ -889,249 +910,4 @@ impl RemittanceSplit {
         schedules.get(schedule_id)
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::storage::Instance as _;
-    use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
-
-    #[test]
-    fn test_initialize_split_emits_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        // Initialize split
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-        assert!(result);
-
-        // Verify event was emitted
-        let events = env.events().all();
-        assert_eq!(events.len(), 1);
-    }
-
-    #[test]
-    fn test_calculate_split_emits_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        // Initialize split first
-        client.initialize_split(&owner, &0, &40, &30, &20, &10);
-
-        // Get events before calculating
-        let events_before = env.events().all().len();
-
-        // Calculate split
-        let result = client.calculate_split(&1000);
-        assert_eq!(result.len(), 4);
-        assert_eq!(result.get(0).unwrap(), 400); // 40% of 1000
-        assert_eq!(result.get(1).unwrap(), 300); // 30% of 1000
-        assert_eq!(result.get(2).unwrap(), 200); // 20% of 1000
-        assert_eq!(result.get(3).unwrap(), 100); // 10% of 1000
-
-        // Verify 2 new events were emitted (SplitCalculated + audit event)
-        let events_after = env.events().all().len();
-        assert_eq!(events_after - events_before, 2);
-    }
-
-    #[test]
-    fn test_multiple_operations_emit_multiple_events() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        // Initialize split
-        client.initialize_split(&owner, &0, &50, &25, &15, &10);
-
-        // Calculate split twice
-        client.calculate_split(&2000);
-        client.calculate_split(&3000);
-
-        // Should have 5 events total (1 init + 2*2 calc)
-        let events = env.events().all();
-        assert_eq!(events.len(), 5);
-    }
-
-    // ====================================================================
-    // Storage TTL Extension Tests
-    //
-    // Verify that instance storage TTL is properly extended on
-    // state-changing operations, preventing unexpected data expiration.
-    //
-    // Contract TTL configuration:
-    //   INSTANCE_LIFETIME_THRESHOLD = 17,280 ledgers (~1 day)
-    //   INSTANCE_BUMP_AMOUNT        = 518,400 ledgers (~30 days)
-    //
-    // Operations extending instance TTL:
-    //   initialize_split, update_split, import_snapshot,
-    //   create_remittance_schedule, modify_remittance_schedule,
-    //   cancel_remittance_schedule
-    // ====================================================================
-
-    /// Verify that initialize_split extends instance storage TTL.
-    #[test]
-    fn test_instance_ttl_extended_on_initialize_split() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 100,
-            timestamp: 1000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        // initialize_split calls extend_instance_ttl
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-        assert!(result);
-
-        // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
-        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-        assert!(
-            ttl >= 518_400,
-            "Instance TTL ({}) must be >= INSTANCE_BUMP_AMOUNT (518,400) after initialize_split",
-            ttl
-        );
-    }
-
-    /// Verify that update_split refreshes instance TTL after ledger advancement.
-    ///
-    /// extend_ttl(threshold, extend_to) only extends when TTL <= threshold.
-    /// We advance the ledger far enough for TTL to drop below 17,280.
-    #[test]
-    fn test_instance_ttl_refreshed_on_update_split() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 100,
-            timestamp: 1000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
-
-        // Advance ledger so TTL drops below threshold (17,280)
-        // After init: live_until = 518,500. At seq 510,000: TTL = 8,500
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 510_000,
-            timestamp: 500_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        // update_split calls extend_instance_ttl → re-extends TTL to 518,400
-        let result = client.update_split(&owner, &1, &40, &30, &20, &10);
-        assert!(result);
-
-        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-        assert!(
-            ttl >= 518_400,
-            "Instance TTL ({}) must be >= 518,400 after update_split",
-            ttl
-        );
-    }
-
-    /// Verify data persists across repeated operations spanning multiple
-    /// ledger advancements, proving TTL is continuously renewed.
-    #[test]
-    fn test_split_data_persists_across_ledger_advancements() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 100,
-            timestamp: 1000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-
-        // Phase 1: Initialize at seq 100. live_until = 518,500
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
-
-        // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 510_000,
-            timestamp: 510_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        client.update_split(&owner, &1, &40, &25, &20, &15);
-
-        // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
-        env.ledger().set(LedgerInfo {
-            protocol_version: 20,
-            sequence_number: 1_020_000,
-            timestamp: 1_020_000,
-            network_id: [0; 32],
-            base_reserve: 10,
-            min_temp_entry_ttl: 100,
-            min_persistent_entry_ttl: 100,
-            max_entry_ttl: 700_000,
-        });
-
-        // Calculate split to exercise read path
-        let result = client.calculate_split(&1000);
-        assert_eq!(result.len(), 4);
-
-        // Config should be accessible with updated values
-        let config = client.get_config();
-        assert!(
-            config.is_some(),
-            "Config must persist across ledger advancements"
-        );
-        let config = config.unwrap();
-        assert_eq!(config.spending_percent, 40);
-        assert_eq!(config.savings_percent, 25);
-
-        // TTL is still valid (within the second extension window)
-        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-        assert!(
-            ttl > 0,
-            "Instance TTL ({}) must be > 0 — data is still live",
-            ttl
-        );
-    }
-}
+mod test;

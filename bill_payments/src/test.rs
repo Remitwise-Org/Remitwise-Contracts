@@ -86,6 +86,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(bill_id, 1);
@@ -112,6 +113,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
@@ -132,6 +134,7 @@ mod testsuit {
             &1000000,
             &true,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidFrequency)));
@@ -152,6 +155,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
@@ -172,6 +176,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         env.mock_all_auths();
@@ -197,6 +202,7 @@ mod testsuit {
             &1000000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         env.mock_all_auths();
@@ -228,6 +234,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -237,6 +244,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -246,6 +254,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &1);
@@ -268,6 +277,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -277,6 +287,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -286,6 +297,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &1);
@@ -320,6 +332,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &bill_id);
@@ -344,6 +357,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -353,6 +367,7 @@ mod testsuit {
             &1500000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -362,6 +377,7 @@ mod testsuit {
             &3000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let overdue = client.get_overdue_bills(&owner);
@@ -382,11 +398,27 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.cancel_bill(&owner, &bill_id);
-        let bill = client.get_bill(&bill_id);
-        assert!(bill.is_none());
+        
+        // Verify cancelled bill is completely removed from storage
+        assert!(client.get_bill(&bill_id).is_none(), "cancelled bill should return None");
+        
+        // Create another bill and verify its ID is distinct and cancelled bill still returns None
+        env.mock_all_auths();
+        let new_bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "New Bill"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+        );
+        assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
+        assert!(client.get_bill(&new_bill_id).is_some(), "new bill should exist");
+        assert!(client.get_bill(&bill_id).is_none(), "cancelled bill should still return None");
     }
 
     #[test]
@@ -403,11 +435,13 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.cancel_bill(&owner, &bill_id);
-        let bill = client.get_bill(&bill_id);
-        assert!(bill.is_none());
+        
+        // Verify owner can successfully cancel their own bill and it's removed
+        assert!(client.get_bill(&bill_id).is_none(), "bill should be removed after owner cancellation");
     }
 
     #[test]
@@ -426,6 +460,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_cancel_bill(&other, &bill_id);
@@ -458,6 +493,7 @@ mod testsuit {
             &1000000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         // Pay first bill - creates second
@@ -494,6 +530,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -502,6 +539,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -510,6 +548,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &1);
 
@@ -533,10 +572,39 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_pay_bill(&other, &bill_id);
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_pay_bill_unauthorized_strict() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+
+        let owner_a = Address::generate(&env);
+        let owner_b = Address::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner_a,
+            &String::from_str(&env, "Fraud Test"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+        );
+
+        let result = client.try_pay_bill(&owner_b, &bill_id);
+
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(!bill.paid);
+        assert!(bill.paid_at.is_none());
     }
 
     #[test]
@@ -554,6 +622,7 @@ mod testsuit {
             &1000000,
             &true, // Recurring
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Cancel the bill
@@ -584,6 +653,7 @@ mod testsuit {
             &1000000, // Due in past
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Verify it shows up in overdue
@@ -613,6 +683,7 @@ mod testsuit {
             &1000000,
             &true, // Recurring
             &1,    // Daily
+                    &String::from_str(&env, "XLM"),
         );
 
         client.pay_bill(&owner, &bill_id);
@@ -636,6 +707,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -644,6 +716,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let bills = client.get_all_bills_for_owner(&owner);
@@ -670,6 +743,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &alice,
@@ -678,6 +752,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &bob,
@@ -686,6 +761,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let alice_bills = client.get_all_bills_for_owner(&alice);
@@ -719,6 +795,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Bob never created a bill
@@ -742,6 +819,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &bill_id);
 
@@ -766,6 +844,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -774,6 +853,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.cancel_bill(&owner, &bill_id);
 
@@ -801,6 +881,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Alice tries to call the admin-only endpoint
@@ -847,6 +928,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -877,6 +959,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -904,6 +987,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -930,6 +1014,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &0);
@@ -961,6 +1046,7 @@ mod testsuit {
             &2000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -990,6 +1076,7 @@ mod testsuit {
             &2000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1019,6 +1106,7 @@ mod testsuit {
             &6000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1042,6 +1130,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let bill_id2 = client.create_bill(
@@ -1051,6 +1140,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         client.create_schedule(&owner, &bill_id1, &3000, &86400);
@@ -1110,6 +1200,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         assert_eq!(bill_id, 1);
 
@@ -1154,6 +1245,7 @@ mod testsuit {
             &5000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Advance ledger far enough that TTL drops below threshold (17,280).
@@ -1216,6 +1308,7 @@ mod testsuit {
             &1_100_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
@@ -1238,6 +1331,7 @@ mod testsuit {
             &1_200_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
@@ -1316,6 +1410,7 @@ mod testsuit {
             &500,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &1);
 
@@ -1377,6 +1472,7 @@ mod testsuit {
             &600_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         let id2 = client.create_bill(
             &owner,
@@ -1385,6 +1481,7 @@ mod testsuit {
             &600_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Advance ledger past threshold so extend_ttl has observable effect
@@ -1434,6 +1531,7 @@ mod testsuit {
             &1_000_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &alice,
@@ -1442,6 +1540,7 @@ mod testsuit {
             &1_500_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Bob has 1 overdue bill
@@ -1452,6 +1551,7 @@ mod testsuit {
             &1_000_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Alice has 1 future bill (not overdue)
@@ -1462,6 +1562,7 @@ mod testsuit {
             &3_000_000,
             &false,
             &0,
+                    &String::from_str(&env, "XLM"),
         );
 
         let alice_overdue = client.get_overdue_bills(&alice);
@@ -1502,6 +1603,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &1,     // frequency_days = 1
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay the bill
@@ -1536,6 +1638,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &30,    // frequency_days = 30
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay the bill
@@ -1570,6 +1673,7 @@ mod testsuit {
             &base_due_date,
             &true,   // recurring
             &365,    // frequency_days = 365
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay the bill
@@ -1607,6 +1711,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &30,    // frequency_days = 30
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay the bill (at time 1_000_500, which is 500 seconds after due_date)
@@ -1651,6 +1756,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &30,    // frequency_days = 30
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1701,6 +1807,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &30,    // frequency_days = 30
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1749,6 +1856,7 @@ mod testsuit {
             &base_due_date,
             &true,  // recurring
             &30,    // frequency_days = 30
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay the bill early (at time 500_000)
@@ -1787,6 +1895,7 @@ mod testsuit {
             &1_000_000,
             &true,
             &frequency,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1824,6 +1933,7 @@ mod testsuit {
             &1_000_000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1861,6 +1971,7 @@ mod testsuit {
             &1_000_000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1897,6 +2008,7 @@ mod testsuit {
             &1_000_000,
             &true,
             &30,
+                    &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1938,6 +2050,7 @@ mod testsuit {
             &base_due,
             &true,
             &freq,
+                    &String::from_str(&env, "XLM"),
         );
 
         env.mock_all_auths();
@@ -1948,4 +2061,491 @@ mod testsuit {
         assert_eq!(next_bill.due_date, expected);
         assert_eq!(next_bill.due_date, 2_209_600);
     }
+    // ---------------------------------------------------------------------------
+// Tests — Issue #6: get_total_unpaid edge cases
+//
+// get_total_unpaid(env, owner) returns the sum of `amount` for all unpaid
+// bills belonging to `owner`. These tests make the zero, single, multiple,
+// after-pay, all-paid, and isolation cases explicit and documented.
+//
+// Paste this block inside the existing `mod testsuit { ... }` in your test
+// file, alongside the other test functions.
+// ---------------------------------------------------------------------------
+
+// --- No bills: owner who has never created a bill should get 0 ---
+
+#[test]
+fn test_get_total_unpaid_no_bills_returns_zero() {
+    // An owner who has never created any bill must get 0, not a panic or
+    // a spurious non-zero value from another owner's data.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(total, 0, "owner with no bills must have total_unpaid == 0");
+}
+
+// --- All bills paid: owner whose every bill is paid should get 0 ---
+
+#[test]
+fn test_get_total_unpaid_all_bills_paid_returns_zero() {
+    // Create several bills and pay them all; the total must then be 0.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let id1 = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Electricity"),
+        &400,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id2 = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Water"),
+        &600,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    client.pay_bill(&owner, &id1);
+    client.pay_bill(&owner, &id2);
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 0,
+        "owner with all bills paid must have total_unpaid == 0"
+    );
+}
+
+// --- One unpaid bill: total equals that bill's amount ---
+
+#[test]
+fn test_get_total_unpaid_one_unpaid_bill() {
+    // Exactly one unpaid bill; total_unpaid must equal its amount.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Rent"),
+        &1000,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 1000,
+        "one unpaid bill of 1000 must yield total_unpaid == 1000"
+    );
+}
+
+// --- Multiple unpaid bills: total equals the sum of all amounts ---
+
+#[test]
+fn test_get_total_unpaid_multiple_unpaid_bills() {
+    // Three bills with amounts 100, 200, 300 → total must be 600.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill A"),
+        &100,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill B"),
+        &200,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill C"),
+        &300,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 600,
+        "three unpaid bills (100 + 200 + 300) must yield total_unpaid == 600"
+    );
+}
+
+// --- After paying one bill: total decreases by that bill's amount ---
+
+#[test]
+fn test_get_total_unpaid_decreases_after_pay() {
+    // Create bills of 100, 200, 300; pay the 200 bill.
+    // Total must drop from 600 to 400 (100 + 300).
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill A"),
+        &100,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id_b = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill B"),
+        &200,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill C"),
+        &300,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    // Confirm starting total
+    assert_eq!(client.get_total_unpaid(&owner), 600);
+
+    // Pay the 200-unit bill
+    client.pay_bill(&owner, &id_b);
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 400,
+        "after paying the 200 bill, total_unpaid must be 400 (100 + 300)"
+    );
+}
+
+// --- All paid (incremental): total reaches 0 as each bill is paid ---
+
+#[test]
+fn test_get_total_unpaid_reaches_zero_as_bills_paid_incrementally() {
+    // Pay bills one by one and verify the running total after each payment.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let id1 = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill 1"),
+        &100,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id2 = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill 2"),
+        &200,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id3 = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill 3"),
+        &300,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    assert_eq!(client.get_total_unpaid(&owner), 600);
+
+    client.pay_bill(&owner, &id1);
+    assert_eq!(client.get_total_unpaid(&owner), 500, "after paying 100-bill: 500 remaining");
+
+    client.pay_bill(&owner, &id2);
+    assert_eq!(client.get_total_unpaid(&owner), 300, "after paying 200-bill: 300 remaining");
+
+    client.pay_bill(&owner, &id3);
+    assert_eq!(
+        client.get_total_unpaid(&owner),
+        0,
+        "after paying all bills: total_unpaid must be 0"
+    );
+}
+
+// --- Isolation: owner_a's total is unaffected by owner_b's bills ---
+
+#[test]
+fn test_get_total_unpaid_isolation_between_owners() {
+    // Bills belonging to owner_b must not appear in owner_a's total, and
+    // vice versa.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner_a = <soroban_sdk::Address as AddressTrait>::generate(&env);
+    let owner_b = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    // owner_a: two bills totalling 500
+    client.create_bill(
+        &owner_a,
+        &String::from_str(&env, "A - Rent"),
+        &300,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    client.create_bill(
+        &owner_a,
+        &String::from_str(&env, "A - Water"),
+        &200,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    // owner_b: one bill of 9999
+    client.create_bill(
+        &owner_b,
+        &String::from_str(&env, "B - Internet"),
+        &9999,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    let total_a = client.get_total_unpaid(&owner_a);
+    let total_b = client.get_total_unpaid(&owner_b);
+
+    assert_eq!(
+        total_a, 500,
+        "owner_a's total_unpaid must be 500 (300 + 200), not influenced by owner_b"
+    );
+    assert_eq!(
+        total_b, 9999,
+        "owner_b's total_unpaid must be 9999, not influenced by owner_a"
+    );
+}
+
+// --- Isolation after cross-owner payment: paying owner_b's bill does not
+//     change owner_a's total ---
+
+#[test]
+fn test_get_total_unpaid_paying_other_owner_bill_has_no_effect() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner_a = <soroban_sdk::Address as AddressTrait>::generate(&env);
+    let owner_b = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_bill(
+        &owner_a,
+        &String::from_str(&env, "A - Electricity"),
+        &750,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id_b = client.create_bill(
+        &owner_b,
+        &String::from_str(&env, "B - Gas"),
+        &1234,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    // Pay owner_b's bill
+    client.pay_bill(&owner_b, &id_b);
+
+    // owner_a's total must be unchanged
+    let total_a = client.get_total_unpaid(&owner_a);
+    assert_eq!(
+        total_a, 750,
+        "paying owner_b's bill must not affect owner_a's total_unpaid"
+    );
+
+    // owner_b's total must now be 0
+    let total_b = client.get_total_unpaid(&owner_b);
+    assert_eq!(total_b, 0, "owner_b's total_unpaid must be 0 after payment");
+}
+
+// --- Cancelled bill is excluded from the total ---
+
+#[test]
+fn test_get_total_unpaid_excludes_cancelled_bills() {
+    // A cancelled bill is removed from storage entirely, so it must not
+    // appear in the total.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let id_keep = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Keep"),
+        &500,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    let id_cancel = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Cancel Me"),
+        &9000,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    assert_eq!(client.get_total_unpaid(&owner), 9500);
+
+    client.cancel_bill(&owner, &id_cancel);
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 500,
+        "cancelled bill must not contribute to total_unpaid"
+    );
+
+    // Sanity: the kept bill is still there
+    assert!(client.get_bill(&id_keep).is_some());
+}
+
+// --- Minimum positive amount: a single bill of 1 ---
+
+#[test]
+fn test_get_total_unpaid_minimum_amount() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Tiny Bill"),
+        &1,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(total, 1, "single bill of amount 1 must yield total_unpaid == 1");
+}
+
+// --- Large amounts: verify no arithmetic overflow in the sum ---
+
+#[test]
+fn test_get_total_unpaid_large_amounts_no_overflow() {
+    // Use amounts near i128::MAX / 2 to verify the summation does not panic
+    // or wrap. The contract uses plain addition, so this confirms the runtime
+    // handles large i128 values correctly.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let big: i128 = i128::MAX / 4; // safely summable twice without overflow
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Big Bill 1"),
+        &big,
+        &1_000_000,
+        &false,
+        &0,
+    );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Big Bill 2"),
+        &big,
+        &1_000_000,
+        &false,
+        &0,
+    );
+
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total,
+        big * 2,
+        "sum of two large amounts must equal big * 2"
+    );
+}
+
+// --- Recurring bill creates a new unpaid bill: total includes the new one ---
+
+#[test]
+fn test_get_total_unpaid_includes_new_recurring_bill_after_pay() {
+    // Paying a recurring bill marks the original paid AND creates a new
+    // unpaid bill. The total must reflect the new unpaid bill's amount.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let bill_id = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Monthly Subscription"),
+        &500,
+        &1_000_000,
+        &true, // recurring
+        &30,
+    );
+
+    // Before payment: one unpaid bill of 500
+    assert_eq!(client.get_total_unpaid(&owner), 500);
+
+    // Pay it: original becomes paid, a new unpaid bill of 500 is created
+    client.pay_bill(&owner, &bill_id);
+
+    // Total must still be 500 (the new recurring bill, not the paid one)
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total, 500,
+        "after paying a recurring bill, the newly created bill must appear in total_unpaid"
+    );
+}
 }

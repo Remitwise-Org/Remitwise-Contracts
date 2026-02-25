@@ -45,7 +45,15 @@ fn bench_get_total_unpaid_worst_case() {
 
     let name = String::from_str(&env, "BenchBill");
     for _ in 0..100 {
-        client.create_bill(&owner, &name, &100i128, &1_000_000u64, &false, &0u32);
+        client.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &1_000_000u64,
+            &false,
+            &0u32,
+            &String::from_str(&env, "XLM"),
+        );
     }
 
     // Create gaps to simulate worst-case scan behavior in previous implementation.

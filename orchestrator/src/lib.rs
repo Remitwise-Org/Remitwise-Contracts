@@ -1,4 +1,8 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::manual_inspect)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
 
 //! # Cross-Contract Orchestrator
 //!

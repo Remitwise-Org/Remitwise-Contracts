@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -171,6 +175,9 @@ jobs:
     name: Gas Benchmarks
     runs-on: macos-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -194,9 +201,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install jq
+        run: |
+          if ! command -v jq &> /dev/null; then
+            brew install jq
+          fi
+
       - name: Run gas benchmarks
         run: |
           ./scripts/run_gas_benchmarks.sh
+        continue-on-error: false
+
+      - name: Check for gas regressions
+        run: |
+          if [ -f benchmarks/baseline.json ]; then
+            echo "Comparing against baseline..."
+            ./scripts/compare_gas_results.sh benchmarks/baseline.json gas_results.json
+          else
+            echo "⚠️  No baseline found. Skipping regression check."
+            echo "Run './scripts/update_baseline.sh' locally to create initial baseline."
+          fi
         continue-on-error: false
 
       - name: Upload gas benchmark results
@@ -206,3 +230,58 @@ jobs:
           name: gas-benchmarks
           path: gas_results.json
           retention-days: 30
+
+      - name: Comment PR with gas results
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            if (!fs.existsSync('gas_results.json')) {
+              console.log('No gas results found');
+              return;
+            }
+            
+            const results = JSON.parse(fs.readFileSync('gas_results.json', 'utf8'));
+            
+            let comment = '## ⛽ Gas Benchmark Results\n\n';
+            comment += '| Contract | Method | Scenario | CPU | Memory |\n';
+            comment += '|----------|--------|----------|-----|--------|\n';
+            
+            results.forEach(r => {
+              comment += `| ${r.contract} | ${r.method} | ${r.scenario} | ${r.cpu.toLocaleString()} | ${r.mem.toLocaleString()} |\n`;
+            });
+            
+            comment += '\n*Results are in instruction/byte counts. Lower is better.*\n';
+            
+            // Check if baseline exists and add comparison
+            if (fs.existsSync('benchmarks/baseline.json')) {
+              const baseline = JSON.parse(fs.readFileSync('benchmarks/baseline.json', 'utf8'));
+              comment += '\n### Comparison vs Baseline\n\n';
+              
+              results.forEach(curr => {
+                const base = baseline.find(b => 
+                  b.contract === curr.contract && 
+                  b.method === curr.method && 
+                  b.scenario === curr.scenario
+                );
+                
+                if (base && base.cpu > 0) {
+                  const cpuChange = ((curr.cpu - base.cpu) / base.cpu * 100).toFixed(1);
+                  const memChange = ((curr.mem - base.mem) / base.mem * 100).toFixed(1);
+                  const cpuIcon = cpuChange > 10 ? '⚠️' : cpuChange < -5 ? '✨' : '✅';
+                  const memIcon = memChange > 10 ? '⚠️' : memChange < -5 ? '✨' : '✅';
+                  
+                  comment += `- **${curr.contract}::${curr.method}**: CPU ${cpuIcon} ${cpuChange > 0 ? '+' : ''}${cpuChange}%, Memory ${memIcon} ${memChange > 0 ? '+' : ''}${memChange}%\n`;
+                }
+              });
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
