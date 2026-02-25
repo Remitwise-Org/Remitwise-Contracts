@@ -776,7 +776,7 @@ fn test_deactivate_policy_emits_event() {
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insuranc").into_val(&env), // Note: contract says symbol_short!("insuranc")
+        symbol_short!("insure").into_val(&env),
         InsuranceEvent::PolicyDeactivated.into_val(&env),
     ];
 

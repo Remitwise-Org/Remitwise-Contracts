@@ -1,0 +1,7 @@
+# Ignore temporary benchmark results
+gas_results.json
+*.tmp
+
+# Keep history directory but ignore its contents
+history/*
+!history/.gitkeep

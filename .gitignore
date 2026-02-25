@@ -12,5 +12,8 @@ test-ci-local.sh
 Makefile
 
 # Documentation files
-*.md
 !docs/adr-admin-role.md
+!docs/rate-limiting-design.md
+!docs/family-wallet-design.md
+!docs/frontend-integration.md
+!STORAGE_LAYOUT.md

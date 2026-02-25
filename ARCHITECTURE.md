@@ -277,24 +277,40 @@ fn generate_financial_health_report(env: Env, user: Address) -> FinancialHealthR
 
 ## Event Architecture
 
+### Event Naming Conventions
+
+All event topics and storage keys follow standardized naming conventions documented in:
+- **Full Conventions**: [`docs/naming-conventions.md`](docs/naming-conventions.md)
+- **Quick Reference**: [`docs/naming-quick-reference.md`](docs/naming-quick-reference.md)
+- **Audit & Action Plan**: [`docs/naming-audit-action-plan.md`](docs/naming-audit-action-plan.md)
+
+**Key Principles**:
+- Event topics: lowercase, max 8 characters, past tense for actions
+- Storage keys: UPPERCASE, underscores for multi-word, max 8 characters
+- Event enums: PascalCase, descriptive names
+
 ### Event Types
 
 ```
 Bill Payments Events:
+├── Namespace: "bills"
 ├── BillEvent::Created
 ├── BillEvent::Paid
 
 Insurance Events:
+├── Namespace: "insure"
 ├── InsuranceEvent::PolicyCreated
 ├── InsuranceEvent::PremiumPaid
 ├── InsuranceEvent::PolicyDeactivated
 
 Remittance Split Events:
+├── Namespace: "split"
 ├── SplitEvent::Initialized
 ├── SplitEvent::Updated
 ├── SplitEvent::Calculated
 
 Savings Goals Events:
+├── Namespace: "savings"
 ├── SavingsEvent::GoalCreated
 ├── SavingsEvent::FundsAdded
 ├── SavingsEvent::FundsWithdrawn
@@ -303,6 +319,7 @@ Savings Goals Events:
 ├── SavingsEvent::GoalUnlocked
 
 Reporting Events:
+├── Namespace: "report"
 ├── ReportEvent::ReportGenerated
 ├── ReportEvent::ReportStored
 ├── ReportEvent::AddressesConfigured
@@ -312,6 +329,22 @@ Reporting Events:
 
 ```
 User Action → Contract Function → State Change → Event Emission → Off-chain Processing
+```
+
+### Event Publication Pattern
+
+```rust
+// Standard pattern used across all contracts
+env.events().publish(
+    (symbol_short!("<namespace>"), EventEnum::Variant),
+    event_data
+);
+
+// Example from Savings Goals
+env.events().publish(
+    (symbol_short!("savings"), SavingsEvent::GoalCreated),
+    (goal_id, owner)
+);
 ```
 
 ## Scalability Considerations
