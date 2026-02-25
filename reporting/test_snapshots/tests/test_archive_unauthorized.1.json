@@ -174,9 +174,7 @@
                 "symbol": "init"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },

@@ -1,0 +1,15 @@
+[package]
+name = "integration_tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = "21.0.0"
+remittance_split = { path = "../remittance_split" }
+savings_goals = { path = "../savings_goals" }
+bill_payments = { path = "../bill_payments" }
+insurance = { path = "../insurance" }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }

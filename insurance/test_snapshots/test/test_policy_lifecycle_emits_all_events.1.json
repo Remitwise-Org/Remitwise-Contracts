@@ -700,9 +700,7 @@
                 "symbol": "pay_premium"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -795,7 +793,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "insuranc"
+                "symbol": "insure"
               },
               {
                 "vec": [

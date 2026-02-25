@@ -81,12 +81,8 @@ jobs:
         run: |
           for contract in remittance_split savings_goals bill_payments insurance; do
             echo "Building contract: $contract"
-            cd $contract
-            # Skip soroban CLI build as it requires wasm32v1-none which isn't available
-            # Use cargo directly with wasm32-unknown-unknown target
-            echo "Building with cargo using wasm32-unknown-unknown target..."
-            cargo build --release --target wasm32-unknown-unknown --verbose
-            cd ..
+            # Build from workspace root to ensure WASM files go to target/wasm32-unknown-unknown/release/
+            cargo build --release --target wasm32-unknown-unknown --package $contract --verbose
           done
         continue-on-error: false
 
@@ -104,6 +100,11 @@ jobs:
       - name: Run Cargo tests
         run: |
           cargo test --verbose --all-features
+        continue-on-error: false
+
+      - name: Run Integration tests
+        run: |
+          cargo test -p integration_tests --verbose
         continue-on-error: false
 
       - name: Run Clippy

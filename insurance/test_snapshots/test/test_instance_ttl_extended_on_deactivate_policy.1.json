@@ -199,6 +199,26 @@
                             }
                           ]
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "PRM_TOT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -567,7 +587,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "insuranc"
+                "symbol": "insure"
               },
               {
                 "vec": [

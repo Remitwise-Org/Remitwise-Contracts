@@ -418,9 +418,7 @@
                 "symbol": "init"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -513,9 +511,7 @@
                 "symbol": "configure_addresses"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -672,6 +668,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "due_date"
                       },
                       "val": {
@@ -731,6 +735,12 @@
                       "val": {
                         "bool": true
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "schedule_id"
+                      },
+                      "val": "void"
                     }
                   ]
                 }

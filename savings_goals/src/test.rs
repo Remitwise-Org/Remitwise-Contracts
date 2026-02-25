@@ -43,6 +43,108 @@ fn test_create_goal_unique_ids() {
     assert_ne!(id1, id2);
 }
 
+// ============================================================================
+// init() idempotency and NEXT_ID behavior
+//
+// init() bootstraps storage (NEXT_ID and GOALS) only when keys are missing.
+// In production or integration, init() may be called more than once (e.g. by
+// different entrypoints or upgrade paths). These tests lock in that:
+// - A second init() must not remove or alter existing goals.
+// - NEXT_ID must not be reset by a second init(); the next created goal must
+//   receive the expected incremented ID (no reuse, no gaps).
+// ============================================================================
+
+/// Double init() must not remove or alter existing goals; next created goal
+/// must get the next ID (e.g. 2), not 1.
+#[test]
+fn test_init_idempotent_does_not_wipe_goals() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner_a = Address::generate(&env);
+
+    // First init on a fresh contract
+    client.init();
+
+    let name1 = String::from_str(&env, "First Goal");
+    let target1 = 5000i128;
+    let target_date1 = 2000000000u64;
+
+    let goal_id_1 = client.create_goal(&owner_a, &name1, &target1, &target_date1);
+    assert_eq!(goal_id_1, 1, "first goal must receive goal_id == 1");
+
+    // Simulate a second initialization attempt (e.g. from another entrypoint or upgrade)
+    client.init();
+
+    // Verify the existing goal is still present with same name, owner, amounts
+    let goal_after_second_init = client
+        .get_goal(&1)
+        .expect("goal 1 must still exist after second init()");
+    assert_eq!(goal_after_second_init.name, name1);
+    assert_eq!(goal_after_second_init.owner, owner_a);
+    assert_eq!(goal_after_second_init.target_amount, target1);
+    assert_eq!(goal_after_second_init.current_amount, 0);
+
+    let all_goals = client.get_all_goals(&owner_a);
+    assert_eq!(all_goals.len(), 1, "get_all_goals must still return the one goal");
+
+    // Verify NEXT_ID was not reset: next created goal must get goal_id == 2, not 1
+    let name2 = String::from_str(&env, "Second Goal");
+    let goal_id_2 = client.create_goal(&owner_a, &name2, &10000i128, &target_date1);
+    assert_eq!(
+        goal_id_2, 2,
+        "after second init(), next goal must get goal_id == 2, not 1 (NEXT_ID must not be reset)"
+    );
+}
+
+/// After init(), creating goals sequentially must yield IDs 1, 2, 3, ... with
+/// no gaps or reuse.
+#[test]
+fn test_next_id_increments_sequentially() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    let ids = [
+        client.create_goal(
+            &owner,
+            &String::from_str(&env, "G1"),
+            &1000i128,
+            &2000000000u64,
+        ),
+        client.create_goal(
+            &owner,
+            &String::from_str(&env, "G2"),
+            &2000i128,
+            &2000000000u64,
+        ),
+        client.create_goal(
+            &owner,
+            &String::from_str(&env, "G3"),
+            &3000i128,
+            &2000000000u64,
+        ),
+    ];
+
+    assert_eq!(ids[0], 1, "first goal id must be 1");
+    assert_eq!(ids[1], 2, "second goal id must be 2");
+    assert_eq!(ids[2], 3, "third goal id must be 3");
+
+    for (i, &id) in ids.iter().enumerate() {
+        let goal = client.get_goal(&id).unwrap();
+        assert_eq!(goal.id, id);
+        let expected_name = String::from_str(&env, &format!("G{}", i + 1));
+        assert_eq!(goal.name, expected_name);
+    }
+}
+
 #[test]
 fn test_add_to_goal_increments() {
     let env = Env::default();

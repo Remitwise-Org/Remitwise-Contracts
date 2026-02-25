@@ -19,6 +19,7 @@ pub const MIN_SUPPORTED_VERSION: u32 = 1;
 /// # Indexer Migration Guidance
 /// - **v1**: Indexers should match on `MigrationEvent::V1`. This is the fundamental schema containing baseline metadata (contract, type, version, timestamp).
 /// - **v2+**: Future schemas will add new variants (e.g., `MigrationEvent::V2`) potentially mapping to new data structures.
+///
 /// Indexers must be prepared to handle unknown variants gracefully (e.g., by logging a warning/alert) rather than crashing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MigrationEvent {
@@ -434,10 +435,7 @@ mod tests {
         let loaded: MigrationEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(event, loaded);
 
-        if let MigrationEvent::V1(v1) = loaded {
-            assert_eq!(v1.version, SCHEMA_VERSION);
-        } else {
-            panic!("Expected V1 event");
-        }
+        let MigrationEvent::V1(v1) = loaded;
+        assert_eq!(v1.version, SCHEMA_VERSION);
     }
 }

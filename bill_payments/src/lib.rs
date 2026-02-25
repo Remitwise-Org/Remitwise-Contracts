@@ -351,6 +351,7 @@ impl BillPayments {
     // Core bill operations
     // -----------------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_bill(
         env: Env,
         owner: Address,
@@ -372,7 +373,7 @@ impl BillPayments {
         }
 
         // Resolve default currency: blank input → "XLM"
-        let resolved_currency = if currency.len() == 0 {
+        let resolved_currency = if currency.is_empty() {
             String::from_str(&env, "XLM")
         } else {
             currency
@@ -1310,7 +1311,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
-                &String::from_str(&env, "XLM"),
+                &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
         }
@@ -2176,10 +2177,7 @@ mod test {
             next_bill.amount, amount,
             "Cloned bill must preserve the original amount"
         );
-        assert_eq!(
-            next_bill.recurring, true,
-            "Cloned bill must remain recurring"
-        );
+        assert!(next_bill.recurring, "Cloned bill must remain recurring");
         assert_eq!(
             next_bill.frequency_days, frequency,
             "Cloned bill must preserve frequency_days"
@@ -2188,7 +2186,7 @@ mod test {
             next_bill.owner, owner,
             "Cloned bill must preserve the original owner"
         );
-        assert_eq!(next_bill.paid, false, "Cloned bill must start as unpaid");
+        assert!(!next_bill.paid, "Cloned bill must start as unpaid");
         assert_eq!(
             next_bill.paid_at, None,
             "Cloned bill must have paid_at = None"

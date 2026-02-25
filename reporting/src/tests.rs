@@ -201,15 +201,13 @@ fn test_init_reporting_contract() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    let result = client.init(&admin);
-    assert!(result);
+    client.init(&admin);
 
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, Some(admin));
 }
 
 #[test]
-#[should_panic(expected = "Contract already initialized")]
 fn test_init_twice_fails() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -217,7 +215,8 @@ fn test_init_twice_fails() {
     let admin = Address::generate(&env);
 
     client.init(&admin);
-    client.init(&admin); // Should panic
+    let result = client.try_init(&admin); // Should fail
+    assert!(result.is_err(), "init should fail when called twice");
 }
 
 #[test]
@@ -235,7 +234,7 @@ fn test_configure_addresses() {
     let insurance = Address::generate(&env);
     let family_wallet = Address::generate(&env);
 
-    let result = client.configure_addresses(
+    client.configure_addresses(
         &admin,
         &remittance_split,
         &savings_goals,
@@ -243,7 +242,6 @@ fn test_configure_addresses() {
         &insurance,
         &family_wallet,
     );
-    assert!(result);
 
     let addresses = client.get_addresses();
     assert!(addresses.is_some());
@@ -253,7 +251,6 @@ fn test_configure_addresses() {
 }
 
 #[test]
-#[should_panic(expected = "Only admin can configure addresses")]
 fn test_configure_addresses_unauthorized() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -269,13 +266,17 @@ fn test_configure_addresses_unauthorized() {
     let insurance = Address::generate(&env);
     let family_wallet = Address::generate(&env);
 
-    client.configure_addresses(
+    let result = client.try_configure_addresses(
         &non_admin,
         &remittance_split,
         &savings_goals,
         &bill_payments,
         &insurance,
         &family_wallet,
+    );
+    assert!(
+        result.is_err(),
+        "configure_addresses should fail for non-admin"
     );
 }
 
@@ -887,8 +888,7 @@ fn test_instance_ttl_extended_on_init() {
     let admin = Address::generate(&env);
 
     // init calls extend_instance_ttl
-    let result = client.init(&admin);
-    assert!(result);
+    client.init(&admin);
 
     // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());

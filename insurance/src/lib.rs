@@ -100,7 +100,7 @@ pub struct PremiumSchedule {
 }
 
 #[contracttype]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InsuranceError {
     InvalidPremium = 1,
     InvalidCoverage = 2,
@@ -1109,14 +1109,12 @@ mod test {
         // No policies created — policy ID 999 does not exist
         let result = client.try_pay_premium(&owner, &999u32);
 
-        assert!(
-            result.is_err(),
-            "pay_premium must fail when policy does not exist"
-        );
+        // Contract panics when policy not found
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_get_active_policies_paginated() {
+    fn test_get_active_policies_pagination() {
         let env = Env::default();
         env.mock_all_auths();
         let id = env.register_contract(None, Insurance);
@@ -1261,8 +1259,7 @@ mod test {
         );
         let events_before = env.events().all().len();
 
-        let result = client.pay_premium(&owner, &policy_id);
-        assert!(result);
+        client.pay_premium(&owner, &policy_id);
 
         let events_after = env.events().all().len();
         assert_eq!(events_after - events_before, 2);
@@ -1545,13 +1542,13 @@ mod test {
     // Test: pay_premium after deactivate_policy (#104)
     // ──────────────────────────────────────────────────────────────────
 
-    /// After deactivating a policy, `pay_premium` must panic with
-    /// "Policy is not active". The policy must remain inactive.
+    /// After deactivating a policy, `pay_premium` must return an error.
+    /// The policy must remain inactive.
     #[test]
-    #[should_panic(expected = "Policy is not active")]
     fn test_pay_premium_after_deactivate() {
         let env = Env::default();
         env.mock_all_auths();
+
         let contract_id = env.register_contract(None, Insurance);
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
@@ -1577,8 +1574,12 @@ mod test {
         let policy_after_deactivate = client.get_policy(&policy_id).unwrap();
         assert!(!policy_after_deactivate.active);
 
-        // 3. Attempt to pay premium — must panic
-        client.pay_premium(&owner, &policy_id);
+        // 3. Attempt to pay premium — must fail
+        let result = client.try_pay_premium(&owner, &policy_id);
+        assert!(
+            result.is_err(),
+            "pay_premium should fail for inactive policy"
+        );
     }
 
     // ══════════════════════════════════════════════════════════════════════

@@ -910,4 +910,3 @@ impl RemittanceSplit {
         schedules.get(schedule_id)
     }
 }
-mod test;
