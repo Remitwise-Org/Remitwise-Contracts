@@ -223,6 +223,34 @@ cargo build --release --target wasm32-unknown-unknown
 
 ## Contracts
 
+### Feature Flags
+
+Centralized on-chain feature flags for gradual rollouts and safe deployments.
+
+**Key Functions:**
+
+- `initialize`: Initialize the contract with an admin
+- `set_flag`: Create or update a feature flag (admin only)
+- `is_enabled`: Check if a feature flag is enabled (public read)
+- `get_flag`: Get feature flag details
+- `get_all_flags`: List all feature flags
+- `delete_flag`: Remove a feature flag (admin only)
+
+**Events:**
+- `FlagSetEvent`: Emitted when a flag is created or updated
+  - `key`, `enabled`, `updated_by`, `timestamp`
+- `FlagDeletedEvent`: Emitted when a flag is deleted
+  - `key`, `deleted_by`, `timestamp`
+
+**Integration Example:**
+```rust
+// Check if strict validation is enabled
+let flags_client = FeatureFlagsContractClient::new(&env, &flags_addr);
+if flags_client.is_enabled(&String::from_str(&env, "strict_goal_dates")) {
+    // Execute feature-gated code
+}
+```
+
 ### Remittance Split
 
 Handles automatic allocation of remittance funds into different categories.
