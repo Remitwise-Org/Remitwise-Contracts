@@ -17,6 +17,39 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Event emission for audit trails
 - Storage TTL management
 
+## Quickstart
+
+This section provides a minimal example of how to interact with the Savings Goals contract.
+
+**Gotchas:**
+- Amounts are specified in the lowest denomination (e.g., stroops for XLM).
+- If a goal is `locked = true`, you cannot withdraw from it until it is unlocked.
+- By default, the contract uses paginated reads for scalability, so ensure you handle cursors when querying user goals.
+
+### Write Example: Creating a Goal
+*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
+```rust
+
+let goal_id = client.create_goal(
+    &owner_address,
+    &String::from_str(&env, "University Fund"),
+    &5000_0000000,                          
+    &(env.ledger().timestamp() + 31536000)  
+);
+
+```
+
+### Read Example: Checking Goal Status
+```rust
+
+let goal_opt = client.get_goal(&goal_id);
+
+if let Some(goal) = goal_opt {
+
+}
+
+```
+
 ## API Reference
 
 ### Data Structures

@@ -303,16 +303,20 @@ pub struct OrchestratorAuditEntry {
 }
 
 // Storage TTL constants matching other Remitwise contracts
+#[allow(dead_code)]
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
+#[allow(dead_code)]
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
 // Maximum audit log entries to keep in storage
+#[allow(dead_code)]
 const MAX_AUDIT_ENTRIES: u32 = 100;
 
 /// Main orchestrator contract
 #[contract]
 pub struct Orchestrator;
 
+#[allow(clippy::manual_inspect)]
 #[contractimpl]
 impl Orchestrator {
     // ============================================================================
@@ -953,6 +957,7 @@ impl Orchestrator {
     /// 8. Pay insurance premium
     /// 9. Build and return result
     /// 10. On error, emit error event and return error
+    #[allow(clippy::too_many_arguments)]
     pub fn execute_remittance_flow(
         env: Env,
         caller: Address,
@@ -1106,6 +1111,7 @@ impl Orchestrator {
     /// * `env` - The contract environment
     /// * `success` - Whether the flow succeeded
     /// * `amount` - Amount processed in the flow
+    #[allow(dead_code)]
     fn update_execution_stats(env: &Env, success: bool, amount: i128) {
         Self::extend_instance_ttl(env);
 
@@ -1146,6 +1152,7 @@ impl Orchestrator {
     /// * `amount` - Amount involved
     /// * `success` - Whether the operation succeeded
     /// * `error_code` - Optional error code if operation failed
+    #[allow(dead_code)]
     fn append_audit_entry(
         env: &Env,
         caller: &Address,
@@ -1232,6 +1239,7 @@ impl Orchestrator {
     }
 
     /// Extend the TTL of instance storage
+    #[allow(dead_code)]
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()

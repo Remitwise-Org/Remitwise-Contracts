@@ -19,7 +19,8 @@ pub const MIN_SUPPORTED_VERSION: u32 = 1;
 /// # Indexer Migration Guidance
 /// - **v1**: Indexers should match on `MigrationEvent::V1`. This is the fundamental schema containing baseline metadata (contract, type, version, timestamp).
 /// - **v2+**: Future schemas will add new variants (e.g., `MigrationEvent::V2`) potentially mapping to new data structures.
-///   Indexers must be prepared to handle unknown variants gracefully (e.g., by logging a warning/alert) rather than crashing.
+///
+/// Indexers must be prepared to handle unknown variants gracefully (e.g., by logging a warning/alert) rather than crashing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MigrationEvent {
     V1(MigrationEventV1),

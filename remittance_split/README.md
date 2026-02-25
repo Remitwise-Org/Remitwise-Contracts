@@ -15,6 +15,37 @@ The Remittance Split contract manages percentage-based allocations for incoming 
 - Event emission for audit trails
 - Backward compatibility with vector-based storage
 
+## Quickstart
+
+This section provides a minimal example of how to interact with the Remittance Split contract.
+
+**Gotchas:**
+- The configured percentages MUST sum up exactly to 100.
+- `initialize_split` must be called with a valid `nonce` for replay protection.
+- To execute actual underlying asset transfers, use `distribute_usdc` rather than just calculating numbers.
+
+### Write Example: Initializing the Split
+*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
+```rust
+
+let success = client.initialize_split(
+    &owner_address,
+    &0,  
+    &50, 
+    &30, 
+    &15, 
+    &5   
+);
+
+```
+
+### Read Example: Fetching the Configuration
+```rust
+
+let config = client.get_config();
+
+```
+
 ## API Reference
 
 ### Data Structures

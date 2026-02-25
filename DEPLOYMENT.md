@@ -2,6 +2,26 @@
 
 This guide covers the deployment of the Remitwise Contracts suite to the Stellar network using Soroban.
 
+## Quick Start: Automated Bootstrap Deployment
+
+For the fastest deployment with sensible defaults, use the bootstrap script:
+
+```bash
+# Deploy to testnet
+./scripts/bootstrap_deploy.sh testnet deployer
+
+# Deploy to mainnet
+./scripts/bootstrap_deploy.sh mainnet deployer
+```
+
+The bootstrap script handles:
+- Building all WASM artifacts
+- Deploying all contracts in the correct order
+- Initializing contracts with sensible defaults
+- Outputting contract IDs to `deployed-contracts.json`
+
+See [Bootstrap Script Details](#bootstrap-script-details) below for more information.
+
 ## Prerequisites
 
 - Soroban CLI installed (version 21.0.0 or compatible)
@@ -202,6 +222,120 @@ soroban contract invoke \
   --bills_percent 15 \
   --insurance_percent 5
 ```
+
+## Network Configuration
+
+### Testnet Configuration
+
+- RPC URL: `https://soroban-testnet.stellar.org:443`
+- Network Passphrase: `Test SDF Network ; September 2015`
+- Friendbot: `https://friendbot.stellar.org`
+
+### Mainnet Configuration
+
+- RPC URL: `https://soroban-rpc.mainnet.stellar.org:443`
+- Network Passphrase: `Public Global Stellar Network ; September 2015`
+
+## Bootstrap Script Details
+
+The `bootstrap_deploy.sh` script provides an automated end-to-end deployment solution.
+
+### Usage
+
+```bash
+./scripts/bootstrap_deploy.sh [NETWORK] [SOURCE]
+```
+
+**Arguments:**
+- `NETWORK` - Network to deploy to (default: testnet, options: testnet, mainnet, standalone)
+- `SOURCE` - Source identity for deployment (default: deployer)
+
+**Environment Variables:**
+- `SKIP_BUILD` - Set to 1 to skip building contracts (default: 0)
+- `OUTPUT_FILE` - Path to output JSON file (default: ./deployed-contracts.json)
+
+### What It Does
+
+1. **Builds all contracts** - Compiles all WASM artifacts for deployment
+2. **Deploys contracts** - Deploys in dependency order:
+   - remittance_split
+   - savings_goals
+   - bill_payments
+   - insurance
+   - family_wallet
+   - reporting (configured with all contract addresses)
+   - orchestrator
+3. **Initializes contracts** - Sets up initial state and configurations
+4. **Creates sensible defaults**:
+   - Remittance split: 50% spending, 30% savings, 15% bills, 5% insurance
+   - Example savings goal: "Emergency Fund" with 5000 XLM target
+   - Example bill: "Monthly Utilities" (recurring, 150 XLM)
+   - Example insurance policy: "Health Insurance" (50 XLM/month premium)
+5. **Outputs JSON file** - Saves all contract IDs for easy integration
+
+### Output Format
+
+The script generates a JSON file (`deployed-contracts.json` by default) with the following structure:
+
+```json
+{
+  "network": "testnet",
+  "deployer": "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "deployed_at": "2024-01-15T10:30:00Z",
+  "contracts": {
+    "remittance_split": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "savings_goals": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "bill_payments": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "insurance": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "family_wallet": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "reporting": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "orchestrator": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+This JSON file can be directly consumed by frontend and backend applications.
+
+### Examples
+
+```bash
+# Basic deployment to testnet
+./scripts/bootstrap_deploy.sh testnet deployer
+
+# Skip building (contracts already built)
+SKIP_BUILD=1 ./scripts/bootstrap_deploy.sh testnet deployer
+
+# Deploy to mainnet with custom output location
+OUTPUT_FILE=./production-contracts.json ./scripts/bootstrap_deploy.sh mainnet deployer
+
+# Deploy to standalone network for local testing
+./scripts/bootstrap_deploy.sh standalone deployer
+```
+
+### Prerequisites for Bootstrap Script
+
+Before running the bootstrap script:
+
+1. **Install Soroban CLI**:
+   ```bash
+   cargo install --locked --version 21.0.0 soroban-cli
+   ```
+
+2. **Create deployer identity** (if not exists):
+   ```bash
+   soroban keys generate deployer
+   ```
+
+3. **Fund deployer account**:
+   - Testnet: Use friendbot or Stellar Laboratory
+   - Mainnet: Fund with real XLM
+
+4. **Configure network** (if not already configured):
+   ```bash
+   soroban config network add testnet \
+     --rpc-url https://soroban-testnet.stellar.org:443 \
+     --network-passphrase "Test SDF Network ; September 2015"
+   ```
 
 ## Network Configuration
 

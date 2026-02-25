@@ -15,6 +15,40 @@ The Bill Payments contract allows users to create, manage, and pay bills. It sup
 - Event emission for audit trails
 - Storage TTL management for efficiency
 
+## Quickstart
+
+This section provides a minimal example of how to interact with the Bill Payments contract. 
+
+**Gotchas:** 
+- The contract uses a paginated API for most list queries natively.
+- Bill amounts are specified in the lowest denomination (e.g., stroops for XLM).
+- If a bill is marked as `recurring`, paying it automatically generates the next bill.
+
+### Write Example: Creating a Bill
+*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
+```rust
+
+let bill_id = client.create_bill(
+    &owner_address,
+    &String::from_str(&env, "Internet Bill"),
+    &500_0000000,                           
+    &(env.ledger().timestamp() + 2592000), 
+    &false,                                
+    &0,                                     
+    &String::from_str(&env, "XLM")          
+);
+
+```
+
+### Read Example: Fetching Unpaid Bills
+```rust
+
+let limit = 10;
+let cursor = 0; 
+let page = client.get_unpaid_bills(&owner_address, &cursor, &limit);
+
+```
+
 ## API Reference
 
 ### Data Structures

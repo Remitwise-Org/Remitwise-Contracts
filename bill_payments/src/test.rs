@@ -415,6 +415,7 @@ mod testsuit {
             &2000000,
             &false,
             &0,
+            &String::from_str(&env, "XLM"),
         );
         assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
         assert!(client.get_bill(&new_bill_id).is_some(), "new bill should exist");
@@ -596,6 +597,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+            &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_pay_bill(&owner_b, &bill_id);
@@ -2269,6 +2271,7 @@ fn test_get_total_unpaid_all_bills_paid_returns_zero() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id2 = client.create_bill(
         &owner,
@@ -2277,6 +2280,7 @@ fn test_get_total_unpaid_all_bills_paid_returns_zero() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     client.pay_bill(&owner, &id1);
@@ -2308,6 +2312,7 @@ fn test_get_total_unpaid_one_unpaid_bill() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -2336,6 +2341,7 @@ fn test_get_total_unpaid_multiple_unpaid_bills() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     client.create_bill(
         &owner,
@@ -2344,6 +2350,7 @@ fn test_get_total_unpaid_multiple_unpaid_bills() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     client.create_bill(
         &owner,
@@ -2352,6 +2359,7 @@ fn test_get_total_unpaid_multiple_unpaid_bills() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -2381,6 +2389,7 @@ fn test_get_total_unpaid_decreases_after_pay() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id_b = client.create_bill(
         &owner,
@@ -2389,6 +2398,7 @@ fn test_get_total_unpaid_decreases_after_pay() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     client.create_bill(
         &owner,
@@ -2397,6 +2407,7 @@ fn test_get_total_unpaid_decreases_after_pay() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     // Confirm starting total
@@ -2431,6 +2442,7 @@ fn test_get_total_unpaid_reaches_zero_as_bills_paid_incrementally() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id2 = client.create_bill(
         &owner,
@@ -2439,6 +2451,7 @@ fn test_get_total_unpaid_reaches_zero_as_bills_paid_incrementally() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id3 = client.create_bill(
         &owner,
@@ -2447,6 +2460,7 @@ fn test_get_total_unpaid_reaches_zero_as_bills_paid_incrementally() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     assert_eq!(client.get_total_unpaid(&owner), 600);
@@ -2487,6 +2501,7 @@ fn test_get_total_unpaid_isolation_between_owners() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     client.create_bill(
         &owner_a,
@@ -2495,6 +2510,7 @@ fn test_get_total_unpaid_isolation_between_owners() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     // owner_b: one bill of 9999
@@ -2505,6 +2521,7 @@ fn test_get_total_unpaid_isolation_between_owners() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     let total_a = client.get_total_unpaid(&owner_a);
@@ -2540,6 +2557,7 @@ fn test_get_total_unpaid_paying_other_owner_bill_has_no_effect() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id_b = client.create_bill(
         &owner_b,
@@ -2548,6 +2566,7 @@ fn test_get_total_unpaid_paying_other_owner_bill_has_no_effect() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     // Pay owner_b's bill
@@ -2585,6 +2604,7 @@ fn test_get_total_unpaid_excludes_cancelled_bills() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     let id_cancel = client.create_bill(
         &owner,
@@ -2593,6 +2613,7 @@ fn test_get_total_unpaid_excludes_cancelled_bills() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     assert_eq!(client.get_total_unpaid(&owner), 9500);
@@ -2627,6 +2648,7 @@ fn test_get_total_unpaid_minimum_amount() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -2656,6 +2678,7 @@ fn test_get_total_unpaid_large_amounts_no_overflow() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
     client.create_bill(
         &owner,
@@ -2664,6 +2687,7 @@ fn test_get_total_unpaid_large_amounts_no_overflow() {
         &1_000_000,
         &false,
         &0,
+        &String::from_str(&env, "XLM"),
     );
 
     let total = client.get_total_unpaid(&owner);

@@ -15,7 +15,19 @@ members = [
     "reporting",
     "orchestrator",
     "global_config",
+    "cli",
     "scenarios",
+    "integration_tests",
+]
+default-members = [
+    "remittance_split",
+    "savings_goals",
+    "bill_payments",
+    "insurance",
+    "family_wallet",
+    "data_migration",
+    "reporting",
+    "orchestrator",
 ]
 resolver = "2"
 

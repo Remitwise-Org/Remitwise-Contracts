@@ -194,7 +194,8 @@ fn test_init_twice_fails() {
     let admin = Address::generate(&env);
 
     client.init(&admin);
-    client.init(&admin); // Should panic
+    let result = client.try_init(&admin); // Should fail
+    assert!(result.is_err(), "init should fail when called twice");
 }
 
 #[test]
@@ -245,13 +246,17 @@ fn test_configure_addresses_unauthorized() {
     let insurance = Address::generate(&env);
     let family_wallet = Address::generate(&env);
 
-    client.configure_addresses(
+    let result = client.try_configure_addresses(
         &non_admin,
         &remittance_split,
         &savings_goals,
         &bill_payments,
         &insurance,
         &family_wallet,
+    );
+    assert!(
+        result.is_err(),
+        "configure_addresses should fail for non-admin"
     );
 }
 
