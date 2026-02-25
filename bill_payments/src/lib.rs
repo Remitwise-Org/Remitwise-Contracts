@@ -2345,6 +2345,7 @@ mod test {
             );
             prop_assert!(!next_bill.paid, "next recurring bill must be unpaid");
         }
+    }
     /// Issue #102 – When pay_bill is called on a recurring bill, the contract
     /// creates the next occurrence.  This test asserts every cloned field
     /// individually so that a regression in the clone logic (e.g. paid left

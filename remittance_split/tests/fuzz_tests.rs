@@ -57,7 +57,7 @@ fn fuzz_calculate_split_sum_preservation() {
         // Calculate split
         let result = client.try_calculate_split(&total_amount);
 
-        if let Err(_) = result {
+        if result.is_err() {
             continue; // Skip if calculation fails
         }
 

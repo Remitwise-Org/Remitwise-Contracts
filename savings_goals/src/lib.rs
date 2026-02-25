@@ -1069,9 +1069,7 @@ impl SavingsGoalContract {
         env.storage().instance().set(&symbol_short!("AUDIT"), &log);
     }
 
-    fn get_owner_goal_ids_map(env: &Env) -> Option<Map<Address, Vec<u32>>> {
-        env.storage().instance().get(&Self::STORAGE_OWNER_GOAL_IDS)
-    }
+
 
     fn append_owner_goal_id(env: &Env, owner: &Address, goal_id: u32) {
         let mut owner_goal_ids: Map<Address, Vec<u32>> = env
