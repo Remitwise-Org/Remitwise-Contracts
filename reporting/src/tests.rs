@@ -86,10 +86,15 @@ mod bill_payments {
 
     #[contractimpl]
     impl BillPaymentsTrait for BillPayments {
-        fn get_unpaid_bills(_env: Env, _owner: Address) -> Vec<Bill> {
+        fn get_unpaid_bills(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> crate::BillPage {
             let env = _env;
-            let mut bills = Vec::new(&env);
-            bills.push_back(Bill {
+            let mut items = Vec::new(&env);
+            items.push_back(Bill {
                 id: 1,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Electricity"),
@@ -103,18 +108,24 @@ mod bill_payments {
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
-            bills
+            crate::BillPage {
+                items,
+                next_cursor: 0,
+                count: 1,
+            }
         }
 
-        fn get_total_unpaid(_env: Env, _owner: Address) -> i128 {
-            100
-        }
-
-        fn get_all_bills(_env: Env) -> Vec<Bill> {
+        fn get_bills_by_currency(
+            _env: Env,
+            _owner: Address,
+            currency: SorobanString,
+            _cursor: u32,
+            _limit: u32,
+        ) -> crate::BillPage {
             let env = _env;
             let owner = Address::generate(&env);
-            let mut bills = Vec::new(&env);
-            bills.push_back(Bill {
+            let mut items = Vec::new(&env);
+            items.push_back(Bill {
                 id: 1,
                 owner: owner.clone(),
                 name: SorobanString::from_str(&env, "Electricity"),
@@ -126,9 +137,9 @@ mod bill_payments {
                 created_at: 1704067200,
                 paid_at: None,
                 schedule_id: None,
-                currency: SorobanString::from_str(&env, "XLM"),
+                currency: currency.clone(),
             });
-            bills.push_back(Bill {
+            items.push_back(Bill {
                 id: 2,
                 owner,
                 name: SorobanString::from_str(&env, "Water"),
@@ -140,9 +151,13 @@ mod bill_payments {
                 created_at: 1704067200,
                 paid_at: Some(1704153600),
                 schedule_id: None,
-                currency: SorobanString::from_str(&env, "XLM"),
+                currency,
             });
-            bills
+            crate::BillPage {
+                items,
+                next_cursor: 0,
+                count: 2,
+            }
         }
     }
 }
@@ -156,10 +171,15 @@ mod insurance {
 
     #[contractimpl]
     impl InsuranceTrait for Insurance {
-        fn get_active_policies(_env: Env, _owner: Address) -> Vec<InsurancePolicy> {
+        fn get_active_policies(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> crate::PolicyPage {
             let env = _env;
-            let mut policies = Vec::new(&env);
-            policies.push_back(InsurancePolicy {
+            let mut items = Vec::new(&env);
+            items.push_back(InsurancePolicy {
                 id: 1,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Health Insurance"),
@@ -169,7 +189,11 @@ mod insurance {
                 active: true,
                 next_payment_date: 1735689600,
             });
-            policies
+            crate::PolicyPage {
+                items,
+                next_cursor: 0,
+                count: 1,
+            }
         }
 
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {

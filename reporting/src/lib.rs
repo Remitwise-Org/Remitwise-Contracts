@@ -229,14 +229,19 @@ pub trait SavingsGoalsTrait {
 
 #[contractclient(name = "BillPaymentsClient")]
 pub trait BillPaymentsTrait {
-    fn get_unpaid_bills(env: Env, owner: Address) -> Vec<Bill>;
-    fn get_total_unpaid(env: Env, owner: Address) -> i128;
-    fn get_all_bills(env: Env) -> Vec<Bill>;
+    fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
+    fn get_bills_by_currency(
+        env: Env,
+        owner: Address,
+        currency: soroban_sdk::String,
+        cursor: u32,
+        limit: u32,
+    ) -> BillPage;
 }
 
 #[contractclient(name = "InsuranceClient")]
 pub trait InsuranceTrait {
-    fn get_active_policies(env: Env, owner: Address) -> Vec<InsurancePolicy>;
+    fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
     fn get_total_monthly_premium(env: Env, owner: Address) -> i128;
 }
 
@@ -272,6 +277,15 @@ pub struct Bill {
     pub currency: soroban_sdk::String,
 }
 
+/// Paginated page of bills (mirrors bill_payments::BillPage)
+#[contracttype]
+#[derive(Clone)]
+pub struct BillPage {
+    pub items: Vec<Bill>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct InsurancePolicy {
@@ -285,6 +299,14 @@ pub struct InsurancePolicy {
     pub next_payment_date: u64,
 }
 
+/// Paginated page of insurance policies (mirrors insurance::PolicyPage)
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
 #[contract]
 pub struct ReportingContract;
 
@@ -484,8 +506,6 @@ impl ReportingContract {
             .expect("Contract addresses not configured");
 
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let all_bills = bill_client.get_all_bills();
-
         let mut total_bills = 0u32;
         let mut paid_bills = 0u32;
         let mut unpaid_bills = 0u32;
@@ -496,29 +516,70 @@ impl ReportingContract {
 
         let current_time = env.ledger().timestamp();
 
-        for bill in all_bills.iter() {
-            if bill.owner != user {
-                continue;
+        // First, page through unpaid bills to gather unpaid stats and currencies
+        let mut cursor: u32 = 0;
+        let mut currencies = Vec::new(&env);
+        loop {
+            let page = bill_client.get_unpaid_bills(&user, &cursor, &0);
+            if page.count == 0 {
+                break;
             }
-
-            // Filter by period
-            if bill.created_at < period_start || bill.created_at > period_end {
-                continue;
-            }
-
-            total_bills += 1;
-            total_amount += bill.amount;
-
-            if bill.paid {
-                paid_bills += 1;
-                paid_amount += bill.amount;
-            } else {
+            for bill in page.items.iter() {
+                if bill.created_at < period_start || bill.created_at > period_end {
+                    continue;
+                }
+                // Track unpaid stats
                 unpaid_bills += 1;
                 unpaid_amount += bill.amount;
                 if bill.due_date < current_time {
                     overdue_bills += 1;
                 }
+                // Collect currency set (avoid duplicates)
+                let mut seen = false;
+                for cur in currencies.iter() {
+                    if cur == bill.currency {
+                        seen = true;
+                        break;
+                    }
+                }
+                if !seen {
+                    currencies.push_back(bill.currency.clone());
+                }
             }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+
+        // For each observed currency, page through all bills to compute totals
+        for currency in currencies.iter() {
+            let mut cur_cursor: u32 = 0;
+            loop {
+                let page = bill_client.get_bills_by_currency(&user, &currency, &cur_cursor, &0);
+                if page.count == 0 {
+                    break;
+                }
+                for bill in page.items.iter() {
+                    if bill.created_at < period_start || bill.created_at > period_end {
+                        continue;
+                    }
+                    total_bills += 1;
+                    total_amount += bill.amount;
+                }
+                if page.next_cursor == 0 {
+                    break;
+                }
+                cur_cursor = page.next_cursor;
+            }
+        }
+
+        // Derive paid stats from totals and unpaid
+        if total_bills >= unpaid_bills {
+            paid_bills = total_bills - unpaid_bills;
+        }
+        if total_amount >= unpaid_amount {
+            paid_amount = total_amount - unpaid_amount;
         }
 
         let compliance_percentage = if total_bills > 0 {
@@ -555,14 +616,24 @@ impl ReportingContract {
             .expect("Contract addresses not configured");
 
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user);
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
         let mut total_coverage = 0i128;
-        let active_policies = policies.len();
-
-        for policy in policies.iter() {
-            total_coverage += policy.coverage_amount;
+        let mut active_policies: u32 = 0;
+        let mut cursor: u32 = 0;
+        loop {
+            let page = insurance_client.get_active_policies(&user, &cursor, &0);
+            if page.count == 0 {
+                break;
+            }
+            active_policies += page.count;
+            for policy in page.items.iter() {
+                total_coverage += policy.coverage_amount;
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
         }
 
         let annual_premium = monthly_premium * 12;
@@ -613,25 +684,50 @@ impl ReportingContract {
 
         // Bills score (0-40 points)
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let unpaid_bills = bill_client.get_unpaid_bills(&user);
-        let bills_score = if unpaid_bills.is_empty() {
-            40
-        } else {
-            let overdue_count = unpaid_bills
-                .iter()
-                .filter(|b| b.due_date < env.ledger().timestamp())
-                .count();
-            if overdue_count == 0 {
-                35 // Has unpaid but none overdue
-            } else {
-                20 // Has overdue bills
+        let mut any_unpaid = false;
+        let mut any_overdue = false;
+        let mut cursor: u32 = 0;
+        loop {
+            let page = bill_client.get_unpaid_bills(&user, &cursor, &0);
+            if page.count == 0 {
+                break;
             }
+            any_unpaid = true;
+            for bill in page.items.iter() {
+                if bill.due_date < env.ledger().timestamp() {
+                    any_overdue = true;
+                    break;
+                }
+            }
+            if any_overdue || page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        let bills_score = if !any_unpaid {
+            40
+        } else if !any_overdue {
+            35 // Has unpaid but none overdue
+        } else {
+            20 // Has overdue bills
         };
 
         // Insurance score (0-20 points)
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user);
-        let insurance_score = if !policies.is_empty() { 20 } else { 0 };
+        let mut has_policy = false;
+        let mut cursor: u32 = 0;
+        loop {
+            let page = insurance_client.get_active_policies(&user, &cursor, &0);
+            if page.count > 0 {
+                has_policy = true;
+                break;
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        let insurance_score = if has_policy { 20 } else { 0 };
 
         let total_score = savings_score + bills_score + insurance_score;
 
