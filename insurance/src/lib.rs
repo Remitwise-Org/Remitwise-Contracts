@@ -1545,10 +1545,9 @@ mod test {
     // Test: pay_premium after deactivate_policy (#104)
     // ──────────────────────────────────────────────────────────────────
 
-    /// After deactivating a policy, `pay_premium` must panic with
-    /// "Policy is not active". The policy must remain inactive.
+    /// After deactivating a policy, `pay_premium` must fail because the
+    /// policy is inactive. The policy must remain inactive.
     #[test]
-    #[should_panic(expected = "Policy is not active")]
     fn test_pay_premium_after_deactivate() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1577,8 +1576,9 @@ mod test {
         let policy_after_deactivate = client.get_policy(&policy_id).unwrap();
         assert!(!policy_after_deactivate.active);
 
-        // 3. Attempt to pay premium — must panic
-        client.pay_premium(&owner, &policy_id);
+        // 3. Attempt to pay premium — must fail
+        let result = client.try_pay_premium(&owner, &policy_id);
+        assert!(result.is_err(), "pay_premium on inactive policy must fail");
     }
 
     // -----------------------------------------------------------------------

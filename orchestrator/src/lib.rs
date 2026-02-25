@@ -682,8 +682,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).inspect_err(
-            |&e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -691,8 +691,7 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-            },
-        )?;
+            })?;
 
         // Step 2: Check spending limit
         Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
@@ -774,8 +773,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).inspect_err(
-            |&e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -783,8 +782,7 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-            },
-        )?;
+            })?;
 
         // Step 2: Check spending limit
         Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
@@ -860,8 +858,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).inspect_err(
-            |&e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -869,19 +867,20 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-            },
-        )?;
+            })?;
 
         // Step 2: Check spending limit
-        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(|&e| {
-            Self::emit_error_event(
-                &env,
-                &caller,
-                symbol_short!("spend_lm"),
-                e as u32,
-                timestamp,
-            );
-        })?;
+        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("spend_lm"),
+                    e as u32,
+                    timestamp,
+                );
+            },
+        )?;
 
         // Step 3: Pay insurance premium
         Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).inspect_err(

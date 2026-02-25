@@ -924,4 +924,3 @@ impl RemittanceSplit {
         schedules.get(schedule_id)
     }
 }
-

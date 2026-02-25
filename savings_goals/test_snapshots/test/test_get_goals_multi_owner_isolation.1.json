@@ -812,6 +812,54 @@
                         "val": {
                           "u32": 7
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  },
+                                  {
+                                    "u32": 2
+                                  },
+                                  {
+                                    "u32": 3
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 4
+                                  },
+                                  {
+                                    "u32": 5
+                                  },
+                                  {
+                                    "u32": 6
+                                  },
+                                  {
+                                    "u32": 7
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }

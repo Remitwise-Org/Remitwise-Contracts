@@ -488,6 +488,36 @@
                         "val": {
                           "u32": 4
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  },
+                                  {
+                                    "u32": 2
+                                  },
+                                  {
+                                    "u32": 3
+                                  },
+                                  {
+                                    "u32": 4
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }

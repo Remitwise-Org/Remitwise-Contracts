@@ -418,9 +418,7 @@
                 "symbol": "init"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -513,9 +511,7 @@
                 "symbol": "configure_addresses"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -663,6 +659,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 },
@@ -729,6 +731,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 }

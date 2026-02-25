@@ -146,7 +146,7 @@ fn test_calculate_split_rounding() {
     env.mock_all_auths();
 
     // 33, 33, 33, 1 setup
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &33, &33, &33, &1);
 
     // Total 100
     // 33% = 33
@@ -176,7 +176,7 @@ fn test_calculate_split_rounding_rigorous() {
 
     // Case 1: 33/33/33/1 split, total 100
     // Each 33% of 100 is 33. Insurance gets remainder: 100 - 33 - 33 - 33 = 1.
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &33, &33, &33, &1);
     let amounts = client.calculate_split(&100);
     let sum: i128 = amounts.clone().into_iter().sum();
     assert_eq!(
@@ -263,7 +263,7 @@ fn test_calculate_complex_rounding() {
 
     env.mock_all_auths();
     // 17, 19, 23, 41 (Primes summing to 100)
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &17, &19, &23, &41);
 
     // Amount 1000
     // 17% = 170
@@ -502,8 +502,7 @@ fn test_split_boundary_100_0_0_0() {
 
     env.mock_all_auths();
 
-    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-    
+    let _ok = client.initialize_split(&owner, &0, &100, &0, &0, &0);
 
     // get_split must return the exact percentages
     let split = client.get_split();
@@ -530,8 +529,7 @@ fn test_split_boundary_0_100_0_0() {
 
     env.mock_all_auths();
 
-    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-    
+    let _ok = client.initialize_split(&owner, &0, &0, &100, &0, &0);
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -556,8 +554,7 @@ fn test_split_boundary_0_0_100_0() {
 
     env.mock_all_auths();
 
-    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-    
+    let _ok = client.initialize_split(&owner, &0, &0, &0, &100, &0);
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -582,8 +579,7 @@ fn test_split_boundary_0_0_0_100() {
 
     env.mock_all_auths();
 
-    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-    
+    let _ok = client.initialize_split(&owner, &0, &0, &0, &0, &100);
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -609,8 +605,7 @@ fn test_split_boundary_25_25_25_25() {
 
     env.mock_all_auths();
 
-    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
-    
+    let _ok = client.initialize_split(&owner, &0, &25, &25, &25, &25);
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 25);
@@ -640,7 +635,7 @@ fn test_update_split_boundary_percentages() {
     // Start with a typical split
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
-    // Update to 100/0/0/0
+    // Update to 100/0/0/0 (nonce stays at 1 — update_split does not increment it)
     client.update_split(&owner, &1, &100, &0, &0, &0);
 
     let split = client.get_split();
@@ -655,8 +650,8 @@ fn test_update_split_boundary_percentages() {
     assert_eq!(amounts.get(2).unwrap(), 0);
     assert_eq!(amounts.get(3).unwrap(), 0);
 
-    // Update again to 25/25/25/25
-    client.update_split(&owner, &2, &25, &25, &25, &25);
+    // Update again to 25/25/25/25 (still nonce 1)
+    client.update_split(&owner, &1, &25, &25, &25, &25);
 
     let split2 = client.get_split();
     assert_eq!(split2.get(0).unwrap(), 25);

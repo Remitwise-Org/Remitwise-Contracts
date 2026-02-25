@@ -2393,10 +2393,7 @@ mod test {
             next_bill.amount, amount,
             "Cloned bill must preserve the original amount"
         );
-        assert!(
-            next_bill.recurring,
-            "Cloned bill must remain recurring"
-        );
+        assert!(next_bill.recurring, "Cloned bill must remain recurring");
         assert_eq!(
             next_bill.frequency_days, frequency,
             "Cloned bill must preserve frequency_days"

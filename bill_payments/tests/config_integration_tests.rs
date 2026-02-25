@@ -103,7 +103,15 @@ fn test_sync_reads_max_page_limit_from_config() {
     let owner = Address::generate(&env);
     let name = String::from_str(&env, "Test");
     for _ in 0..40 {
-        bills.create_bill(&owner, &name, &100i128, &1_800_000_000u64, &false, &0u32, &String::from_str(&env, ""));
+        bills.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &1_800_000_000u64,
+            &false,
+            &0u32,
+            &String::from_str(&env, ""),
+        );
     }
 
     let page = bills.get_unpaid_bills(&owner, &0, &50);
@@ -123,7 +131,15 @@ fn test_sync_missing_key_leaves_default_unchanged() {
     let owner = Address::generate(&env);
     let name = String::from_str(&env, "Bill");
     for _ in 0..60 {
-        bills.create_bill(&owner, &name, &1i128, &1_800_000_000u64, &false, &0u32, &String::from_str(&env, ""));
+        bills.create_bill(
+            &owner,
+            &name,
+            &1i128,
+            &1_800_000_000u64,
+            &false,
+            &0u32,
+            &String::from_str(&env, ""),
+        );
     }
 
     let page = bills.get_unpaid_bills(&owner, &0, &99);
@@ -148,7 +164,15 @@ fn test_sync_can_be_updated() {
     let owner = Address::generate(&env);
     let name = String::from_str(&env, "Bill");
     for _ in 0..20 {
-        bills.create_bill(&owner, &name, &1i128, &1_800_000_000u64, &false, &0u32, &String::from_str(&env, ""));
+        bills.create_bill(
+            &owner,
+            &name,
+            &1i128,
+            &1_800_000_000u64,
+            &false,
+            &0u32,
+            &String::from_str(&env, ""),
+        );
     }
 
     let page = bills.get_unpaid_bills(&owner, &0, &50);

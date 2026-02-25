@@ -440,17 +440,6 @@
                 },
                 {
                   "key": {
-<<<<<<< test-for-calculate_split-rounding
-                    "symbol": "initialized"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-=======
->>>>>>> main
                     "symbol": "insurance_amount"
                   },
                   "val": {
@@ -642,17 +631,6 @@
                 },
                 {
                   "key": {
-<<<<<<< test-for-calculate_split-rounding
-                    "symbol": "initialized"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-=======
->>>>>>> main
                     "symbol": "insurance_amount"
                   },
                   "val": {
