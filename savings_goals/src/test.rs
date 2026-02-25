@@ -1272,3 +1272,202 @@ fn test_instance_ttl_extended_on_lock_goal() {
         ttl
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Time & Ledger Drift Resilience Tests (#158)
+//
+// Assumptions documented here:
+//  - Stellar ledger timestamps are monotonically increasing in production.
+//  - is_goal_completed checks current_amount >= target_amount only; the
+//    target_date field is informational and does not affect completion.
+//  - execute_due_savings_schedules fires a schedule when
+//    current_time >= schedule.next_due (inclusive boundary).
+//  - After execution, next_due advances by the interval, preventing
+//    re-execution even if ledger time were to regress (non-monotonic drift).
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Passing target_date has no effect on is_goal_completed; the check is
+/// purely current_amount vs target_amount.
+#[test]
+fn test_time_drift_is_goal_completed_depends_on_amount_not_time() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    let target_date = 5000u64;
+    set_time(&env, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Vacation"),
+        &10000,
+        &target_date,
+    );
+
+    // Under-funded before target_date
+    assert!(!client.is_goal_completed(&goal_id));
+
+    // Advance ledger to exactly target_date – still under-funded
+    set_time(&env, target_date);
+    assert!(!client.is_goal_completed(&goal_id));
+
+    // Advance ledger past target_date – still under-funded
+    set_time(&env, target_date + 1);
+    assert!(!client.is_goal_completed(&goal_id));
+
+    // Fund the goal fully after the deadline
+    client.add_to_goal(&owner, &goal_id, &10000);
+    assert!(
+        client.is_goal_completed(&goal_id),
+        "Goal must complete on amount alone, regardless of time"
+    );
+}
+
+/// Goal completes as soon as funding is sufficient, even far before target_date.
+#[test]
+fn test_time_drift_is_goal_completed_early_funding() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_time(&env, 100);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Emergency Fund"),
+        &5000,
+        &9_999_999, // far-future target_date
+    );
+
+    assert!(!client.is_goal_completed(&goal_id));
+    client.add_to_goal(&owner, &goal_id, &5000);
+    assert!(
+        client.is_goal_completed(&goal_id),
+        "Goal must complete before target_date when amount is reached"
+    );
+}
+
+/// Schedule must NOT execute one second before next_due and MUST execute
+/// exactly at next_due (inclusive boundary).
+#[test]
+fn test_time_drift_schedule_executes_at_exact_next_due() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_time(&env, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "House"),
+        &50000,
+        &200000,
+    );
+    let next_due = 3000u64;
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &next_due, &86400);
+
+    // One second before due: must NOT execute
+    set_time(&env, next_due - 1);
+    let executed = client.execute_due_savings_schedules();
+    assert_eq!(
+        executed.len(),
+        0,
+        "Schedule must not execute one second before next_due"
+    );
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 0, "No funds added before due date");
+
+    // Exactly at next_due: must execute
+    set_time(&env, next_due);
+    let executed = client.execute_due_savings_schedules();
+    assert_eq!(executed.len(), 1, "Schedule must execute exactly at next_due");
+    assert_eq!(executed.get(0).unwrap(), schedule_id);
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 500);
+}
+
+/// After execution next_due advances; a subsequent call at a time still
+/// before the new next_due must not re-execute the schedule.
+/// Documents non-monotonic time assumption: next_due guards re-runs.
+#[test]
+fn test_time_drift_no_double_execution_after_next_due_advances() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_time(&env, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Car"),
+        &20000,
+        &999999,
+    );
+    let next_due = 5000u64;
+    let interval = 86400u64;
+    client.create_savings_schedule(&owner, &goal_id, &1000, &next_due, &interval);
+
+    // Execute at next_due – schedule advances to next_due + interval
+    set_time(&env, next_due);
+    let executed = client.execute_due_savings_schedules();
+    assert_eq!(executed.len(), 1);
+
+    // Time between old next_due and new next_due: no re-execution
+    // (In production ledger time is monotonic; this also covers the case
+    //  where execute is called repeatedly within the same window.)
+    set_time(&env, next_due + 100);
+    let executed_again = client.execute_due_savings_schedules();
+    assert_eq!(
+        executed_again.len(),
+        0,
+        "Schedule must not re-execute before the new next_due"
+    );
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 1000, "Funds must be added exactly once");
+}
+
+/// A large forward jump past multiple intervals marks the correct missed_count
+/// and advances next_due beyond all skipped intervals.
+#[test]
+fn test_time_drift_large_jump_marks_missed_count() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_time(&env, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Tuition"),
+        &50000,
+        &9999999,
+    );
+    let next_due = 2000u64;
+    let interval = 86400u64;
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &next_due, &interval);
+
+    // Jump 3 full intervals past first due date
+    set_time(&env, next_due + interval * 3 + 500);
+    client.execute_due_savings_schedules();
+
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    assert_eq!(
+        schedule.missed_count, 3,
+        "Three intervals were skipped; missed_count must be 3"
+    );
+    assert!(
+        schedule.next_due > next_due + interval * 3,
+        "next_due must have advanced past all skipped intervals"
+    );
+}

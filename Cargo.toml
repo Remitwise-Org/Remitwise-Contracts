@@ -15,6 +15,7 @@ members = [
     "reporting",
     "orchestrator",
     "global_config",
+    "scenarios",
 ]
 resolver = "2"
 

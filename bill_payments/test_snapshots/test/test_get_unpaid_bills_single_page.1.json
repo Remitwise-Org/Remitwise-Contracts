@@ -775,6 +775,26 @@
                         "val": {
                           "u32": 5
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "UNPD_TOT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 1500
+                                }
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }

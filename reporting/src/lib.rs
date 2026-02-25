@@ -252,6 +252,7 @@ pub struct SavingsGoal {
     pub current_amount: i128,
     pub target_date: u64,
     pub locked: bool,
+    pub unlock_date: Option<u64>,
 }
 
 #[contracttype]
@@ -267,6 +268,8 @@ pub struct Bill {
     pub paid: bool,
     pub created_at: u64,
     pub paid_at: Option<u64>,
+    pub schedule_id: Option<u32>,
+    pub currency: soroban_sdk::String,
 }
 
 #[contracttype]

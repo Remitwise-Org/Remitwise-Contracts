@@ -271,6 +271,7 @@ Tracks and manages bill payments with recurring support.
 
 - `create_bill`: Create a new bill (electricity, school fees, etc.)
 - `pay_bill`: Mark a bill as paid and create next recurring bill if applicable
+- `set_external_ref`: Owner-only update/clear for bill `external_ref`
 - `get_unpaid_bills`: Get all unpaid bills
 - `get_total_unpaid`: Get total amount of unpaid bills
 - `archive_paid_bills`: Archive paid bills to reduce storage
@@ -295,6 +296,7 @@ Manages micro-insurance policies and premium payments.
 
 - `create_policy`: Create a new insurance policy
 - `pay_premium`: Pay monthly premium
+- `set_external_ref`: Owner-only update/clear for policy `external_ref`
 - `get_active_policies`: Get all active policies
 - `get_total_monthly_premium`: Calculate total monthly premium cost
 - `deactivate_policy`: Deactivate an insurance policy
@@ -306,6 +308,8 @@ Manages micro-insurance policies and premium payments.
   - `policy_id`, `name`, `amount`, `next_payment_date`, `timestamp`
 - `PolicyDeactivatedEvent`: Emitted when a policy is deactivated
   - `policy_id`, `name`, `timestamp`
+
+Bill and insurance events include `external_ref` where applicable for off-chain linking.
 
 ### Family Wallet
 
@@ -453,14 +457,9 @@ soroban contract deploy \
   --network testnet
 ```
 
-## Documentation
+## Operational Limits
 
-- [README.md](README.md) - Main documentation and getting started
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and design
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Deployment guide for testnet and mainnet
-- [UPGRADE_GUIDE.md](UPGRADE_GUIDE.md) - Detailed Soroban version upgrade procedures
-- [VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md) - Version compatibility matrix and testing status
-- [docs/adr-admin-role.md](docs/adr-admin-role.md) - Architecture decision records
+ID and record-count operating limits (including `u32` overflow analysis and monitoring alerts) are documented in the **Operational Limits and Monitoring** section of [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Development
 

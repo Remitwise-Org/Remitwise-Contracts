@@ -94,6 +94,7 @@ Instance Storage:
 - Payment tracking and status
 - Recurring bill automation
 - Overdue bill identification
+- Optional external reference IDs for off-chain linkage
 
 **Storage Structure:**
 
@@ -121,6 +122,7 @@ Instance Storage:
 - Monthly premium scheduling
 - Payment tracking
 - Policy deactivation
+- Optional external reference IDs for off-chain linkage
 
 **Storage Structure:**
 
@@ -207,7 +209,7 @@ fn process_remittance(env: Env, user: Address, amount: i128) {
     savings_goals::add_to_goal(env, user, primary_goal, allocations[1]);
 
     // 3. Create bill payments
-    bill_payments::create_bill(env, user, "Monthly Bills", allocations[2], due_date, false, 0);
+    bill_payments::create_bill(env, user, "Monthly Bills", allocations[2], due_date, false, 0, None);
 
     // 4. Pay insurance premiums
     insurance::pay_premium(env, user, active_policy);
@@ -296,12 +298,14 @@ Bill Payments Events:
 ├── Namespace: "bills"
 ├── BillEvent::Created
 ├── BillEvent::Paid
+├── BillEvent::ExternalRefUpdated
 
 Insurance Events:
 ├── Namespace: "insure"
 ├── InsuranceEvent::PolicyCreated
 ├── InsuranceEvent::PremiumPaid
 ├── InsuranceEvent::PolicyDeactivated
+├── InsuranceEvent::ExternalRefUpdated
 
 Remittance Split Events:
 ├── Namespace: "split"
@@ -393,6 +397,66 @@ Active Storage                    Archive Storage
 - **Caching:** Client-side caching of configurations
 - **Pagination:** For large result sets
 - **Async Processing:** Event-driven architecture
+
+## Operational Limits and Monitoring
+
+### `u32` ID Usage and Overflow Analysis
+
+Contracts using monotonic `u32` IDs:
+
+- `bill_payments`: `BILLS` map + `NEXT_ID`
+- `insurance`: `POLICIES` map + `NEXT_ID`
+- `savings_goals`: `GOALS` map + `NEXT_ID`
+
+Current create paths use `NEXT_ID + 1`. At `u32::MAX` (`4,294,967,295`), the next create attempt overflows and reverts.
+
+Overflow behavior rationale:
+
+- Repository release profile sets `overflow-checks = true` in root `Cargo.toml`.
+- With overflow checks enabled, increment overflow traps/reverts rather than silently wrapping.
+- Operationally, this is safer than wraparound, but still creates a hard stop for new records once max ID is reached.
+
+### Practical Count Limits (Recommended)
+
+Although `u32` allows billions of IDs, practical limits are much lower because several read methods scan `1..=NEXT_ID`:
+
+- `bill_payments`: `get_unpaid_bills`, `get_overdue_bills`, `get_all_bills`
+- `insurance`: `get_active_policies`
+- `savings_goals`: `get_all_goals`
+
+Recommended operational caps:
+
+| Contract | Per-user recommended max | Per-contract recommended max (`NEXT_ID`) | Rationale |
+|---|---:|---:|---|
+| `bill_payments` | 2,000 bills/owner | 20,000 | Multiple scan-heavy reads; canceled bills leave ID gaps so scan cost still tracks `NEXT_ID`. |
+| `insurance` | 500 policies/owner | 15,000 | Active-policy queries scan full ID range; deactivated policies still consume IDs. |
+| `savings_goals` | 1,000 goals/owner | 20,000 | Owner list path scans full ID range. |
+| `family_wallet`* | 50 members, 500 pending tx | N/A (`u64` tx IDs) | Numeric overflow is not a practical concern; cap to control operational complexity. |
+
+\* `family_wallet` transaction IDs are `u64` (`NEXT_TX`), not `u32`.
+
+### Monitoring Recommendations
+
+Track per deployed contract:
+
+1. `NEXT_ID` value and growth rate.
+2. `NEXT_ID` vs active records (gap ratio), especially where cancellations/removals exist.
+3. Per-owner record distribution (top-N owners) from off-chain indexing.
+4. Failure/latency trends for scan-heavy read methods.
+5. Create-path revert rates, especially near caps.
+
+Alert thresholds:
+
+- Warning: 70% of recommended contract max.
+- Critical: 90% of recommended contract max.
+- Absolute overflow safety warning: `NEXT_ID >= 3,500,000,000`.
+
+### Operational Response When Limits Are Approaching
+
+1. Apply off-chain admission control for new creates (global and per-owner caps).
+2. Route new records to a fresh deployment shard before query performance degrades.
+3. Prioritize migration of highest-volume owners.
+4. Plan API/storage evolution (pagination and owner-indexed iteration) before raising caps.
 
 ## Error Handling
 
