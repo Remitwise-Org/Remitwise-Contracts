@@ -14,6 +14,7 @@ members = [
     "data_migration",
     "reporting",
     "orchestrator",
+    "feature_flags",
     "cli",
     "scenarios",
     "integration_tests",
