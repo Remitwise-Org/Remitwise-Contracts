@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[dependencies]
+# scenarios is a pure test-helper crate — it has no WASM output.
+# All its dependencies use soroban-sdk's `testutils` feature, which
+# requires std and therefore cannot be compiled for wasm32.
+# Guard them behind a target filter so `cargo build --target
+# wasm32-unknown-unknown` skips them (and the lib body stays empty).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 remittance_split = { path = "../remittance_split" }
 savings_goals = { path = "../savings_goals" }
