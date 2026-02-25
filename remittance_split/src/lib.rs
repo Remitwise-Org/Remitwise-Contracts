@@ -294,8 +294,6 @@ impl RemittanceSplit {
     /// - If percentages don't sum to 100
     /// - If split is already initialized (use update_split instead)
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn initialize_split(
         env: Env,
         owner: Address,
@@ -355,8 +353,6 @@ impl RemittanceSplit {
         Ok(true)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn update_split(
         env: Env,

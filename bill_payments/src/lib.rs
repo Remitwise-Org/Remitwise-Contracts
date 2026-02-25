@@ -438,8 +438,6 @@ impl BillPayments {
     // -----------------------------------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn create_bill(
         env: Env,
         owner: Address,
@@ -607,14 +605,12 @@ impl BillPayments {
 
     /// Get a page of unpaid bills for `owner`.
     ///
-    /// #[allow(clippy::too_many_arguments)]
-#[contractclient(name = "GlobalConfigClient")]Arguments
+    /// # Arguments
     /// * `owner`  – whose bills to return
     /// * `cursor` – start after this bill ID (pass 0 for the first page)
     /// * `limit`  – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
-    /// #[allow(clippy::too_many_arguments)]
-#[contractclient(name = "GlobalConfigClient")]Returns
+    /// # Returns
     /// `BillPage { items, next_cursor, count }`.
     /// When `next_cursor == 0` there are no more pages.
     pub fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage {
@@ -1193,15 +1189,13 @@ impl BillPayments {
 
     /// Get a page of ALL bills (paid + unpaid) for `owner` that match `currency`.
     ///
-    /// #[allow(clippy::too_many_arguments)]
-#[contractclient(name = "GlobalConfigClient")]Arguments
+    /// # Arguments
     /// * `owner`    – whose bills to return
     /// * `currency` – currency code to filter by, e.g. `"USDC"`, `"XLM"`
     /// * `cursor`   – start after this bill ID (pass 0 for the first page)
     /// * `limit`    – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
-    /// #[allow(clippy::too_many_arguments)]
-#[contractclient(name = "GlobalConfigClient")]Returns
+    /// # Returns
     /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
     pub fn get_bills_by_currency(
         env: Env,
@@ -1270,8 +1264,7 @@ impl BillPayments {
 
     /// Sum of all **unpaid** bill amounts for `owner` denominated in `currency`.
     ///
-    /// #[allow(clippy::too_many_arguments)]
-#[contractclient(name = "GlobalConfigClient")]Example
+    /// # Example
     /// ```text
     /// let usdc_owed = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
     /// ```
