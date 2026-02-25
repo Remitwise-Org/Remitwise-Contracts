@@ -54,6 +54,7 @@ mod savings_goals {
                 current_amount: 7000,
                 target_date: 1735689600,
                 locked: true,
+                unlock_date: None,
             });
             goals.push_back(SavingsGoal {
                 id: 2,
@@ -63,6 +64,7 @@ mod savings_goals {
                 current_amount: 5000,
                 target_date: 1735689600,
                 locked: true,
+                unlock_date: None,
             });
             goals
         }
@@ -98,6 +100,8 @@ mod bill_payments {
                 paid: false,
                 created_at: 1704067200,
                 paid_at: None,
+                schedule_id: None,
+                currency: SorobanString::from_str(&env, "XLM"),
             });
             bills
         }
@@ -121,6 +125,8 @@ mod bill_payments {
                 paid: false,
                 created_at: 1704067200,
                 paid_at: None,
+                schedule_id: None,
+                currency: SorobanString::from_str(&env, "XLM"),
             });
             bills.push_back(Bill {
                 id: 2,
@@ -133,6 +139,8 @@ mod bill_payments {
                 paid: true,
                 created_at: 1704067200,
                 paid_at: Some(1704153600),
+                schedule_id: None,
+                currency: SorobanString::from_str(&env, "XLM"),
             });
             bills
         }

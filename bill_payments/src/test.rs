@@ -2011,8 +2011,169 @@ mod testsuit {
         assert_eq!(next_bill.due_date, expected);
         assert_eq!(next_bill.due_date, 2_209_600);
     }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Time & Ledger Drift Resilience Tests (#158)
+    //
+    // Assumptions documented here:
+    //  - A bill is overdue when due_date < current_time (strict less-than).
+    //  - At exactly due_date the bill is NOT yet overdue.
+    //  - Stellar ledger timestamps are monotonically increasing in production.
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// Bill is NOT overdue when ledger timestamp == due_date (inclusive boundary).
+    #[test]
+    fn test_time_drift_bill_not_overdue_at_exact_due_date() {
+        let due_date = 1_000_000u64;
+        let env = Env::default();
+        set_time(&env, due_date);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Power"),
+            &200,
+            &due_date,
+            &false,
+            &0,
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 0,
+            "Bill must not appear overdue when current_time == due_date"
+        );
+    }
+
+    /// Bill becomes overdue exactly one second after due_date.
+    #[test]
+    fn test_time_drift_bill_overdue_one_second_after_due_date() {
+        let due_date = 1_000_000u64;
+        let env = Env::default();
+        set_time(&env, due_date);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &due_date,
+            &false,
+            &0,
+        );
+
+        // Not yet overdue at due_date
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(page.count, 0);
+
+        // Advance one second past due_date
+        set_time(&env, due_date + 1);
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Bill must appear overdue exactly one second past due_date"
+        );
+    }
+
+    /// Mix of past-due, exactly-due, and future bills: only past-due appears.
+    #[test]
+    fn test_time_drift_overdue_boundary_mixed_bills() {
+        let current_time = 2_000_000u64;
+        let env = Env::default();
+        set_time(&env, current_time);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Past-due (due_date < current_time)
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue"),
+            &100,
+            &(current_time - 1),
+            &false,
+            &0,
+        );
+        env.mock_all_auths();
+        // Exactly-due (due_date == current_time) – NOT overdue
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "DueNow"),
+            &200,
+            &current_time,
+            &false,
+            &0,
+        );
+        env.mock_all_auths();
+        // Future (due_date > current_time) – NOT overdue
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &(current_time + 1),
+            &false,
+            &0,
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Only the bill with due_date < current_time must appear overdue"
+        );
+        assert_eq!(
+            page.items.get(0).unwrap().amount,
+            100,
+            "Overdue bill must be the one with due_date < current_time"
+        );
+    }
+
+    /// Full-day boundary: bill created at due_date, queried one day later, is overdue.
+    #[test]
+    fn test_time_drift_overdue_full_day_boundary() {
+        let day = 86400u64;
+        let due_date = 1_000_000u64;
+        let env = Env::default();
+        set_time(&env, due_date);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Monthly Rent"),
+            &5000,
+            &due_date,
+            &false,
+            &0,
+        );
+
+        // Still not overdue at due_date
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(page.count, 0);
+
+        // One full day later – must be overdue
+        set_time(&env, due_date + day);
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Bill must be overdue one full day past due_date"
+        );
+    }
+
     // ---------------------------------------------------------------------------
-// Tests — Issue #6: get_total_unpaid edge cases
+    // Tests — Issue #6: get_total_unpaid edge cases
 //
 // get_total_unpaid(env, owner) returns the sum of `amount` for all unpaid
 // bills belonging to `owner`. These tests make the zero, single, multiple,
@@ -2497,5 +2658,5 @@ fn test_get_total_unpaid_includes_new_recurring_bill_after_pay() {
         total, 500,
         "after paying a recurring bill, the newly created bill must appear in total_unpaid"
     );
-}
+    }
 }

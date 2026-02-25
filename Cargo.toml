@@ -15,6 +15,7 @@ members = [
     "reporting",
     "orchestrator",
     "feature_flags",
+    "scenarios",
 ]
 resolver = "2"
 

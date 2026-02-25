@@ -1542,6 +1542,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &String::from_str(&env, "XLM"),
             );
             client.create_bill(
                 &owner_b,
@@ -1550,6 +1551,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &String::from_str(&env, "XLM"),
             );
         }
 
@@ -2156,18 +2158,16 @@ mod test {
             &original_due_date,
             &true,      // recurring
             &frequency, // frequency_days
+            &String::from_str(&env, "XLM"),
         );
 
-        // Pay the recurring bill – this should create the next occurrence.
         client.pay_bill(&owner, &bill_id);
 
-        // The next bill should have ID = bill_id + 1.
         let next_id = bill_id + 1;
         let next_bill = client
             .get_bill(&next_id)
             .expect("Next recurring bill should exist after paying the original");
 
-        // --- Assert every cloned field ---
         assert_eq!(
             next_bill.name, bill_name,
             "Cloned bill must preserve the original name"
@@ -2198,6 +2198,159 @@ mod test {
         assert_eq!(
             next_bill.due_date, expected_due_date,
             "Cloned bill due_date must be original_due_date + frequency_days * 86400"
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Time & Ledger Drift Resilience Tests (#158)
+    //
+    // Assumptions:
+    //  - A bill is overdue when due_date < current_time (strict less-than).
+    //  - At exactly due_date the bill is NOT yet overdue.
+    //  - Stellar ledger timestamps are monotonically increasing in production.
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// Bill is NOT overdue when ledger timestamp == due_date (inclusive boundary).
+    #[test]
+    fn test_time_drift_bill_not_overdue_at_exact_due_date() {
+        let due_date = 1_000_000u64;
+        let env = make_env();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(due_date);
+
+        let cid = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &cid);
+        let owner = Address::generate(&env);
+
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Power"),
+            &200,
+            &due_date,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 0,
+            "Bill must not appear overdue when current_time == due_date"
+        );
+    }
+
+    /// Bill becomes overdue exactly one second after due_date.
+    #[test]
+    fn test_time_drift_bill_overdue_one_second_after_due_date() {
+        let due_date = 1_000_000u64;
+        let env = make_env();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(due_date);
+
+        let cid = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &cid);
+        let owner = Address::generate(&env);
+
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &150,
+            &due_date,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(page.count, 0);
+
+        env.ledger().set_timestamp(due_date + 1);
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Bill must appear overdue exactly one second past due_date"
+        );
+    }
+
+    /// Mix of past-due, exactly-due, and future bills: only past-due one appears.
+    #[test]
+    fn test_time_drift_overdue_boundary_mixed_bills() {
+        let current_time = 2_000_000u64;
+        let env = make_env();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(current_time);
+
+        let cid = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &cid);
+        let owner = Address::generate(&env);
+
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Overdue"),
+            &100,
+            &(current_time - 1),
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "DueNow"),
+            &200,
+            &current_time,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &(current_time + 1),
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Only the bill with due_date < current_time must appear overdue"
+        );
+        assert_eq!(page.items.get(0).unwrap().amount, 100);
+    }
+
+    /// Full-day boundary (86400 s): bill created at due_date, queried one day later, is overdue.
+    #[test]
+    fn test_time_drift_overdue_full_day_boundary() {
+        let day = 86400u64;
+        let due_date = 1_000_000u64;
+        let env = make_env();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(due_date);
+
+        let cid = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &cid);
+        let owner = Address::generate(&env);
+
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Monthly Rent"),
+            &5000,
+            &due_date,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+        );
+
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(page.count, 0);
+
+        env.ledger().set_timestamp(due_date + day);
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Bill must be overdue one full day past due_date"
         );
     }
 }

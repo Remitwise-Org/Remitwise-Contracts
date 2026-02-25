@@ -737,7 +737,7 @@ impl Insurance {
         };
         env.events().publish((POLICY_DEACTIVATED,), event);
         env.events().publish(
-            (symbol_short!("insuranc"), InsuranceEvent::PolicyDeactivated),
+            (symbol_short!("insure"), InsuranceEvent::PolicyDeactivated),
             (policy_id, caller),
         );
 
@@ -1109,7 +1109,10 @@ mod test {
         // No policies created — policy ID 999 does not exist
         let result = client.try_pay_premium(&owner, &999u32);
 
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "pay_premium must fail when policy does not exist"
+        );
     }
 
     #[test]
@@ -1221,7 +1224,7 @@ mod test {
     // --- existing event tests (unchanged) ---
 
     #[test]
-    fn test_create_policy_emits_event() {
+    fn test_create_policy_emits_event_exists() {
         let env = make_env();
         env.mock_all_auths();
         let contract_id = env.register_contract(None, Insurance);
@@ -1576,5 +1579,169 @@ mod test {
 
         // 3. Attempt to pay premium — must panic
         client.pay_premium(&owner, &policy_id);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Time & Ledger Drift Resilience Tests (#158)
+    //
+    // Assumptions:
+    //  - execute_due_premium_schedules fires when schedule.next_due <= current_time
+    //    (inclusive: executes exactly at next_due).
+    //  - next_payment_date = env.ledger().timestamp() + 30 * 86400 at execution,
+    //    anchored to actual payment time, not original next_due.
+    //  - Stellar ledger timestamps are monotonically increasing in production.
+    //    After execution next_due advances by the interval, guarding re-runs.
+    // ══════════════════════════════════════════════════════════════════════
+
+    fn set_time(env: &Env, timestamp: u64) {
+        let proto = env.ledger().protocol_version();
+        env.ledger().set(LedgerInfo {
+            protocol_version: proto,
+            sequence_number: 1,
+            timestamp,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 100000,
+        });
+    }
+
+    /// Premium schedule must NOT execute one second before next_due.
+    #[test]
+    fn test_time_drift_premium_schedule_not_executed_before_next_due() {
+        let env = make_env();
+        env.mock_all_auths();
+        let id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &id);
+        let owner = Address::generate(&env);
+
+        let next_due = 5000u64;
+        set_time(&env, 1000);
+
+        let policy_id = client.create_policy(
+            &owner,
+            &String::from_str(&env, "Life Cover"),
+            &String::from_str(&env, "life"),
+            &200,
+            &100000,
+        );
+        client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+        set_time(&env, next_due - 1);
+        let executed = client.execute_due_premium_schedules();
+        assert_eq!(
+            executed.len(),
+            0,
+            "Must not execute one second before next_due"
+        );
+    }
+
+    /// Premium schedule must execute exactly at next_due (inclusive boundary).
+    #[test]
+    fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
+        let env = make_env();
+        env.mock_all_auths();
+        let id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &id);
+        let owner = Address::generate(&env);
+
+        let next_due = 5000u64;
+        set_time(&env, 1000);
+
+        let policy_id = client.create_policy(
+            &owner,
+            &String::from_str(&env, "Health Plan"),
+            &String::from_str(&env, "health"),
+            &150,
+            &75000,
+        );
+        let schedule_id = client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+        set_time(&env, next_due);
+        let executed = client.execute_due_premium_schedules();
+        assert_eq!(executed.len(), 1, "Must execute exactly at next_due");
+        assert_eq!(executed.get(0).unwrap(), schedule_id);
+
+        let policy = client.get_policy(&policy_id).unwrap();
+        assert_eq!(
+            policy.next_payment_date,
+            next_due + 30 * 86400,
+            "next_payment_date must be current_time + 30 days"
+        );
+    }
+
+    /// next_payment_date is anchored to actual payment time, not original next_due.
+    #[test]
+    fn test_time_drift_next_payment_date_uses_actual_payment_time() {
+        let env = make_env();
+        env.mock_all_auths();
+        let id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &id);
+        let owner = Address::generate(&env);
+
+        let next_due = 5000u64;
+        let late_payment = next_due + 7 * 86400; // paid 7 days late
+        set_time(&env, 1000);
+
+        let policy_id = client.create_policy(
+            &owner,
+            &String::from_str(&env, "Property Plan"),
+            &String::from_str(&env, "property"),
+            &300,
+            &200000,
+        );
+        client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+        set_time(&env, late_payment);
+        client.execute_due_premium_schedules();
+
+        let policy = client.get_policy(&policy_id).unwrap();
+        assert_eq!(
+            policy.next_payment_date,
+            late_payment + 30 * 86400,
+            "next_payment_date must be anchored to actual payment time"
+        );
+        assert!(
+            policy.next_payment_date > next_due + 30 * 86400,
+            "Late payment must push next_payment_date beyond on-time window"
+        );
+    }
+
+    /// After execution next_due advances; a call before the new next_due must not re-execute.
+    #[test]
+    fn test_time_drift_no_double_execution_after_schedule_advances() {
+        let env = make_env();
+        env.mock_all_auths();
+        let id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &id);
+        let owner = Address::generate(&env);
+
+        let next_due = 5000u64;
+        let interval = 2_592_000u64;
+        set_time(&env, 1000);
+
+        let policy_id = client.create_policy(
+            &owner,
+            &String::from_str(&env, "Auto Cover"),
+            &String::from_str(&env, "auto"),
+            &100,
+            &50000,
+        );
+        client.create_premium_schedule(&owner, &policy_id, &next_due, &interval);
+
+        // First execution at next_due
+        set_time(&env, next_due);
+        let executed = client.execute_due_premium_schedules();
+        assert_eq!(executed.len(), 1);
+
+        // Between old next_due and new next_due: no re-execution
+        set_time(&env, next_due + 1000);
+        let executed_again = client.execute_due_premium_schedules();
+        assert_eq!(
+            executed_again.len(),
+            0,
+            "Must not re-execute before the new next_due"
+        );
     }
 }
