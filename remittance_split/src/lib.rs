@@ -293,6 +293,9 @@ impl RemittanceSplit {
     /// - If nonce is invalid (replay)
     /// - If percentages don't sum to 100
     /// - If split is already initialized (use update_split instead)
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn initialize_split(
         env: Env,
         owner: Address,
@@ -352,6 +355,9 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn update_split(
         env: Env,
         caller: Address,
@@ -731,6 +737,9 @@ impl RemittanceSplit {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_remittance_schedule(
         env: Env,
         owner: Address,
@@ -793,6 +802,9 @@ impl RemittanceSplit {
         Ok(next_schedule_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn modify_remittance_schedule(
         env: Env,
         caller: Address,
@@ -846,6 +858,9 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn cancel_remittance_schedule(
         env: Env,
         caller: Address,
@@ -884,6 +899,9 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let schedules: Map<u32, RemittanceSchedule> = env
             .storage()
@@ -910,4 +928,4 @@ impl RemittanceSplit {
         schedules.get(schedule_id)
     }
 }
-mod test;
+

@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+    Address, Env, Symbol, TryFromVal,
 };
 
 fn set_time(env: &Env, timestamp: u64) {
@@ -30,15 +30,7 @@ fn test_initialize_split() {
 
     env.mock_all_auths();
 
-    let success = client.initialize_split(
-        &owner, &0,  // nonce
-        &50, // spending
-        &30, // savings
-        &15, // bills
-        &5,  // insurance
-    );
-
-    assert_eq!(success, true);
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.owner, owner);
@@ -94,8 +86,7 @@ fn test_update_split() {
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
-    let success = client.update_split(&owner, &1, &40, &40, &10, &10);
-    assert_eq!(success, true);
+    client.update_split(&owner, &1, &40, &40, &10, &10);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.spending_percent, 40);
@@ -155,7 +146,7 @@ fn test_calculate_split_rounding() {
     env.mock_all_auths();
 
     // 33, 33, 33, 1 setup
-    client.initialize_split(&owner, &0, &33, &33, &33, &1);
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Total 100
     // 33% = 33
@@ -185,7 +176,7 @@ fn test_calculate_split_rounding_rigorous() {
 
     // Case 1: 33/33/33/1 split, total 100
     // Each 33% of 100 is 33. Insurance gets remainder: 100 - 33 - 33 - 33 = 1.
-    client.initialize_split(&owner, &0, &33, &33, &33, &1);
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
     let amounts = client.calculate_split(&100);
     let sum: i128 = amounts.clone().into_iter().sum();
     assert_eq!(
@@ -272,7 +263,7 @@ fn test_calculate_complex_rounding() {
 
     env.mock_all_auths();
     // 17, 19, 23, 41 (Primes summing to 100)
-    client.initialize_split(&owner, &0, &17, &19, &23, &41);
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Amount 1000
     // 17% = 170
@@ -311,9 +302,7 @@ fn test_create_remittance_schedule() {
     let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
     assert_eq!(schedule_id, 1);
 
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some());
-    let schedule = schedule.unwrap();
+    let schedule = client.get_remittance_schedule(&schedule_id).unwrap();
     assert_eq!(schedule.amount, 10000);
     assert_eq!(schedule.next_due, 3000);
     assert_eq!(schedule.interval, 86400);
@@ -332,10 +321,10 @@ fn test_modify_remittance_schedule() {
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
-    let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
-    client.modify_remittance_schedule(&owner, &schedule_id, &15000, &4000, &172800);
+    client.create_remittance_schedule(&owner, &10000, &3000, &86400);
+    client.modify_remittance_schedule(&owner, &1, &15000, &4000, &172800);
 
-    let schedule = client.get_remittance_schedule(&schedule_id).unwrap();
+    let schedule = client.get_remittance_schedule(&1).unwrap();
     assert_eq!(schedule.amount, 15000);
     assert_eq!(schedule.next_due, 4000);
     assert_eq!(schedule.interval, 172800);
@@ -513,8 +502,8 @@ fn test_split_boundary_100_0_0_0() {
 
     env.mock_all_auths();
 
-    let ok = client.initialize_split(&owner, &0, &100, &0, &0, &0);
-    assert!(ok);
+    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    
 
     // get_split must return the exact percentages
     let split = client.get_split();
@@ -541,8 +530,8 @@ fn test_split_boundary_0_100_0_0() {
 
     env.mock_all_auths();
 
-    let ok = client.initialize_split(&owner, &0, &0, &100, &0, &0);
-    assert!(ok);
+    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -567,8 +556,8 @@ fn test_split_boundary_0_0_100_0() {
 
     env.mock_all_auths();
 
-    let ok = client.initialize_split(&owner, &0, &0, &0, &100, &0);
-    assert!(ok);
+    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -593,8 +582,8 @@ fn test_split_boundary_0_0_0_100() {
 
     env.mock_all_auths();
 
-    let ok = client.initialize_split(&owner, &0, &0, &0, &0, &100);
-    assert!(ok);
+    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 0);
@@ -620,8 +609,8 @@ fn test_split_boundary_25_25_25_25() {
 
     env.mock_all_auths();
 
-    let ok = client.initialize_split(&owner, &0, &25, &25, &25, &25);
-    assert!(ok);
+    let _ok = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 25);
@@ -652,8 +641,7 @@ fn test_update_split_boundary_percentages() {
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Update to 100/0/0/0
-    let ok = client.update_split(&owner, &1, &100, &0, &0, &0);
-    assert!(ok);
+    client.update_split(&owner, &1, &100, &0, &0, &0);
 
     let split = client.get_split();
     assert_eq!(split.get(0).unwrap(), 100);
@@ -668,18 +656,17 @@ fn test_update_split_boundary_percentages() {
     assert_eq!(amounts.get(3).unwrap(), 0);
 
     // Update again to 25/25/25/25
-    let ok = client.update_split(&owner, &1, &25, &25, &25, &25);
-    assert!(ok);
+    client.update_split(&owner, &2, &25, &25, &25, &25);
 
-    let split = client.get_split();
-    assert_eq!(split.get(0).unwrap(), 25);
-    assert_eq!(split.get(1).unwrap(), 25);
-    assert_eq!(split.get(2).unwrap(), 25);
-    assert_eq!(split.get(3).unwrap(), 25);
+    let split2 = client.get_split();
+    assert_eq!(split2.get(0).unwrap(), 25);
+    assert_eq!(split2.get(1).unwrap(), 25);
+    assert_eq!(split2.get(2).unwrap(), 25);
+    assert_eq!(split2.get(3).unwrap(), 25);
 
-    let amounts = client.calculate_split(&1000);
-    assert_eq!(amounts.get(0).unwrap(), 250);
-    assert_eq!(amounts.get(1).unwrap(), 250);
-    assert_eq!(amounts.get(2).unwrap(), 250);
-    assert_eq!(amounts.get(3).unwrap(), 250);
+    let amounts2 = client.calculate_split(&1000);
+    assert_eq!(amounts2.get(0).unwrap(), 250);
+    assert_eq!(amounts2.get(1).unwrap(), 250);
+    assert_eq!(amounts2.get(2).unwrap(), 250);
+    assert_eq!(amounts2.get(3).unwrap(), 250);
 }

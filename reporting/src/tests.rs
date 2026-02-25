@@ -201,8 +201,7 @@ fn test_init_reporting_contract() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    let result = client.init(&admin);
-    assert!(result);
+    client.init(&admin);
 
     let stored_admin = client.get_admin();
     assert_eq!(stored_admin, Some(admin));
@@ -235,7 +234,7 @@ fn test_configure_addresses() {
     let insurance = Address::generate(&env);
     let family_wallet = Address::generate(&env);
 
-    let result = client.configure_addresses(
+    client.configure_addresses(
         &admin,
         &remittance_split,
         &savings_goals,
@@ -243,7 +242,6 @@ fn test_configure_addresses() {
         &insurance,
         &family_wallet,
     );
-    assert!(result);
 
     let addresses = client.get_addresses();
     assert!(addresses.is_some());
@@ -887,8 +885,7 @@ fn test_instance_ttl_extended_on_init() {
     let admin = Address::generate(&env);
 
     // init calls extend_instance_ttl
-    let result = client.init(&admin);
-    assert!(result);
+    client.init(&admin);
 
     // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());

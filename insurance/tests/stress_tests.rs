@@ -295,8 +295,8 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     });
 
     // pay_premium must re-bump TTL
-    let paid = client.pay_premium(&owner, &policy_id);
-    assert!(paid, "pay_premium must succeed");
+    client.pay_premium(&owner, &policy_id);
+    client.pay_premium(&owner, &policy_id);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(

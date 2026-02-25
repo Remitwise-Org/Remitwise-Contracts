@@ -437,6 +437,9 @@ impl BillPayments {
     // Core bill operations
     // -----------------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_bill(
         env: Env,
         owner: Address,
@@ -458,7 +461,7 @@ impl BillPayments {
         }
 
         // Resolve default currency: blank input → "XLM"
-        let resolved_currency = if currency.len() == 0 {
+        let resolved_currency = if currency.is_empty() {
             String::from_str(&env, "XLM")
         } else {
             currency
@@ -604,12 +607,14 @@ impl BillPayments {
 
     /// Get a page of unpaid bills for `owner`.
     ///
-    /// # Arguments
+    /// #[allow(clippy::too_many_arguments)]
+#[contractclient(name = "GlobalConfigClient")]Arguments
     /// * `owner`  – whose bills to return
     /// * `cursor` – start after this bill ID (pass 0 for the first page)
     /// * `limit`  – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
-    /// # Returns
+    /// #[allow(clippy::too_many_arguments)]
+#[contractclient(name = "GlobalConfigClient")]Returns
     /// `BillPage { items, next_cursor, count }`.
     /// When `next_cursor == 0` there are no more pages.
     pub fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage {
@@ -1188,13 +1193,15 @@ impl BillPayments {
 
     /// Get a page of ALL bills (paid + unpaid) for `owner` that match `currency`.
     ///
-    /// # Arguments
+    /// #[allow(clippy::too_many_arguments)]
+#[contractclient(name = "GlobalConfigClient")]Arguments
     /// * `owner`    – whose bills to return
     /// * `currency` – currency code to filter by, e.g. `"USDC"`, `"XLM"`
     /// * `cursor`   – start after this bill ID (pass 0 for the first page)
     /// * `limit`    – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
-    /// # Returns
+    /// #[allow(clippy::too_many_arguments)]
+#[contractclient(name = "GlobalConfigClient")]Returns
     /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
     pub fn get_bills_by_currency(
         env: Env,
@@ -1203,7 +1210,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -1237,7 +1244,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = Self::clamp_limit(&env, limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -1263,7 +1270,8 @@ impl BillPayments {
 
     /// Sum of all **unpaid** bill amounts for `owner` denominated in `currency`.
     ///
-    /// # Example
+    /// #[allow(clippy::too_many_arguments)]
+#[contractclient(name = "GlobalConfigClient")]Example
     /// ```text
     /// let usdc_owed = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
     /// ```
@@ -1397,7 +1405,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
-                &String::from_str(&env, "XLM"),
+                &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
         }
@@ -2250,6 +2258,7 @@ mod test {
                     &(now - 1 - i as u64),
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2262,6 +2271,7 @@ mod test {
                     &(now + 1 + i as u64),
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2295,6 +2305,7 @@ mod test {
                     &(now + i as u64), // due_date >= now — strict less-than is required to be overdue
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2332,6 +2343,7 @@ mod test {
                 &base_due,
                 &true,
                 &freq_days,
+                &String::from_str(&env, "USD"),
             );
 
             client.pay_bill(&owner, &bill_id);
@@ -2388,8 +2400,8 @@ mod test {
             next_bill.amount, amount,
             "Cloned bill must preserve the original amount"
         );
-        assert_eq!(
-            next_bill.recurring, true,
+        assert!(
+            next_bill.recurring,
             "Cloned bill must remain recurring"
         );
         assert_eq!(
@@ -2400,7 +2412,7 @@ mod test {
             next_bill.owner, owner,
             "Cloned bill must preserve the original owner"
         );
-        assert_eq!(next_bill.paid, false, "Cloned bill must start as unpaid");
+        assert!(!next_bill.paid, "Cloned bill must start as unpaid");
         assert_eq!(
             next_bill.paid_at, None,
             "Cloned bill must have paid_at = None"
