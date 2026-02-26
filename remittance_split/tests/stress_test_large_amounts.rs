@@ -73,7 +73,9 @@ fn test_calculate_split_overflow_detection() {
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Value that will overflow when multiplied by percentage
-    let overflow_amount = i128::MAX / 50; // Will overflow when multiplied by 50
+    // i128::MAX / 50 floors down, so (i128::MAX / 50) * 50 <= i128::MAX (no overflow).
+    // Adding 1 guarantees the multiplication exceeds i128::MAX.
+    let overflow_amount = i128::MAX / 50 + 1;
 
     let result = client.try_calculate_split(&overflow_amount);
 
