@@ -412,7 +412,7 @@ fn test_sequential_large_operations() {
     env.mock_all_auths();
 
     // Test with progressively larger amounts
-    let amounts_to_test = vec![
+    let amounts_to_test = [
         i128::MAX / 1000,
         i128::MAX / 500,
         i128::MAX / 200,

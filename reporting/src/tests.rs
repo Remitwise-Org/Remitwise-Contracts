@@ -77,9 +77,7 @@ mod savings_goals {
 
 mod bill_payments {
     use crate::{Bill, BillPage, BillPaymentsTrait};
-    use soroban_sdk::{
-        contract, contractimpl, testutils::Address as _, Address, Env, String as SorobanString, Vec,
-    };
+    use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
     pub struct BillPayments;

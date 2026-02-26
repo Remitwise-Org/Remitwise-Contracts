@@ -734,8 +734,6 @@ impl RemittanceSplit {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn create_remittance_schedule(
         env: Env,
         owner: Address,
@@ -799,8 +797,6 @@ impl RemittanceSplit {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn modify_remittance_schedule(
         env: Env,
         caller: Address,
@@ -855,8 +851,6 @@ impl RemittanceSplit {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn cancel_remittance_schedule(
         env: Env,
         caller: Address,
@@ -895,8 +889,6 @@ impl RemittanceSplit {
         Ok(true)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let schedules: Map<u32, RemittanceSchedule> = env
