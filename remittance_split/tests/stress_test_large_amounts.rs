@@ -32,10 +32,7 @@ fn test_calculate_split_with_large_amount() {
     // Test with i128::MAX / 200 to ensure multiplication by percentages doesn't overflow
     let large_amount = i128::MAX / 200;
 
-    let result = client.calculate_split(&large_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&large_amount);
     assert_eq!(amounts.len(), 4);
 
     // Verify the split adds up correctly
@@ -57,10 +54,7 @@ fn test_calculate_split_near_max_safe_value() {
     // Maximum safe value for multiplication by 100 (largest percentage)
     let max_safe = i128::MAX / 100 - 1;
 
-    let result = client.calculate_split(&max_safe);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&max_safe);
     let total: i128 = amounts.iter().sum();
 
     // Total should equal input (within rounding)
@@ -102,10 +96,7 @@ fn test_calculate_split_with_minimal_percentages() {
     // With 1% multiplier, we can handle much larger values
     let large_amount = i128::MAX / 150;
 
-    let result = client.calculate_split(&large_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&large_amount);
     let total: i128 = amounts.iter().sum();
     assert_eq!(total, large_amount);
 }
@@ -123,10 +114,7 @@ fn test_get_split_allocations_with_large_amount() {
 
     let large_amount = i128::MAX / 200;
 
-    let result = client.get_split_allocations(&large_amount);
-    assert!(result.is_ok());
-
-    let allocations = result.unwrap();
+    let allocations = client.get_split_allocations(&large_amount);
     assert_eq!(allocations.len(), 4);
 
     // Verify each allocation has correct category and reasonable amount
@@ -149,10 +137,7 @@ fn test_multiple_splits_with_large_amounts() {
 
     // Perform multiple splits to ensure no state corruption
     for _ in 0..5 {
-        let result = client.calculate_split(&large_amount);
-        assert!(result.is_ok());
-
-        let amounts = result.unwrap();
+        let amounts = client.calculate_split(&large_amount);
         let total: i128 = amounts.iter().sum();
         assert_eq!(total, large_amount);
     }
@@ -172,10 +157,7 @@ fn test_edge_case_i128_max_divided_by_100() {
     // Exact edge case: i128::MAX / 100
     let edge_amount = i128::MAX / 100;
 
-    let result = client.calculate_split(&edge_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&edge_amount);
     assert_eq!(amounts.len(), 4);
 }
 
@@ -193,10 +175,7 @@ fn test_split_with_100_percent_to_one_category() {
 
     let large_amount = i128::MAX / 150;
 
-    let result = client.calculate_split(&large_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&large_amount);
     // First amount should be the full amount
     assert_eq!(amounts.get(0).unwrap(), large_amount);
     // Others should be 0
@@ -219,10 +198,7 @@ fn test_rounding_behavior_with_large_amounts() {
 
     let large_amount = i128::MAX / 200;
 
-    let result = client.calculate_split(&large_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&large_amount);
     let total: i128 = amounts.iter().sum();
 
     // Due to rounding, total should equal input
@@ -250,10 +226,7 @@ fn test_sequential_large_calculations() {
     ];
 
     for amount in amounts_to_test {
-        let result = client.calculate_split(&amount);
-        assert!(result.is_ok(), "Failed for amount: {}", amount);
-
-        let splits = result.unwrap();
+        let splits = client.calculate_split(&amount);
         let total: i128 = splits.iter().sum();
         assert_eq!(total, amount);
     }
@@ -302,10 +275,7 @@ fn test_insurance_remainder_calculation_with_large_values() {
 
     let large_amount = i128::MAX / 200;
 
-    let result = client.calculate_split(&large_amount);
-    assert!(result.is_ok());
-
-    let amounts = result.unwrap();
+    let amounts = client.calculate_split(&large_amount);
 
     // Verify insurance (last element) is calculated correctly as remainder
     let spending = amounts.get(0).unwrap();
