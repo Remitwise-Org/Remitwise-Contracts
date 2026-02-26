@@ -17,6 +17,7 @@ members = [
     "cli",
     "scenarios",
     "integration_tests",
+    "emergency_killswitch",
 ]
 default-members = [
     "remittance_split",
