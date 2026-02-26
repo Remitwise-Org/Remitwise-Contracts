@@ -159,7 +159,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
 }
 
 #[test]
-fn test_get_total_unpaid_overflow_panics() {
+fn test_get_total_unpaid_saturates_on_overflow() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -167,7 +167,7 @@ fn test_get_total_unpaid_overflow_panics() {
 
     env.mock_all_auths();
 
-    // Create two bills that will overflow when added
+    // Two bills whose sum exceeds i128::MAX
     let amount = i128::MAX / 2 + 1000;
 
     client.create_bill(
@@ -191,9 +191,9 @@ fn test_get_total_unpaid_overflow_panics() {
         &String::from_str(&env, "USD"),
     );
 
-    // Soroban VM catches arithmetic overflow as a host error, not a Rust panic
-    let result = client.try_get_total_unpaid(&owner);
-    assert!(result.is_err(), "overflow should return a host error");
+    // adjust_unpaid_total uses saturating_add, so the total caps at i128::MAX
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(total, i128::MAX);
 }
 
 #[test]
