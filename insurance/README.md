@@ -116,8 +116,22 @@ Gets all active policies for an owner.
 **Parameters:**
 
 - `owner`: Address of the policy owner
+- `env`: Environment
 
 **Returns:** Vector of active InsurancePolicy structs
+
+#### `get_all_policies_for_owner(env, owner, cursor, limit) -> PolicyPage`
+
+Gets a paginated list of all policies (including inactive) for an owner.
+
+**Parameters:**
+
+- `owner`: Address of the policy owner
+- `cursor`: Starting ID (0 for first page)
+- `limit`: Maximum items per page
+- `env`: Environment
+
+**Returns:** `PolicyPage` struct with items, next_cursor, and count
 
 #### `get_total_monthly_premium(env, owner) -> i128`
 
@@ -173,6 +187,10 @@ let active_policies = insurance::get_active_policies(env, user_address);
 
 // Get total monthly premium
 let total_premium = insurance::get_total_monthly_premium(env, user_address);
+
+// Get all policies (history, paginated)
+let all_policies_page = insurance::get_all_policies_for_owner(env, user_address, 0, 10);
+let all_policies = all_policies_page.items;
 ```
 
 ## Events

@@ -17,10 +17,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "health"
+                  "string": "Health"
                 },
                 {
                   "i128": {
@@ -31,7 +31,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50000
+                    "lo": 10000
                   }
                 }
               ]
@@ -110,7 +110,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 50000
+                                        "lo": 10000
                                       }
                                     }
                                   },
@@ -119,7 +119,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "string": "Health"
                                     }
                                   },
                                   {
@@ -146,7 +146,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Health Insurance"
+                                      "string": "Health Policy"
                                     }
                                   },
                                   {
@@ -288,10 +288,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "health"
+                  "string": "Health"
                 },
                 {
                   "i128": {
@@ -302,7 +302,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50000
+                    "lo": 10000
                   }
                 }
               ]
@@ -333,7 +333,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 50000
+                      "lo": 10000
                     }
                   }
                 },
@@ -342,7 +342,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "string": "Health"
                   }
                 },
                 {
@@ -361,7 +361,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Health Insurance"
+                    "string": "Health Policy"
                   }
                 },
                 {

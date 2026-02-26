@@ -1048,16 +1048,27 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "withdraw_from_goal"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 12
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Goal is time-locked until unlock date' from contract function 'Symbol(obj#221)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 1
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000
+                  }
+                }
+              ]
             }
           }
         }
@@ -1077,12 +1088,12 @@
               },
               {
                 "error": {
-                  "contract": 12
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -1102,7 +1113,7 @@
               },
               {
                 "error": {
-                  "contract": 12
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

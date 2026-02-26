@@ -5,15 +5,12 @@ use soroban_sdk::{
     token::{StellarAssetClient, TokenClient},
     vec, Env,
 };
+use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
-fn test_init_family_wallet() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register_contract(None, FamilyWallet);
-    let client = FamilyWalletClient::new(&env, &contract_id);
+fn test_initialize_wallet_succeeds() {
+    setup_test_env!(env, FamilyWallet, client, owner);
 
-    let owner = Address::generate(&env);
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);
     let initial_members = vec![&env, member1.clone(), member2.clone()];
@@ -807,16 +804,7 @@ fn test_instance_ttl_extended_on_init() {
     let env = Env::default();
     env.mock_all_auths();
 
-    env.ledger().set(LedgerInfo {
-        protocol_version: 20,
-        sequence_number: 100,
-        timestamp: 1000,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 100,
-        min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
-    });
+    set_ledger_time(&env, 100, 1000);
 
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);
@@ -846,16 +834,7 @@ fn test_instance_ttl_refreshed_on_add_member() {
     let env = Env::default();
     env.mock_all_auths();
 
-    env.ledger().set(LedgerInfo {
-        protocol_version: 20,
-        sequence_number: 100,
-        timestamp: 1000,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 100,
-        min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
-    });
+    set_ledger_time(&env, 100, 1000);
 
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);
@@ -868,16 +847,7 @@ fn test_instance_ttl_refreshed_on_add_member() {
     // Advance ledger so TTL drops below threshold (17,280)
     // After init at seq 100: live_until = 518,500
     // At seq 510,000: TTL = 8,500 < 17,280 ✓
-    env.ledger().set(LedgerInfo {
-        protocol_version: 20,
-        sequence_number: 510_000,
-        timestamp: 500_000,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 100,
-        min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
-    });
+    set_ledger_time(&env, 510_000, 500_000);
 
     // add_family_member calls extend_instance_ttl → re-extends TTL to 518,400
     client.add_family_member(&owner, &member2, &FamilyRole::Member);
@@ -901,16 +871,7 @@ fn test_data_persists_across_repeated_operations() {
     let env = Env::default();
     env.mock_all_auths();
 
-    env.ledger().set(LedgerInfo {
-        protocol_version: 20,
-        sequence_number: 100,
-        timestamp: 1000,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 100,
-        min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
-    });
+    set_ledger_time(&env, 100, 1000);
 
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);

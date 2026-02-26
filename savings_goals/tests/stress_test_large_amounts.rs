@@ -170,10 +170,47 @@ fn test_withdraw_from_goal_with_large_amount() {
 
     // Withdraw half
     env.mock_all_auths();
-    let remaining = client.withdraw_from_goal(&owner, &goal_id, &(large_amount / 2));
+    let to_withdraw = large_amount / 2;
+    let remaining = client.withdraw_from_goal(&owner, &goal_id, &to_withdraw);
 
-    assert_eq!(remaining, large_amount / 2);
+    // For odd large_amount values, large_amount - (large_amount / 2) equals
+    // ceil(large_amount / 2), not exactly large_amount / 2. Assert on the
+    // invariant instead of assuming evenness.
+    assert_eq!(remaining + to_withdraw, large_amount);
 }
+// #[test]
+// fn test_withdraw_from_goal_with_large_amount() {
+//     let env = Env::default();
+//     let contract_id = env.register_contract(None, SavingsGoalContract);
+//     let client = SavingsGoalContractClient::new(&env, &contract_id);
+//     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+//     env.mock_all_auths();
+
+//     let large_target = i128::MAX / 2;
+//     let large_amount = i128::MAX / 4;
+
+//     let goal_id = client.create_goal(
+//         &owner,
+//         &String::from_str(&env, "Large Goal"),
+//         &large_target,
+//         &2000000,
+//     );
+
+//     // Add funds
+//     env.mock_all_auths();
+//     client.add_to_goal(&owner, &goal_id, &large_amount);
+
+//     // Unlock to allow withdrawal
+//     env.mock_all_auths();
+//     client.unlock_goal(&owner, &goal_id);
+
+//     // Withdraw half
+//     env.mock_all_auths();
+//     let remaining = client.withdraw_from_goal(&owner, &goal_id, &(large_amount / 2));
+
+//     assert_eq!(remaining, large_amount / 2);
+// }
 #[test]
 fn test_goal_completion_with_large_amounts() {
     let env = Env::default();

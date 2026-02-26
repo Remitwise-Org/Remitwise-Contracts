@@ -17,21 +17,21 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Life Insurance"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "life"
+                  "string": "Health"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 200
+                    "lo": 100
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 100000
+                    "lo": 10000
                   }
                 }
               ]
@@ -132,7 +132,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 100000
+                                        "lo": 10000
                                       }
                                     }
                                   },
@@ -141,7 +141,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "life"
+                                      "string": "Health"
                                     }
                                   },
                                   {
@@ -159,7 +159,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 200
+                                        "lo": 100
                                       }
                                     }
                                   },
@@ -168,7 +168,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Life Insurance"
+                                      "string": "Health Policy"
                                     }
                                   },
                                   {
@@ -343,21 +343,21 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Life Insurance"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "life"
+                  "string": "Health"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 200
+                    "lo": 100
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 100000
+                    "lo": 10000
                   }
                 }
               ]
@@ -388,7 +388,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 100000
+                      "lo": 10000
                     }
                   }
                 },
@@ -397,7 +397,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "life"
+                    "string": "Health"
                   }
                 },
                 {
@@ -407,7 +407,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 200
+                      "lo": 100
                     }
                   }
                 },
@@ -416,7 +416,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Life Insurance"
+                    "string": "Health Policy"
                   }
                 },
                 {
@@ -551,7 +551,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Life Insurance"
+                    "string": "Health Policy"
                   }
                 },
                 {

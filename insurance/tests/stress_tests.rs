@@ -106,18 +106,11 @@ fn stress_200_policies_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(
-        collected, 200,
-        "Pagination must return all 200 active policies"
-    );
+    assert_eq!(collected, 200, "Pagination must return all 200 active policies");
     // get_active_policies sets next_cursor = last_returned_id; when a page is exactly
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(
-        (4..=5).contains(&pages),
-        "Expected 4-5 pages for 200 policies at limit 50, got {}",
-        pages
-    );
+    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
 }
 
 /// Create 200 policies and verify instance TTL remains valid after the instance
@@ -295,8 +288,8 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     });
 
     // pay_premium must re-bump TTL
-    client.pay_premium(&owner, &policy_id);
-    client.pay_premium(&owner, &policy_id);
+    let paid = client.pay_premium(&owner, &policy_id);
+    assert!(paid, "pay_premium must succeed");
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(

@@ -1,0 +1,11 @@
+[package]
+name = "remitwise-common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = "20.0.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

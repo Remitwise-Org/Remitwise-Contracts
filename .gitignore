@@ -20,3 +20,7 @@ Makefile
 !docs/family-wallet-design.md
 !docs/frontend-integration.md
 !STORAGE_LAYOUT.md
+
+# local verification logs
+*verification*.txt
+compile_errors_*.txt

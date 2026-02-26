@@ -1,7 +1,10 @@
 #![no_std]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
 };
+
+use remitwise_common::Category;
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
@@ -10,17 +13,6 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 // Storage TTL constants for archived data (longer retention, less frequent access)
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
-
-/// Category for financial breakdown
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum Category {
-    Spending = 1,
-    Savings = 2,
-    Bills = 3,
-    Insurance = 4,
-}
 
 /// Financial health score (0-100)
 #[contracttype]
@@ -298,6 +290,15 @@ pub struct InsurancePolicy {
     pub coverage_amount: i128,
     pub active: bool,
     pub next_payment_date: u64,
+    pub schedule_id: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contract]
@@ -408,7 +409,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
         let split_percentages = split_client.get_split();
@@ -450,7 +451,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
         let goals = savings_client.get_all_goals(&user);
@@ -496,7 +497,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
         // get_unpaid_bills does not require owner auth and is safe to call cross-contract
@@ -561,10 +562,11 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user, &0, &0).items;
+        let policy_page = insurance_client.get_active_policies(&user, &0, &50);
+        let policies = policy_page.items;
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
         let mut total_coverage = 0i128;
@@ -598,7 +600,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         // Savings score (0-40 points)
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
@@ -639,8 +641,8 @@ impl ReportingContract {
 
         // Insurance score (0-20 points)
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user, &0, &0).items;
-        let insurance_score = if !policies.is_empty() { 20 } else { 0 };
+        let policy_page = insurance_client.get_active_policies(&user, &0, &1);
+        let insurance_score = if !policy_page.items.is_empty() { 20 } else { 0 };
 
         let total_score = savings_score + bills_score + insurance_score;
 
@@ -787,7 +789,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .expect("Contract not initialized");
+            .unwrap_or_else(|| panic!("Contract not initialized"));
 
         if caller != admin {
             panic!("Only admin can archive reports");
@@ -888,7 +890,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .expect("Contract not initialized");
+            .unwrap_or_else(|| panic!("Contract not initialized"));
 
         if caller != admin {
             panic!("Only admin can cleanup reports");

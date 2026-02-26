@@ -11,12 +11,42 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **bill_payments**: Automated bill payment tracking and scheduling
 - **insurance**: Micro-insurance policy management and premium payments
 - **family_wallet**: Family governance, multisig approvals, and emergency transfer controls
+- **remitwise-common**: Shared types and utilities used across contracts
+
+## Shared Components
+
+### remitwise-common
+
+A common crate containing shared types, enums, and constants used across multiple contracts.
+
+**Shared Types:**
+- `Category`: Financial categories (Spending, Savings, Bills, Insurance)
+- `FamilyRole`: Access control roles (Owner, Admin, Member, Viewer)
+- `CoverageType`: Insurance coverage types (Health, Life, Property, Auto, Liability)
+- `EventCategory` & `EventPriority`: Event logging categories and priorities
+
+**Shared Constants:**
+- Pagination limits (`DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`)
+- Storage TTL values (`INSTANCE_LIFETIME_THRESHOLD`, `ARCHIVE_LIFETIME_THRESHOLD`, etc.)
+- Contract versioning (`CONTRACT_VERSION`)
+- Batch operation limits (`MAX_BATCH_SIZE`)
+
+**Shared Utilities:**
+- `clamp_limit()`: Helper for pagination limit validation
+- `RemitwiseEvents`: Standardized event emission with `emit()` and `emit_batch()` methods
 
 ## CLI Tool
 
 A custom Rust CLI is provided for interacting with the contracts without a UI.
 
 See [cli/README.md](cli/README.md) for usage instructions.
+
+### Additional Components
+
+- **indexer**: TypeScript event indexer for off-chain querying and analytics ([Documentation](indexer/README.md))
+- **analytics**: On-chain analytics and reporting
+- **orchestrator**: Cross-contract coordination
+- **reporting**: Financial reporting and insights
 
 ## Prerequisites
 
@@ -229,11 +259,34 @@ cargo install --locked --version 21.0.0 soroban-cli
 cargo build --release --target wasm32-unknown-unknown
 ```
 
+## Examples
+
+The workspace includes runnable examples for each contract in the `examples/` directory. These examples demonstrate basic read and write operations using the Soroban SDK test environment.
+
+To run an example, use `cargo run --example <example_name>`:
+
+| Contract | Example Command |
+|----------|-----------------|
+| Remittance Split | `cargo run --example remittance_split_example` |
+| Savings Goals | `cargo run --example savings_goals_example` |
+| Bill Payments | `cargo run --example bill_payments_example` |
+| Insurance | `cargo run --example insurance_example` |
+| Family Wallet | `cargo run --example family_wallet_example` |
+| Reporting | `cargo run --example reporting_example` |
+| Orchestrator | `cargo run --example orchestrator_example` |
+
+> [!NOTE]
+> These examples run in a mocked environment and do not require a connection to a Stellar network.
+
 ## Documentation
 
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
+- [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
+- [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
+- [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
+- [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
 
 ## Contracts
 
@@ -284,6 +337,7 @@ Manages goal-based savings with target dates.
 Tracks and manages bill payments with recurring support.
 
 **Key Functions:**
+- `create_bill`: Create a new bill (electricity, school fees, etc.) with optional `external_ref`
 
 - `create_bill`: Create a new bill (electricity, school fees, etc.)
 - `pay_bill`: Mark a bill as paid and create next recurring bill if applicable
@@ -310,6 +364,7 @@ Tracks and manages bill payments with recurring support.
 Manages micro-insurance policies and premium payments.
 
 **Key Functions:**
+- `create_policy`: Create a new insurance policy with optional `external_ref`
 
 - `create_policy`: Create a new insurance policy
 - `pay_premium`: Pay monthly premium
@@ -318,6 +373,9 @@ Manages micro-insurance policies and premium payments.
 - `get_total_monthly_premium`: Calculate total monthly premium cost
 - `deactivate_policy`: Deactivate an insurance policy
 
+Bill and insurance events include `external_ref` where applicable for off-chain linking.
+
+### Family Wallet
 **Events:**
 
 - `PolicyCreatedEvent`: Emitted when a new insurance policy is created
@@ -560,6 +618,41 @@ This is a basic MVP implementation. Future enhancements:
 - Cross-contract calls for automated allocation
 - Multi-signature support for family wallets
 - Emergency mode with priority processing
+
+## Security
+
+### Threat Model
+
+A comprehensive security review and threat model is available in [THREAT_MODEL.md](THREAT_MODEL.md). This document identifies:
+
+- **Critical Assets**: User funds, configuration, identity, and data
+- **Threat Scenarios**: Unauthorized access, reentrancy, DoS, economic attacks
+- **Existing Mitigations**: Authorization patterns, pause mechanisms, input validation
+- **Security Gaps**: Areas requiring immediate attention before mainnet deployment
+
+**Key Security Issues:**
+- [SECURITY-001] Add Authorization to Reporting Contract Queries (HIGH)
+- [SECURITY-002] Implement Reentrancy Protection in Orchestrator (HIGH)
+- [SECURITY-003] Add Rate Limiting to Emergency Transfers (HIGH)
+- [SECURITY-004] Replace Checksum with Cryptographic Hash (MEDIUM)
+- [SECURITY-005] Implement Storage Bounds and Entity Limits (MEDIUM)
+
+See the [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE) directory for detailed security issue descriptions.
+
+### Security Best Practices
+
+When integrating with these contracts:
+
+1. **Always verify caller authorization** before performing sensitive operations
+2. **Monitor events** for suspicious activity patterns
+3. **Implement rate limiting** at the application layer
+4. **Use multi-signature** for high-value operations
+5. **Regular security audits** before major releases
+6. **Incident response plan** for security events
+
+### Reporting Security Issues
+
+If you discover a security vulnerability, please email security@remitwise.com instead of using the public issue tracker.
 
 ## License
 
