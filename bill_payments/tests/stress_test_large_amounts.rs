@@ -159,7 +159,6 @@ fn test_get_total_unpaid_with_two_large_bills() {
 }
 
 #[test]
-#[should_panic(expected = "overflow")]
 fn test_get_total_unpaid_overflow_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
@@ -192,8 +191,9 @@ fn test_get_total_unpaid_overflow_panics() {
         &String::from_str(&env, "USD"),
     );
 
-    // This should panic due to overflow
-    client.get_total_unpaid(&owner);
+    // Soroban VM catches arithmetic overflow as a host error, not a Rust panic
+    let result = client.try_get_total_unpaid(&owner);
+    assert!(result.is_err(), "overflow should return a host error");
 }
 
 #[test]
