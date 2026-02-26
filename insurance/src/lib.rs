@@ -1745,4 +1745,86 @@ mod test {
             "Must not re-execute before the new next_due"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Negative Amount Tests for create_policy (#76)
+    // Ensure zero and negative monthly_premium / coverage_amount are
+    // always rejected so validation cannot be silently removed.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_policy_zero_monthly_premium_panics() {
+        let env = make_env();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let result = client.try_create_policy(
+            &owner,
+            &String::from_str(&env, "Test Policy"),
+            &String::from_str(&env, "health"),
+            &0, // zero premium
+            &10000,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_policy_negative_monthly_premium_panics() {
+        let env = make_env();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let result = client.try_create_policy(
+            &owner,
+            &String::from_str(&env, "Test Policy"),
+            &String::from_str(&env, "health"),
+            &-1, // negative premium
+            &10000,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_policy_zero_coverage_amount_panics() {
+        let env = make_env();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let result = client.try_create_policy(
+            &owner,
+            &String::from_str(&env, "Test Policy"),
+            &String::from_str(&env, "health"),
+            &100,
+            &0, // zero coverage
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_policy_negative_coverage_amount_panics() {
+        let env = make_env();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let result = client.try_create_policy(
+            &owner,
+            &String::from_str(&env, "Test Policy"),
+            &String::from_str(&env, "health"),
+            &100,
+            &-1, // negative coverage
+        );
+
+        assert!(result.is_err());
+    }
 }
