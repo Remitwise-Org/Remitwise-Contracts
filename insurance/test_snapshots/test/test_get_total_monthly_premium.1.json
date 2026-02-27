@@ -299,6 +299,26 @@
                             }
                           ]
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "PRM_TOT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 300
+                                }
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -457,6 +477,81 @@
           "v0": {
             "topics": [
               {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 1000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "string": "T1"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 100
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "P1"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "policy_id"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
                 "symbol": "insure"
               },
               {
@@ -544,6 +639,81 @@
                   "i128": {
                     "hi": 0,
                     "lo": 2000
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 2000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "string": "T2"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 200
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "P2"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "policy_id"
+                  },
+                  "val": {
+                    "u32": 2
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
                   }
                 }
               ]

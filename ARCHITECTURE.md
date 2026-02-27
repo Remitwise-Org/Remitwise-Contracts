@@ -28,7 +28,24 @@ The Remitwise Contracts suite implements a comprehensive financial management sy
             │    Reporting    │
             │   (Aggregator)  │
             └─────────────────┘
+                     │
+                     ▼
+            ┌─────────────────┐
+            │ remitwise-common│
+            │   (Shared Lib)  │
+            └─────────────────┘
 ```
+
+## Shared Components
+
+The `remitwise-common` crate provides shared types, enums, and utilities used across multiple contracts:
+
+- **Category**: Financial allocation categories (Spending, Savings, Bills, Insurance)
+- **FamilyRole**: Access control roles for family wallet management
+- **CoverageType**: Insurance policy coverage types
+- **EventCategory/EventPriority**: Standardized event logging
+- **Constants**: Pagination limits, storage TTL values, batch sizes
+- **Utilities**: Event emission helpers, limit validation functions
 
 ## Data Flow Architecture
 

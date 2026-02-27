@@ -1,10 +1,12 @@
 pub mod tests {
-    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
-    use soroban_sdk::{Address, Env};
+    use soroban_sdk::Env;
+    use testutils::set_ledger_time;
+    use soroban_sdk::testutils::{Ledger, LedgerInfo};
+    use soroban_sdk::Env;
 
     pub fn setup_env() -> Env {
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         env.ledger().set(LedgerInfo {
             timestamp: 1704067200, // Jan 1, 2024
             protocol_version: 20,

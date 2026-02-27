@@ -1,7 +1,6 @@
-// Integration tests for the orchestrator contract
-
 use crate::{Orchestrator, OrchestratorClient, OrchestratorError};
-use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use testutils::{generate_test_address, setup_test_env};
 
 // ============================================================================
 // Mock Contract Implementations
@@ -113,7 +112,7 @@ mod tests {
         let insurance_id = env.register_contract(None, MockInsurance);
 
         // Create test user address
-        let user = Address::generate(&env);
+        let user = generate_test_address(&env);
 
         (
             env,
@@ -128,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_successful_savings_deposit() {
+    fn test_execute_savings_deposit_succeeds() {
         let (
             env,
             orchestrator_id,
@@ -156,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn test_savings_deposit_with_invalid_goal() {
+    fn test_execute_savings_deposit_invalid_goal_fails() {
         let (
             env,
             orchestrator_id,
@@ -185,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn test_spending_limit_exceeded() {
+    fn test_execute_savings_deposit_spending_limit_exceeded_fails() {
         let (
             env,
             orchestrator_id,
@@ -219,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn test_successful_bill_payment() {
+    fn test_execute_bill_payment_succeeds() {
         let (
             env,
             orchestrator_id,
@@ -247,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bill_payment_with_invalid_bill() {
+    fn test_execute_bill_payment_invalid_bill_fails() {
         let (
             env,
             orchestrator_id,
@@ -276,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn test_successful_insurance_payment() {
+    fn test_execute_insurance_payment_succeeds() {
         let (
             env,
             orchestrator_id,
@@ -304,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn test_successful_complete_remittance_flow() {
+    fn test_execute_remittance_flow_succeeds() {
         let (
             env,
             orchestrator_id,
@@ -351,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remittance_flow_bill_payment_failure_causes_rollback() {
+    fn test_execute_remittance_flow_bill_failure_rolls_back() {
         let (
             env,
             orchestrator_id,
@@ -385,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remittance_flow_savings_failure_causes_rollback() {
+    fn test_execute_remittance_flow_savings_failure_rolls_back() {
         let (
             env,
             orchestrator_id,
@@ -419,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remittance_flow_exceeds_spending_limit() {
+    fn test_execute_remittance_flow_spending_limit_exceeded_fails() {
         let (
             env,
             orchestrator_id,
@@ -458,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remittance_flow_invalid_amount() {
+    fn test_execute_remittance_flow_invalid_amount_fails() {
         let (
             env,
             orchestrator_id,
@@ -495,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_execution_stats() {
+    fn test_get_execution_stats_succeeds() {
         let (env, orchestrator_id, _, _, _, _, _, _) = setup_test_env();
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
@@ -510,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_audit_log() {
+    fn test_get_audit_log_succeeds() {
         let (env, orchestrator_id, _, _, _, _, _, _) = setup_test_env();
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);

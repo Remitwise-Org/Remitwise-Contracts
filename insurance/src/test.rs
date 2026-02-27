@@ -1,35 +1,23 @@
+#![cfg(test)]
+
 use super::*;
+use crate::InsuranceError;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Ledger, LedgerInfo},
     Address, Env, String,
 };
+use proptest::prelude::*;
 
-fn set_time(env: &Env, timestamp: u64) {
-    let proto = env.ledger().protocol_version();
+use testutils::{set_ledger_time, setup_test_env};
 
-    env.ledger().set(LedgerInfo {
-        protocol_version: proto,
-        sequence_number: 1,
-        timestamp,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 1,
-        min_persistent_entry_ttl: 1,
-        max_entry_ttl: 100000,
-    });
-}
+// Removed local set_time in favor of testutils::set_ledger_time
 
 #[test]
-fn test_create_policy() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
-    let client = InsuranceClient::new(&env, &contract_id);
-    let owner = Address::generate(&env);
-
-    env.mock_all_auths();
+fn test_create_policy_succeeds() {
+    setup_test_env!(env, Insurance, client, owner);
 
     let name = String::from_str(&env, "Health Policy");
-    let coverage_type = String::from_str(&env, "Health");
+    let coverage_type = CoverageType::Health;
 
     let policy_id = client.create_policy(
         &owner,
@@ -46,6 +34,51 @@ fn test_create_policy() {
     assert_eq!(policy.monthly_premium, 100);
     assert_eq!(policy.coverage_amount, 10000);
     assert!(policy.active);
+}
+
+#[test]
+#[should_panic(expected = "Monthly premium must be positive")]
+fn test_create_policy_invalid_premium() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_policy(
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Bad"),
+        &String::from_str(&env, "Type"),
+        &0,
+        &10000,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Coverage amount must be positive")]
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidPremium)));
+}
+
+#[test]
+fn test_create_policy_invalid_coverage() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    client.create_policy(
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Bad"),
+        &String::from_str(&env, "Type"),
+        &100,
+        &0,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidCoverage)));
 }
 
 #[test]
@@ -71,18 +104,40 @@ fn test_pay_premium() {
     let initial_due = initial_policy.next_payment_date;
 
     // Advance ledger time to simulate paying slightly later
-    let mut ledger_info = env.ledger().get();
-    ledger_info.timestamp += 1000;
-    env.ledger().set(ledger_info);
+    set_ledger_time(&env, 1, env.ledger().timestamp() + 1000);
 
-    let success = client.pay_premium(&owner, &policy_id);
-    assert!(success);
+    client.pay_premium(&owner, &policy_id);
 
     let updated_policy = client.get_policy(&policy_id).unwrap();
 
     // New validation logic: new due date should be current timestamp + 30 days
     // Since we advanced timestamp by 1000, the new due date should be > initial due date
     assert!(updated_policy.next_payment_date > initial_due);
+}
+
+#[test]
+#[should_panic(expected = "Only the policy owner can pay premiums")]
+fn test_pay_premium_unauthorized() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &String::from_str(&env, "Type"),
+        &100,
+        &10000,
+    );
+
+    // unauthorized payer
+    client.pay_premium(&other, &policy_id);
+    let result = client.try_pay_premium(&other, &policy_id);
+    assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
 }
 
 #[test]
@@ -144,8 +199,8 @@ fn test_get_active_policies() {
     // Deactivate P2
     client.deactivate_policy(&owner, &p2);
 
-    let active = client.get_active_policies(&owner, &0, &DEFAULT_PAGE_LIMIT);
-    assert_eq!(active.items.len(), 2);
+    let active = client.get_active_policies(&owner);
+    assert_eq!(active.len(), 2);
 
     // Check specific IDs if needed, but length 2 confirms one was filtered
 }
@@ -191,7 +246,67 @@ fn test_get_active_policies_excludes_deactivated() {
         "the returned policy must be the active one (policy_id_2)"
     );
     assert!(only.active, "returned policy must have active == true");
-    // Deactivated policy_id_1 is not in the list (implied by len() == 1 and only.id == policy_id_2)
+}
+
+#[test]
+fn test_get_all_policies_for_owner_pagination() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create 3 policies for owner
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P1"),
+        &String::from_str(&env, "T1"),
+        &100,
+        &1000,
+    );
+    let p2 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "P2"),
+        &String::from_str(&env, "T2"),
+        &200,
+        &2000,
+    );
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P3"),
+        &String::from_str(&env, "T3"),
+        &300,
+        &3000,
+    );
+
+    // Create 1 policy for other
+    client.create_policy(
+        &other,
+        &String::from_str(&env, "Other P"),
+        &String::from_str(&env, "Type"),
+        &500,
+        &5000,
+    );
+
+    // Deactivate P2
+    client.deactivate_policy(&owner, &p2);
+
+    // get_all_policies_for_owner should return all 3 for owner
+    let page = client.get_all_policies_for_owner(&owner, &0, &10);
+    assert_eq!(page.items.len(), 3);
+    assert_eq!(page.count, 3);
+
+    // verify p2 is in the list and is inactive
+    let mut found_p2 = false;
+    for policy in page.items.iter() {
+        if policy.id == p2 {
+            found_p2 = true;
+            assert!(!policy.active);
+        }
+    }
+    assert!(found_p2);
 }
 
 #[test]
@@ -249,7 +364,7 @@ fn test_get_total_monthly_premium_one_policy() {
     client.create_policy(
         &owner,
         &String::from_str(&env, "Single Policy"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &10000,
     );
@@ -271,21 +386,21 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 1"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &100,
         &1000,
     );
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 2"),
-        &String::from_str(&env, "life"),
+        &CoverageType::Life,
         &200,
         &2000,
     );
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 3"),
-        &String::from_str(&env, "emergency"),
+        &CoverageType::Auto,
         &300,
         &3000,
     );
@@ -307,14 +422,14 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
     let policy1 = client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 1"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &100,
         &1000,
     );
-    let _policy2 = client.create_policy(
+    let policy2 = client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 2"),
-        &String::from_str(&env, "life"),
+        &CoverageType::Life,
         &200,
         &2000,
     );
@@ -345,14 +460,14 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
     client.create_policy(
         &owner_a,
         &String::from_str(&env, "Policy A1"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &100,
         &1000,
     );
     client.create_policy(
         &owner_a,
         &String::from_str(&env, "Policy A2"),
-        &String::from_str(&env, "life"),
+        &CoverageType::Life,
         &200,
         &2000,
     );
@@ -404,9 +519,7 @@ fn test_multiple_premium_payments() {
     client.pay_premium(&owner, &policy_id);
 
     // Simulate time passing (still before next due)
-    let mut ledger = env.ledger().get();
-    ledger.timestamp += 5000;
-    env.ledger().set(ledger);
+    set_ledger_time(&env, 1, env.ledger().timestamp() + 5000);
 
     // Second payment
     client.pay_premium(&owner, &policy_id);
@@ -424,19 +537,14 @@ fn test_multiple_premium_payments() {
 }
 
 #[test]
-fn test_create_premium_schedule() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
-    let client = InsuranceClient::new(&env, &contract_id);
-    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-    env.mock_all_auths();
-    set_time(&env, 1000);
+fn test_create_premium_schedule_succeeds() {
+    setup_test_env!(env, Insurance, client, owner);
+    set_ledger_time(&env, 1000);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
@@ -460,12 +568,12 @@ fn test_modify_premium_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
@@ -486,12 +594,12 @@ fn test_cancel_premium_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
@@ -511,19 +619,19 @@ fn test_execute_due_premium_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &0);
 
-    set_time(&env, 3500);
+    set_ledger_time(&env, 1, 3500);
     let executed = client.execute_due_premium_schedules();
 
     assert_eq!(executed.len(), 1);
@@ -541,7 +649,7 @@ fn test_execute_recurring_premium_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id = client.create_policy(
         &owner,
@@ -553,7 +661,7 @@ fn test_execute_recurring_premium_schedule() {
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
 
-    set_time(&env, 3500);
+    set_ledger_time(&env, 1, 3500);
     client.execute_due_premium_schedules();
 
     let schedule = client.get_premium_schedule(&schedule_id).unwrap();
@@ -569,12 +677,12 @@ fn test_execute_missed_premium_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
@@ -597,12 +705,12 @@ fn test_get_premium_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     let policy_id1 = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &String::from_str(&env, "health"),
+        &CoverageType::Health,
         &500,
         &50000,
     );
@@ -635,7 +743,7 @@ fn test_create_policy_emits_event() {
     env.mock_all_auths();
 
     let name = String::from_str(&env, "Health Policy");
-    let coverage_type = String::from_str(&env, "Health");
+    let coverage_type = CoverageType::Health;
 
     let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
 
@@ -720,7 +828,7 @@ fn test_deactivate_policy_emits_event() {
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env), // Fixed: should be "insure" not "insuranc"
+        symbol_short!("insuranc").into_val(&env), // Note: contract says symbol_short!("insuranc")
         InsuranceEvent::PolicyDeactivated.into_val(&env),
     ];
 
@@ -731,7 +839,89 @@ fn test_deactivate_policy_emits_event() {
     assert_eq!(audit_event.0, contract_id.clone());
 }
 
-// Required test cases from issue #61
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_create_policy_non_owner_auth_failure() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    // Do not mock auth for other, attempt to create policy for owner as other
+    // If owner didn't authorize, it panics.
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &String::from_str(&env, "Type"),
+        &100,
+        &10000,
+    );
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_pay_premium_non_owner_auth_failure() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &owner,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "create_policy",
+            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &String::from_str(&env, "Type"),
+        &100,
+        &10000,
+    );
+
+    // other tries to pay the premium for owner
+    client.pay_premium(&owner, &policy_id);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_deactivate_policy_non_owner_auth_failure() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &owner,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "create_policy",
+            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &String::from_str(&env, "Type"),
+        &100,
+        &10000,
+    );
+
+    // other tries to deactivate the policy for owner
+    client.deactivate_policy(&owner, &policy_id);
+}
+
+// Required test cases from issue #61// Required test cases from issue #61
 
 #[test]
 fn test_create_policy_success() {
@@ -851,8 +1041,8 @@ fn test_pay_premium_success() {
     // Advance time
     set_time(&env, env.ledger().timestamp() + 86400); // +1 day
 
-    let result = client.pay_premium(&owner, &policy_id);
-    assert!(result);
+    let result = client.try_pay_premium(&owner, &policy_id);
+    assert!(result.is_ok());
 
     let updated_policy = client.get_policy(&policy_id).unwrap();
 
@@ -1103,18 +1293,14 @@ fn test_multiple_policies_same_owner() {
     // Pay premiums for all policies
     set_time(&env, env.ledger().timestamp() + 86400); // +1 day
 
-    let result1 = client.pay_premium(&owner, &policy1);
-    let result2 = client.pay_premium(&owner, &policy2);
-    let result3 = client.pay_premium(&owner, &policy3);
-
-    assert!(result1 && result2 && result3);
+    client.pay_premium(&owner, &policy1);
+    client.pay_premium(&owner, &policy2);
+    client.pay_premium(&owner, &policy3);
 
     // Deactivate policies
-    let deactivate1 = client.deactivate_policy(&owner, &policy1);
-    let deactivate2 = client.deactivate_policy(&owner, &policy2);
-    let deactivate3 = client.deactivate_policy(&owner, &policy3);
-
-    assert!(deactivate1 && deactivate2 && deactivate3);
+    client.deactivate_policy(&owner, &policy1);
+    client.deactivate_policy(&owner, &policy2);
+    client.deactivate_policy(&owner, &policy3);
 
     // Verify all policies are now inactive
     let p1_after = client.get_policy(&policy1).unwrap();

@@ -1182,16 +1182,27 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "withdraw_from_goal"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 11
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Cannot withdraw from a locked goal' from contract function 'Symbol(obj#237)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 1
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 100
+                  }
+                }
+              ]
             }
           }
         }
@@ -1211,12 +1222,12 @@
               },
               {
                 "error": {
-                  "contract": 11
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -1236,7 +1247,7 @@
               },
               {
                 "error": {
-                  "contract": 11
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

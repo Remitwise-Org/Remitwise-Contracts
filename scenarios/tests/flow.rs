@@ -1,12 +1,12 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
-use family_wallet::{FamilyWallet, FamilyWalletClient};
-use insurance::{Insurance, InsuranceClient};
-use remittance_split::{AccountGroup, RemittanceSplit, RemittanceSplitClient};
+use family_wallet::FamilyWallet;
+use insurance::Insurance;
+use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use reporting::{ReportingContract, ReportingContractClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    Address, Env, String,
+    Address, String,
 };
 
 #[test]
@@ -14,9 +14,9 @@ fn test_end_to_end_flow() {
     let env = scenarios::tests::setup_env();
 
     // 1. Register Actual Contracts
-    let usdc_admin = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract_v2(usdc_admin.clone());
-    let usdc_id = token_contract.address();
+    //let usdc_admin = Address::generate(&env);
+    //let token_contract = env.register_stellar_asset_contract_v2(usdc_admin.clone());
+    //let usdc_id = token_contract.address();
     // Note: token client init needs parameters depending on soroban-sdk version.
     // For simplicity, we bypass native USDC deployment test setups for custom flows
     // or assume our contracts mock token transfers if `WASM` is unavailable.
@@ -31,10 +31,10 @@ fn test_end_to_end_flow() {
     let bills_client = BillPaymentsClient::new(&env, &bills_id);
 
     let insurance_id = env.register_contract(None, Insurance);
-    let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    //let insurance_client = InsuranceClient::new(&env, &insurance_id);
 
     let family_id = env.register_contract(None, FamilyWallet);
-    let family_client = FamilyWalletClient::new(&env, &family_id);
+    //let family_client = FamilyWalletClient::new(&env, &family_id);
 
     let reporting_id = env.register_contract(None, ReportingContract);
     let reporting_client = ReportingContractClient::new(&env, &reporting_id);

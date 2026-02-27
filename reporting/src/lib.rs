@@ -1,7 +1,10 @@
 #![no_std]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
 };
+
+use remitwise_common::Category;
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
@@ -10,17 +13,6 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 // Storage TTL constants for archived data (longer retention, less frequent access)
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
-
-/// Category for financial breakdown
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum Category {
-    Spending = 1,
-    Savings = 2,
-    Bills = 3,
-    Insurance = 4,
-}
 
 /// Financial health score (0-100)
 #[contracttype]
@@ -229,14 +221,14 @@ pub trait SavingsGoalsTrait {
 
 #[contractclient(name = "BillPaymentsClient")]
 pub trait BillPaymentsTrait {
-    fn get_unpaid_bills(env: Env, owner: Address) -> Vec<Bill>;
+    fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
     fn get_total_unpaid(env: Env, owner: Address) -> i128;
-    fn get_all_bills(env: Env) -> Vec<Bill>;
+    fn get_all_bills_for_owner(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
 }
 
 #[contractclient(name = "InsuranceClient")]
 pub trait InsuranceTrait {
-    fn get_active_policies(env: Env, owner: Address) -> Vec<InsurancePolicy>;
+    fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
     fn get_total_monthly_premium(env: Env, owner: Address) -> i128;
 }
 
@@ -274,6 +266,14 @@ pub struct Bill {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct BillPage {
+    pub items: Vec<Bill>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
@@ -283,6 +283,23 @@ pub struct InsurancePolicy {
     pub coverage_amount: i128,
     pub active: bool,
     pub next_payment_date: u64,
+    pub schedule_id: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contract]
@@ -393,7 +410,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
         let split_percentages = split_client.get_split();
@@ -435,7 +452,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
         let goals = savings_client.get_all_goals(&user);
@@ -481,10 +498,11 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let all_bills = bill_client.get_all_bills();
+        let page = bill_client.get_all_bills_for_owner(&user, &0u32, &50u32);
+        let all_bills = page.items;
 
         let mut total_bills = 0u32;
         let mut paid_bills = 0u32;
@@ -497,10 +515,6 @@ impl ReportingContract {
         let current_time = env.ledger().timestamp();
 
         for bill in all_bills.iter() {
-            if bill.owner != user {
-                continue;
-            }
-
             // Filter by period
             if bill.created_at < period_start || bill.created_at > period_end {
                 continue;
@@ -552,10 +566,11 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user);
+        let policy_page = insurance_client.get_active_policies(&user, &0, &50);
+        let policies = policy_page.items;
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
         let mut total_coverage = 0i128;
@@ -589,7 +604,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .expect("Contract addresses not configured");
+            .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         // Savings score (0-40 points)
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
@@ -613,7 +628,7 @@ impl ReportingContract {
 
         // Bills score (0-40 points)
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let unpaid_bills = bill_client.get_unpaid_bills(&user);
+        let unpaid_bills = bill_client.get_unpaid_bills(&user, &0u32, &50u32).items;
         let bills_score = if unpaid_bills.is_empty() {
             40
         } else {
@@ -630,8 +645,8 @@ impl ReportingContract {
 
         // Insurance score (0-20 points)
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policies = insurance_client.get_active_policies(&user);
-        let insurance_score = if !policies.is_empty() { 20 } else { 0 };
+        let policy_page = insurance_client.get_active_policies(&user, &0, &1);
+        let insurance_score = if !policy_page.items.is_empty() { 20 } else { 0 };
 
         let total_score = savings_score + bills_score + insurance_score;
 
@@ -778,7 +793,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .expect("Contract not initialized");
+            .unwrap_or_else(|| panic!("Contract not initialized"));
 
         if caller != admin {
             panic!("Only admin can archive reports");
@@ -879,7 +894,7 @@ impl ReportingContract {
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .expect("Contract not initialized");
+            .unwrap_or_else(|| panic!("Contract not initialized"));
 
         if caller != admin {
             panic!("Only admin can cleanup reports");

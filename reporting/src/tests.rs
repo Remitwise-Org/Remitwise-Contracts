@@ -1,9 +1,4 @@
-use super::*;
-use soroban_sdk::testutils::storage::Instance as _;
-use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
-    Address, Env,
-};
+use testutils::{set_ledger_time};
 
 // Mock contracts for testing
 mod remittance_split {
@@ -76,17 +71,15 @@ mod savings_goals {
 }
 
 mod bill_payments {
-    use crate::{Bill, BillPaymentsTrait};
-    use soroban_sdk::{
-        contract, contractimpl, testutils::Address as _, Address, Env, String as SorobanString, Vec,
-    };
+    use crate::{Bill, BillPage, BillPaymentsTrait};
+    use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
     pub struct BillPayments;
 
     #[contractimpl]
     impl BillPaymentsTrait for BillPayments {
-        fn get_unpaid_bills(_env: Env, _owner: Address) -> Vec<Bill> {
+        fn get_unpaid_bills(_env: Env, _owner: Address, _cursor: u32, _limit: u32) -> BillPage {
             let env = _env;
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
@@ -103,20 +96,28 @@ mod bill_payments {
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
-            bills
+            BillPage {
+                count: bills.len(),
+                items: bills,
+                next_cursor: 0,
+            }
         }
 
         fn get_total_unpaid(_env: Env, _owner: Address) -> i128 {
             100
         }
 
-        fn get_all_bills(_env: Env) -> Vec<Bill> {
+        fn get_all_bills_for_owner(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> BillPage {
             let env = _env;
-            let owner = Address::generate(&env);
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
                 id: 1,
-                owner: owner.clone(),
+                owner: _owner.clone(),
                 name: SorobanString::from_str(&env, "Electricity"),
                 amount: 100,
                 due_date: 1735689600,
@@ -130,7 +131,7 @@ mod bill_payments {
             });
             bills.push_back(Bill {
                 id: 2,
-                owner,
+                owner: _owner,
                 name: SorobanString::from_str(&env, "Water"),
                 amount: 50,
                 due_date: 1735689600,
@@ -142,13 +143,17 @@ mod bill_payments {
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
-            bills
+            BillPage {
+                count: bills.len(),
+                items: bills,
+                next_cursor: 0,
+            }
         }
     }
 }
 
 mod insurance {
-    use crate::{InsurancePolicy, InsuranceTrait};
+    use crate::{InsurancePolicy, InsuranceTrait, PolicyPage};
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -156,7 +161,12 @@ mod insurance {
 
     #[contractimpl]
     impl InsuranceTrait for Insurance {
-        fn get_active_policies(_env: Env, _owner: Address) -> Vec<InsurancePolicy> {
+        fn get_active_policies(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> crate::PolicyPage {
             let env = _env;
             let mut policies = Vec::new(&env);
             policies.push_back(InsurancePolicy {
@@ -168,8 +178,13 @@ mod insurance {
                 coverage_amount: 50000,
                 active: true,
                 next_payment_date: 1735689600,
+                schedule_id: None,
             });
-            policies
+            crate::PolicyPage {
+                items: policies,
+                next_cursor: 0,
+                count: 1,
+            }
         }
 
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {
@@ -178,25 +193,12 @@ mod insurance {
     }
 }
 
-fn create_test_env() -> Env {
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().set(LedgerInfo {
-        timestamp: 1704067200, // Jan 1, 2024
-        protocol_version: 20,
-        sequence_number: 1,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 10,
-        min_persistent_entry_ttl: 10,
-        max_entry_ttl: 3110400,
-    });
-    env
-}
+// create_test_env removed in favor of testutils and Env::default()
 
 #[test]
-fn test_init_reporting_contract() {
-    let env = create_test_env();
+fn test_init_reporting_contract_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -209,7 +211,8 @@ fn test_init_reporting_contract() {
 
 #[test]
 fn test_init_twice_fails() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -220,8 +223,9 @@ fn test_init_twice_fails() {
 }
 
 #[test]
-fn test_configure_addresses() {
-    let env = create_test_env();
+fn test_configure_addresses_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -282,7 +286,9 @@ fn test_configure_addresses_unauthorized() {
 
 #[test]
 fn test_get_remittance_summary() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -327,7 +333,9 @@ fn test_get_remittance_summary() {
 
 #[test]
 fn test_get_savings_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -364,7 +372,9 @@ fn test_get_savings_report() {
 
 #[test]
 fn test_get_bill_compliance_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -400,7 +410,9 @@ fn test_get_bill_compliance_report() {
 
 #[test]
 fn test_get_insurance_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -437,7 +449,9 @@ fn test_get_insurance_report() {
 
 #[test]
 fn test_calculate_health_score() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -474,7 +488,9 @@ fn test_calculate_health_score() {
 
 #[test]
 fn test_get_financial_health_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -513,7 +529,9 @@ fn test_get_financial_health_report() {
 
 #[test]
 fn test_get_trend_analysis() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -531,7 +549,9 @@ fn test_get_trend_analysis() {
 
 #[test]
 fn test_get_trend_analysis_decrease() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -549,7 +569,9 @@ fn test_get_trend_analysis_decrease() {
 
 #[test]
 fn test_store_and_retrieve_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -599,7 +621,9 @@ fn test_store_and_retrieve_report() {
 
 #[test]
 fn test_retrieve_nonexistent_report() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -610,7 +634,9 @@ fn test_retrieve_nonexistent_report() {
 
 #[test]
 fn test_health_score_no_goals() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -665,7 +691,9 @@ fn test_health_score_no_goals() {
 
 #[test]
 fn test_archive_old_reports() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -716,7 +744,9 @@ fn test_archive_old_reports() {
 
 #[test]
 fn test_archive_empty_when_no_old_reports() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -730,7 +760,9 @@ fn test_archive_empty_when_no_old_reports() {
 
 #[test]
 fn test_cleanup_old_reports() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -771,7 +803,9 @@ fn test_cleanup_old_reports() {
 
 #[test]
 fn test_storage_stats() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);

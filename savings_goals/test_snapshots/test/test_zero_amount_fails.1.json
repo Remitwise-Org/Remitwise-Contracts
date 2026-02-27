@@ -231,16 +231,30 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_goal"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 5
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Target amount must be positive' from contract function 'Symbol(obj#15)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Fail"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 0
+                  }
+                },
+                {
+                  "u64": 2000000000
+                }
+              ]
             }
           }
         }
@@ -260,12 +274,12 @@
               },
               {
                 "error": {
-                  "contract": 5
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -285,7 +299,7 @@
               },
               {
                 "error": {
-                  "contract": 5
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

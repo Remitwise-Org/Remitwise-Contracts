@@ -568,10 +568,22 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000006"
               },
               {
-                "symbol": "get_all_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
-            "data": "void"
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 50
+                }
+              ]
+            }
           }
         }
       },
@@ -589,210 +601,235 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_all_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 100
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "created_at"
-                      },
-                      "val": {
-                        "u64": 1704067200
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "currency"
-                      },
-                      "val": {
-                        "string": "XLM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "due_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "frequency_days"
-                      },
-                      "val": {
-                        "u32": 30
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 1
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Electricity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid"
-                      },
-                      "val": {
-                        "bool": false
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid_at"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "recurring"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "schedule_id"
-                      },
-                      "val": "void"
-                    }
-                  ]
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 2
+                  }
                 },
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 100
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "created_at"
+                            },
+                            "val": {
+                              "u64": 1704067200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "currency"
+                            },
+                            "val": {
+                              "string": "XLM"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "due_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "frequency_days"
+                            },
+                            "val": {
+                              "u32": 30
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 1
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Electricity"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid"
+                            },
+                            "val": {
+                              "bool": false
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid_at"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "recurring"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 50
-                        }
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 50
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "created_at"
+                            },
+                            "val": {
+                              "u64": 1704067200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "currency"
+                            },
+                            "val": {
+                              "string": "XLM"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "due_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "frequency_days"
+                            },
+                            "val": {
+                              "u32": 30
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 2
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Water"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid_at"
+                            },
+                            "val": {
+                              "u64": 1704153600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "recurring"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "created_at"
-                      },
-                      "val": {
-                        "u64": 1704067200
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "currency"
-                      },
-                      "val": {
-                        "string": "XLM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "due_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "frequency_days"
-                      },
-                      "val": {
-                        "u32": 30
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 2
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Water"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid_at"
-                      },
-                      "val": {
-                        "u64": 1704153600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "recurring"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "schedule_id"
-                      },
-                      "val": "void"
-                    }
-                  ]
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -823,7 +860,7 @@
                     "symbol": "compliance_percentage"
                   },
                   "val": {
-                    "u32": 100
+                    "u32": 50
                   }
                 },
                 {
@@ -841,7 +878,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 0
+                      "lo": 50
                     }
                   }
                 },
@@ -850,7 +887,7 @@
                     "symbol": "paid_bills"
                   },
                   "val": {
-                    "u32": 0
+                    "u32": 1
                   }
                 },
                 {
@@ -876,7 +913,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 0
+                      "lo": 150
                     }
                   }
                 },
@@ -885,7 +922,7 @@
                     "symbol": "total_bills"
                   },
                   "val": {
-                    "u32": 0
+                    "u32": 2
                   }
                 },
                 {
@@ -895,7 +932,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 0
+                      "lo": 100
                     }
                   }
                 },
@@ -904,7 +941,7 @@
                     "symbol": "unpaid_bills"
                   },
                   "val": {
-                    "u32": 0
+                    "u32": 1
                   }
                 }
               ]

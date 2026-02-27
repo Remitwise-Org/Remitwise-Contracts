@@ -43,25 +43,29 @@ fn bench_get_total_unpaid_worst_case() {
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
 
+    // FIX: Explicitly set time to well before the due date (1,000,000)
+    env.ledger().set_timestamp(100);
+
     let name = String::from_str(&env, "BenchBill");
     for _ in 0..100 {
         client.create_bill(
             &owner,
             &name,
             &100i128,
-            &1_000_000u64,
+            &1_000_000u64, // Due date is 1,000,000
             &false,
             &0u32,
             &String::from_str(&env, "XLM"),
         );
     }
 
-    // Create gaps to simulate worst-case scan behavior in previous implementation.
+    // Gaps and calculation logic...
     for id in (2u32..=100u32).step_by(2) {
         client.cancel_bill(&owner, &id);
     }
 
     let expected_total = 50i128 * 100i128;
+    // Measure usually returns a tuple; ensure measure doesn't reset the env
     let (cpu, mem, total) = measure(&env, || client.get_total_unpaid(&owner));
     assert_eq!(total, expected_total);
 
