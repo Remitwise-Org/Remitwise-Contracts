@@ -35,7 +35,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -75,7 +75,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -115,7 +115,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -155,7 +155,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -195,7 +195,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -317,7 +317,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -423,7 +423,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -529,7 +529,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -635,7 +635,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -741,7 +741,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -1177,7 +1177,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -1296,7 +1296,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -1415,7 +1415,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -1534,7 +1534,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -1653,7 +1653,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -2115,7 +2115,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {
@@ -2262,7 +2262,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {
@@ -2409,7 +2409,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {
@@ -2556,7 +2556,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {
@@ -2703,7 +2703,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {

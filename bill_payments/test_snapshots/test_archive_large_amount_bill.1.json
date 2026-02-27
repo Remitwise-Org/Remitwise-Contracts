@@ -35,7 +35,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -79,7 +79,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "u64": 2000000
+                  "u64": 18446744073709551615
                 }
               ]
             }
@@ -159,7 +159,7 @@
                                       "symbol": "currency"
                                     },
                                     "val": {
-                                      "string": "XLM"
+                                      "string": "USD"
                                     }
                                   },
                                   {
@@ -466,7 +466,7 @@
                   "u32": 0
                 },
                 {
-                  "string": "XLM"
+                  "string": "USD"
                 }
               ]
             }
@@ -663,7 +663,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "u64": 2000000
+                  "u64": 18446744073709551615
                 }
               ]
             }
@@ -798,7 +798,7 @@
                     "symbol": "currency"
                   },
                   "val": {
-                    "string": "XLM"
+                    "string": "USD"
                   }
                 },
                 {

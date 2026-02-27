@@ -404,121 +404,7 @@
             "data": {
               "i128": {
                 "hi": 184467440737095516,
-                "lo": 2951479051793528258
-              }
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "calc"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "bills_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 27670116110564327,
-                      "lo": 7821419487252849885
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "insurance_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 9223372036854775,
-                      "lo": 14904969211557317706
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "savings_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 55340232221128654,
-                      "lo": 15642838974505699770
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "spending_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 92233720368547758,
-                      "lo": 1475739525896764129
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "total_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 184467440737095516,
-                      "lo": 2951479051793528258
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "split"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "Calculated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "i128": {
-                "hi": 184467440737095516,
-                "lo": 2951479051793528258
+                "lo": 2951479051793528259
               }
             }
           }
@@ -542,30 +428,74 @@
               }
             ],
             "data": {
+              "error": {
+                "contract": 5
+              }
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 5
+                }
+              }
+            ],
+            "data": {
+              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 5
+                }
+              }
+            ],
+            "data": {
               "vec": [
                 {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
+                  "string": "contract try_call failed"
                 },
                 {
-                  "i128": {
-                    "hi": 55340232221128654,
-                    "lo": 15642838974505699770
-                  }
+                  "symbol": "calculate_split"
                 },
                 {
-                  "i128": {
-                    "hi": 27670116110564327,
-                    "lo": 7821419487252849885
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 9223372036854775,
-                    "lo": 14904969211557317706
-                  }
+                  "vec": [
+                    {
+                      "i128": {
+                        "hi": 184467440737095516,
+                        "lo": 2951479051793528259
+                      }
+                    }
+                  ]
                 }
               ]
             }
