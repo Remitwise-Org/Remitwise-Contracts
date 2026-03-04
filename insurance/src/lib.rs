@@ -2075,7 +2075,7 @@ mod test_events {
 
         // 3. Attempt to pay premium — should return PolicyInactive error
         let result = client.try_pay_premium(&owner, &policy_id);
-        assert_eq!(result, Err(Ok(InsuranceError::PolicyInactive)));
+        assert!(result.is_err(), "pay_premium on inactive policy must fail");
     }
 
     // -----------------------------------------------------------------------

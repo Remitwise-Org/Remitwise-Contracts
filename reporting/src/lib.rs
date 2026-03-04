@@ -219,10 +219,26 @@ pub trait SavingsGoalsTrait {
     fn is_goal_completed(env: Env, goal_id: u32) -> bool;
 }
 
+#[contracttype]
+#[derive(Clone)]
+pub struct BillPage {
+    pub items: Vec<Bill>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
 #[contractclient(name = "BillPaymentsClient")]
 pub trait BillPaymentsTrait {
     fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
     fn get_total_unpaid(env: Env, owner: Address) -> i128;
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
     fn get_all_bills_for_owner(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
 }
 
@@ -505,11 +521,11 @@ impl ReportingContract {
         let all_bills = page.items;
 
         let mut total_bills = 0u32;
-        let mut paid_bills = 0u32;
+        let paid_bills = 0u32;
         let mut unpaid_bills = 0u32;
         let mut overdue_bills = 0u32;
         let mut total_amount = 0i128;
-        let mut paid_amount = 0i128;
+        let paid_amount = 0i128;
         let mut unpaid_amount = 0i128;
 
         let current_time = env.ledger().timestamp();
@@ -523,10 +539,7 @@ impl ReportingContract {
             total_bills += 1;
             total_amount += bill.amount;
 
-            if bill.paid {
-                paid_bills += 1;
-                paid_amount += bill.amount;
-            } else {
+            {
                 unpaid_bills += 1;
                 unpaid_amount += bill.amount;
                 if bill.due_date < current_time {

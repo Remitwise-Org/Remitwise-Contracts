@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tests {
     use soroban_sdk::Env;
     use testutils::set_ledger_time;

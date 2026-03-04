@@ -14,6 +14,7 @@ members = [
     "data_migration",
     "reporting",
     "orchestrator",
+    "global_config",
     "cli",
     "scenarios",
 

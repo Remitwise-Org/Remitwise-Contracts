@@ -218,6 +218,30 @@ pub struct RemittanceFlowResult {
     pub timestamp: u64,
 }
 
+/// Arguments for complete remittance flow execution
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemittanceFlowArgs {
+    /// Total remittance amount to split
+    pub total_amount: i128,
+    /// Address of the Family Wallet contract
+    pub family_wallet_addr: Address,
+    /// Address of the Remittance Split contract
+    pub remittance_split_addr: Address,
+    /// Address of the Savings Goals contract
+    pub savings_addr: Address,
+    /// Address of the Bill Payments contract
+    pub bills_addr: Address,
+    /// Address of the Insurance contract
+    pub insurance_addr: Address,
+    /// Target savings goal ID
+    pub goal_id: u32,
+    /// Target bill ID
+    pub bill_id: u32,
+    /// Target insurance policy ID
+    pub policy_id: u32,
+}
+
 /// Event emitted on successful remittance flow completion
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -662,8 +686,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).map_err(
-            |e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -671,31 +695,41 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-                e
+            })?;
+
+        // Step 2: Check spending limit
+        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("spend_lm"),
+                    e as u32,
+                    timestamp,
+                );
             },
         )?;
 
-        // Step 2: Check spending limit
-        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).map_err(|e| {
-            Self::emit_error_event(
-                &env,
-                &caller,
-                symbol_short!("spend_lm"),
-                e as u32,
-                timestamp,
-            );
-            e
-        })?;
-
         // Step 3: Deposit to savings
-        Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, amount).map_err(|e| {
-            Self::emit_error_event(&env, &caller, symbol_short!("savings"), e as u32, timestamp);
-            e
-        })?;
+        Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, amount).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("savings"),
+                    e as u32,
+                    timestamp,
+                );
+            },
+        )?;
 
         // Emit success event
         let allocations = Vec::from_array(&env, [0, amount, 0, 0]);
         Self::emit_success_event(&env, &caller, amount, &allocations, timestamp);
+
+        // Update stats and audit log
+        Self::update_execution_stats(&env, true, amount);
+        Self::append_audit_entry(&env, &caller, symbol_short!("savings"), amount, true, None);
 
         Ok(())
     }
@@ -743,8 +777,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).map_err(
-            |e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -752,31 +786,35 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-                e
+            })?;
+
+        // Step 2: Check spending limit
+        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("spend_lm"),
+                    e as u32,
+                    timestamp,
+                );
             },
         )?;
 
-        // Step 2: Check spending limit
-        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).map_err(|e| {
-            Self::emit_error_event(
-                &env,
-                &caller,
-                symbol_short!("spend_lm"),
-                e as u32,
-                timestamp,
-            );
-            e
-        })?;
-
         // Step 3: Execute bill payment
-        Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id).map_err(|e| {
-            Self::emit_error_event(&env, &caller, symbol_short!("bills"), e as u32, timestamp);
-            e
-        })?;
+        Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id).inspect_err(
+            |&e| {
+                Self::emit_error_event(&env, &caller, symbol_short!("bills"), e as u32, timestamp);
+            },
+        )?;
 
         // Emit success event
         let allocations = Vec::from_array(&env, [0, 0, amount, 0]);
         Self::emit_success_event(&env, &caller, amount, &allocations, timestamp);
+
+        // Update stats and audit log
+        Self::update_execution_stats(&env, true, amount);
+        Self::append_audit_entry(&env, &caller, symbol_short!("bills"), amount, true, None);
 
         Ok(())
     }
@@ -824,8 +862,8 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
-        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount).map_err(
-            |e| {
+        Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -833,33 +871,33 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-                e
+            })?;
+
+        // Step 2: Check spending limit
+        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("spend_lm"),
+                    e as u32,
+                    timestamp,
+                );
             },
         )?;
 
-        // Step 2: Check spending limit
-        Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount).map_err(|e| {
-            Self::emit_error_event(
-                &env,
-                &caller,
-                symbol_short!("spend_lm"),
-                e as u32,
-                timestamp,
-            );
-            e
-        })?;
-
         // Step 3: Pay insurance premium
-        Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).map_err(|e| {
-            Self::emit_error_event(
-                &env,
-                &caller,
-                symbol_short!("insuranc"),
-                e as u32,
-                timestamp,
-            );
-            e
-        })?;
+        Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).inspect_err(
+            |&e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("insuranc"),
+                    e as u32,
+                    timestamp,
+                );
+            },
+        )?;
 
         // Emit success event
         let allocations = Vec::from_array(&env, [0, 0, 0, amount]);
@@ -923,20 +961,21 @@ impl Orchestrator {
     pub fn execute_remittance_flow(
         env: Env,
         caller: Address,
-        total_amount: i128,
-        family_wallet_addr: Address,
-        remittance_split_addr: Address,
-        savings_addr: Address,
-        bills_addr: Address,
-        insurance_addr: Address,
-        goal_id: u32,
-        bill_id: u32,
-        policy_id: u32,
+        args: RemittanceFlowArgs,
     ) -> Result<RemittanceFlowResult, OrchestratorError> {
         // Require caller authorization
         caller.require_auth();
 
         let timestamp = env.ledger().timestamp();
+        let total_amount = args.total_amount;
+        let family_wallet_addr = args.family_wallet_addr;
+        let remittance_split_addr = args.remittance_split_addr;
+        let savings_addr = args.savings_addr;
+        let bills_addr = args.bills_addr;
+        let insurance_addr = args.insurance_addr;
+        let goal_id = args.goal_id;
+        let bill_id = args.bill_id;
+        let policy_id = args.policy_id;
 
         // Step 1: Validate amount
         if total_amount <= 0 {
@@ -952,7 +991,7 @@ impl Orchestrator {
 
         // Step 2: Check family wallet permission
         Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, total_amount)
-            .map_err(|e| {
+            .inspect_err(|&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -960,12 +999,11 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-                e
             })?;
 
         // Step 3: Check spending limit
-        Self::check_spending_limit(&env, &family_wallet_addr, &caller, total_amount).map_err(
-            |e| {
+        Self::check_spending_limit(&env, &family_wallet_addr, &caller, total_amount).inspect_err(
+            |&e| {
                 Self::emit_error_event(
                     &env,
                     &caller,
@@ -973,15 +1011,13 @@ impl Orchestrator {
                     e as u32,
                     timestamp,
                 );
-                e
             },
         )?;
 
         // Step 4: Extract allocations from remittance split
         let allocations = Self::extract_allocations(&env, &remittance_split_addr, total_amount)
-            .map_err(|e| {
+            .inspect_err(|&e| {
                 Self::emit_error_event(&env, &caller, symbol_short!("split"), e as u32, timestamp);
-                e
             })?;
 
         // Extract individual amounts
@@ -993,7 +1029,7 @@ impl Orchestrator {
         // Step 5: Deposit to savings goal
         let savings_success =
             Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount)
-                .map_err(|e| {
+                .inspect_err(|&e| {
                     Self::emit_error_event(
                         &env,
                         &caller,
@@ -1001,14 +1037,13 @@ impl Orchestrator {
                         e as u32,
                         timestamp,
                     );
-                    e
                 })
                 .is_ok();
 
         // Step 6: Pay bill
         let bills_success =
             Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)
-                .map_err(|e| {
+                .inspect_err(|&e| {
                     Self::emit_error_event(
                         &env,
                         &caller,
@@ -1016,14 +1051,13 @@ impl Orchestrator {
                         e as u32,
                         timestamp,
                     );
-                    e
                 })
                 .is_ok();
 
         // Step 7: Pay insurance premium
         let insurance_success =
             Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)
-                .map_err(|e| {
+                .inspect_err(|&e| {
                     Self::emit_error_event(
                         &env,
                         &caller,
@@ -1031,7 +1065,6 @@ impl Orchestrator {
                         e as u32,
                         timestamp,
                     );
-                    e
                 })
                 .is_ok();
 
@@ -1050,6 +1083,17 @@ impl Orchestrator {
 
         // Emit success event
         Self::emit_success_event(&env, &caller, total_amount, &allocations, timestamp);
+
+        // Update stats and audit log
+        Self::update_execution_stats(&env, true, total_amount);
+        Self::append_audit_entry(
+            &env,
+            &caller,
+            symbol_short!("remit_fl"),
+            total_amount,
+            true,
+            None,
+        );
 
         Ok(result)
     }

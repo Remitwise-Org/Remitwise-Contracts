@@ -324,15 +324,15 @@ fn test_batch_pay_large_bills() {
 
 //     let large_amount = i128::MAX / 2;
 
-//     client.create_bill(
-//         &owner,
-//         &String::from_str(&env, "Overdue Large"),
-//         &large_amount,
-//         &1000000, // Past due
-//         &false,
-//         &0,
-//         &String::from_str(&env, "XLM"),
-//     );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Overdue Large"),
+        &large_amount,
+        &1000000, // Past due
+        &false,
+        &0,
+        &String::from_str(&env, "USD"),
+    );
 
 //     let page = client.get_overdue_bills(&0, &10);
 //     assert_eq!(page.count, 1);

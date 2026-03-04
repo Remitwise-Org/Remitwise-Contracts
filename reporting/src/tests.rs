@@ -81,8 +81,8 @@ mod bill_payments {
     impl BillPaymentsTrait for BillPayments {
         fn get_unpaid_bills(_env: Env, _owner: Address, _cursor: u32, _limit: u32) -> BillPage {
             let env = _env;
-            let mut bills = Vec::new(&env);
-            bills.push_back(Bill {
+            let mut items = Vec::new(&env);
+            items.push_back(Bill {
                 id: 1,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Electricity"),
@@ -168,8 +168,8 @@ mod insurance {
             _limit: u32,
         ) -> crate::PolicyPage {
             let env = _env;
-            let mut policies = Vec::new(&env);
-            policies.push_back(InsurancePolicy {
+            let mut items = Vec::new(&env);
+            items.push_back(InsurancePolicy {
                 id: 1,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Health Insurance"),
@@ -210,6 +210,7 @@ fn test_init_reporting_contract_succeeds() {
 }
 
 #[test]
+#[should_panic]
 fn test_init_twice_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -255,6 +256,7 @@ fn test_configure_addresses_succeeds() {
 }
 
 #[test]
+#[should_panic]
 fn test_configure_addresses_unauthorized() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);

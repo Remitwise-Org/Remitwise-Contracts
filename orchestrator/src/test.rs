@@ -320,15 +320,17 @@ mod tests {
         // Execute complete remittance flow with amount within limit (10000)
         let result = client.try_execute_remittance_flow(
             &user,
-            &10000,
-            &family_wallet_id,
-            &remittance_split_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &1, // goal_id
-            &1, // bill_id
-            &1, // policy_id
+            &crate::RemittanceFlowArgs {
+                total_amount: 10000,
+                family_wallet_addr: family_wallet_id,
+                remittance_split_addr: remittance_split_id,
+                savings_addr: savings_id,
+                bills_addr: bills_id,
+                insurance_addr: insurance_id,
+                goal_id: 1,
+                bill_id: 1,
+                policy_id: 1,
+            },
         );
 
         // Should succeed
@@ -368,15 +370,17 @@ mod tests {
         // The mock will panic, but the orchestrator catches it and returns an error
         let result = client.try_execute_remittance_flow(
             &user,
-            &10000,
-            &family_wallet_id,
-            &remittance_split_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &1,   // valid goal_id
-            &999, // invalid bill_id - will cause failure
-            &1,   // valid policy_id
+            &crate::RemittanceFlowArgs {
+                total_amount: 10000,
+                family_wallet_addr: family_wallet_id,
+                remittance_split_addr: remittance_split_id,
+                savings_addr: savings_id,
+                bills_addr: bills_id,
+                insurance_addr: insurance_id,
+                goal_id: 1,
+                bill_id: 999, // invalid bill_id - will cause failure
+                policy_id: 1,
+            },
         );
 
         // Should fail (panic gets caught and converted to error)
@@ -402,15 +406,17 @@ mod tests {
         // The mock will panic, but the orchestrator catches it and returns an error
         let result = client.try_execute_remittance_flow(
             &user,
-            &10000,
-            &family_wallet_id,
-            &remittance_split_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &999, // invalid goal_id - will cause failure
-            &1,   // valid bill_id
-            &1,   // valid policy_id
+            &crate::RemittanceFlowArgs {
+                total_amount: 10000,
+                family_wallet_addr: family_wallet_id,
+                remittance_split_addr: remittance_split_id,
+                savings_addr: savings_id,
+                bills_addr: bills_id,
+                insurance_addr: insurance_id,
+                goal_id: 999, // invalid goal_id - will cause failure
+                bill_id: 1,
+                policy_id: 1,
+            },
         );
 
         // Should fail (panic gets caught and converted to error)
@@ -435,15 +441,17 @@ mod tests {
         // Execute remittance flow with amount exceeding limit (15000 > 10000)
         let result = client.try_execute_remittance_flow(
             &user,
-            &15000,
-            &family_wallet_id,
-            &remittance_split_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &1, // goal_id
-            &1, // bill_id
-            &1, // policy_id
+            &crate::RemittanceFlowArgs {
+                total_amount: 15000,
+                family_wallet_addr: family_wallet_id,
+                remittance_split_addr: remittance_split_id,
+                savings_addr: savings_id,
+                bills_addr: bills_id,
+                insurance_addr: insurance_id,
+                goal_id: 1,
+                bill_id: 1,
+                policy_id: 1,
+            },
         );
 
         // Should fail - the mock returns false for amounts > 10000
@@ -474,15 +482,17 @@ mod tests {
         // Execute remittance flow with invalid amount (0)
         let result = client.try_execute_remittance_flow(
             &user,
-            &0, // invalid amount
-            &family_wallet_id,
-            &remittance_split_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &1, // goal_id
-            &1, // bill_id
-            &1, // policy_id
+            &crate::RemittanceFlowArgs {
+                total_amount: 0, // invalid amount
+                family_wallet_addr: family_wallet_id,
+                remittance_split_addr: remittance_split_id,
+                savings_addr: savings_id,
+                bills_addr: bills_id,
+                insurance_addr: insurance_id,
+                goal_id: 1,
+                bill_id: 1,
+                policy_id: 1,
+            },
         );
 
         // Should fail with InvalidAmount

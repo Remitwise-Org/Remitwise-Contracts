@@ -17,6 +17,14 @@ use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::Env;
 
+fn sum_vec(v: &soroban_sdk::Vec<i128>) -> i128 {
+    let mut total = 0i128;
+    for i in 0..v.len() {
+        total += v.get(i).unwrap();
+    }
+    total
+}
+
 #[test]
 fn test_calculate_split_with_large_amount() {
     let env = Env::default();
@@ -235,7 +243,7 @@ fn test_sequential_large_calculations() {
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Test with progressively larger amounts
-    let amounts_to_test = vec![
+    let amounts_to_test = [
         i128::MAX / 1000,
         i128::MAX / 500,
         i128::MAX / 200,
@@ -265,7 +273,7 @@ fn test_checked_arithmetic_prevents_silent_overflow() {
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Test values that would overflow with unchecked arithmetic
-    let dangerous_amounts = vec![
+    let dangerous_amounts = [
         i128::MAX / 40, // Will overflow when multiplied by 50
         i128::MAX / 30, // Will overflow when multiplied by 50
         i128::MAX,      // Will definitely overflow
