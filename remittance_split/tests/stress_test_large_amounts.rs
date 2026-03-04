@@ -42,6 +42,10 @@ fn test_calculate_split_with_large_amount() {
     // client.calculate_split returns Vec<i128> directly
     let amounts = client.calculate_split(&large_amount);
 
+    let result = client.try_calculate_split(&large_amount);
+    assert!(result.is_ok());
+
+    let amounts = result.unwrap().unwrap();
     assert_eq!(amounts.len(), 4);
     let total: i128 = amounts.iter().sum();
     assert_eq!(total, large_amount);
@@ -62,6 +66,10 @@ fn test_calculate_split_near_max_safe_value() {
     let max_safe = i128::MAX / 100 - 1;
     let amounts = client.calculate_split(&max_safe);
 
+    let result = client.try_calculate_split(&max_safe);
+    assert!(result.is_ok());
+
+    let amounts = result.unwrap().unwrap();
     let total: i128 = amounts.iter().sum();
     assert!((total - max_safe).abs() < 4); // Allow small rounding difference
 }
@@ -77,8 +85,8 @@ fn test_calculate_split_near_max_safe_value() {
 
 //     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
-//     // Value that will overflow when multiplied by percentage
-//     let overflow_amount = i128::MAX / 50; // Will overflow when multiplied by 50
+    // Value that will overflow when multiplied by percentage
+    let overflow_amount = i128::MAX / 50 + 1; // Will overflow when multiplied by 50
 
 //     let result = client.try_calculate_split(&overflow_amount);
 
@@ -99,9 +107,10 @@ fn test_calculate_split_with_minimal_percentages() {
 
     let large_amount = i128::MAX / 150;
 
-    // FIX: Remove .is_ok() and .unwrap()
-    let amounts = client.calculate_split(&large_amount);
+    let result = client.try_calculate_split(&large_amount);
+    assert!(result.is_ok());
 
+    let amounts = result.unwrap().unwrap();
     let total: i128 = amounts.iter().sum();
     assert_eq!(total, large_amount);
 }
@@ -119,8 +128,10 @@ fn test_get_split_allocations_with_large_amount() {
 
     let large_amount = i128::MAX / 200;
 
-    let allocations = client.get_split_allocations(&large_amount);
+    let result = client.try_get_split_allocations(&large_amount);
+    assert!(result.is_ok());
 
+    let allocations = result.unwrap().unwrap();
     assert_eq!(allocations.len(), 4);
     let total: i128 = allocations.iter().map(|a| a.amount).sum();
     assert_eq!(total, large_amount);
@@ -140,9 +151,10 @@ fn test_multiple_splits_with_large_amounts() {
     let large_amount = i128::MAX / 300;
 
     for _ in 0..5 {
-        // FIX: result is now directly the amounts Vec
-        let amounts = client.calculate_split(&large_amount);
+        let result = client.try_calculate_split(&large_amount);
+        assert!(result.is_ok());
 
+        let amounts = result.unwrap().unwrap();
         let total: i128 = amounts.iter().sum();
         assert_eq!(total, large_amount);
     }
@@ -161,9 +173,10 @@ fn test_edge_case_i128_max_divided_by_100() {
     // Exact edge case: i128::MAX / 100
     let edge_amount = i128::MAX / 100;
 
-    // FIX: Remove .is_ok() and .unwrap()
-    let amounts = client.calculate_split(&edge_amount);
+    let result = client.try_calculate_split(&edge_amount);
+    assert!(result.is_ok());
 
+    let amounts = result.unwrap().unwrap();
     assert_eq!(amounts.len(), 4);
 }
 
@@ -181,9 +194,10 @@ fn test_split_with_100_percent_to_one_category() {
 
     let large_amount = i128::MAX / 150;
 
-    // FIX: result is now the amounts Vec directly
-    let amounts = client.calculate_split(&large_amount);
+    let result = client.try_calculate_split(&large_amount);
+    assert!(result.is_ok());
 
+    let amounts = result.unwrap().unwrap();
     // First amount should be the full amount
     // .get(i) returns Option, so .unwrap() here is correct and necessary
     assert_eq!(amounts.get(0).unwrap(), large_amount);
@@ -207,8 +221,10 @@ fn test_rounding_behavior_with_large_amounts() {
 
     let large_amount = i128::MAX / 200;
 
-    let amounts = client.calculate_split(&large_amount);
+    let result = client.try_calculate_split(&large_amount);
+    assert!(result.is_ok());
 
+    let amounts = result.unwrap().unwrap();
     let total: i128 = amounts.iter().sum();
 
     // Due to rounding, total should equal input
@@ -236,9 +252,10 @@ fn test_sequential_large_calculations() {
     ];
 
     for amount in amounts_to_test {
-        // FIX: result is directly the soroban_sdk::Vec<i128>
-        let splits = client.calculate_split(&amount);
+        let result = client.try_calculate_split(&amount);
+        assert!(result.is_ok(), "Failed for amount: {}", amount);
 
+        let splits = result.unwrap().unwrap();
         let total: i128 = splits.iter().sum();
         assert_eq!(total, amount, "Failed for amount: {}", amount);
     }
@@ -287,9 +304,10 @@ fn test_insurance_remainder_calculation_with_large_values() {
 
     let large_amount = i128::MAX / 200;
 
-    // FIX: Remove .is_ok() and .unwrap()
-    // result is already soroban_sdk::Vec<i128>
-    let amounts = client.calculate_split(&large_amount);
+    let result = client.try_calculate_split(&large_amount);
+    assert!(result.is_ok());
+
+    let amounts = result.unwrap().unwrap();
 
     // Verify insurance (last element) is calculated correctly as remainder
     // Note: Soroban Vec::get returns Option, so these unwrap()s are correct for the elements

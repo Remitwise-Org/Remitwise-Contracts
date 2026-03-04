@@ -97,14 +97,57 @@ mod bill_payments {
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             BillPage {
-                count: items.len(),
+                count: bills.len(),
+                items: bills,
                 next_cursor: 0,
-                items,
             }
         }
 
         fn get_total_unpaid(_env: Env, _owner: Address) -> i128 {
             100
+        }
+
+        fn get_all_bills_for_owner(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> BillPage {
+            let env = _env;
+            let mut bills = Vec::new(&env);
+            bills.push_back(Bill {
+                id: 1,
+                owner: _owner.clone(),
+                name: SorobanString::from_str(&env, "Electricity"),
+                amount: 100,
+                due_date: 1735689600,
+                recurring: true,
+                frequency_days: 30,
+                paid: false,
+                created_at: 1704067200,
+                paid_at: None,
+                schedule_id: None,
+                currency: SorobanString::from_str(&env, "XLM"),
+            });
+            bills.push_back(Bill {
+                id: 2,
+                owner: _owner,
+                name: SorobanString::from_str(&env, "Water"),
+                amount: 50,
+                due_date: 1735689600,
+                recurring: true,
+                frequency_days: 30,
+                paid: true,
+                created_at: 1704067200,
+                paid_at: Some(1704153600),
+                schedule_id: None,
+                currency: SorobanString::from_str(&env, "XLM"),
+            });
+            BillPage {
+                count: bills.len(),
+                items: bills,
+                next_cursor: 0,
+            }
         }
     }
 }

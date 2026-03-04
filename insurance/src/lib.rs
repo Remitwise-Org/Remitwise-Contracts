@@ -2158,6 +2158,7 @@ mod test_events {
             prop_assert_eq!(executed_at.get(0).unwrap(), schedule_id);
         }
     }
+
     // ══════════════════════════════════════════════════════════════════════
     // Time & Ledger Drift Resilience Tests (#158)
     //

@@ -178,7 +178,7 @@ fn test_get_total_unpaid_overflow_panics() {
         &1000000,
         &false,
         &0,
-        &String::from_str(&env, "USD"),
+        &String::from_str(&env, "XLM"),
     );
 
     env.mock_all_auths();
@@ -189,7 +189,7 @@ fn test_get_total_unpaid_overflow_panics() {
         &1000000,
         &false,
         &0,
-        &String::from_str(&env, "USD"),
+        &String::from_str(&env, "XLM"),
     );
 
     // This should panic due to overflow

@@ -1,0 +1,7 @@
+[
+  {"contract":"bill_payments","method":"get_total_unpaid","scenario":"100_bills_50_cancelled","cpu":1077221,"mem":235460},
+  {"contract":"savings_goals","method":"get_all_goals","scenario":"100_goals_single_owner","cpu":2661552,"mem":480721},
+  {"contract":"insurance","method":"get_total_monthly_premium","scenario":"100_active_policies","cpu":2373104,"mem":427575},
+  {"contract":"family_wallet","method":"configure_multisig","scenario":"9_signers_threshold_all","cpu":342677,"mem":69106},
+  {"contract":"remittance_split","method":"distribute_usdc","scenario":"4_recipients_all_nonzero","cpu":654751,"mem":86208}
+]

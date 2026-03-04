@@ -181,7 +181,31 @@
         }
       ]
     ],
-    []
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAX5",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+              "function_name": "get_all_bills_for_owner",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAX5"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 50
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ]
   ],
   "ledger": {
     "protocol_version": 20,
@@ -1074,6 +1098,39 @@
             "ext": "v0"
           },
           3110400
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAX5",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 8370022561469687789
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAX5",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 8370022561469687789
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3110409
         ]
       ],
       [
@@ -2040,7 +2097,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 0
+                  "u32": 50
                 }
               ]
             }
@@ -2224,7 +2281,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 0
+                  "u32": 50
                 }
               ]
             }
@@ -2669,7 +2726,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000005"
               },
               {
-                "symbol": "get_unpaid_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
             "data": {
@@ -2681,7 +2738,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 0
+                  "u32": 50
                 }
               ]
             }
@@ -2702,7 +2759,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_unpaid_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
             "data": {
@@ -2865,7 +2922,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 0
+                  "u32": 50
                 }
               ]
             }

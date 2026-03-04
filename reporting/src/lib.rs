@@ -239,6 +239,7 @@ pub struct PolicyPage {
     pub items: Vec<InsurancePolicy>,
     pub next_cursor: u32,
     pub count: u32,
+    fn get_all_bills_for_owner(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage;
 }
 
 #[contractclient(name = "InsuranceClient")]
@@ -281,6 +282,14 @@ pub struct Bill {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct BillPage {
+    pub items: Vec<Bill>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
@@ -291,6 +300,14 @@ pub struct InsurancePolicy {
     pub active: bool,
     pub next_payment_date: u64,
     pub schedule_id: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contracttype]
@@ -500,8 +517,8 @@ impl ReportingContract {
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        // get_unpaid_bills does not require owner auth and is safe to call cross-contract
-        let unpaid_page = bill_client.get_unpaid_bills(&user, &0, &0).items;
+        let page = bill_client.get_all_bills_for_owner(&user, &0u32, &50u32);
+        let all_bills = page.items;
 
         let mut total_bills = 0u32;
         let paid_bills = 0u32;
@@ -513,7 +530,7 @@ impl ReportingContract {
 
         let current_time = env.ledger().timestamp();
 
-        for bill in unpaid_page.iter() {
+        for bill in all_bills.iter() {
             // Filter by period
             if bill.created_at < period_start || bill.created_at > period_end {
                 continue;
@@ -624,7 +641,7 @@ impl ReportingContract {
 
         // Bills score (0-40 points)
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let unpaid_bills = bill_client.get_unpaid_bills(&user, &0, &0).items;
+        let unpaid_bills = bill_client.get_unpaid_bills(&user, &0u32, &50u32).items;
         let bills_score = if unpaid_bills.is_empty() {
             40
         } else {
