@@ -14,6 +14,12 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
 
+// Retention policy: minimum age before a report can be archived (30 days in seconds)
+const REPORT_RETENTION_WINDOW: u64 = 30 * 24 * 60 * 60;
+
+// Retention policy: minimum age before an archived report can be deleted (90 days in seconds)
+const ARCHIVE_RETENTION_WINDOW: u64 = 90 * 24 * 60 * 60;
+
 /// Financial health score (0-100)
 #[contracttype]
 #[derive(Clone)]
@@ -130,14 +136,20 @@ pub struct ContractAddresses {
     pub family_wallet: Address,
 }
 
-/// Events emitted by the reporting contract
+/// Error types returned by the reporting contract.
 #[contracttype]
 #[derive(Clone, Copy)]
 pub enum ReportingError {
+    /// Contract has already been initialized.
     AlreadyInitialized = 1,
+    /// Contract has not been initialized.
     NotInitialized = 2,
+    /// Caller is not authorized to perform this action.
     Unauthorized = 3,
+    /// Contract addresses have not been configured.
     AddressesNotConfigured = 4,
+    /// The supplied timestamp violates the minimum retention window.
+    InvalidRetentionWindow = 5,
 }
 
 impl From<ReportingError> for soroban_sdk::Error {
@@ -158,6 +170,10 @@ impl From<ReportingError> for soroban_sdk::Error {
             ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::MissingValue,
+            )),
+            ReportingError::InvalidRetentionWindow => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
         }
     }
@@ -284,14 +300,6 @@ pub struct InsurancePolicy {
     pub active: bool,
     pub next_payment_date: u64,
     pub schedule_id: Option<u32>,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
-    pub next_cursor: u32,
-    pub count: u32,
 }
 
 #[contracttype]
@@ -778,25 +786,39 @@ impl ReportingContract {
         env.storage().instance().get(&symbol_short!("ADMIN"))
     }
 
-    /// Archive old reports before the specified timestamp
+    /// Archive active reports whose `generated_at` timestamp is older than `before_timestamp`.
+    /// Move reports older than the retention window to historical storage.
     ///
     /// # Arguments
-    /// * `caller` - Address of the caller (must be admin)
-    /// * `before_timestamp` - Archive reports generated before this timestamp
+    /// * `caller` - Address of the administrator authorizing the archival; must have `ADMIN` role.
+    /// * `before_timestamp` - Reports with `generated_at < before_timestamp` will be archived.
+    ///   Must be at least 30 days old (`current_time - REPORT_RETENTION_WINDOW`).
     ///
-    /// # Returns
-    /// Number of reports archived
-    pub fn archive_old_reports(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+    /// # Errors
+    /// * `Unauthorized`         - If the caller is not the registered admin.
+    /// * `NotInitialized`       - If the contract has not been initialized.
+    /// * `InvalidRetentionWindow` - If `before_timestamp` is within the 30-day retention window.
+    pub fn archive_old_reports(
+        env: Env,
+        caller: Address,
+        before_timestamp: u64,
+    ) -> Result<u32, ReportingError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
+            .ok_or(ReportingError::NotInitialized)?;
 
         if caller != admin {
-            panic!("Only admin can archive reports");
+            return Err(ReportingError::Unauthorized);
+        }
+
+        // Enforce minimum retention window: reports must be at least 30 days old before archival.
+        let current_time = env.ledger().timestamp();
+        if before_timestamp > current_time.saturating_sub(REPORT_RETENTION_WINDOW) {
+            return Err(ReportingError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);
@@ -813,7 +835,6 @@ impl ReportingContract {
             .get(&symbol_short!("ARCH_RPT"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let current_time = env.ledger().timestamp();
         let mut archived_count = 0u32;
         let mut to_remove: Vec<(Address, u64)> = Vec::new(&env);
 
@@ -853,7 +874,7 @@ impl ReportingContract {
             (archived_count, caller),
         );
 
-        archived_count
+        Ok(archived_count)
     }
 
     /// Get archived reports for a user
@@ -879,25 +900,38 @@ impl ReportingContract {
         result
     }
 
-    /// Permanently delete old archives before specified timestamp
+    /// Permanently delete archived reports older than the retention window.
     ///
     /// # Arguments
-    /// * `caller` - Address of the caller (must be admin)
-    /// * `before_timestamp` - Delete archives created before this timestamp
+    /// * `caller` - Address of the administrator authorizing the cleanup; must have `ADMIN` role.
+    /// * `before_timestamp` - Archives with `archived_at < before_timestamp` will be deleted.
+    ///   Must be at least 90 days old (`current_time - ARCHIVE_RETENTION_WINDOW`).
     ///
-    /// # Returns
-    /// Number of archives deleted
-    pub fn cleanup_old_reports(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+    /// # Errors
+    /// * `Unauthorized`         - If the caller is not the registered admin.
+    /// * `NotInitialized`       - If the contract has not been initialized.
+    /// * `InvalidRetentionWindow` - If `before_timestamp` is within the 90-day retention window.
+    pub fn cleanup_old_reports(
+        env: Env,
+        caller: Address,
+        before_timestamp: u64,
+    ) -> Result<u32, ReportingError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
+            .ok_or(ReportingError::NotInitialized)?;
 
         if caller != admin {
-            panic!("Only admin can cleanup reports");
+            return Err(ReportingError::Unauthorized);
+        }
+
+        // Enforce minimum archive retention: archived records must be at least 90 days old.
+        let current_time = env.ledger().timestamp();
+        if before_timestamp > current_time.saturating_sub(ARCHIVE_RETENTION_WINDOW) {
+            return Err(ReportingError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);
@@ -935,7 +969,7 @@ impl ReportingContract {
             (deleted_count, caller),
         );
 
-        deleted_count
+        Ok(deleted_count)
     }
 
     /// Get storage usage statistics

@@ -1,4 +1,6 @@
-use testutils::{set_ledger_time};
+use super::*;
+use soroban_sdk::testutils::LedgerInfo;
+use testutils::set_ledger_time;
 
 // Mock contracts for testing
 mod remittance_split {
@@ -256,7 +258,8 @@ fn test_configure_addresses_succeeds() {
 
 #[test]
 fn test_configure_addresses_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -693,7 +696,8 @@ fn test_health_score_no_goals() {
 fn test_archive_old_reports() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
+    // Report is generated at ledger time 1704067200 (Jan 1 2024)
+    set_ledger_time(&env, 1, 1704067200);
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -716,7 +720,7 @@ fn test_archive_old_reports() {
         &family_wallet,
     );
 
-    // Generate and store a report
+    // Generate and store a report (generated_at = 1704067200)
     let total_remittance = 10000i128;
     let period_start = 1704067200u64;
     let period_end = 1706745600u64;
@@ -730,8 +734,12 @@ fn test_archive_old_reports() {
     // Verify report is stored
     assert!(client.get_stored_report(&user, &period_key).is_some());
 
-    // Archive reports before far future timestamp
-    let archived_count = client.archive_old_reports(&admin, &2000000000);
+    // Advance ledger ~60 days so the report is at least 30 days old.
+    // current_time = 1709251200. 30-day boundary = 1709251200 - 2592000 = 1706659200.
+    // before_timestamp = 1704067201 (> report.generated_at = 1704067200, < 1706659200). ✓
+    set_ledger_time(&env, 1, 1709251200);
+    let valid_before = 1704067201u64;
+    let archived_count = client.archive_old_reports(&admin, &valid_before).unwrap();
     assert_eq!(archived_count, 1);
 
     // Verify report is no longer in active storage
@@ -753,8 +761,9 @@ fn test_archive_empty_when_no_old_reports() {
 
     client.init(&admin);
 
-    // Archive with no reports stored
-    let archived_count = client.archive_old_reports(&admin, &2000000000);
+    // Archive with no reports stored (well before ledger time)
+    let valid_before = 1701475200u64;
+    let archived_count = client.archive_old_reports(&admin, &valid_before).unwrap();
     assert_eq!(archived_count, 0);
 }
 
@@ -789,12 +798,22 @@ fn test_cleanup_old_reports() {
     let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
     client.store_report(&user, &report, &202401);
 
-    // Archive the report
-    client.archive_old_reports(&admin, &2000000000);
+    // Archive the report:
+    // generated_at = 1704067200. Advance ledger to 1709251200 (~60 days later).
+    // 30-day retention boundary = 1709251200 - 2592000 = 1706659200.
+    // Cutoff 1704067201 <= 1706659200 ✓, and 1704067200 < 1704067201 ✓ → report qualifies.
+    set_ledger_time(&env, 1, 1709251200);
+    let archive_before = 1704067201u64;
+    client.archive_old_reports(&admin, &archive_before).unwrap();
     assert_eq!(client.get_archived_reports(&user).len(), 1);
 
-    // Cleanup old archives
-    let deleted = client.cleanup_old_reports(&admin, &2000000000);
+    // Cleanup old archives: archived_at = 1709251200. Need ledger time far enough ahead.
+    // archived_at (1709251200) must be < before_timestamp AND
+    // before_timestamp <= current_time - 90d (7776000 s).
+    // Set ledger = 1725000000. 90d limit = 1725000000 - 7776000 = 1717224000.
+    // Cutoff = 1709251201: 1709251201 <= 1717224000 ✓, and archived_at < cutoff ✓.
+    set_ledger_time(&env, 1, 1725000000);
+    let deleted = client.cleanup_old_reports(&admin, &1709251201u64).unwrap();
     assert_eq!(deleted, 1);
 
     // Verify archives are gone
@@ -833,12 +852,14 @@ fn test_storage_stats() {
     assert_eq!(stats.active_reports, 0);
     assert_eq!(stats.archived_reports, 0);
 
-    // Store a report
+    // Store a report (generated_at = 1704067200)
     let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
     client.store_report(&user, &report, &202401);
 
-    // Archive and check stats
-    client.archive_old_reports(&admin, &2000000000);
+    // Advance ledger ~60 days, then archive with valid cutoff (> generated_at, within retention).
+    // current_time = 1709251200. 30-day limit = 1706659200. cutoff = 1704067201 <= 1706659200. ✓
+    set_ledger_time(&env, 1, 1709251200);
+    client.archive_old_reports(&admin, &1704067201u64).unwrap();
 
     let stats = client.get_storage_stats();
     assert_eq!(stats.active_reports, 0);
@@ -846,9 +867,10 @@ fn test_storage_stats() {
 }
 
 #[test]
-#[should_panic(expected = "Only admin can archive reports")]
 fn test_archive_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200);
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -856,14 +878,16 @@ fn test_archive_unauthorized() {
 
     client.init(&admin);
 
-    // Non-admin tries to archive
-    client.archive_old_reports(&non_admin, &2000000000);
+    // Non-admin tries to archive — should return Unauthorized error
+    let result = client.try_archive_old_reports(&non_admin, &1701475200);
+    assert!(result.is_err(), "archive_old_reports should fail for non-admin");
 }
 
 #[test]
-#[should_panic(expected = "Only admin can cleanup reports")]
 fn test_cleanup_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1720000000);
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -871,8 +895,94 @@ fn test_cleanup_unauthorized() {
 
     client.init(&admin);
 
-    // Non-admin tries to cleanup
-    client.cleanup_old_reports(&non_admin, &2000000000);
+    // Non-admin tries to cleanup — should return Unauthorized error
+    let result = client.try_cleanup_old_reports(&non_admin, &1704067200);
+    assert!(result.is_err(), "cleanup_old_reports should fail for non-admin");
+}
+
+/// Archive a report that was generated less than 30 days ago — must be rejected.
+#[test]
+fn test_archive_too_recent_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // Set ledger time to 1704067200 (Jan 1 2024)
+    set_ledger_time(&env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    // before_timestamp = now (1704067200): within the 30-day window → must fail
+    let result = client.try_archive_old_reports(&admin, &1704067200);
+    assert!(
+        result.is_err(),
+        "archive_old_reports with before_timestamp = now should fail (within retention window)"
+    );
+}
+
+/// Archive reports using a cutoff exactly at the 30-day boundary — should be accepted.
+#[test]
+fn test_archive_at_exact_retention_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // Ledger = 1704067200. Boundary = 1704067200 - 30*24*3600 = 1701475200
+    set_ledger_time(&env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let boundary = 1701475200u64; // exactly 30 days before ledger time
+    // No reports stored, but the call itself must succeed (not return InvalidRetentionWindow)
+    let result = client.try_archive_old_reports(&admin, &boundary);
+    assert!(
+        result.is_ok(),
+        "archive_old_reports at exact 30-day boundary should succeed, got: {:?}",
+        result
+    );
+    assert_eq!(result.unwrap(), 0);
+}
+
+/// Cleanup archives whose cutoff is within the 90-day window — must be rejected.
+#[test]
+fn test_cleanup_too_recent_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    // before_timestamp = now (1704067200): within the 90-day window → must fail
+    let result = client.try_cleanup_old_reports(&admin, &1704067200);
+    assert!(
+        result.is_err(),
+        "cleanup_old_reports with before_timestamp = now should fail (within retention window)"
+    );
+}
+
+/// Cleanup archives using a cutoff exactly at the 90-day boundary — should be accepted.
+#[test]
+fn test_cleanup_at_exact_retention_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // Ledger = 1720000000. Boundary = 1720000000 - 90*24*3600 = 1712224000
+    set_ledger_time(&env, 1, 1720000000);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let boundary = 1712224000u64; // exactly 90 days before ledger time
+    // No archives stored, but the call itself must succeed
+    let result = client.try_cleanup_old_reports(&admin, &boundary);
+    assert!(
+        result.is_ok(),
+        "cleanup_old_reports at exact 90-day boundary should succeed, got: {:?}",
+        result
+    );
+    assert_eq!(result.unwrap(), 0);
 }
 
 // ============================================================================
@@ -1182,7 +1292,8 @@ fn test_archive_ttl_extended_on_archive_reports() {
 
     // archive_old_reports calls extend_instance_ttl first (bumps to 518,400),
     // then extend_archive_ttl which is a no-op (TTL already above threshold)
-    let _archived = client.archive_old_reports(&admin, &2000000000);
+    // Retention check: before_timestamp (1700000000) <= 1704067200 - 30d (1701475200). TRUE.
+    let _archived = client.archive_old_reports(&admin, &1700000000).unwrap();
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(

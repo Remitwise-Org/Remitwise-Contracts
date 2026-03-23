@@ -387,6 +387,21 @@ Bill and insurance events include `external_ref` where applicable for off-chain 
 
 Bill and insurance events include `external_ref` where applicable for off-chain linking.
 
+### Reporting
+
+The reporting contract provides deep insights into a family's financial health by aggregating data across all RemitWise modules.
+
+**Capabilities:**
+- **Financial Health Scoring**: AI-driven analysis of savings, bills, and insurance coverage.
+- **Trend Analysis**: Month-over-month comparison of remittance and spending patterns.
+- **Historical Archival**: Secure storage of past reports with optimized data cleanup.
+
+**Retention Policy:**
+- **Reports**: Must be **30 days** old before they can be archived from active storage.
+- **Archives**: Must be **90 days** old before they are eligible for permanent deletion.
+
+---
+
 ### Family Wallet
 
 Manages family roles, spending controls, multisig approvals, and emergency transfer policies.
