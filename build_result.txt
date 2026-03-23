@@ -1,0 +1,7319 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:15
++ ... rgo update; cargo 
+build --release 
+--target 
+wasm32-unknown-unknown 
+--v ...
++                 ~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Blocking waiting 
+for file lock on 
+package cache
+ Downloading crates ...
+  Downloaded 
+wasm-bindgen-macro 
+v0.2.114
+  Downloaded addr2line 
+v0.25.1
+  Downloaded 
+wasm-bindgen-shared 
+v0.2.114
+  Downloaded 
+rustversion v1.0.22
+  Downloaded adler2 
+v2.0.1
+  Downloaded wasm-bindge
+n-macro-support v0.2.114
+  Downloaded 
+wasm-bindgen v0.2.114
+  Downloaded js-sys 
+v0.3.91
+  Downloaded bumpalo 
+v3.20.2
+  Downloaded 
+miniz_oxide v0.8.9
+  Downloaded 
+soroban-env-guest 
+v21.2.1
+  Downloaded gimli 
+v0.32.3
+  Downloaded object 
+v0.37.3
+  Downloaded libc 
+v0.2.183
+   Compiling 
+proc-macro2 v1.0.106
+   Compiling quote 
+v1.0.45
+   Compiling 
+unicode-ident v1.0.24
+   Compiling serde 
+v1.0.228
+   Compiling zmij 
+v1.0.21
+   Compiling serde_core 
+v1.0.228
+   Compiling serde_json 
+v1.0.149
+   Compiling memchr 
+v2.8.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+unicode_ident 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\unicode-ident
+-1.0.24\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+8885e24c94026e9 -C extra
+-filename=-b609a456a1431
+ac5 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde-1.0.228
+\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"derive\"" 
+--cfg "feature=\"serde_d
+erive\"" --cfg 
+"feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", 
+\"derive\", \"rc\", 
+\"serde_derive\", 
+\"std\", 
+\"unstable\"))" -C metad
+ata=f2fa5462c88b0b64 -C 
+extra-filename=-31b2e5ae
+30b6a9b0 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\build\s
+erde-31b2e5ae30b6a9b0 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_json-1.
+0.149\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", \"arbi
+trary_precision\", 
+\"default\", 
+\"float_roundtrip\", 
+\"indexmap\", 
+\"preserve_order\", 
+\"raw_value\", \"std\", 
+\"unbounded_depth\"))" 
+-C metadata=09e7e95d9fe8
+c006 -C extra-filename=-
+a069d5b8b25b4d9e 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\serde_json
+-a069d5b8b25b4d9e -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name memchr 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\memchr-2.8.0\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"core\", \"default\", 
+\"libc\", \"logging\", 
+\"rustc-dep-of-std\", 
+\"std\", \"use_std\"))" 
+-C metadata=9a52cc285820
+d6a7 -C extra-filename=-
+dfa83b64c72b0b0a 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\proc-macro2-1
+.0.106\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"proc-ma
+cro\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"nightly\", 
+\"proc-macro\", 
+\"span-locations\"))" 
+-C metadata=d077867f6dab
+9843 -C extra-filename=-
+87e2d68420ff7b58 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\proc-macro
+2-87e2d68420ff7b58 -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\quote-1.0.45\
+build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"proc-ma
+cro\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"proc-macro\"))" -C met
+adata=50ff44a21c2ee7fa 
+-C extra-filename=-d3f8d
+043705e8026 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\buil
+d\quote-d3f8d043705e8026
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\zmij-1.0.21\b
+uild.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\"))" 
+-C metadata=d59b7d871e7e
+3831 -C extra-filename=-
+1bb74419e55f6995 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\zmij-1bb74
+419e55f6995 -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_core-1.
+0.228\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"result\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"rc\", 
+\"result\", \"std\", 
+\"unstable\"))" -C metad
+ata=266f1c4cd436b949 -C 
+extra-filename=-cf930f3c
+fa852183 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\build\s
+erde_core-cf930f3cfa8521
+83 -C strip=symbols -L d
+ependency=C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps 
+--cap-lints allow`
+   Compiling itoa 
+v1.0.18
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name itoa 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\itoa-1.0.18\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\"))" 
+-C metadata=b9a38f2cd2d7
+517c -C extra-filename=-
+d395af51c2c773ab 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde_
+json-a069d5b8b25b4d9e\bu
+ild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde_
+core-cf930f3cfa852183\bu
+ild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\quote-
+d3f8d043705e8026\build-s
+cript-build`
+   Compiling typenum 
+v1.19.0
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\proc-m
+acro2-87e2d68420ff7b58\b
+uild-script-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\typenum-1.19.
+0\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"c
+onst-generics\", \"force
+_unix_path_separator\", 
+\"i128\", \"no_std\", 
+\"scale-info\", 
+\"scale_info\", 
+\"strict\"))" -C metadat
+a=433e90cf2dbbdc5d -C ex
+tra-filename=-1eb143ba55
+7ed605 --out-dir C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\build\typ
+enum-1eb143ba557ed605 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --cap-lints 
+allow`
+   Compiling ident_case 
+v1.0.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name ident_case 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\ident_case-1.
+0.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=0
+e748ae2a210bcc6 -C extra
+-filename=-6a14c793940da
+f08 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\zmij-1
+bb74419e55f6995\build-sc
+ript-build`
+   Compiling strsim 
+v0.11.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde_core 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_core-1.
+0.228\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"result\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"rc\", 
+\"result\", \"std\", 
+\"unstable\"))" -C metad
+ata=ca048c411863daec -C 
+extra-filename=-17c6a299
+43a0d6c4 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\deps 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --cap-lints 
+allow --check-cfg cfg(if
+_docsrs_then_no_serde_co
+re) --check-cfg 
+cfg(no_core_cstr) 
+--check-cfg 
+cfg(no_core_error) 
+--check-cfg 
+cfg(no_core_net) 
+--check-cfg cfg(no_core_
+num_saturating) 
+--check-cfg cfg(no_diagn
+ostic_namespace) 
+--check-cfg 
+cfg(no_serde_derive) 
+--check-cfg 
+cfg(no_std_atomic) 
+--check-cfg 
+cfg(no_std_atomic64) 
+--check-cfg cfg(no_targe
+t_has_atomic)`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name strsim 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\strsim-0.11.1
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=c
+af6a56111ecdb5a -C extra
+-filename=-78d8db65a8023
+d7e --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde-
+31b2e5ae30b6a9b0\build-s
+cript-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name zmij 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\zmij-1.0.21\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\"))" 
+-C metadata=bbd4a028895f
+4b5e -C extra-filename=-
+21ee5dc4de05039c 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow --check-cfg 
+cfg(exhaustive) 
+--check-cfg cfg(zmij_no_
+select_unpredictable)`
+   Compiling 
+version_check v0.9.5
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+version_check 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\version_check
+-0.9.5\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=2
+500dacef4262300 -C extra
+-filename=-e9efb094253cc
+6ba --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling autocfg 
+v1.5.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name autocfg 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\autocfg-1.5.0
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=a
+ab32109c685dd2e -C extra
+-filename=-2b3a78ccb7c18
+607 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling thiserror 
+v1.0.69
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\thiserror-1.0
+.69\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=3
+a18754ebc06c674 -C extra
+-filename=-5fc236ab78a37
+960 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\thiser
+ror-5fc236ab78a37960 -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+proc_macro2 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\proc-macro2-1
+.0.106\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"proc-ma
+cro\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"nightly\", 
+\"proc-macro\", 
+\"span-locations\"))" 
+-C metadata=8111b17301f2
+3a41 -C extra-filename=-
+085f6c8f59a928c1 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern unicode_
+ident=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libunicode_iden
+t-b609a456a1431ac5.rmeta
+ --cap-lints allow 
+--cfg wrap_proc_macro 
+--cfg proc_macro_span_lo
+cation --cfg 
+proc_macro_span_file 
+--check-cfg 
+cfg(fuzzing) 
+--check-cfg 
+cfg(no_is_available) 
+--check-cfg cfg(no_liter
+al_byte_character) 
+--check-cfg cfg(no_liter
+al_c_string) 
+--check-cfg 
+cfg(no_source_text) 
+--check-cfg 
+cfg(proc_macro_span) 
+--check-cfg cfg(proc_mac
+ro_span_file) 
+--check-cfg cfg(proc_mac
+ro_span_location) 
+--check-cfg cfg(procmacr
+o2_backtrace) 
+--check-cfg cfg(procmacr
+o2_build_probe) 
+--check-cfg cfg(procmacr
+o2_nightly_testing) 
+--check-cfg cfg(procmacr
+o2_semver_exempt) 
+--check-cfg 
+cfg(randomize_layout) 
+--check-cfg 
+cfg(span_locations) 
+--check-cfg 
+cfg(super_unstable) 
+--check-cfg 
+cfg(wrap_proc_macro)`
+   Compiling semver 
+v1.0.27
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name semver 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\semver-1.0.27
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"serde\", \"std\"))" 
+-C metadata=5afe5809deb4
+da79 -C extra-filename=-
+b38c835415d437aa 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling base32 
+v0.4.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name base32 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\base32-0.4.0\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=d
+7857196157b3110 -C extra
+-filename=-119c045152d8f
+e8b --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\thiser
+ror-5fc236ab78a37960\bui
+ld-script-build`
+   Compiling 
+generic-array v0.14.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\generic-array
+-0.14.7\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg "feature=\"more_le
+ngths\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"m
+ore_lengths\", 
+\"serde\", 
+\"zeroize\"))" -C metada
+ta=bc3054a7ea06e1b0 -C e
+xtra-filename=-e6c4637ec
+af7d892 --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\build\ge
+neric-array-e6c4637ecaf7
+d892 -C strip=symbols 
+-L dependency=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps 
+--extern version_check=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libversion_check-e9efb
+094253cc6ba.rlib 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\typenu
+m-1eb143ba557ed605\build
+-script-build`
+   Compiling 
+escape-bytes v0.1.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+escape_bytes 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\escape-bytes-
+0.1.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", 
+\"docs\"))" -C metadata=
+98b0c4eb3079e268 -C extr
+a-filename=-031af964a645
+8eb0 --out-dir C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name typenum 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\typenum-1.19.
+0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"c
+onst-generics\", \"force
+_unix_path_separator\", 
+\"i128\", \"no_std\", 
+\"scale-info\", 
+\"scale_info\", 
+\"strict\"))" -C metadat
+a=3e0c39e56546be1c -C ex
+tra-filename=-966599ef37
+4846db --out-dir C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling num-traits 
+v0.2.19
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-traits-0.
+2.19\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"i128\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"i128\", \"libm\", 
+\"std\"))" -C metadata=5
+60d0e47e3d9c3f7 -C extra
+-filename=-239262e54a070
+e2e --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\num-tr
+aits-239262e54a070e2e 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern autoc
+fg=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libautocfg-2b3a78c
+cb7c18607.rlib 
+--cap-lints allow`
+   Compiling either 
+v1.15.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name either 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\either-1.15.0
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg "feature=\"std\"" 
+--cfg 
+"feature=\"use_std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"serde\", \"std\", 
+\"use_std\"))" -C metada
+ta=a8a05721e29e912a -C e
+xtra-filename=-26a6eb73a
+9933364 --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\generi
+c-array-e6c4637ecaf7d892
+\build-script-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name quote 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\quote-1.0.45\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"proc-ma
+cro\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"proc-macro\"))" -C met
+adata=73683a37a27535f3 
+-C extra-filename=-ffb86
+0100d7d2d0b --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern proc
+_macro2=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps\libproc_macro
+2-085f6c8f59a928c1.rmeta
+ --cap-lints allow 
+--check-cfg cfg(no_diagn
+ostic_namespace)`
+   Compiling 
+rustc_version v0.4.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+rustc_version 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\rustc_version
+-0.4.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=d
+51c0dff8251264d -C extra
+-filename=-133fc5abfc07d
+a43 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern semver=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libsemver-b38c835415d4
+37aa.rmeta --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\num-tr
+aits-239262e54a070e2e\bu
+ild-script-build`
+   Compiling itertools 
+v0.11.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name itertools 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\itertools-0.1
+1.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"use_alloc\"" 
+--cfg 
+"feature=\"use_std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"use_alloc\", 
+\"use_std\"))" -C metada
+ta=5c64d8ec563627dc -C e
+xtra-filename=-a2c1656d4
+f0cfd0b --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern either=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libeither-26a6eb73a993
+3364.rmeta --cap-lints 
+allow`
+   Compiling syn 
+v2.0.117
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name syn 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\syn-2.0.117\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg "feature=\"clone-i
+mpls\"" --cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"derive\"" 
+--cfg "feature=\"extra-t
+raits\"" --cfg 
+"feature=\"full\"" 
+--cfg 
+"feature=\"parsing\"" 
+--cfg 
+"feature=\"printing\"" 
+--cfg "feature=\"proc-ma
+cro\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"clone-impls\", 
+\"default\", 
+\"derive\", 
+\"extra-traits\", 
+\"fold\", \"full\", 
+\"parsing\", 
+\"printing\", 
+\"proc-macro\", 
+\"test\", \"visit\", 
+\"visit-mut\"))" -C meta
+data=53e1d3f6e09ce66d 
+-C extra-filename=-b24e8
+58ddedd0d55 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern proc
+_macro2=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps\libproc_macro
+2-085f6c8f59a928c1.rmeta
+ --extern quote=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\libqu
+ote-ffb860100d7d2d0b.rme
+ta --extern unicode_iden
+t=C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-C
+ontracts\target\release\
+deps\libunicode_ident-b6
+09a456a1431ac5.rmeta 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name num_traits 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-traits-0.
+2.19\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"i128\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"i128\", \"libm\", 
+\"std\"))" -C metadata=4
+14015bca8cc1ce4 -C extra
+-filename=-d84f751cb3268
+e3a --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow --cfg 
+has_total_cmp 
+--check-cfg 
+cfg(has_total_cmp)`
+   Compiling equivalent 
+v1.0.2
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name equivalent 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\equivalent-1.
+0.2\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=5
+ecc5ecec06711cc -C extra
+-filename=-f72179d211743
+d1f --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling hashbrown 
+v0.16.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name hashbrown 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\hashbrown-0.1
+6.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"allocator-api2\", 
+\"core\", \"default\", 
+\"default-hasher\", 
+\"equivalent\", 
+\"inline-more\", 
+\"nightly\", 
+\"raw-entry\", 
+\"rayon\", 
+\"rustc-dep-of-std\", 
+\"rustc-internal-api\", 
+\"serde\"))" -C metadata
+=f81e673355283d4e -C ext
+ra-filename=-24fe3a45b5d
+789bf --out-dir C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-traits-0.
+2.19\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"i128\", \"libm\", 
+\"std\"))" -C metadata=b
+eb679d6c32b8f9b -C extra
+-filename=-78377a9e0462e
+44d --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\num-tr
+aits-78377a9e0462e44d 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern autoc
+fg=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libautocfg-2b3a78c
+cb7c18607.rlib 
+--cap-lints allow`
+   Compiling 
+prettyplease v0.2.37
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\prettyplease-
+0.2.37\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"verbatim\"))" 
+-C metadata=549f3984bb51
+eefb -C extra-filename=-
+217484960b688da3 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\prettyplea
+se-217484960b688da3 -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+generic_array 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\generic-array
+-0.14.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg "feature=\"more_le
+ngths\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"m
+ore_lengths\", 
+\"serde\", 
+\"zeroize\"))" -C metada
+ta=18d16ab6c90e9a56 -C e
+xtra-filename=-23901f12e
+ae655c7 --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern typenum=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\release\de
+ps\libtypenum-966599ef37
+4846db.rmeta 
+--cap-lints allow --cfg 
+relaxed_coherence`
+   Compiling fnv v1.0.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name fnv 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\fnv-1.0.7\lib
+.rs --error-format=json 
+--json=diagnostic-render
+ed-ansi,artifacts,future
+-incompat --crate-type 
+lib --emit=dep-info,meta
+data,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"std\"))" -C metadata=4
+f058e03c6983277 -C extra
+-filename=-f6cbb0602bf3e
+3b2 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\num-tr
+aits-78377a9e0462e44d\bu
+ild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\pretty
+please-217484960b688da3\
+build-script-build`
+   Compiling base64 
+v0.13.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name base64 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\base64-0.13.1
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"std\"))" 
+-C metadata=c307b6474a02
+cf29 -C extra-filename=-
+c54c44191e76ea5d 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde_json 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_json-1.
+0.149\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", \"arbi
+trary_precision\", 
+\"default\", 
+\"float_roundtrip\", 
+\"indexmap\", 
+\"preserve_order\", 
+\"raw_value\", \"std\", 
+\"unbounded_depth\"))" 
+-C metadata=9404c8cb1504
+f8e3 -C extra-filename=-
+12223a5f59c13999 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern itoa=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libitoa-d395af51c2c773ab
+.rmeta --extern memchr=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libmemchr-dfa83b64c72b
+0b0a.rmeta --extern serd
+e_core=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libserde_core-
+17c6a29943a0d6c4.rmeta 
+--extern zmij=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libzmij
+-21ee5dc4de05039c.rmeta 
+--cap-lints allow --cfg 
+"fast_arithmetic=\"64\""
+ --check-cfg 
+"cfg(fast_arithmetic, 
+values(\"32\", 
+\"64\"))"`
+   Compiling 
+block-buffer v0.10.4
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+block_buffer 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\block-buffer-
+0.10.4\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=2
+2ab0bb0759d5233 -C extra
+-filename=-1358bbd6622c5
+47b --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern generic_
+array=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libgeneric_arra
+y-23901f12eae655c7.rmeta
+ --cap-lints allow`
+   Compiling 
+crypto-common v0.1.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+crypto_common 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\crypto-common
+-0.1.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"getrandom\", 
+\"rand_core\", 
+\"std\"))" -C metadata=d
+08d5f8f9e5bb871 -C extra
+-filename=-780b6b406dc75
+1e5 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern generic_
+array=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libgeneric_arra
+y-23901f12eae655c7.rmeta
+ --extern typenum=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps\lib
+typenum-966599ef374846db
+.rmeta --cap-lints 
+allow`
+   Compiling indexmap 
+v2.13.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name indexmap 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\indexmap-2.13
+.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no 
+--deny=unsafe-code 
+--deny=unreachable-pub 
+--deny=unnameable-types 
+--allow=clippy::style 
+--warn=rust-2018-idioms 
+--deny=private-interface
+s --deny=private-bounds 
+-C debug-assertions=off 
+-C overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"arbitrary\", 
+\"borsh\", \"default\", 
+\"quickcheck\", 
+\"rayon\", \"serde\", 
+\"std\", \"sval\", 
+\"test_debug\"))" -C met
+adata=392697c9afaef82f 
+-C extra-filename=-2cd63
+45437b95a81 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern equi
+valent=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libequivalent-
+f72179d211743d1f.rmeta 
+--extern hashbrown=C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\deps\li
+bhashbrown-24fe3a45b5d78
+9bf.rmeta --cap-lints 
+allow`
+   Compiling digest 
+v0.10.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name digest 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\digest-0.10.7
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg "feature=\"block-b
+uffer\"" --cfg 
+"feature=\"core-api\"" 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"blobby\", 
+\"block-buffer\", 
+\"const-oid\", 
+\"core-api\", 
+\"default\", \"dev\", 
+\"mac\", \"oid\", 
+\"rand_core\", \"std\", 
+\"subtle\"))" -C metadat
+a=4e750a92f3a53683 -C ex
+tra-filename=-3e095bf813
+a63e80 --out-dir C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern block_bu
+ffer=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libblock_buffer-
+1358bbd6622c547b.rmeta 
+--extern crypto_common=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libcrypto_common-780b6
+b406dc751e5.rmeta 
+--cap-lints allow`
+   Compiling 
+cpufeatures v0.2.17
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+cpufeatures 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\cpufeatures-0
+.2.17\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=6
+0ad07c6ffc22b9a -C extra
+-filename=-d312cda270be4
+21c --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+escape_bytes 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\escape-bytes-
+0.1.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", 
+\"docs\"))" -C metadata=
+d70e5e6ad0ec8dce -C extr
+a-filename=-3242fa0b79d6
+d16f --out-dir C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\wasm32-unknown-unkn
+own\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+   Compiling cfg-if 
+v1.0.4
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name cfg_if 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\cfg-if-1.0.4\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"core\", 
+\"rustc-dep-of-std\"))" 
+-C metadata=ec66284cd216
+72e7 -C extra-filename=-
+9c37e8e57dcc8051 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name num_traits 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-traits-0.
+2.19\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"i128\", \"libm\", 
+\"std\"))" -C metadata=0
+0a80678ad37d9d4 -C extra
+-filename=-56427fa453939
+dca --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow 
+--cfg has_total_cmp 
+--check-cfg 
+cfg(has_total_cmp)`
+   Compiling 
+num-integer v0.1.46
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+num_integer 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-integer-0
+.1.46\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"i128\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"i128\", \"std\"))" -C 
+metadata=d978ba89d7fe657
+2 -C extra-filename=-58a
+e0f23c2cf496e --out-dir 
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\release\de
+ps -C strip=symbols -L d
+ependency=C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps --extern nu
+m_traits=C:\Users\ADMIN\
+Desktop\remmy-drips\Remi
+twise-Contracts\target\r
+elease\deps\libnum_trait
+s-d84f751cb3268e3a.rmeta
+ --cap-lints allow`
+   Compiling sha2 
+v0.10.9
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name sha2 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\sha2-0.10.9\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"asm\", 
+\"asm-aarch64\", 
+\"compress\", 
+\"default\", 
+\"force-soft\", 
+\"force-soft-compact\", 
+\"loongarch64_asm\", 
+\"oid\", \"sha2-asm\", 
+\"std\"))" -C metadata=f
+e6424f3e3f06ca0 -C extra
+-filename=-074580bbd1d9c
+639 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern cfg_if=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libcfg_if-9c37e8e57dcc
+8051.rmeta --extern cpuf
+eatures=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps\libcpufeature
+s-d312cda270be421c.rmeta
+ --extern digest=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps\libd
+igest-3e095bf813a63e80.r
+meta --cap-lints allow`
+   Compiling 
+static_assertions v1.1.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+static_assertions 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\static_assert
+ions-1.1.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"nightly\"))" 
+-C metadata=25a22bf213a6
+c6bb -C extra-filename=-
+2b690629252921cc 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+   Compiling ethnum 
+v1.5.2
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name ethnum 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\ethnum-1.5.2\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"e
+thnum-intrinsics\", 
+\"llvm-intrinsics\", 
+\"macros\", 
+\"serde\"))" -C metadata
+=e72f95f6a4de3b49 -C ext
+ra-filename=-58fd883c8a9
+d043e --out-dir C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+static_assertions 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\static_assert
+ions-1.1.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"nightly\"))" 
+-C metadata=72243ddb0b06
+828e -C extra-filename=-
+fa1868c48b442779 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name ethnum 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\ethnum-1.5.2\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"e
+thnum-intrinsics\", 
+\"llvm-intrinsics\", 
+\"macros\", 
+\"serde\"))" -C metadata
+=fe9b970e2832094c -C ext
+ra-filename=-7e71b271f0e
+b68a2 --out-dir C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\wasm32-unknown-unk
+nown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+   Compiling num-bigint 
+v0.4.6
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name num_bigint 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-bigint-0.
+4.6\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"arbitrary\", 
+\"default\", 
+\"quickcheck\", 
+\"rand\", \"serde\", 
+\"std\"))" -C metadata=a
+2edbfba0f92fb48 -C extra
+-filename=-ded5acdfeb983
+f2e --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern num_inte
+ger=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libnum_integer-58
+ae0f23c2cf496e.rmeta 
+--extern num_traits=C:\U
+sers\ADMIN\Desktop\remmy
+-drips\Remitwise-Contrac
+ts\target\release\deps\l
+ibnum_traits-d84f751cb32
+68e3a.rmeta --cap-lints 
+allow`
+   Compiling wasmparser 
+v0.116.1
+   Compiling 
+soroban-sdk v21.7.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name wasmparser 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\wasmparser-0.
+116.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=8
+16932b7776fcd2a -C extra
+-filename=-61af4a806befa
+c72 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern indexmap
+=C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\target\release\d
+eps\libindexmap-2cd63454
+37b95a81.rmeta --extern 
+semver=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libsemver-b38c
+835415d437aa.rmeta 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-sdk-2
+1.7.7\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"curve25519-dalek\", 
+\"docs\", \"hazmat\", 
+\"testutils\"))" -C meta
+data=53a03ea3203b50d9 
+-C extra-filename=-7173f
+4983ad31a44 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\buil
+d\soroban-sdk-7173f4983a
+d31a44 -C strip=symbols 
+-L dependency=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps 
+--extern rustc_version=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\librustc_version-133fc
+5abfc07da43.rlib 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\soroba
+n-sdk-7173f4983ad31a44\b
+uild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\typenu
+m-1eb143ba557ed605\build
+-script-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_core-1.
+0.228\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"result\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"rc\", 
+\"result\", \"std\", 
+\"unstable\"))" -C metad
+ata=099a6a9219d1866c -C 
+extra-filename=-aaaac556
+d1dde64e --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\build\s
+erde_core-aaaac556d1dde6
+4e -C strip=symbols -L d
+ependency=C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name typenum 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\typenum-1.19.
+0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"c
+onst-generics\", \"force
+_unix_path_separator\", 
+\"i128\", \"no_std\", 
+\"scale-info\", 
+\"scale_info\", 
+\"strict\"))" -C metadat
+a=0277db237b8fafac -C ex
+tra-filename=-c117ee82d4
+ed611c --out-dir C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\wasm32-unknown-un
+known\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\generi
+c-array-e6c4637ecaf7d892
+\build-script-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name memchr 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\memchr-2.8.0\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"core\", \"default\", 
+\"libc\", \"logging\", 
+\"rustc-dep-of-std\", 
+\"std\", \"use_std\"))" 
+-C metadata=70d29ab9f5ec
+3908 -C extra-filename=-
+e71ab15c2443f2ae 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde_
+core-aaaac556d1dde64e\bu
+ild-script-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde_core 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_core-1.
+0.228\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"result\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"rc\", 
+\"result\", \"std\", 
+\"unstable\"))" -C metad
+ata=57cf934d37122e29 -C 
+extra-filename=-bd4886c4
+7be1cf09 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\wasm32-unknown-
+unknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow 
+--check-cfg cfg(if_docsr
+s_then_no_serde_core) 
+--check-cfg 
+cfg(no_core_cstr) 
+--check-cfg 
+cfg(no_core_error) 
+--check-cfg 
+cfg(no_core_net) 
+--check-cfg cfg(no_core_
+num_saturating) 
+--check-cfg cfg(no_diagn
+ostic_namespace) 
+--check-cfg 
+cfg(no_serde_derive) 
+--check-cfg 
+cfg(no_std_atomic) 
+--check-cfg 
+cfg(no_std_atomic64) 
+--check-cfg cfg(no_targe
+t_has_atomic)`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+generic_array 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\generic-array
+-0.14.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg "feature=\"more_le
+ngths\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"m
+ore_lengths\", 
+\"serde\", 
+\"zeroize\"))" -C metada
+ta=f5528a85bb87f27d -C e
+xtra-filename=-7328a4af4
+a3b632e --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\wasm32-unknown-u
+nknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern typenum=C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\wasm32-unknown-
+unknown\release\deps\lib
+typenum-c117ee82d4ed611c
+.rmeta --cap-lints 
+allow --cfg 
+relaxed_coherence`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde-
+31b2e5ae30b6a9b0\build-s
+cript-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\zmij-1
+bb74419e55f6995\build-sc
+ript-build`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name itoa 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\itoa-1.0.18\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\"))" 
+-C metadata=48c74df61e03
+9a7e -C extra-filename=-
+0fa00f3e55c8e35a 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+   Compiling csv-core 
+v0.1.13
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name csv_core 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\csv-core-0.1.
+13\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"libc\"))" -C metadata=
+6e3dd4596229b04f -C extr
+a-filename=-2e2178fbb7ee
+853e --out-dir C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\wasm32-unknown-unkn
+own\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern memchr=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\wasm32-unknown-u
+nknown\release\deps\libm
+emchr-e71ab15c2443f2ae.r
+meta --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name zmij 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\zmij-1.0.21\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\"))" 
+-C metadata=88bdd95bc95e
+55d0 -C extra-filename=-
+f3c67b1c81d2b16f 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow 
+--check-cfg 
+cfg(exhaustive) 
+--check-cfg cfg(zmij_no_
+select_unpredictable)`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\serde_
+json-a069d5b8b25b4d9e\bu
+ild-script-build`
+   Compiling ryu v1.0.23
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name ryu 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\ryu-1.0.23\sr
+c\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"no-panic\", 
+\"small\"))" -C metadata
+=e103bf96cdfd0a7f -C ext
+ra-filename=-1a6e160a025
+d49f6 --out-dir C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\wasm32-unknown-unk
+nown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+block_buffer 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\block-buffer-
+0.10.4\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=4
+6b1a767a4d3ac3a -C extra
+-filename=-e302f620d2c47
+b74 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern generic_array
+=C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\target\wasm32-un
+known-unknown\release\de
+ps\libgeneric_array-7328
+a4af4a3b632e.rmeta 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+crypto_common 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\crypto-common
+-0.1.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"getrandom\", 
+\"rand_core\", 
+\"std\"))" -C metadata=5
+d585856f145b08a -C extra
+-filename=-c91c81786e96f
+7cb --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern generic_array
+=C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\target\wasm32-un
+known-unknown\release\de
+ps\libgeneric_array-7328
+a4af4a3b632e.rmeta 
+--extern typenum=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\wasm32-unknown-un
+known\release\deps\libty
+penum-c117ee82d4ed611c.r
+meta --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name cfg_if 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\cfg-if-1.0.4\
+src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"core\", 
+\"rustc-dep-of-std\"))" 
+-C metadata=3c5f655c2a4b
+01a8 -C extra-filename=-
+6d979c9b838a41f4 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name digest 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\digest-0.10.7
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg "feature=\"block-b
+uffer\"" --cfg 
+"feature=\"core-api\"" 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"blobby\", 
+\"block-buffer\", 
+\"const-oid\", 
+\"core-api\", 
+\"default\", \"dev\", 
+\"mac\", \"oid\", 
+\"rand_core\", \"std\", 
+\"subtle\"))" -C metadat
+a=82c8f8edb8dcd0f9 -C ex
+tra-filename=-eb061049d7
+99b7a9 --out-dir C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\wasm32-unknown-un
+known\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern block_buffer=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\wasm32-unk
+nown-unknown\release\dep
+s\libblock_buffer-e302f6
+20d2c47b74.rmeta 
+--extern crypto_common=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libcrypto_common-c91c81
+786e96f7cb.rmeta 
+--cap-lints allow`
+   Compiling base64 
+v0.21.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name base64 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\base64-0.21.7
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"std\"))" 
+-C metadata=686d0e3e878f
+eb37 -C extra-filename=-
+91e5392482137809 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name sha2 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\sha2-0.10.9\s
+rc\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"asm\", 
+\"asm-aarch64\", 
+\"compress\", 
+\"default\", 
+\"force-soft\", 
+\"force-soft-compact\", 
+\"loongarch64_asm\", 
+\"oid\", \"sha2-asm\", 
+\"std\"))" -C metadata=5
+1fbcc4cf64d44e5 -C extra
+-filename=-2697a1c0f2f17
+947 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern cfg_if=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\wasm32-unknown-u
+nknown\release\deps\libc
+fg_if-6d979c9b838a41f4.r
+meta --extern digest=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\wasm32-unknow
+n-unknown\release\deps\l
+ibdigest-eb061049d799b7a
+9.rmeta --cap-lints 
+allow`
+   Compiling csv v1.4.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name csv 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\csv-1.4.0\src
+\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=9
+e4070cb58347a43 -C extra
+-filename=-c846b6f375d73
+7d3 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern csv_core=C:\U
+sers\ADMIN\Desktop\remmy
+-drips\Remitwise-Contrac
+ts\target\wasm32-unknown
+-unknown\release\deps\li
+bcsv_core-2e2178fbb7ee85
+3e.rmeta --extern itoa=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libitoa-0fa00f3e55c8e35
+a.rmeta --extern ryu=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\wasm32-unknow
+n-unknown\release\deps\l
+ibryu-1a6e160a025d49f6.r
+meta --extern serde_core
+=C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\target\wasm32-un
+known-unknown\release\de
+ps\libserde_core-bd4886c
+47be1cf09.rmeta 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde_json 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_json-1.
+0.149\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", \"arbi
+trary_precision\", 
+\"default\", 
+\"float_roundtrip\", 
+\"indexmap\", 
+\"preserve_order\", 
+\"raw_value\", \"std\", 
+\"unbounded_depth\"))" 
+-C metadata=abbb9dc8905b
+9414 -C extra-filename=-
+4abca0a3f548893f 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern itoa=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\wasm32-unknown-unk
+nown\release\deps\libito
+a-0fa00f3e55c8e35a.rmeta
+ --extern memchr=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\wasm32-unknown-un
+known\release\deps\libme
+mchr-e71ab15c2443f2ae.rm
+eta --extern serde_core=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\wasm32-unk
+nown-unknown\release\dep
+s\libserde_core-bd4886c4
+7be1cf09.rmeta --extern 
+zmij=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\wasm3
+2-unknown-unknown\releas
+e\deps\libzmij-f3c67b1c8
+1d2b16f.rmeta 
+--cap-lints allow --cfg 
+"fast_arithmetic=\"64\""
+ --check-cfg 
+"cfg(fast_arithmetic, 
+values(\"32\", 
+\"64\"))"`
+   Compiling 
+darling_core v0.23.0
+   Compiling 
+darling_core v0.20.11
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+darling_core 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling_core-
+0.20.11\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"strsim\"" 
+--cfg "feature=\"suggest
+ions\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"diagnostics\", 
+\"strsim\", 
+\"suggestions\"))" -C me
+tadata=34009fb1ea11749b 
+-C extra-filename=-aa076
+e2c00ec285f --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern fnv=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\release\de
+ps\libfnv-f6cbb0602bf3e3
+b2.rmeta --extern ident_
+case=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libident_case-6a
+14c793940daf08.rmeta 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rmeta --extern q
+uote=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libquote-ffb8601
+00d7d2d0b.rmeta 
+--extern strsim=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\libst
+rsim-78d8db65a8023d7e.rm
+eta --extern syn=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps\libs
+yn-b24e858ddedd0d55.rmet
+a --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+prettyplease 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\prettyplease-
+0.2.37\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"verbatim\"))" 
+-C metadata=a2df83617917
+de48 -C extra-filename=-
+c67cf3866068babf 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern proc_mac
+ro2=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libproc_macro2-08
+5f6c8f59a928c1.rmeta 
+--extern syn=C:\Users\AD
+MIN\Desktop\remmy-drips\
+Remitwise-Contracts\targ
+et\release\deps\libsyn-b
+24e858ddedd0d55.rmeta 
+--cap-lints allow 
+--check-cfg 
+cfg(exhaustive) 
+--check-cfg 
+cfg(prettyplease_debug) 
+--check-cfg cfg(prettypl
+ease_debug_indent)`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+darling_core 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling_core-
+0.23.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"strsim\"" 
+--cfg "feature=\"suggest
+ions\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"diagnostics\", 
+\"serde\", \"strsim\", 
+\"suggestions\"))" -C me
+tadata=2e39f0285e1b6ccc 
+-C extra-filename=-b0074
+85c795c16b9 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern iden
+t_case=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libident_case-
+6a14c793940daf08.rmeta 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rmeta --extern q
+uote=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libquote-ffb8601
+00d7d2d0b.rmeta 
+--extern strsim=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\libst
+rsim-78d8db65a8023d7e.rm
+eta --extern syn=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps\libs
+yn-b24e858ddedd0d55.rmet
+a --cap-lints allow`
+   Compiling 
+serde_derive v1.0.228
+   Compiling 
+thiserror-impl v1.0.69
+   Compiling num-derive 
+v0.4.2
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name num_derive 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\num-derive-0.
+4.2\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=9
+b14861d9a40666a -C extra
+-filename=-32ff9a2aa2597
+346 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern proc_mac
+ro2=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libproc_macro2-08
+5f6c8f59a928c1.rlib 
+--extern quote=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libquo
+te-ffb860100d7d2d0b.rlib
+ --extern syn=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsyn-
+b24e858ddedd0d55.rlib 
+--extern proc_macro 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+serde_derive 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_derive-
+1.0.228\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", \"de
+serialize_in_place\"))" 
+-C metadata=7f5107d206d1
+2c8b -C extra-filename=-
+67d75c686c25a3c7 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern proc_mac
+ro2=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libproc_macro2-08
+5f6c8f59a928c1.rlib 
+--extern quote=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libquo
+te-ffb860100d7d2d0b.rlib
+ --extern syn=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsyn-
+b24e858ddedd0d55.rlib 
+--extern proc_macro 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+thiserror_impl 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\thiserror-imp
+l-1.0.69\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=4
+3532a6a141e005f -C extra
+-filename=-d7f31764d3d72
+242 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern proc_mac
+ro2=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libproc_macro2-08
+5f6c8f59a928c1.rlib 
+--extern quote=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libquo
+te-ffb860100d7d2d0b.rlib
+ --extern syn=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsyn-
+b24e858ddedd0d55.rlib 
+--extern proc_macro 
+--cap-lints allow`
+   Compiling bytes-lit 
+v0.0.5
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name bytes_lit 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\bytes-lit-0.0
+.5\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=a
+330a6a22d62f55a -C extra
+-filename=-3d4cb9d7b8ef5
+a7a --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern num_bigi
+nt=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libnum_bigint-ded5
+acdfeb983f2e.rlib 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rlib --extern qu
+ote=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libquote-ffb86010
+0d7d2d0b.rlib --extern s
+yn=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libsyn-b24e858dded
+d0d55.rlib --extern 
+proc_macro --cap-lints 
+allow`
+   Compiling 
+darling_macro v0.20.11
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+darling_macro 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling_macro
+-0.20.11\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=2
+0f0963ba09224e2 -C extra
+-filename=-944cc1a57d31b
+571 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern darling_
+core=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libdarling_core-
+aa076e2c00ec285f.rlib 
+--extern quote=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libquo
+te-ffb860100d7d2d0b.rlib
+ --extern syn=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsyn-
+b24e858ddedd0d55.rlib 
+--extern proc_macro 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name thiserror 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\thiserror-1.0
+.69\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=4
+7ab8a4ce6560dcf -C extra
+-filename=-d0125f4749ed2
+f14 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern thiserro
+r_impl=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\thiserror_impl
+-d7f31764d3d72242.dll 
+--cap-lints allow 
+--check-cfg cfg(error_ge
+neric_member_access) 
+--check-cfg cfg(thiserro
+r_nightly_testing)`
+   Compiling darling 
+v0.20.11
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name darling 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling-0.20.
+11\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no 
+--warn=unexpected_cfgs 
+--check-cfg 
+cfg(compiletests) -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"suggest
+ions\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"diagnostics\", 
+\"suggestions\"))" -C me
+tadata=8ba50445cbd5d0ab 
+-C extra-filename=-2d28e
+fcf5af37ac1 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern darl
+ing_core=C:\Users\ADMIN\
+Desktop\remmy-drips\Remi
+twise-Contracts\target\r
+elease\deps\libdarling_c
+ore-aa076e2c00ec285f.rme
+ta --extern darling_macr
+o=C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-C
+ontracts\target\release\
+deps\darling_macro-944cc
+1a57d31b571.dll 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde-1.0.228
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"derive\"" 
+--cfg "feature=\"serde_d
+erive\"" --cfg 
+"feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", 
+\"derive\", \"rc\", 
+\"serde_derive\", 
+\"std\", 
+\"unstable\"))" -C metad
+ata=195bbd4d7d4e4369 -C 
+extra-filename=-ef1eb855
+cb454de7 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\deps 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern serde
+_core=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libserde_core-1
+7c6a29943a0d6c4.rmeta 
+--extern serde_derive=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\serde_derive-67d75c686c
+25a3c7.dll --cap-lints 
+allow --cfg if_docsrs_th
+en_no_serde_core 
+--check-cfg 
+"cfg(feature, 
+values(\"result\"))" 
+--check-cfg cfg(if_docsr
+s_then_no_serde_core) 
+--check-cfg 
+cfg(no_core_cstr) 
+--check-cfg 
+cfg(no_core_error) 
+--check-cfg 
+cfg(no_core_net) 
+--check-cfg cfg(no_core_
+num_saturating) 
+--check-cfg cfg(no_diagn
+ostic_namespace) 
+--check-cfg 
+cfg(no_serde_derive) 
+--check-cfg 
+cfg(no_std_atomic) 
+--check-cfg 
+cfg(no_std_atomic64) 
+--check-cfg cfg(no_targe
+t_has_atomic)`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde-1.0.228
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"derive\"" 
+--cfg "feature=\"serde_d
+erive\"" --cfg 
+"feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", 
+\"derive\", \"rc\", 
+\"serde_derive\", 
+\"std\", 
+\"unstable\"))" -C metad
+ata=327f3699c64ef8a7 -C 
+extra-filename=-641a95eb
+fe69190d --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\wasm32-unknown-
+unknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern serde_core=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps\
+libserde_core-bd4886c47b
+e1cf09.rmeta --extern se
+rde_derive=C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\target
+\release\deps\serde_deri
+ve-67d75c686c25a3c7.dll 
+--cap-lints allow --cfg 
+if_docsrs_then_no_serde_
+core --check-cfg 
+"cfg(feature, 
+values(\"result\"))" 
+--check-cfg cfg(if_docsr
+s_then_no_serde_core) 
+--check-cfg 
+cfg(no_core_cstr) 
+--check-cfg 
+cfg(no_core_error) 
+--check-cfg 
+cfg(no_core_net) 
+--check-cfg cfg(no_core_
+num_saturating) 
+--check-cfg cfg(no_diagn
+ostic_namespace) 
+--check-cfg 
+cfg(no_serde_derive) 
+--check-cfg 
+cfg(no_std_atomic) 
+--check-cfg 
+cfg(no_std_atomic64) 
+--check-cfg cfg(no_targe
+t_has_atomic)`
+   Compiling 
+darling_macro v0.23.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+darling_macro 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling_macro
+-0.23.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=c
+5db7ced923c1ef9 -C extra
+-filename=-f1af8f1398682
+427 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern darling_
+core=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libdarling_core-
+b007485c795c16b9.rlib 
+--extern quote=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libquo
+te-ffb860100d7d2d0b.rlib
+ --extern syn=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsyn-
+b24e858ddedd0d55.rlib 
+--extern proc_macro 
+--cap-lints allow`
+   Compiling darling 
+v0.23.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name darling 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\darling-0.23.
+0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no 
+--warn=unexpected_cfgs 
+--check-cfg 
+cfg(compiletests) -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--cfg "feature=\"suggest
+ions\"" --check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"default\", 
+\"diagnostics\", 
+\"serde\", 
+\"suggestions\"))" -C me
+tadata=68bbd582dccec548 
+-C extra-filename=-b206c
+151991c13f5 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern darl
+ing_core=C:\Users\ADMIN\
+Desktop\remmy-drips\Remi
+twise-Contracts\target\r
+elease\deps\libdarling_c
+ore-b007485c795c16b9.rme
+ta --extern darling_macr
+o=C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-C
+ontracts\target\release\
+deps\darling_macro-f1af8
+f1398682427.dll 
+--cap-lints allow`
+   Compiling 
+crate-git-revision 
+v0.0.6
+   Compiling hex v0.4.3
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+crate_git_revision 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\crate-git-rev
+ision-0.0.6\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=0
+55e76c1b7c00cdc -C extra
+-filename=-ee81c365fbc66
+baf --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern serde=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\libserde-ef1eb855cb454d
+e7.rmeta --extern serde_
+derive=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\serde_derive-6
+7d75c686c25a3c7.dll 
+--extern serde_json=C:\U
+sers\ADMIN\Desktop\remmy
+-drips\Remitwise-Contrac
+ts\target\release\deps\l
+ibserde_json-12223a5f59c
+13999.rmeta --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name hex 
+--edition=2018 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\hex-0.4.3\src
+\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"serde\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"default\", \"serde\", 
+\"std\"))" -C metadata=6
+7cc451f3b8174eb -C extra
+-filename=-77f94fb6b3d8b
+9e0 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern serde=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\libserde-ef1eb855cb454d
+e7.rmeta --cap-lints 
+allow`
+   Compiling bincode 
+v1.3.3
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name bincode 
+--edition=2015 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\bincode-1.3.3
+\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"i128\"))" -C me
+tadata=c7a2ccfeebb2dea2 
+-C extra-filename=-d0b0c
+48388a90672 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern serde=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\wasm32-unknown-un
+known\release\deps\libse
+rde-641a95ebfe69190d.rme
+ta --cap-lints allow`
+   Compiling 
+serde_with_macros 
+v3.18.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+serde_with_macros 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_with_ma
+cros-3.18.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no 
+--warn=rust_2018_idioms 
+--warn=variant_size_diff
+erences --warn=unused_im
+port_braces --warn=unuse
+d_extern_crates 
+--warn=unexpected_cfgs -
+-warn=trivial_numeric_ca
+sts 
+--warn=trivial_casts --w
+arn=clippy::semicolon_if
+_nothing_returned --warn
+=clippy::redundant_closu
+re_for_method_calls 
+--warn=missing_docs --wa
+rn=rustdoc::missing_crat
+e_level_docs --allow=cli
+ppy::manual-unwrap-or-de
+fault --allow=clippy::ex
+plicit_auto_deref --warn
+=clippy::doc_markdown --
+warn=clippy::default_tra
+it_access --warn=clippy:
+:cloned_instead_of_copie
+d --check-cfg 
+cfg(tarpaulin) 
+--check-cfg 
+cfg(tarpaulin_include) 
+-C debug-assertions=off 
+-C overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, values(\"s
+chemars_0_8\", 
+\"schemars_0_9\", 
+\"schemars_1\"))" -C met
+adata=92d32e0afbe2b29d 
+-C extra-filename=-7eea3
+6bf656eb957 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern darl
+ing=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libdarling-b206c1
+51991c13f5.rlib 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rlib --extern qu
+ote=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libquote-ffb86010
+0d7d2d0b.rlib --extern s
+yn=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libsyn-b24e858dded
+d0d55.rlib --extern 
+proc_macro --cap-lints 
+allow`
+   Compiling 
+stellar-strkey v0.0.8
+   Compiling 
+stellar-xdr v21.2.0
+   Compiling 
+soroban-env-common 
+v21.2.1
+   Compiling 
+soroban-sdk-macros 
+v21.7.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-strke
+y-0.0.8\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"cli\", 
+\"default\"))" -C metada
+ta=9c796ee426b1aa5b -C e
+xtra-filename=-fd3a7c2a8
+0ae95d3 --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\build\st
+ellar-strkey-fd3a7c2a80a
+e95d3 -C strip=symbols 
+-L dependency=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps 
+--extern crate_git_revis
+ion=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libcrate_git_revi
+sion-ee81c365fbc66baf.rl
+ib --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-xdr-2
+1.2.0\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"curr\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"arbitrary\", 
+\"base64\", \"cli\", 
+\"curr\", \"default\", 
+\"hex\", \"next\", 
+\"schemars\", 
+\"serde\", 
+\"serde_json\", 
+\"std\"))" -C metadata=5
+c31818588f663f7 -C extra
+-filename=-2ca8151afd029
+c29 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\stella
+r-xdr-2ca8151afd029c29 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern crate
+_git_revision=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libcrat
+e_git_revision-ee81c365f
+bc66baf.rlib 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-sdk-m
+acros-21.7.7\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"testutils\"))" 
+-C metadata=f690fbedc622
+d596 -C extra-filename=-
+24b66c2349933e79 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\soroban-sd
+k-macros-24b66c2349933e7
+9 -C strip=symbols -L de
+pendency=C:\Users\ADMIN\
+Desktop\remmy-drips\Remi
+twise-Contracts\target\r
+elease\deps --extern cra
+te_git_revision=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\libcr
+ate_git_revision-ee81c36
+5fbc66baf.rlib --extern 
+rustc_version=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\librust
+c_version-133fc5abfc07da
+43.rlib --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-xdr-2
+1.2.0\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"curr\"" 
+--cfg "feature=\"hex\"" 
+--cfg 
+"feature=\"serde\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"arbitrary\", 
+\"base64\", \"cli\", 
+\"curr\", \"default\", 
+\"hex\", \"next\", 
+\"schemars\", 
+\"serde\", 
+\"serde_json\", 
+\"std\"))" -C metadata=7
+1bb4a575a95d921 -C extra
+-filename=-68b9c795f7f53
+f1e --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\stella
+r-xdr-68b9c795f7f53f1e 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern crate
+_git_revision=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libcrat
+e_git_revision-ee81c365f
+bc66baf.rlib 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+build_script_build 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-env-c
+ommon-21.2.1\build.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type bin 
+--emit=dep-info,link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"next\", 
+\"serde\", 
+\"shallow-val-hash\", 
+\"std\", \"testutils\", 
+\"tracy\", \"wasmi\"))" 
+-C metadata=9c480855a387
+9673 -C extra-filename=-
+8d2ae21332ee5951 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\build\soroban-en
+v-common-8d2ae21332ee595
+1 -C strip=symbols -L de
+pendency=C:\Users\ADMIN\
+Desktop\remmy-drips\Remi
+twise-Contracts\target\r
+elease\deps --extern cra
+te_git_revision=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\libcr
+ate_git_revision-ee81c36
+5fbc66baf.rlib 
+--cap-lints allow`
+   Compiling 
+data_migration v0.1.0 (C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\data_migration)
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+data_migration 
+--edition=2021 data_migr
+ation\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type rlib 
+--emit=dep-info,metadata
+,link -C opt-level=z -C 
+panic=abort -C 
+linker-plugin-lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=3
+bb7bc425cc66feb -C extra
+-filename=-7784126068aad
+a80 --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern base64=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\wasm32-unknown-u
+nknown\release\deps\libb
+ase64-91e5392482137809.r
+meta --extern bincode=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps\
+libbincode-d0b0c48388a90
+672.rmeta --extern csv=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libcsv-c846b6f375d737d3
+.rmeta --extern serde=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps\
+libserde-641a95ebfe69190
+d.rmeta --extern serde_j
+son=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libserde_json-4abc
+a0a3f548893f.rmeta 
+--extern sha2=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps\libsha2-
+2697a1c0f2f17947.rmeta`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\soroba
+n-sdk-macros-24b66c23499
+33e79\build-script-build
+`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\stella
+r-xdr-2ca8151afd029c29\b
+uild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\stella
+r-xdr-68b9c795f7f53f1e\b
+uild-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\stella
+r-strkey-fd3a7c2a80ae95d
+3\build-script-build`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\soroba
+n-env-common-8d2ae21332e
+e5951\build-script-build
+`
+     Running `C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\build\soroba
+n-env-common-8d2ae21332e
+e5951\build-script-build
+`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+stellar_xdr 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-xdr-2
+1.2.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--cfg 
+"feature=\"curr\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"arbitrary\", 
+\"base64\", \"cli\", 
+\"curr\", \"default\", 
+\"hex\", \"next\", 
+\"schemars\", 
+\"serde\", 
+\"serde_json\", 
+\"std\"))" -C metadata=4
+1ec68869a6a3267 -C extra
+-filename=-25d6e4ce6e7e1
+2ba --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\wasm32-unknown-unkno
+wn\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern escape_bytes=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\wasm32-unk
+nown-unknown\release\dep
+s\libescape_bytes-3242fa
+0b79d6d16f.rmeta 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+stellar_strkey 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-strke
+y-0.0.8\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"default\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"cli\", 
+\"default\"))" -C metada
+ta=2cc4354722439413 -C e
+xtra-filename=-5abd34137
+8ade708 --out-dir C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern base32=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libbase32-119c045152d8
+fe8b.rmeta --extern this
+error=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libthiserror-d0
+125f4749ed2f14.rmeta 
+--cap-lints allow`
+   Compiling serde_with 
+v3.18.0
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name serde_with 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\serde_with-3.
+18.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no 
+--warn=rust_2018_idioms 
+--warn=variant_size_diff
+erences --warn=unused_im
+port_braces --warn=unuse
+d_extern_crates 
+--warn=unexpected_cfgs -
+-warn=trivial_numeric_ca
+sts 
+--warn=trivial_casts --w
+arn=clippy::semicolon_if
+_nothing_returned --warn
+=clippy::redundant_closu
+re_for_method_calls 
+--warn=missing_docs --wa
+rn=rustdoc::missing_crat
+e_level_docs --allow=cli
+ppy::manual-unwrap-or-de
+fault --allow=clippy::ex
+plicit_auto_deref --warn
+=clippy::doc_markdown --
+warn=clippy::default_tra
+it_access --warn=clippy:
+:cloned_instead_of_copie
+d --check-cfg 
+cfg(tarpaulin) 
+--check-cfg 
+cfg(tarpaulin_include) 
+-C debug-assertions=off 
+-C overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"default\"" 
+--cfg 
+"feature=\"macros\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"base64\", \"chrono\", 
+\"chrono_0_4\", 
+\"default\", \"guide\", 
+\"hashbrown_0_14\", 
+\"hashbrown_0_15\", 
+\"hashbrown_0_16\", 
+\"hex\", \"indexmap\", 
+\"indexmap_1\", 
+\"indexmap_2\", 
+\"json\", \"macros\", 
+\"schemars_0_8\", 
+\"schemars_0_9\", 
+\"schemars_1\", 
+\"smallvec_1\", 
+\"std\", 
+\"time_0_3\"))" -C metad
+ata=41b2500083712d1d -C 
+extra-filename=-be31b3c5
+3a38ee48 --out-dir C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\target\release\deps 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps --extern serde
+_core=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libserde_core-1
+7c6a29943a0d6c4.rmeta 
+--extern serde_with_macr
+os=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\serde_with_macros-
+7eea36bf656eb957.dll 
+--cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+stellar_xdr 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\stellar-xdr-2
+1.2.0\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--cfg 
+"feature=\"alloc\"" 
+--cfg 
+"feature=\"curr\"" 
+--cfg "feature=\"hex\"" 
+--cfg 
+"feature=\"serde\"" 
+--cfg "feature=\"std\"" 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"arbitrary\", 
+\"base64\", \"cli\", 
+\"curr\", \"default\", 
+\"hex\", \"next\", 
+\"schemars\", 
+\"serde\", 
+\"serde_json\", 
+\"std\"))" -C metadata=6
+e7f7c31321924b1 -C extra
+-filename=-b7ec5325aab0e
+7fd --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern escape_b
+ytes=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libescape_bytes-
+031af964a6458eb0.rmeta 
+--extern hex=C:\Users\AD
+MIN\Desktop\remmy-drips\
+Remitwise-Contracts\targ
+et\release\deps\libhex-7
+7f94fb6b3d8b9e0.rmeta 
+--extern serde=C:\Users\
+ADMIN\Desktop\remmy-drip
+s\Remitwise-Contracts\ta
+rget\release\deps\libser
+de-ef1eb855cb454de7.rmet
+a --extern serde_with=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\libserde_with-be31b3c53
+a38ee48.rmeta --extern s
+tellar_strkey=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libstel
+lar_strkey-5abd341378ade
+708.rmeta --cap-lints 
+allow`
+   Compiling 
+soroban-spec v21.7.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_spec 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-spec-
+21.7.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=0
+037bf24f185365e -C extra
+-filename=-11fed801ab348
+42d --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern base64=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libbase64-c54c44191e76
+ea5d.rmeta --extern stel
+lar_xdr=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps\libstellar_xd
+r-b7ec5325aab0e7fd.rmeta
+ --extern thiserror=C:\U
+sers\ADMIN\Desktop\remmy
+-drips\Remitwise-Contrac
+ts\target\release\deps\l
+ibthiserror-d0125f4749ed
+2f14.rmeta --extern wasm
+parser=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libwasmparser-
+61af4a806befac72.rmeta 
+--cap-lints allow`
+   Compiling 
+soroban-spec-rust 
+v21.7.7
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_spec_rust 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-spec-
+rust-21.7.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=2
+98e642ed41819d6 -C extra
+-filename=-1201cd942aee4
+f3d --out-dir C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern prettypl
+ease=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libprettyplease-
+c67cf3866068babf.rmeta 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rmeta --extern q
+uote=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libquote-ffb8601
+00d7d2d0b.rmeta 
+--extern sha2=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libsha2
+-074580bbd1d9c639.rmeta 
+--extern soroban_spec=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\libsoroban_spec-11fed80
+1ab34842d.rmeta 
+--extern stellar_xdr=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libstellar_xdr-b7ec5325a
+ab0e7fd.rmeta --extern s
+yn=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\release
+\deps\libsyn-b24e858dded
+d0d55.rmeta --extern thi
+serror=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libthiserror-d
+0125f4749ed2f14.rmeta 
+--cap-lints allow`
+   Compiling 
+soroban-env-macros 
+v21.2.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_env_macros 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-env-m
+acros-21.2.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"next\"))" -C me
+tadata=e4349fb53b202d04 
+-C extra-filename=-3ee92
+34d4fa20950 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+ -C strip=symbols -L dep
+endency=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\re
+lease\deps --extern iter
+tools=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\rele
+ase\deps\libitertools-a2
+c1656d4f0cfd0b.rlib 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rlib --extern qu
+ote=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libquote-ffb86010
+0d7d2d0b.rlib --extern s
+erde=C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\target\relea
+se\deps\libserde-ef1eb85
+5cb454de7.rlib --extern 
+serde_json=C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\target
+\release\deps\libserde_j
+son-12223a5f59c13999.rli
+b --extern stellar_xdr=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libstellar_xdr-b7ec532
+5aab0e7fd.rlib --extern 
+syn=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libsyn-b24e858dde
+dd0d55.rlib --extern 
+proc_macro --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_env_common 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-env-c
+ommon-21.2.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"next\", 
+\"serde\", 
+\"shallow-val-hash\", 
+\"std\", \"testutils\", 
+\"tracy\", \"wasmi\"))" 
+-C metadata=04c55c9c131c
+bc36 -C extra-filename=-
+9ecd19bbd27ea0d1 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern ethnum=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s\libethnum-58fd883c8a9d
+043e.rmeta --extern num_
+derive=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\num_derive-32f
+f9a2aa2597346.dll 
+--extern num_traits=C:\U
+sers\ADMIN\Desktop\remmy
+-drips\Remitwise-Contrac
+ts\target\release\deps\l
+ibnum_traits-d84f751cb32
+68e3a.rmeta --extern sor
+oban_env_macros=C:\Users
+\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts\t
+arget\release\deps\sorob
+an_env_macros-3ee9234d4f
+a20950.dll --extern stat
+ic_assertions=C:\Users\A
+DMIN\Desktop\remmy-drips
+\Remitwise-Contracts\tar
+get\release\deps\libstat
+ic_assertions-2b69062925
+2921cc.rmeta --extern st
+ellar_xdr=C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps\libstellar_
+xdr-b7ec5325aab0e7fd.rme
+ta --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_env_common 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-env-c
+ommon-21.2.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"next\", 
+\"serde\", 
+\"shallow-val-hash\", 
+\"std\", \"testutils\", 
+\"tracy\", \"wasmi\"))" 
+-C metadata=6f8c662dd223
+d45c -C extra-filename=-
+7138c00d349a6bff 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern ethnum=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\wasm32-unknown-u
+nknown\release\deps\libe
+thnum-7e71b271f0eb68a2.r
+meta --extern num_derive
+=C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\target\release\d
+eps\num_derive-32ff9a2aa
+2597346.dll --extern num
+_traits=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\wa
+sm32-unknown-unknown\rel
+ease\deps\libnum_traits-
+56427fa453939dca.rmeta 
+--extern soroban_env_mac
+ros=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\soroban_env_macro
+s-3ee9234d4fa20950.dll 
+--extern static_assertio
+ns=C:\Users\ADMIN\Deskto
+p\remmy-drips\Remitwise-
+Contracts\target\wasm32-
+unknown-unknown\release\
+deps\libstatic_assertion
+s-fa1868c48b442779.rmeta
+ --extern stellar_xdr=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps\
+libstellar_xdr-25d6e4ce6
+e7e12ba.rmeta 
+--cap-lints allow`
+   Compiling 
+soroban-env-guest 
+v21.2.1
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_env_guest 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-env-g
+uest-21.2.1\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"next\", 
+\"testutils\"))" -C meta
+data=9506bd12eb0cd9b8 
+-C extra-filename=-3b0f3
+65ae4ecd246 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_env_c
+ommon=C:\Users\ADMIN\Des
+ktop\remmy-drips\Remitwi
+se-Contracts\target\wasm
+32-unknown-unknown\relea
+se\deps\libsoroban_env_c
+ommon-7138c00d349a6bff.r
+meta --extern static_ass
+ertions=C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\target\wa
+sm32-unknown-unknown\rel
+ease\deps\libstatic_asse
+rtions-fa1868c48b442779.
+rmeta --cap-lints allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_sdk_macros 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-sdk-m
+acros-21.7.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+proc-macro 
+--emit=dep-info,link -C 
+prefer-dynamic -C 
+embed-bitcode=no -C 
+debug-assertions=off -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"testutils\"))" 
+-C metadata=992d2af71e18
+0bcd -C extra-filename=-
+8f9273aee87a5c95 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+release\deps -C 
+strip=symbols -L depende
+ncy=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps --extern darling=
+C:\Users\ADMIN\Desktop\r
+emmy-drips\Remitwise-Con
+tracts\target\release\de
+ps\libdarling-2d28efcf5a
+f37ac1.rlib --extern ite
+rtools=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\rel
+ease\deps\libitertools-a
+2c1656d4f0cfd0b.rlib 
+--extern proc_macro2=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libproc_macro2-085f6c8f5
+9a928c1.rlib --extern qu
+ote=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libquote-ffb86010
+0d7d2d0b.rlib --extern s
+ha2=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\releas
+e\deps\libsha2-074580bbd
+1d9c639.rlib --extern so
+roban_env_common=C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\release\deps\libs
+oroban_env_common-9ecd19
+bbd27ea0d1.rlib 
+--extern soroban_spec=C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\release\deps
+\libsoroban_spec-11fed80
+1ab34842d.rlib --extern 
+soroban_spec_rust=C:\Use
+rs\ADMIN\Desktop\remmy-d
+rips\Remitwise-Contracts
+\target\release\deps\lib
+soroban_spec_rust-1201cd
+942aee4f3d.rlib 
+--extern stellar_xdr=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+libstellar_xdr-b7ec5325a
+ab0e7fd.rlib --extern sy
+n=C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-C
+ontracts\target\release\
+deps\libsyn-b24e858ddedd
+0d55.rlib --extern 
+proc_macro --cap-lints 
+allow`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+soroban_sdk 
+--edition=2021 C:\Users\
+ADMIN\.cargo\registry\sr
+c\index.crates.io-1949cf
+8c6b5b557f\soroban-sdk-2
+1.7.7\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type lib -
+-emit=dep-info,metadata,
+link -C opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values(\"alloc\", 
+\"curve25519-dalek\", 
+\"docs\", \"hazmat\", 
+\"testutils\"))" -C meta
+data=6c17ca46d77bb09b 
+-C extra-filename=-44db9
+bf279b6c257 --out-dir C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\target\wasm32-unkno
+wn-unknown\release\deps 
+--target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern bytes_lit=C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\target\release\deps\
+bytes_lit-3d4cb9d7b8ef5a
+7a.dll --extern soroban_
+env_guest=C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps\libsoroban_e
+nv_guest-3b0f365ae4ecd24
+6.rmeta --extern soroban
+_sdk_macros=C:\Users\ADM
+IN\Desktop\remmy-drips\R
+emitwise-Contracts\targe
+t\release\deps\soroban_s
+dk_macros-8f9273aee87a5c
+95.dll --cap-lints 
+allow`
+   Compiling 
+remitwise-common v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remitwise-common
+)
+   Compiling 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+   Compiling 
+orchestrator v0.1.0 (C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\orchestrator)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+remittance_split 
+--edition=2021 remittanc
+e_split\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+f26e3d67f39d9d0 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+remitwise_common 
+--edition=2021 remitwise
+-common\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=4
+976db2eded49f29 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+orchestrator 
+--edition=2021 
+orchestrator\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C lto -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=5
+9d84ea6aaad58c3 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+savings_goals 
+--edition=2021 savings_g
+oals\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+e7bcdcd6a0a3b84 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib`
+error[E0433]: failed to 
+resolve: could not find 
+`testutils` in 
+`soroban_sdk`
+   --> remittance_split\
+src\lib.rs:972:22
+    |
+972 |     use soroban_sd
+k::testutils::storage::I
+nstance as _;
+    |                   
+   ^^^^^^^^^ could not 
+find `testutils` in 
+`soroban_sdk`
+    |
+note: found an item 
+that was configured out
+   --> C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\lib.rs:818:9
+    |
+818 | pub mod testutils;
+    |         ^^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\testutils.rs:1:11
+    |
+  1 | #![cfg(any(test, 
+feature = "testutils"))]
+    |           --------
+--------------------- 
+the item is gated here
+
+error[E0432]: 
+unresolved import 
+`soroban_sdk::testutils`
+   --> remittance_split\
+src\lib.rs:973:22
+    |
+973 |     use soroban_sd
+k::testutils::{Address 
+as _, Events, Ledger, 
+LedgerInfo};
+    |                   
+   ^^^^^^^^^ could not 
+find `testutils` in 
+`soroban_sdk`
+    |
+note: found an item 
+that was configured out
+   --> C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\lib.rs:818:9
+    |
+818 | pub mod testutils;
+    |         ^^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\testutils.rs:1:11
+    |
+  1 | #![cfg(any(test, 
+feature = "testutils"))]
+    |           --------
+--------------------- 
+the item is gated here
+
+warning: unused import: 
+`super::*`
+   --> remittance_split\
+src\lib.rs:971:9
+    |
+971 |     use super::*;
+    |         ^^^^^^^^
+    |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+   --> remittance_split\
+src\lib.rs:970:1
+    |
+970 | mod test {
+    | ^^^^^^^^
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`soroban_sdk::TryFromVal
+`
+   --> remittance_split\
+src\lib.rs:974:9
+    |
+974 |     use 
+soroban_sdk::TryFromVal;
+    |         
+^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+   --> remittance_split\
+src\lib.rs:970:1
+    |
+970 | mod test {
+    | ^^^^^^^^
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:299:88
+    |
+299 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf/library/core/src/
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+299 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+299 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:312:88
+    |
+312 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf/library/core/src/
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+312 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+312 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:332:88
+    |
+332 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf/library/core/src/
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+332 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+332 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:349:88
+    |
+349 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf/library/core/src/
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+349 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+349 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+Some errors have 
+detailed explanations: 
+E0432, E0433.
+For more information 
+about an error, try 
+`rustc --explain E0432`.
+   Compiling 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name insurance 
+--edition=2021 
+insurance\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=1
+1065b4691abdf51 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name reporting 
+--edition=2021 
+reporting\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=1
+a19cea20a2e0f1a 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib`
+warning: 
+`remittance_split` 
+(lib) generated 2 
+warnings
+error: could not 
+compile 
+`remittance_split` 
+(lib) due to 2 previous 
+errors; 2 warnings 
+emitted
+
+Caused by:
+  process didn't exit 
+successfully: `C:\Users\
+ADMIN\.rustup\toolchains
+\stable-x86_64-pc-window
+s-msvc\bin\rustc.exe 
+--crate-name 
+remittance_split 
+--edition=2021 remittanc
+e_split\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+f26e3d67f39d9d0 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib` (exit 
+code: 1)
+warning: build failed, 
+waiting for other jobs 
+to finish...
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+bill_payments 
+--edition=2021 bill_paym
+ents\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=e
+84befd49c137cef 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib`
+     Running `C:\Users\A
+DMIN\.rustup\toolchains\
+stable-x86_64-pc-windows
+-msvc\bin\rustc.exe 
+--crate-name 
+family_wallet 
+--edition=2021 family_wa
+llet\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+244d57cfdd5c470 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib`
+error: mismatched 
+closing delimiter: `}`
+   --> bill_payments\src
+\lib.rs:450:29
+    |
+383 |     ) -> 
+Result<u32, Error> {
+    |                   
+          - closing 
+delimiter possibly 
+meant for this
+...
+450 |         
+env.events().publish(
+    |                   
+          ^ unclosed 
+delimiter
+...
+462 |     }
+    |     ^ mismatched 
+closing delimiter
+
+error: mismatched 
+closing delimiter: `}`
+   --> bill_payments\src
+\lib.rs:531:29
+    |
+464 |     pub fn 
+pay_bill(env: Env, 
+caller: Address, 
+bill_id: u32) -> 
+Result<(), Error> {
+    |                   
+                        
+                        
+                - 
+closing delimiter 
+possibly meant for this
+...
+531 |         
+env.events().publish(
+    |                   
+          ^ unclosed 
+delimiter
+...
+543 |     }
+    |     ^ mismatched 
+closing delimiter
+
+error: this file 
+contains an unclosed 
+delimiter
+    --> bill_payments\sr
+c\lib.rs:2571:3
+     |
+ 113 | pub enum 
+BillEvent {
+     |                  
+  - unclosed delimiter
+...
+ 129 | impl 
+BillPayments {
+     |                  
+ - unclosed delimiter
+...
+ 769 |     pub fn 
+get_all_bills(env: Env) 
+-> Vec<Bill> {
+     |                  
+                        
+       - this delimiter 
+might not be properly 
+closed...
+...
+1369 | }
+     | - ...as it 
+matches this but it has 
+different indentation
+...
+2571 | }
+     |  ^
+
+error: could not 
+compile `bill_payments` 
+(lib) due to 3 previous 
+errors
+
+Caused by:
+  process didn't exit 
+successfully: `C:\Users\
+ADMIN\.rustup\toolchains
+\stable-x86_64-pc-window
+s-msvc\bin\rustc.exe 
+--crate-name 
+bill_payments 
+--edition=2021 bill_paym
+ents\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=e
+84befd49c137cef 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib` 
+(exit code: 1)
+For more information 
+about this error, try 
+`rustc --explain E0277`.
+error: could not 
+compile `savings_goals` 
+(lib) due to 4 previous 
+errors
+
+Caused by:
+  process didn't exit 
+successfully: `C:\Users\
+ADMIN\.rustup\toolchains
+\stable-x86_64-pc-window
+s-msvc\bin\rustc.exe 
+--crate-name 
+savings_goals 
+--edition=2021 savings_g
+oals\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=b
+e7bcdcd6a0a3b84 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern soroban_sdk=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\wasm32-unkn
+own-unknown\release\deps
+\libsoroban_sdk-44db9bf2
+79b6c257.rlib` (exit 
+code: 1)
+error: unexpected 
+closing delimiter: `}`
+    --> insurance\src\li
+b.rs:1220:5
+     |
+ 709 |     ) -> u32 {
+     |              - 
+the nearest open 
+delimiter
+ 710 |     ) -> 
+Result<u32, 
+InsuranceError> {
+     |     - missing 
+open `(` for this 
+delimiter
+...
+1220 |     }
+     |     ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(lib) due to 1 previous 
+error
+
+Caused by:
+  process didn't exit 
+successfully: `C:\Users\
+ADMIN\.rustup\toolchains
+\stable-x86_64-pc-window
+s-msvc\bin\rustc.exe 
+--crate-name insurance 
+--edition=2021 
+insurance\src\lib.rs 
+--error-format=json --js
+on=diagnostic-rendered-a
+nsi,artifacts,future-inc
+ompat --crate-type 
+cdylib --crate-type 
+rlib 
+--emit=dep-info,link -C 
+opt-level=z -C 
+panic=abort -C 
+codegen-units=1 -C 
+overflow-checks=on 
+--check-cfg 
+cfg(docsrs,test) 
+--check-cfg 
+"cfg(feature, 
+values())" -C metadata=1
+1065b4691abdf51 
+--out-dir C:\Users\ADMIN
+\Desktop\remmy-drips\Rem
+itwise-Contracts\target\
+wasm32-unknown-unknown\r
+elease\deps --target 
+wasm32-unknown-unknown 
+-C strip=symbols -L depe
+ndency=C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\target\was
+m32-unknown-unknown\rele
+ase\deps -L dependency=C
+:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Cont
+racts\target\release\dep
+s --extern remitwise_com
+mon=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libremitwise_commo
+n.rlib --extern soroban_
+sdk=C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise
+-Contracts\target\wasm32
+-unknown-unknown\release
+\deps\libsoroban_sdk-44d
+b9bf279b6c257.rlib` 
+(exit code: 1)

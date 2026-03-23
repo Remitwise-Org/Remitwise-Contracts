@@ -22,7 +22,7 @@ const ARCHIVE_RETENTION_WINDOW: u64 = 90 * 24 * 60 * 60;
 
 /// Financial health score (0-100)
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HealthScore {
     pub score: u32,
     pub savings_score: u32,
@@ -32,7 +32,7 @@ pub struct HealthScore {
 
 /// Category breakdown with amount and percentage
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CategoryBreakdown {
     pub category: Category,
     pub amount: i128,
@@ -41,7 +41,7 @@ pub struct CategoryBreakdown {
 
 /// Trend data comparing two periods
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrendData {
     pub current_amount: i128,
     pub previous_amount: i128,
@@ -51,7 +51,7 @@ pub struct TrendData {
 
 /// Remittance summary report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RemittanceSummary {
     pub total_received: i128,
     pub total_allocated: i128,
@@ -62,7 +62,7 @@ pub struct RemittanceSummary {
 
 /// Savings progress report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SavingsReport {
     pub total_goals: u32,
     pub completed_goals: u32,
@@ -75,7 +75,7 @@ pub struct SavingsReport {
 
 /// Bill payment compliance report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BillComplianceReport {
     pub total_bills: u32,
     pub paid_bills: u32,
@@ -91,7 +91,7 @@ pub struct BillComplianceReport {
 
 /// Insurance coverage report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InsuranceReport {
     pub active_policies: u32,
     pub total_coverage: i128,
@@ -104,7 +104,7 @@ pub struct InsuranceReport {
 
 /// Family spending report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FamilySpendingReport {
     pub total_members: u32,
     pub total_spending: i128,
@@ -115,7 +115,7 @@ pub struct FamilySpendingReport {
 
 /// Overall financial health report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FinancialHealthReport {
     pub health_score: HealthScore,
     pub remittance_summary: RemittanceSummary,
@@ -138,7 +138,7 @@ pub struct ContractAddresses {
 
 /// Error types returned by the reporting contract.
 #[contracttype]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReportingError {
     /// Contract has already been initialized.
     AlreadyInitialized = 1,
@@ -203,7 +203,7 @@ pub enum ReportEvent {
 
 /// Archived report - compressed summary
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArchivedReport {
     pub user: Address,
     pub period_key: u64,
@@ -214,7 +214,7 @@ pub struct ArchivedReport {
 
 /// Storage statistics for monitoring
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StorageStats {
     pub active_reports: u32,
     pub archived_reports: u32,

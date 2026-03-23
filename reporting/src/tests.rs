@@ -1,5 +1,8 @@
 use super::*;
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::Ledger;
 use soroban_sdk::testutils::LedgerInfo;
+use soroban_sdk::testutils::storage::Instance;
 use testutils::set_ledger_time;
 
 // Mock contracts for testing
@@ -44,22 +47,22 @@ mod savings_goals {
             let env = _env;
             let mut goals = Vec::new(&env);
             goals.push_back(SavingsGoal {
-                id: 1,
+                id: 1u32,
                 owner: _owner.clone(),
                 name: SorobanString::from_str(&env, "Education"),
-                target_amount: 10000,
-                current_amount: 7000,
-                target_date: 1735689600,
+                target_amount: 10000i128,
+                current_amount: 7000i128,
+                target_date: 1735689600u64,
                 locked: true,
                 unlock_date: None,
             });
             goals.push_back(SavingsGoal {
-                id: 2,
+                id: 2u32,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Emergency"),
-                target_amount: 5000,
-                current_amount: 5000,
-                target_date: 1735689600,
+                target_amount: 5000i128,
+                current_amount: 5000i128,
+                target_date: 1735689600u64,
                 locked: true,
                 unlock_date: None,
             });
@@ -85,15 +88,15 @@ mod bill_payments {
             let env = _env;
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
-                id: 1,
+                id: 1u32,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Electricity"),
-                amount: 100,
-                due_date: 1735689600,
+                amount: 100i128,
+                due_date: 1735689600u64,
                 recurring: true,
-                frequency_days: 30,
+                frequency_days: 30u32,
                 paid: false,
-                created_at: 1704067200,
+                created_at: 1704067200u64,
                 paid_at: None,
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
@@ -101,7 +104,7 @@ mod bill_payments {
             BillPage {
                 count: bills.len(),
                 items: bills,
-                next_cursor: 0,
+                next_cursor: 0u32,
             }
         }
 
@@ -118,37 +121,37 @@ mod bill_payments {
             let env = _env;
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
-                id: 1,
+                id: 1u32,
                 owner: _owner.clone(),
                 name: SorobanString::from_str(&env, "Electricity"),
-                amount: 100,
-                due_date: 1735689600,
+                amount: 100i128,
+                due_date: 1735689600u64,
                 recurring: true,
-                frequency_days: 30,
+                frequency_days: 30u32,
                 paid: false,
-                created_at: 1704067200,
+                created_at: 1704067200u64,
                 paid_at: None,
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             bills.push_back(Bill {
-                id: 2,
+                id: 2u32,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Water"),
-                amount: 50,
-                due_date: 1735689600,
+                amount: 50i128,
+                due_date: 1735689600u64,
                 recurring: true,
-                frequency_days: 30,
+                frequency_days: 30u32,
                 paid: true,
-                created_at: 1704067200,
-                paid_at: Some(1704153600),
+                created_at: 1704067200u64,
+                paid_at: Some(1704153600u64),
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             BillPage {
                 count: bills.len(),
                 items: bills,
-                next_cursor: 0,
+                next_cursor: 0u32,
             }
         }
     }
@@ -172,20 +175,20 @@ mod insurance {
             let env = _env;
             let mut policies = Vec::new(&env);
             policies.push_back(InsurancePolicy {
-                id: 1,
+                id: 1u32,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Health Insurance"),
                 coverage_type: SorobanString::from_str(&env, "health"),
-                monthly_premium: 200,
-                coverage_amount: 50000,
+                monthly_premium: 200i128,
+                coverage_amount: 50000i128,
                 active: true,
-                next_payment_date: 1735689600,
+                next_payment_date: 1735689600u64,
                 schedule_id: None,
             });
             crate::PolicyPage {
                 items: policies,
-                next_cursor: 0,
-                count: 1,
+                next_cursor: 0u32,
+                count: 1u32,
             }
         }
 
@@ -739,7 +742,7 @@ fn test_archive_old_reports() {
     // before_timestamp = 1704067201 (> report.generated_at = 1704067200, < 1706659200). ✓
     set_ledger_time(&env, 1, 1709251200);
     let valid_before = 1704067201u64;
-    let archived_count = client.archive_old_reports(&admin, &valid_before).unwrap();
+    let archived_count = client.archive_old_reports(&admin, &valid_before);
     assert_eq!(archived_count, 1);
 
     // Verify report is no longer in active storage
@@ -763,7 +766,7 @@ fn test_archive_empty_when_no_old_reports() {
 
     // Archive with no reports stored (well before ledger time)
     let valid_before = 1701475200u64;
-    let archived_count = client.archive_old_reports(&admin, &valid_before).unwrap();
+    let archived_count = client.archive_old_reports(&admin, &valid_before);
     assert_eq!(archived_count, 0);
 }
 
@@ -804,7 +807,7 @@ fn test_cleanup_old_reports() {
     // Cutoff 1704067201 <= 1706659200 ✓, and 1704067200 < 1704067201 ✓ → report qualifies.
     set_ledger_time(&env, 1, 1709251200);
     let archive_before = 1704067201u64;
-    client.archive_old_reports(&admin, &archive_before).unwrap();
+    client.archive_old_reports(&admin, &archive_before);
     assert_eq!(client.get_archived_reports(&user).len(), 1);
 
     // Cleanup old archives: archived_at = 1709251200. Need ledger time far enough ahead.
@@ -813,7 +816,7 @@ fn test_cleanup_old_reports() {
     // Set ledger = 1725000000. 90d limit = 1725000000 - 7776000 = 1717224000.
     // Cutoff = 1709251201: 1709251201 <= 1717224000 ✓, and archived_at < cutoff ✓.
     set_ledger_time(&env, 1, 1725000000);
-    let deleted = client.cleanup_old_reports(&admin, &1709251201u64).unwrap();
+    let deleted = client.cleanup_old_reports(&admin, &1709251201u64);
     assert_eq!(deleted, 1);
 
     // Verify archives are gone
@@ -859,7 +862,7 @@ fn test_storage_stats() {
     // Advance ledger ~60 days, then archive with valid cutoff (> generated_at, within retention).
     // current_time = 1709251200. 30-day limit = 1706659200. cutoff = 1704067201 <= 1706659200. ✓
     set_ledger_time(&env, 1, 1709251200);
-    client.archive_old_reports(&admin, &1704067201u64).unwrap();
+    client.archive_old_reports(&admin, &1704067201u64);
 
     let stats = client.get_storage_stats();
     assert_eq!(stats.active_reports, 0);
@@ -940,7 +943,7 @@ fn test_archive_at_exact_retention_boundary() {
         "archive_old_reports at exact 30-day boundary should succeed, got: {:?}",
         result
     );
-    assert_eq!(result.unwrap(), 0);
+    assert_eq!(result.unwrap().unwrap(), 0u32);
 }
 
 /// Cleanup archives whose cutoff is within the 90-day window — must be rejected.
@@ -982,7 +985,7 @@ fn test_cleanup_at_exact_retention_boundary() {
         "cleanup_old_reports at exact 90-day boundary should succeed, got: {:?}",
         result
     );
-    assert_eq!(result.unwrap(), 0);
+    assert_eq!(result.unwrap().unwrap(), 0u32);
 }
 
 // ============================================================================
@@ -1293,7 +1296,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
     // archive_old_reports calls extend_instance_ttl first (bumps to 518,400),
     // then extend_archive_ttl which is a no-op (TTL already above threshold)
     // Retention check: before_timestamp (1700000000) <= 1704067200 - 30d (1701475200). TRUE.
-    let _archived = client.archive_old_reports(&admin, &1700000000).unwrap();
+    let _archived = client.archive_old_reports(&admin, &1700000000u64);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
