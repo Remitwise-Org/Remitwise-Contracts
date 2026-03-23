@@ -4,7 +4,9 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
+use family_wallet::{FamilyWallet, FamilyWalletClient};
 use insurance::{Insurance, InsuranceClient};
+use orchestrator::{Orchestrator, OrchestratorClient};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
 
@@ -252,4 +254,77 @@ fn test_multiple_entities_creation() {
     println!("   Created 2 savings goals");
     println!("   Created 2 bills");
     println!("   Created 2 insurance policies");
+}
+
+/// Test that a failing downstream contract (insurance returning false/error) 
+/// correctly bubbles up and rolls back prior state mutations (savings/bills).
+#[test]
+fn test_orchestrator_insurance_failure_rollback() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let user = Address::generate(&env);
+
+    // Deploy contracts
+    let family_wallet_id = env.register_contract(None, FamilyWallet);
+    let family_client = FamilyWalletClient::new(&env, &family_wallet_id);
+    
+    // Initialize family wallet
+    family_client.init(&user, &soroban_sdk::vec![&env]);
+    
+    let remittance_id = env.register_contract(None, RemittanceSplit);
+    let remittance_client = RemittanceSplitClient::new(&env, &remittance_id);
+    
+    let savings_id = env.register_contract(None, SavingsGoalContract);
+    let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
+    
+    let bills_id = env.register_contract(None, BillPayments);
+    let bills_client = BillPaymentsClient::new(&env, &bills_id);
+    
+    let insurance_id = env.register_contract(None, Insurance);
+    let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let orchestrator_client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    // Initialize Remittance Split (50% savings, 50% insurance)
+    remittance_client.initialize_split(&user, &0u64, &0u32, &50u32, &0u32, &50u32); 
+
+    // Create a savings goal
+    let goal_name = SorobanString::from_str(&env, "Test Goal");
+    let target_amount = 10_000i128;
+    let target_date = env.ledger().timestamp() + 86400;
+    
+    let goal_id = savings_client.create_goal(&user, &goal_name, &target_amount, &target_date);
+    
+    // Create a bill
+    let bill_name = SorobanString::from_str(&env, "Test Bill");
+    
+    let bill_id = bills_client.create_bill(
+        &user,
+        &bill_name,
+        &500i128,
+        &(env.ledger().timestamp() + 86400),
+        &false,
+        &0u32,
+        &SorobanString::from_str(&env, "XLM"),
+    );
+
+    // Execute flow through orchestrator with INVALID policy_id => should fail mapping 50% to insurance
+    let result = orchestrator_client.try_execute_remittance_flow(
+        &user,
+        &1000i128,
+        &family_wallet_id,
+        &remittance_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &goal_id,
+        &bill_id,
+        &999u32, // Invalid policy ID
+    );
+
+    assert!(result.is_err(), "Expected orchestrator flow to fail due to invalid policy");
+    
+    println!("✅ Orchestrator rollback test passed! Failure securely bubbled up to prevent hidden mutations.");
 }

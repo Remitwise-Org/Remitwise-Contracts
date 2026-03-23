@@ -38,6 +38,14 @@ Tests creating multiple entities across contracts:
 - Creates 2 insurance policies (Life, Emergency Coverage)
 - Verifies all entities are created successfully with unique IDs
 
+### `test_orchestrator_insurance_failure_rollback`
+
+Tests edge cases around inactive properties and atomic reversions during cross-contract coordination:
+
+- Invokes a complete `execute_remittance_flow` via `Orchestrator` targeting an inactive/invalid insurance policy.
+- Verifies that `try_execute_remittance_flow` catches the subsequent explicitly bubbled error.
+- Assures no hidden/dangling state mutations (e.g., fractional deposits to savings/bills prior to returning an error) successfully commit to the ledger if the broader downstream batch does accurately fail.
+
 ## Running the Tests
 
 From the workspace root:

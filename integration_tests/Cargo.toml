@@ -10,6 +10,8 @@ remittance_split = { path = "../remittance_split" }
 savings_goals = { path = "../savings_goals" }
 bill_payments = { path = "../bill_payments" }
 insurance = { path = "../insurance" }
+orchestrator = { path = "../orchestrator" }
+family_wallet = { path = "../family_wallet" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }

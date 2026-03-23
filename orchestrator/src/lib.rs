@@ -548,9 +548,11 @@ impl Orchestrator {
 
         // Gas estimation: ~4000 gas
         // Call pay_premium on the insurance contract
-        // This will panic if the policy doesn't exist or is inactive
-        // The panic will cause the entire transaction to revert (atomicity)
-        insurance_client.pay_premium(caller, &policy_id);
+        let success = insurance_client.pay_premium(caller, &policy_id);
+        
+        if !success {
+            return Err(OrchestratorError::InsurancePaymentFailed);
+        }
 
         Ok(())
     }
@@ -991,49 +993,46 @@ impl Orchestrator {
         let insurance_amount = allocations.get(3).unwrap_or(0);
 
         // Step 5: Deposit to savings goal
-        let savings_success =
-            Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount)
-                .map_err(|e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("savings"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                })
-                .is_ok();
+        Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount)
+            .map_err(|e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("savings"),
+                    e as u32,
+                    timestamp,
+                );
+                e
+            })?;
+        let savings_success = true;
 
         // Step 6: Pay bill
-        let bills_success =
-            Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)
-                .map_err(|e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("bills"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                })
-                .is_ok();
+        Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)
+            .map_err(|e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("bills"),
+                    e as u32,
+                    timestamp,
+                );
+                e
+            })?;
+        let bills_success = true;
 
         // Step 7: Pay insurance premium
-        let insurance_success =
-            Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)
-                .map_err(|e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("insuranc"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                })
-                .is_ok();
+        Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)
+            .map_err(|e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("insuranc"),
+                    e as u32,
+                    timestamp,
+                );
+                e
+            })?;
+        let insurance_success = true;
 
         // Build result
         let result = RemittanceFlowResult {
