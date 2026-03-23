@@ -75,6 +75,9 @@ pub struct Bill {
 - `InvalidAmount = 3`: Amount is zero or negative
 - `InvalidFrequency = 4`: Recurring bill has zero frequency
 - `Unauthorized = 5`: Caller is not the bill owner
+- `InvalidDueDate = 12`: Due date is zero or not strictly in the future
+- `InvalidRecurrenceCombination = 15`: Non-recurring bill provided with non-zero frequency
+- `FrequencyOverflow = 16`: Recurrence interval overflows due-date arithmetic
 
 ### Functions
 
@@ -91,7 +94,19 @@ Creates a new bill.
 
 **Returns:** Bill ID on success
 
-**Errors:** InvalidAmount, InvalidFrequency
+**Errors:** InvalidAmount, InvalidDueDate, InvalidFrequency, InvalidRecurrenceCombination, FrequencyOverflow
+
+### Fail-Fast Create Validation
+
+The `create_bill` entrypoint validates all bill-creation constraints before any state write, which guarantees fail-fast behavior and deterministic error semantics:
+
+- `InvalidAmount`: `amount <= 0`
+- `InvalidDueDate`: `due_date == 0` or `due_date <= ledger_timestamp`
+- `InvalidFrequency`: `recurring == true` and `frequency_days == 0`
+- `InvalidRecurrenceCombination`: `recurring == false` and `frequency_days != 0`
+- `FrequencyOverflow`: `frequency_days * 86400` or `due_date + cadence_seconds` overflows
+
+This prevents malformed records from ever entering contract state.
 
 #### `pay_bill(env, caller, bill_id) -> Result<(), Error>`
 Marks a bill as paid.
@@ -229,3 +244,5 @@ Bills can represent insurance premiums, working alongside the insurance contract
 - Owners can only manage their own bills
 - Input validation prevents invalid states
 - Storage TTL is managed to prevent bloat
+- Recurrence overflow checks prevent timestamp wrap-around during next-bill scheduling
+- Validation is fail-fast and runs before mutating any persistent storage

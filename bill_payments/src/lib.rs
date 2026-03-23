@@ -77,8 +77,10 @@ pub enum Error {
     BatchValidationFailed = 10,
     InvalidLimit = 11,
     InvalidDueDate = 12,
-    InvalidTag = 12,
-    EmptyTags = 13,
+    InvalidTag = 13,
+    EmptyTags = 14,
+    InvalidRecurrenceCombination = 15,
+    FrequencyOverflow = 16,
 }
 
 #[derive(Clone)]
@@ -127,6 +129,42 @@ pub struct BillPayments;
 
 #[contractimpl]
 impl BillPayments {
+    /// @notice Validate create-bill inputs before any state write.
+    /// @dev Fails fast with explicit error variants for each invalid case.
+    fn validate_create_bill_inputs(
+        env: &Env,
+        amount: i128,
+        due_date: u64,
+        recurring: bool,
+        frequency_days: u32,
+    ) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let current_time = env.ledger().timestamp();
+        if due_date == 0 || due_date <= current_time {
+            return Err(Error::InvalidDueDate);
+        }
+
+        if recurring {
+            if frequency_days == 0 {
+                return Err(Error::InvalidFrequency);
+            }
+
+            let cadence_secs = (frequency_days as u64)
+                .checked_mul(86_400)
+                .ok_or(Error::FrequencyOverflow)?;
+            due_date
+                .checked_add(cadence_secs)
+                .ok_or(Error::FrequencyOverflow)?;
+        } else if frequency_days != 0 {
+            return Err(Error::InvalidRecurrenceCombination);
+        }
+
+        Ok(())
+    }
+
     /// Create a new bill
     ///
     /// # Arguments
@@ -143,7 +181,12 @@ impl BillPayments {
     ///
     /// # Errors
     /// * `InvalidAmount` - If amount is zero or negative
+    /// * `InvalidDueDate` - If due_date is zero or not strictly in the future
     /// * `InvalidFrequency` - If recurring is true but frequency_days is 0
+    /// * `InvalidRecurrenceCombination` - If recurring is false and frequency_days is non-zero
+    /// * `FrequencyOverflow` - If recurrence cadence can overflow due date arithmetic
+    /// @notice Creates a bill only when all input constraints are valid.
+    /// @dev Validation executes before any storage mutation (fail-fast semantics).
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -383,18 +426,7 @@ impl BillPayments {
     ) -> Result<u32, Error> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
-
-        let current_time = env.ledger().timestamp();
-        if due_date == 0 || due_date < current_time {
-            return Err(Error::InvalidDueDate);
-        }
-
-        if amount <= 0 {
-            return Err(Error::InvalidAmount);
-        }
-        if recurring && frequency_days == 0 {
-            return Err(Error::InvalidFrequency);
-        }
+        Self::validate_create_bill_inputs(&env, amount, due_date, recurring, frequency_days)?;
 
         // Resolve default currency: blank input → "XLM"
         let resolved_currency = if currency.is_empty() {
