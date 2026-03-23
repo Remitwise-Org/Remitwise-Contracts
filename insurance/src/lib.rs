@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
 };
 
 // Event topics
@@ -65,6 +65,7 @@ pub struct InsurancePolicy {
     pub owner: Address,
     pub name: String,
     pub coverage_type: String,
+    pub external_ref: Option<String>,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
     pub active: bool,
@@ -99,8 +100,9 @@ pub struct PremiumSchedule {
     pub missed_count: u32,
 }
 
-#[contracttype]
-#[derive(Clone, Copy)]
+#[contracterror]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u32)]
 pub enum InsuranceError {
     InvalidPremium = 1,
     InvalidCoverage = 2,
@@ -110,48 +112,8 @@ pub enum InsuranceError {
     BatchTooLarge = 6,
 }
 
-impl From<InsuranceError> for soroban_sdk::Error {
-    fn from(err: InsuranceError) -> Self {
-        match err {
-            InsuranceError::InvalidPremium => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidInput,
-            )),
-            InsuranceError::InvalidCoverage => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidInput,
-            )),
-            InsuranceError::PolicyNotFound => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::MissingValue,
-            )),
-            InsuranceError::PolicyInactive => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            InsuranceError::Unauthorized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            InsuranceError::BatchTooLarge => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidInput,
-            )),
-        }
-    }
-}
 
-impl From<&InsuranceError> for soroban_sdk::Error {
-    fn from(err: &InsuranceError) -> Self {
-        (*err).into()
-    }
-}
 
-impl From<soroban_sdk::Error> for InsuranceError {
-    fn from(_err: soroban_sdk::Error) -> Self {
-        InsuranceError::Unauthorized
-    }
-}
 
 #[contracttype]
 #[derive(Clone)]
@@ -381,6 +343,7 @@ impl Insurance {
         coverage_type: String,
         monthly_premium: i128,
         coverage_amount: i128,
+        external_ref: Option<String>,
     ) -> Result<u32, InsuranceError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_POLICY);
@@ -414,6 +377,7 @@ impl Insurance {
             owner: owner.clone(),
             name: name.clone(),
             coverage_type: coverage_type.clone(),
+            external_ref: external_ref.clone(),
             monthly_premium,
             coverage_amount,
             active: true,
@@ -442,7 +406,7 @@ impl Insurance {
         env.events().publish((POLICY_CREATED,), event);
         env.events().publish(
             (symbol_short!("insure"), InsuranceEvent::PolicyCreated),
-            (next_id, policy_owner),
+            (next_id, policy_owner, external_ref),
         );
 
         Ok(next_id)
@@ -464,7 +428,7 @@ impl Insurance {
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
-    pub fn pay_premium(env: Env, caller: Address, policy_id: u32) -> Result<(), InsuranceError> {
+    pub fn pay_premium(env: Env, caller: Address, policy_id: u32) -> Result<bool, InsuranceError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_PREMIUM);
         Self::extend_instance_ttl(&env);
@@ -508,7 +472,7 @@ impl Insurance {
             (policy_id, caller),
         );
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn batch_pay_premiums(
@@ -1071,6 +1035,7 @@ mod test_events {
                 &String::from_str(env, "health"),
                 &(50i128 * (i as i128 + 1)),
                 &(10000i128 * (i as i128 + 1)),
+                &None,
             );
             ids.push_back(id);
         }
@@ -1246,6 +1211,7 @@ mod test_events {
             &String::from_str(&env, "health"),
             &100,
             &50000,
+            &None,
         );
         assert_eq!(policy_id, 1);
 
@@ -1267,14 +1233,14 @@ mod test_events {
             &String::from_str(&env, "emergency"),
             &75,
             &25000,
+            &None,
         );
-        let events_before = env.events().all().len();
-
         let result = client.pay_premium(&owner, &policy_id);
         assert!(result);
 
+        // After pay_premium, events string contains only the latest invocation's events
         let events_after = env.events().all().len();
-        assert_eq!(events_after - events_before, 2);
+        assert_eq!(events_after, 2);
     }
 
     #[test]
@@ -1291,13 +1257,18 @@ mod test_events {
             &String::from_str(&env, "health"),
             &150,
             &75000,
+            &None,
         );
 
-        client.pay_premium(&owner, &policy_id);
-        client.deactivate_policy(&owner, &policy_id);
+        let mut total_events = env.events().all().len();
 
-        let events = env.events().all();
-        assert_eq!(events.len(), 6);
+        client.pay_premium(&owner, &policy_id);
+        total_events += env.events().all().len();
+
+        client.deactivate_policy(&owner, &policy_id);
+        total_events += env.events().all().len();
+
+        assert_eq!(total_events, 6);
     }
 
     // ====================================================================
@@ -1324,7 +1295,7 @@ mod test_events {
         env.mock_all_auths();
 
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 100,
             timestamp: 1000,
             network_id: [0; 32],
@@ -1345,6 +1316,7 @@ mod test_events {
             &String::from_str(&env, "health"),
             &100,
             &50000,
+            &None,
         );
         assert_eq!(policy_id, 1);
 
@@ -1367,7 +1339,7 @@ mod test_events {
         env.mock_all_auths();
 
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 100,
             timestamp: 1000,
             network_id: [0; 32],
@@ -1387,12 +1359,13 @@ mod test_events {
             &String::from_str(&env, "life"),
             &200,
             &100000,
+            &None,
         );
 
         // Advance ledger so TTL drops below threshold (17,280)
         // After create_policy: live_until = 518,500. At seq 510,000: TTL = 8,500
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 510_000,
             timestamp: 500_000,
             network_id: [0; 32],
@@ -1421,7 +1394,7 @@ mod test_events {
         env.mock_all_auths();
 
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 100,
             timestamp: 1000,
             network_id: [0; 32],
@@ -1442,11 +1415,12 @@ mod test_events {
             &String::from_str(&env, "auto"),
             &150,
             &75000,
+            &None,
         );
 
         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 510_000,
             timestamp: 510_000,
             network_id: [0; 32],
@@ -1460,7 +1434,7 @@ mod test_events {
 
         // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 1_020_000,
             timestamp: 1_020_000,
             network_id: [0; 32],
@@ -1476,6 +1450,7 @@ mod test_events {
             &String::from_str(&env, "travel"),
             &50,
             &20000,
+            &None,
         );
 
         // All policies should be accessible
@@ -1505,7 +1480,7 @@ mod test_events {
         env.mock_all_auths();
 
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 100,
             timestamp: 1000,
             network_id: [0; 32],
@@ -1525,11 +1500,12 @@ mod test_events {
             &String::from_str(&env, "dental"),
             &75,
             &25000,
+            &None,
         );
 
         // Advance ledger past threshold
         env.ledger().set(LedgerInfo {
-            protocol_version: 20,
+            protocol_version: 22,
             sequence_number: 510_000,
             timestamp: 510_000,
             network_id: [0; 32],
@@ -1557,7 +1533,6 @@ mod test_events {
     /// After deactivating a policy, `pay_premium` must panic with
     /// "Policy is not active". The policy must remain inactive.
     #[test]
-    #[test]
     fn test_pay_premium_after_deactivate() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1572,6 +1547,7 @@ mod test_events {
             &String::from_str(&env, "health"),
             &150,
             &50000,
+            &None,
         );
 
         // Sanity: policy should be active after creation
@@ -1635,6 +1611,7 @@ mod test_events {
             &String::from_str(&env, "life"),
             &200,
             &100000,
+            &None,
         );
         client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1665,6 +1642,7 @@ mod test_events {
             &String::from_str(&env, "health"),
             &150,
             &75000,
+            &None,
         );
         let schedule_id = client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1700,6 +1678,7 @@ mod test_events {
             &String::from_str(&env, "property"),
             &300,
             &200000,
+            &None,
         );
         client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1737,6 +1716,7 @@ mod test_events {
             &String::from_str(&env, "auto"),
             &100,
             &50000,
+            &None,
         );
         client.create_premium_schedule(&owner, &policy_id, &next_due, &interval);
 

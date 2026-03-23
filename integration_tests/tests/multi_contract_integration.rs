@@ -218,6 +218,7 @@ fn test_multiple_entities_creation() {
         &(env.ledger().timestamp() + 30 * 86400),
         &true,
         &30u32,
+        &None,
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill1, 1u32);
@@ -229,6 +230,7 @@ fn test_multiple_entities_creation() {
         &(env.ledger().timestamp() + 15 * 86400),
         &true,
         &30u32,
+        &None,
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill2, 2u32);
@@ -240,6 +242,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "life"),
         &150i128,
         &100_000i128,
+        &None,
     );
     assert_eq!(policy1, 1u32);
 
@@ -249,6 +252,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "emergency"),
         &50i128,
         &10_000i128,
+        &None,
     );
     assert_eq!(policy2, 2u32);
 

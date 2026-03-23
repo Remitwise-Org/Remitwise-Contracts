@@ -38,6 +38,7 @@ fn test_create_policy() {
         &coverage_type,
         &100,   // monthly_premium
         &10000, // coverage_amount
+        &None,
     );
 
     assert_eq!(policy_id, 1);
@@ -64,6 +65,7 @@ fn test_create_policy_invalid_premium() {
         &String::from_str(&env, "Type"),
         &0,
         &10000,
+        &None,
     );
     assert_eq!(result, Err(Ok(InsuranceError::InvalidPremium)));
 }
@@ -83,6 +85,7 @@ fn test_create_policy_invalid_coverage() {
         &String::from_str(&env, "Type"),
         &100,
         &0,
+        &None,
     );
     assert_eq!(result, Err(Ok(InsuranceError::InvalidCoverage)));
 }
@@ -102,6 +105,7 @@ fn test_pay_premium() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     // Initial next_payment_date is ~30 days from creation
@@ -140,6 +144,7 @@ fn test_pay_premium_unauthorized() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     // unauthorized payer
@@ -162,6 +167,7 @@ fn test_deactivate_policy() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     let success = client.deactivate_policy(&owner, &policy_id);
@@ -187,6 +193,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     let p2 = client.create_policy(
         &owner,
@@ -194,6 +201,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -201,6 +209,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T3"),
         &300,
         &3000,
+        &None,
     );
 
     // Deactivate P2
@@ -228,6 +237,7 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Type 1"),
         &100,
         &1000,
+        &None,
     );
     let policy_id_2 = client.create_policy(
         &owner,
@@ -235,6 +245,7 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Type 2"),
         &200,
         &2000,
+        &None,
     );
 
     // Deactivate policy 1
@@ -272,6 +283,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     let p2 = client.create_policy(
         &owner,
@@ -279,6 +291,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -286,6 +299,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T3"),
         &300,
         &3000,
+        &None,
     );
 
     // Create 1 policy for other
@@ -295,6 +309,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "Type"),
         &500,
         &5000,
+        &None,
     );
 
     // Deactivate P2
@@ -331,6 +346,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -338,6 +354,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -374,6 +391,7 @@ fn test_get_total_monthly_premium_one_policy() {
         &String::from_str(&env, "health"),
         &500,
         &10000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -396,6 +414,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -403,6 +422,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -410,6 +430,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "emergency"),
         &300,
         &3000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -432,6 +453,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
         &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
     let _policy2 = client.create_policy(
         &owner,
@@ -439,6 +461,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
         &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
 
     // Verify total includes both policies initially
@@ -470,6 +493,7 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
         &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner_a,
@@ -477,6 +501,7 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
         &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
 
     // Create policies for owner_b
@@ -486,6 +511,7 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
         &String::from_str(&env, "emergency"),
         &300,
         &3000,
+        &None,
     );
 
     // Verify owner_a's total only includes their policies
@@ -517,6 +543,7 @@ fn test_multiple_premium_payments() {
         &String::from_str(&env, "Life"),
         &100,
         &10000,
+        &None,
     );
 
     let p1 = client.get_policy(&policy_id).unwrap();
@@ -561,6 +588,7 @@ fn test_create_premium_schedule() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -590,6 +618,7 @@ fn test_modify_premium_schedule() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -616,6 +645,7 @@ fn test_cancel_premium_schedule() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -641,6 +671,7 @@ fn test_execute_due_premium_schedules() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &0);
@@ -671,6 +702,7 @@ fn test_execute_recurring_premium_schedule() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -699,6 +731,7 @@ fn test_execute_missed_premium_schedules() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -727,6 +760,7 @@ fn test_get_premium_schedules() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let policy_id2 = client.create_policy(
@@ -735,6 +769,7 @@ fn test_get_premium_schedules() {
         &String::from_str(&env, "life"),
         &300,
         &100000,
+        &None,
     );
 
     client.create_premium_schedule(&owner, &policy_id1, &3000, &2592000);
@@ -759,7 +794,7 @@ fn test_create_policy_emits_event() {
     let name = String::from_str(&env, "Health Policy");
     let coverage_type = String::from_str(&env, "Health");
 
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     let events = env.events().all();
     assert!(events.len() >= 2);
@@ -774,8 +809,8 @@ fn test_create_policy_emits_event() {
 
     assert_eq!(audit_event.1, expected_topics);
 
-    let data: (u32, Address) = soroban_sdk::FromVal::from_val(&env, &audit_event.2);
-    assert_eq!(data, (policy_id, owner.clone()));
+    let data: (u32, Address, Option<String>) = soroban_sdk::FromVal::from_val(&env, &audit_event.2);
+    assert_eq!(data, (policy_id, owner.clone(), None));
     assert_eq!(audit_event.0, contract_id.clone());
 }
 
@@ -793,7 +828,7 @@ fn test_pay_premium_emits_event() {
 
     let name = String::from_str(&env, "Health Policy");
     let coverage_type = String::from_str(&env, "Health");
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     env.mock_all_auths();
     client.pay_premium(&owner, &policy_id);
@@ -830,7 +865,7 @@ fn test_deactivate_policy_emits_event() {
 
     let name = String::from_str(&env, "Health Policy");
     let coverage_type = String::from_str(&env, "Health");
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     env.mock_all_auths();
     client.deactivate_policy(&owner, &policy_id);
@@ -875,6 +910,7 @@ fn test_create_policy_success() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
+        &None,
     );
 
     // Verify returns id
@@ -904,6 +940,7 @@ fn test_create_policy_requires_auth() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Should fail due to missing auth
@@ -925,6 +962,7 @@ fn test_create_policy_negative_premium_panics() {
         &String::from_str(&env, "health"),
         &-1, // negative premium
         &10000,
+        &None,
     );
 
     assert!(result.is_err());
@@ -945,6 +983,7 @@ fn test_create_policy_negative_coverage_panics() {
         &String::from_str(&env, "health"),
         &100,
         &-1, // negative coverage
+        &None,
     );
 
     assert!(result.is_err());
@@ -965,6 +1004,7 @@ fn test_pay_premium_success() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     let initial_policy = client.get_policy(&policy_id).unwrap();
@@ -1000,6 +1040,7 @@ fn test_pay_premium_unauthorized_panics() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Try to pay premium as unauthorized user
@@ -1022,6 +1063,7 @@ fn test_pay_premium_inactive_policy_panics() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Deactivate policy first
@@ -1048,6 +1090,7 @@ fn test_deactivate_policy_owner_only() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Owner can deactivate
@@ -1064,6 +1107,7 @@ fn test_deactivate_policy_owner_only() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
 
     // Unauthorized user cannot deactivate
@@ -1099,6 +1143,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     let policy_a2 = client.create_policy(
         &owner_a,
@@ -1106,6 +1151,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
 
     // Create policies for owner_b
@@ -1115,6 +1161,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Deactivate one of owner_a's policies
@@ -1152,6 +1199,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -1159,6 +1207,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
     let policy3 = client.create_policy(
         &owner,
@@ -1166,6 +1215,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Total should be sum of all active policies' monthly_premium
@@ -1196,6 +1246,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     let policy2 = client.create_policy(
         &owner,
@@ -1203,6 +1254,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
     let policy3 = client.create_policy(
         &owner,
@@ -1210,6 +1262,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Verify all policies exist and are active
@@ -1285,6 +1338,7 @@ fn test_time_drift_premium_schedule_not_executed_before_next_due() {
         &String::from_str(&env, "life"),
         &200,
         &100000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1315,6 +1369,7 @@ fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
         &String::from_str(&env, "health"),
         &150,
         &75000,
+        &None,
     );
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1355,6 +1410,7 @@ fn test_time_drift_next_payment_date_uses_actual_payment_time() {
         &String::from_str(&env, "property"),
         &300,
         &200000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1393,6 +1449,7 @@ fn test_time_drift_no_double_execution_after_schedule_advances() {
         &String::from_str(&env, "auto"),
         &100,
         &50000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &interval);
 
