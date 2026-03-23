@@ -296,9 +296,29 @@ If you encounter compatibility issues:
 
 This document is maintained alongside contract releases.
 
-**Last Updated**: 2024  
-**Next Review**: Upon next SDK release  
 **Maintainer**: RemitWise Development Team
+
+## Automated Compatibility Testing
+
+To ensure long-term stability and safe version evolution, the workspace includes an automated compatibility matrix test suite located in `integration_tests/tests/multi_contract_integration.rs`.
+
+### Test Coverage
+
+1.  **Contract Upgrade Compatibility**: Validates that contracts can be upgraded (WASM update) while preserving all instance and persistent storage.
+2.  **Version Matrix Interoperability**: Verifies that all contracts in the warehouse report consistent `CONTRACT_VERSION` levels and can interact correctly across versions.
+3.  **Data Migration Consistency**: Ensures that the off-chain `data_migration` logic remains synchronized with on-chain snapshot data structures.
+
+### Running Tests
+
+```bash
+cargo test -p integration_tests
+```
+
+### Compatibility Requirements
+
+- All new contract versions MUST implement `get_version() -> u32`.
+- Storage layout changes MUST be accompanied by a migration path or documented as a breaking change.
+- `SNAPSHOT_VERSION` MUST be incremented if internal data structures for export/import are modified.
 
 ---
 

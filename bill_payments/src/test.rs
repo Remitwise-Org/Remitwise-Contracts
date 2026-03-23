@@ -6,7 +6,7 @@ use soroban_sdk::{
     Address, Env, String,
 };
 
-fn setup() -> (Env, Address, soroban_sdk::BytesN<32>) {
+fn setup() -> (Env, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, BillPayments);
@@ -24,7 +24,7 @@ fn try_create(
     frequency_days: u32,
     currency: &String,
 ) -> Result<u32, Error> {
-    client
+    let result = client
         .try_create_bill(
             owner,
             name,
@@ -34,8 +34,13 @@ fn try_create(
             &frequency_days,
             &None,
             currency,
-        )
-        .map_err(|host_err| host_err.unwrap())
+        );
+    match result {
+        Ok(Ok(id)) => Ok(id),
+        Ok(Err(_)) => panic!("unexpected conversion error from client"),
+        Err(Ok(err)) => Err(err),
+        Err(Err(_)) => panic!("unexpected invoke error from host"),
+    }
 }
 
 #[test]
