@@ -124,7 +124,10 @@ impl ExportSnapshot {
     /// Compute SHA256 checksum of the payload (canonical JSON).
     pub fn compute_checksum(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_vec(&self.payload).unwrap_or_else(|_| panic!("payload must be serializable")));
+        hasher.update(
+            serde_json::to_vec(&self.payload)
+                .unwrap_or_else(|_| panic!("payload must be serializable")),
+        );
         hex::encode(hasher.finalize().as_ref())
     }
 
@@ -313,12 +316,14 @@ struct CsvGoalRow {
 pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
     match evaluate_version_compatibility(version) {
         VersionCompatibility::Allowed => Ok(()),
-        VersionCompatibility::DeniedByPolicy => Err(MigrationError::DeniedVersion { found: version }),
+        VersionCompatibility::DeniedByPolicy => {
+            Err(MigrationError::DeniedVersion { found: version })
+        }
         VersionCompatibility::UnsupportedLegacy | VersionCompatibility::UnsupportedFuture => {
             Err(MigrationError::IncompatibleVersion {
-            found: version,
-            min: MIN_SUPPORTED_VERSION,
-            max: SCHEMA_VERSION,
+                found: version,
+                min: MIN_SUPPORTED_VERSION,
+                max: SCHEMA_VERSION,
             })
         }
     }
@@ -456,7 +461,10 @@ mod tests {
 
     #[test]
     fn test_policy_defaults_to_deny_for_in_range_unallowed_versions() {
-        assert_eq!(SCHEMA_VERSION, 1, "update this test when adding new schema versions");
+        assert_eq!(
+            SCHEMA_VERSION, 1,
+            "update this test when adding new schema versions"
+        );
         assert_eq!(
             ALLOWED_IMPORT_VERSIONS,
             &[1],
