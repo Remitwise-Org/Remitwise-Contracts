@@ -69,6 +69,7 @@ fn test_multi_contract_user_flow() {
         &due_date,
         &recurring,
         &frequency_days,
+        &None,
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
@@ -85,6 +86,7 @@ fn test_multi_contract_user_flow() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
+        &None,
     );
     assert_eq!(policy_id, 1u32, "Policy ID should be 1");
 
@@ -342,7 +344,7 @@ fn test_data_migration_logic_consistency() {
     // 2. Perform off-chain compatibility verification using data_migration types
     // We verify the payload matches our expectation
     let export_data = RemittanceSplitExport {
-        owner: user.to_string(),
+        owner: format!("{:?}", user),
         spending_percent: on_chain_snapshot.config.spending_percent,
         savings_percent: on_chain_snapshot.config.savings_percent,
         bills_percent: on_chain_snapshot.config.bills_percent,
