@@ -967,7 +967,9 @@ impl RemittanceSplit {
 
 #[cfg(test)]
 mod test;
-mod test {
+
+#[cfg(test)]
+mod test_lib {
     use super::*;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
