@@ -103,8 +103,8 @@ Added comprehensive security section with:
 
 ### Immediate (Before Mainnet)
 - [ ] SECURITY-001: Add reporting authorization
-- [ ] SECURITY-002: Implement reentrancy protection
-- [ ] SECURITY-003: Add emergency rate limiting
+- [x] SECURITY-002: Implement reentrancy protection
+- [x] SECURITY-003: Add emergency rate limiting
 
 **Timeline:** 1-2 weeks
 **Blockers:** These must be completed before mainnet deployment

@@ -34,6 +34,7 @@ pub enum CoverageType {
     Property = 3,
     Auto = 4,
     Liability = 5,
+    Emergency = 6,
 }
 
 /// Event categories for logging

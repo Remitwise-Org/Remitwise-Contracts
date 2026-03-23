@@ -108,6 +108,13 @@ pub trait RemittanceSplitTrait {
     fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
 }
 
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SavingsGoalsError {
+    Generic = 1,
+}
+
 /// Savings Goals contract client interface
 ///
 /// Manages goal-based savings with target dates.
@@ -126,7 +133,14 @@ pub trait SavingsGoalsTrait {
     ///
     /// # Gas Estimation
     /// ~4000 gas
-    fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
+    fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> Result<i128, SavingsGoalsError>;
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BillPaymentsError {
+    Generic = 1,
 }
 
 /// Bill Payments contract client interface
@@ -146,7 +160,14 @@ pub trait BillPaymentsTrait {
     ///
     /// # Gas Estimation
     /// ~4000 gas
-    fn pay_bill(env: Env, caller: Address, bill_id: u32);
+    fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError>;
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum InsuranceError {
+    Generic = 1,
 }
 
 /// Insurance contract client interface
@@ -166,7 +187,7 @@ pub trait InsuranceTrait {
     ///
     /// # Gas Estimation
     /// ~4000 gas
-    fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
+    fn pay_premium(env: Env, caller: Address, policy_id: u32) -> Result<(), InsuranceError>;
 }
 
 /// Orchestrator-specific errors
@@ -192,6 +213,8 @@ pub enum OrchestratorError {
     InvalidContractAddress = 8,
     /// Generic cross-contract call failure
     CrossContractCallFailed = 9,
+    /// Reentrancy detected
+    ReentrancyDetected = 10,
 }
 
 /// Result of a complete remittance flow execution
@@ -291,6 +314,35 @@ const MAX_AUDIT_ENTRIES: u32 = 100;
 /// Main orchestrator contract
 #[contract]
 pub struct Orchestrator;
+
+/// Reentrancy guard to prevent cross-contract reentrancy attacks
+struct ReentrancyGuard<'a> {
+    env: &'a Env,
+}
+
+impl<'a> ReentrancyGuard<'a> {
+    /// Initialize a new reentrancy guard
+    ///
+    /// # Arguments
+    /// * `env` - The contract environment
+    ///
+    /// # Returns
+    /// Ok(ReentrancyGuard) if not already reentrant, Err(OrchestratorError::ReentrancyDetected) otherwise
+    fn new(env: &'a Env) -> Result<Self, OrchestratorError> {
+        let is_reentrant: bool = env.storage().instance().get(&symbol_short!("REENTRANT")).unwrap_or(false);
+        if is_reentrant {
+            return Err(OrchestratorError::ReentrancyDetected);
+        }
+        env.storage().instance().set(&symbol_short!("REENTRANT"), &true);
+        Ok(ReentrancyGuard { env })
+    }
+}
+
+impl<'a> Drop for ReentrancyGuard<'a> {
+    fn drop(&mut self) {
+        self.env.storage().instance().set(&symbol_short!("REENTRANT"), &false);
+    }
+}
 
 #[allow(clippy::manual_inspect)]
 #[contractimpl]
@@ -468,7 +520,7 @@ impl Orchestrator {
         // Call add_to_goal on the savings contract
         // This will panic if the goal doesn't exist or amount is invalid
         // The panic will cause the entire transaction to revert (atomicity)
-        savings_client.add_to_goal(owner, &goal_id, &amount);
+        let _ = savings_client.add_to_goal(owner, &goal_id, &amount);
 
         Ok(())
     }
@@ -509,7 +561,7 @@ impl Orchestrator {
         // Call pay_bill on the bills contract
         // This will panic if the bill doesn't exist or is already paid
         // The panic will cause the entire transaction to revert (atomicity)
-        bills_client.pay_bill(caller, &bill_id);
+        let _ = bills_client.pay_bill(caller, &bill_id);
 
         Ok(())
     }
@@ -550,7 +602,7 @@ impl Orchestrator {
         // Call pay_premium on the insurance contract
         // This will panic if the policy doesn't exist or is inactive
         // The panic will cause the entire transaction to revert (atomicity)
-        insurance_client.pay_premium(caller, &policy_id);
+        let _ = insurance_client.pay_premium(caller, &policy_id);
 
         Ok(())
     }
@@ -659,6 +711,8 @@ impl Orchestrator {
         // Require caller authorization
         caller.require_auth();
 
+        let _guard = ReentrancyGuard::new(&env)?;
+
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
@@ -740,6 +794,8 @@ impl Orchestrator {
         // Require caller authorization
         caller.require_auth();
 
+        let _guard = ReentrancyGuard::new(&env)?;
+
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
@@ -820,6 +876,8 @@ impl Orchestrator {
     ) -> Result<(), OrchestratorError> {
         // Require caller authorization
         caller.require_auth();
+
+        let _guard = ReentrancyGuard::new(&env)?;
 
         let timestamp = env.ledger().timestamp();
 
@@ -935,6 +993,8 @@ impl Orchestrator {
     ) -> Result<RemittanceFlowResult, OrchestratorError> {
         // Require caller authorization
         caller.require_auth();
+
+        let _guard = ReentrancyGuard::new(&env)?;
 
         let timestamp = env.ledger().timestamp();
 

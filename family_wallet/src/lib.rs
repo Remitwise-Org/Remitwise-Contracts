@@ -1333,8 +1333,20 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("EM_LAST"))
             .unwrap_or(0u64);
-        if last_ts != 0 && now < last_ts.saturating_add(config.cooldown) {
-            panic!("Emergency transfer cooldown period not elapsed");
+        
+        let mut period_used: i128 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_USED"))
+            .unwrap_or(0i128);
+
+        // Reset period used if cooldown has elapsed
+        if last_ts != 0 && now >= last_ts.saturating_add(config.cooldown) {
+            period_used = 0;
+        }
+
+        if period_used.saturating_add(amount) > config.max_amount {
+            panic!("Emergency transfer exceeds cumulative period limit");
         }
 
         let token_client = TokenClient::new(&env, &token);
@@ -1361,6 +1373,10 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
+        
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_USED"), &period_used.saturating_add(amount));
 
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),

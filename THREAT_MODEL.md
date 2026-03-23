@@ -284,7 +284,9 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 
 #### T-EC-02: Emergency Mode Fund Drain
 **Severity:** HIGH
+**Status:** ✅ REMEDIATED
 **Description:** Emergency mode allows unlimited transfers without multi-sig and no cooldown enforcement.
+**Remediation:** Implemented cumulative spending limit and cooldown reset logic in `family_wallet`.
 
 **Affected Functions:**
 - `family_wallet::execute_emergency_transfer_now()`
@@ -374,7 +376,9 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 
 #### T-RE-01: Cross-Contract Reentrancy
 **Severity:** HIGH
+**Status:** ✅ REMEDIATED
 **Description:** Orchestrator makes multiple cross-contract calls without reentrancy protection.
+**Remediation:** Implemented `ReentrancyGuard` in `orchestrator` across all entry point functions.
 
 **Affected Functions:**
 - `orchestrator::execute_remittance_flow()`

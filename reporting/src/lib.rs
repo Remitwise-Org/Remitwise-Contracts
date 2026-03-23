@@ -294,14 +294,6 @@ pub struct PolicyPage {
     pub count: u32,
 }
 
-#[contracttype]
-#[derive(Clone)]
-pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
-    pub next_cursor: u32,
-    pub count: u32,
-}
-
 #[contract]
 pub struct ReportingContract;
 
@@ -401,11 +393,12 @@ impl ReportingContract {
     /// Generate remittance summary report
     pub fn get_remittance_summary(
         env: Env,
-        _user: Address,
+        user: Address,
         total_amount: i128,
         period_start: u64,
         period_end: u64,
     ) -> RemittanceSummary {
+        user.require_auth();
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -448,6 +441,7 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> SavingsReport {
+        user.require_auth();
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -494,6 +488,7 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> BillComplianceReport {
+        user.require_auth();
         let addresses: ContractAddresses = env
             .storage()
             .instance()
