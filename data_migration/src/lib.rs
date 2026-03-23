@@ -143,13 +143,7 @@ impl ExportSnapshot {
 
     /// Validate snapshot for import: version and checksum.
     pub fn validate_for_import(&self) -> Result<(), MigrationError> {
-        if !self.is_version_compatible() {
-            return Err(MigrationError::IncompatibleVersion {
-                found: self.header.version,
-                min: MIN_SUPPORTED_VERSION,
-                max: SCHEMA_VERSION,
-            });
-        }
+        check_version_compatibility(self.header.version)?;
         if !self.verify_checksum() {
             return Err(MigrationError::ChecksumMismatch);
         }
