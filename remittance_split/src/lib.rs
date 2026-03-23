@@ -1,8 +1,5 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-mod test;
-// test module declared above
-
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, Env, Map, Symbol, Vec,
@@ -439,9 +436,9 @@ impl RemittanceSplit {
         }
 
         let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
+        let s0 = match split.get(0) { Some(v) => v as i128, None => return Err(RemittanceSplitError::Overflow) };
+        let s1 = match split.get(1) { Some(v) => v as i128, None => return Err(RemittanceSplitError::Overflow) };
+        let s2 = match split.get(2) { Some(v) => v as i128, None => return Err(RemittanceSplitError::Overflow) };
 
         let spending = total_amount
             .checked_mul(s0)
@@ -965,9 +962,9 @@ impl RemittanceSplit {
     }
 }
 
-#[cfg(test)]
-mod test;
+#[cfg(any(test, feature = "testutils"))]
 mod test {
+    #![allow(clippy::doc_lazy_continuation)]
     use super::*;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
