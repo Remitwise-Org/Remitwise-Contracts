@@ -1,7 +1,5 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-mod test;
-// test module declared above
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -965,21 +963,18 @@ impl RemittanceSplit {
     }
 }
 
+
 #[cfg(test)]
-mod test;
 mod test {
     use super::*;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
     use soroban_sdk::TryFromVal;
+    use testutils::setup_test_env;
 
     #[test]
     fn test_initialize_split_emits_event() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
+        setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
 
         // Initialize split
         let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);

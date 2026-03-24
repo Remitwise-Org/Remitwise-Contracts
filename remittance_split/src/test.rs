@@ -12,7 +12,7 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_initialize_split_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
+    setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
 
     let success = client.initialize_split(
         &owner, &0,  // nonce
@@ -200,7 +200,7 @@ fn test_calculate_complex_rounding() {
 
 #[test]
 fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
+    setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
     set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);

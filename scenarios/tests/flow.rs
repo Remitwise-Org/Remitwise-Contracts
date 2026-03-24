@@ -77,6 +77,7 @@ fn test_end_to_end_flow() {
         &(timestamp + 86400 * 5),
         &true,
         &30,
+        &None,
         &String::from_str(&env, "USDC"),
     );
 

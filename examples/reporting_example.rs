@@ -1,5 +1,6 @@
 use soroban_sdk::{Env, Address, testutils::Address as _};
-use reporting::{ReportingClient, Category};
+use reporting::ReportingContractClient;
+use remitwise_common::Category;
 
 // Mock contracts for the reporting example
 // In a real scenario, these would be the actual deployed contract IDs
@@ -10,9 +11,9 @@ fn main() {
     let env = Env::default();
     env.mock_all_auths();
 
-    // 2. Register the Reporting contract
-    let contract_id = env.register_contract(None, reporting::Reporting);
-    let client = ReportingClient::new(&env, &contract_id);
+    // 2. Register the ReportingContract contract
+    let contract_id = env.register_contract(None, reporting::ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
@@ -25,11 +26,11 @@ fn main() {
     let insurance_addr = Address::generate(&env);
     let family_addr = Address::generate(&env);
 
-    println!("--- Remitwise: Reporting Example ---");
+    println!("--- Remitwise: ReportingContract Example ---");
 
     // 4. [Write] Initialize the contract
-    println!("Initializing Reporting contract with admin: {:?}", admin);
-    client.init(&admin).unwrap();
+    println!("Initializing ReportingContract contract with admin: {:?}", admin);
+    client.init(&admin);
 
     // 5. [Write] Configure contract addresses
     println!("Configuring dependency addresses...");
@@ -40,7 +41,7 @@ fn main() {
         &bills_addr,
         &insurance_addr,
         &family_addr
-    ).unwrap();
+    );
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report
@@ -53,6 +54,6 @@ fn main() {
     // But for a clear "runnable example" that doesn't get too complex, 
     // showing the setup and a successful call is the primary goal.
 
-    println!("\nReporting contract is now ready to generate financial insights.");
+    println!("\nReportingContract contract is now ready to generate financial insights.");
     println!("Example completed successfully!");
 }

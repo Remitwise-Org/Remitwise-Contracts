@@ -1,0 +1,200 @@
+﻿cargo : warning: profiles for the non root 
+package will be ignored, specify profiles at 
+the workspace root:
+At line:1 char:1
++ cargo test > test_output.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (wa 
+   rning: profil...workspace root::String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Re
+mitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.toml
+   Compiling insurance v0.1.0 (C:\Users\ADMIN\De
+sktop\remmy-drips\Remitwise-Contracts\insurance)
+warning: unused import: `LedgerInfo`
+  --> insurance\src\test.rs:12:50
+   |
+12 |     testutils::{Address as AddressTrait, 
+Ledger, LedgerInfo},
+   |                                            
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: unused import: `proptest::prelude::*`
+  --> insurance\src\test.rs:15:5
+   |
+15 | use proptest::prelude::*;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Ledger`
+  --> insurance\src\test.rs:12:42
+   |
+12 |     testutils::{Address as AddressTrait, 
+Ledger, LedgerInfo},
+   |                                          
+^^^^^^
+
+warning: unused variable: `policy2`
+   --> insurance\src\test.rs:448:9
+    |
+448 |     let policy2 = client.create_policy(
+    |         ^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unused_variables)]` (part 
+of `#[warn(unused)]`) on by default
+
+warning: unused variable: `other`
+   --> insurance\src\test.rs:884:9
+    |
+884 |     let other = Address::generate(&env);
+    |         ^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_other`
+
+warning: unused variable: `other`
+   --> insurance\src\test.rs:905:9
+    |
+905 |     let other = Address::generate(&env);
+    |         ^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_other`
+
+warning: unused variable: `other`
+   --> insurance\src\test.rs:937:9
+    |
+937 |     let other = Address::generate(&env);
+    |         ^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_other`
+
+warning: `insurance` (lib test) generated 7 
+warnings (run `cargo fix --lib -p insurance 
+--tests` to apply 6 suggestions)
+warning: unused import: 
+`remitwise_common::CoverageType`
+ --> insurance\tests\gas_bench.rs:2:5
+  |
+2 | use remitwise_common::CoverageType;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: `insurance` (test "gas_bench") 
+generated 1 warning (run `cargo fix --test 
+"gas_bench" -p insurance` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + 
+debuginfo] target(s) in 58.79s
+     Running unittests src\lib.rs (C:\Users\ADMI
+N\Desktop\remmy-drips\Remitwise-Contracts\target
+\debug\deps\insurance-44030312625ea3b8.exe)
+
+running 45 tests
+test test::test_create_policy_invalid_coverage ... ok
+test test::test_create_policy_invalid_premium ... ok
+test test::test_create_policy_emits_event ... ok
+test test::test_create_premium_schedule_succeeds ... ok
+test test::test_cancel_premium_schedule ... ok
+test test::test_create_policy_succeeds ... ok
+test test::test_deactivate_policy ... ok
+test test::test_create_policy_success ... ok
+test test::test_create_policy_negative_coverage_panics ... ok
+test test::test_create_policy_negative_premium_panics ... ok
+test test::test_create_policy_requires_auth ... ok
+test test::test_create_policy_non_owner_auth_failure - should panic ... ok
+test test::test_execute_due_premium_schedules ... ok
+test test::test_deactivate_policy_non_owner_auth_failure - should panic ... ok
+test test::test_deactivate_policy_emits_event ... ok
+test test::test_deactivate_policy_owner_only ... ok
+test test::test_get_policy_nonexistent ... ok
+test test::test_execute_recurring_premium_schedule ... ok
+test test::test_get_active_policies_excludes_deactivated ... ok
+test test::test_execute_missed_premium_schedules ... ok
+test test::test_get_premium_schedules ... ok
+test test::test_get_active_policies ... ok
+test test::test_get_total_monthly_premium ... ok
+test test::test_get_total_monthly_premium_zero_policies ... ok
+test test::test_get_total_monthly_premium_deactivated_policy_excluded ... ok
+test test::test_get_total_monthly_premium_different_owner_isolation ... ok
+test test::test_modify_premium_schedule ... ok
+test test::test_get_active_policies_filters_by_owner_and_active ... ok
+test test::test_pay_premium_emits_event ... ok
+test test::test_pay_premium ... ok
+test test::test_get_all_policies_for_owner_pagination ... ok
+test test::test_get_total_monthly_premium_one_policy ... ok
+test test::test_get_total_monthly_premium_multiple_active_policies ... ok
+test test::test_pay_premium_success ... ok
+test test::test_pay_premium_inactive_policy_panics ... ok
+test test::test_multiple_premium_payments ... ok
+test test::test_pay_premium_non_owner_auth_failure - should panic ... ok
+test test::test_get_total_monthly_premium_comprehensive ... ok
+test test::test_pay_premium_unauthorized ... ok
+test test::test_multiple_policies_same_owner ... ok
+test test::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test::test_pay_premium_unauthorized_panics ... ok
+test test::test_time_drift_no_double_execution_after_schedule_advances ... ok
+test test::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+test test::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.45s
+
+     Running tests\gas_bench.rs (C:\Users\ADMIN\
+Desktop\remmy-drips\Remitwise-Contracts\target\d
+ebug\deps\gas_bench-60340bdfea23d510.exe)
+
+running 1 test
+test bench_get_total_monthly_premium_worst_case ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.39s
+
+     Running tests\stress_tests.rs (C:\Users\ADM
+IN\Desktop\remmy-drips\Remitwise-Contracts\targe
+t\debug\deps\stress_tests-043d2fc64ccc6397.exe)
+
+running 10 tests
+test bench_batch_pay_premiums_50_policies ... ok
+test stress_batch_pay_premiums_at_max_batch_size ... ok
+test stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement ... ok
+test stress_ttl_re_bumped_after_ledger_advancement ... ok
+test bench_get_active_policies_first_page_of_200 ... ok
+test bench_get_total_monthly_premium_200_policies ... ok
+test stress_instance_ttl_valid_after_200_policies ... ok
+test stress_policies_across_10_users ... ok
+test stress_200_policies_single_user ... FAILED
+test stress_deactivate_half_of_200_policies ... FAILED
+
+failures:
+
+---- stress_200_policies_single_user stdout ----
+
+thread 'stress_200_policies_single_user' (7016) panicked at insurance\tests\stress_tests.rs:109:5:
+assertion `left == right` failed: Pagination must return all 200 active policies
+  left: 197
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- stress_deactivate_half_of_200_policies stdout ----
+
+thread 'stress_deactivate_half_of_200_policies' (1980) panicked at insurance\tests\stress_tests.rs:392:5:
+assertion `left == right` failed: After deactivating 100 of 200 policies, only 100 must be returned by get_active_policies
+  left: 99
+ right: 100
+
+
+failures:
+    stress_200_policies_single_user
+    stress_deactivate_half_of_200_policies
+
+test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.37s
+
+error: test failed, to rerun pass `--test 
+stress_tests`

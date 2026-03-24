@@ -24,6 +24,7 @@ mod testsuit {
                         &(now - 1 - i as u64), // due_date < now
                         &false,
                         &0,
+                        &None,
                     );
                     env.mock_all_auths();
                 }
@@ -37,6 +38,7 @@ mod testsuit {
                         &(now + 1 + i as u64), // due_date > now
                         &false,
                         &0,
+                        &None,
                     );
                     env.mock_all_auths();
                 }
@@ -997,6 +999,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1027,6 +1030,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1054,6 +1058,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1080,6 +1085,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &0);
@@ -1111,6 +1117,7 @@ mod testsuit {
             &2000,
             &true,
             &30,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1140,6 +1147,7 @@ mod testsuit {
             &2000,
             &true,
             &30,
+            &None,
         );
 
         let schedule_id = client.create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1169,6 +1177,7 @@ mod testsuit {
             &6000,
             &false,
             &0,
+            &None,
         );
 
         let result = client.try_create_schedule(&owner, &bill_id, &3000, &86400);
@@ -1192,6 +1201,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         let bill_id2 = client.create_bill(
@@ -1201,6 +1211,7 @@ mod testsuit {
             &2000,
             &false,
             &0,
+            &None,
         );
 
         client.create_schedule(&owner, &bill_id1, &3000, &86400);
@@ -1525,6 +1536,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+            &None,
         );
     }
 
@@ -1562,6 +1574,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+            &None,
         );
 
         // other tries to pay the bill for owner
@@ -1602,6 +1615,7 @@ mod testsuit {
             &1000000,
             &false,
             &0,
+            &None,
         );
 
         // other tries to cancel the bill for owner
@@ -2069,6 +2083,7 @@ mod testsuit {
             &due_date,
             &false,
             &0,
+            &None,
         );
 
         let page = client.get_overdue_bills(&0, &100);
@@ -2097,6 +2112,7 @@ mod testsuit {
             &due_date,
             &false,
             &0,
+            &None,
         );
 
         // Not yet overdue at due_date
@@ -2201,6 +2217,7 @@ mod testsuit {
             &due_date,
             &false,
             &0,
+            &None,
         );
 
         // Still not overdue at due_date
@@ -2721,6 +2738,7 @@ mod testsuit {
             &1_000_000,
             &true, // recurring
             &30,
+            &None,
         );
 
         // Before payment: one unpaid bill of 500

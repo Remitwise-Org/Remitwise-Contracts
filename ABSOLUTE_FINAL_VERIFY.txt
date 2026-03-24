@@ -1,0 +1,759 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:27
++ python 
+final_mega_fix.py; 
+cargo test --workspace 
+2>&1 | Out-File -Fil ...
++                       
+    ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+   Compiling 
+integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+error[E0432]: 
+unresolved import `repor
+ting::remitwise_common`
+ --> examples\reporting_
+example.rs:2:42
+  |
+2 | use reporting::{Repo
+rtingContractClient, rem
+itwise_common::Category}
+;
+  |                     
+                     
+^^^^^^^^^^^^^^^^ could 
+not find 
+`remitwise_common` in 
+`reporting`
+
+warning: unused import: 
+`remitwise_common::Cover
+ageType`
+ --> insurance\tests\gas
+_bench.rs:2:5
+  |
+2 | use remitwise_common
+::CoverageType;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `user`
+  --> examples\reporting
+_example.rs:19:9
+   |
+19 |     let user = 
+Address::generate(&env);
+   |         ^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_user`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+For more information 
+about this error, try 
+`rustc --explain E0432`.
+warning: 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+generated 1 warning
+error: could not 
+compile 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+due to 1 previous 
+error; 1 warning emitted
+warning: build failed, 
+waiting for other jobs 
+to finish...
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+error[E0609]: no field 
+`spending_percent` on 
+type `std::option::Optio
+n<SplitConfig>`
+  --> examples\remittanc
+e_split_example.rs:26:42
+   |
+26 |     println!("  
+Spending: {:?}%", config
+.spending_percent);
+   |                    
+                      
+^^^^^^^^^^^^^^^^ 
+unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+26 |     println!("  
+Spending: {:?}%", config
+.unwrap().spending_perce
+nt);
+   |                    
+                      
++++++++++
+
+error[E0609]: no field 
+`savings_percent` on 
+type `std::option::Optio
+n<SplitConfig>`
+  --> examples\remittanc
+e_split_example.rs:27:41
+   |
+27 |     println!("  
+Savings: {:?}%", 
+config.savings_percent);
+   |                    
+                     
+^^^^^^^^^^^^^^^ unknown 
+field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+27 |     println!("  
+Savings: {:?}%", config.
+unwrap().savings_percent
+);
+   |                    
+                     
++++++++++
+
+error[E0609]: no field 
+`bills_percent` on type 
+`std::option::Option<Spl
+itConfig>`
+  --> examples\remittanc
+e_split_example.rs:28:39
+   |
+28 |     println!("  
+Bills: {:?}%", 
+config.bills_percent);
+   |                    
+                   
+^^^^^^^^^^^^^ unknown 
+field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+28 |     println!("  
+Bills: {:?}%", config.un
+wrap().bills_percent);
+   |                    
+                   
++++++++++
+
+error[E0609]: no field 
+`insurance_percent` on 
+type `std::option::Optio
+n<SplitConfig>`
+  --> examples\remittanc
+e_split_example.rs:29:43
+   |
+29 |     println!("  
+Insurance: {:?}%", confi
+g.insurance_percent);
+   |                    
+                       
+^^^^^^^^^^^^^^^^^ 
+unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+29 |     println!("  
+Insurance: {:?}%", confi
+g.unwrap().insurance_per
+cent);
+   |                    
+                       
++++++++++
+
+For more information 
+about this error, try 
+`rustc --explain E0609`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example "remittance_spl
+it_example") due to 4 
+previous errors
+error[E0252]: the name 
+`IntoVal` is defined 
+multiple times
+   --> insurance\src\tes
+t.rs:770:38
+    |
+769 |     use 
+soroban_sdk::IntoVal;
+    |         
+-------------------- 
+previous import of the 
+trait `IntoVal` here
+770 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^ `IntoVal` 
+reimported here
+    |
+    = note: `IntoVal` 
+must be defined only 
+once in the type 
+namespace of this block
+
+error[E0252]: the name 
+`IntoVal` is defined 
+multiple times
+   --> insurance\src\tes
+t.rs:806:38
+    |
+805 |     use 
+soroban_sdk::IntoVal;
+    |         
+-------------------- 
+previous import of the 
+trait `IntoVal` here
+806 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^ `IntoVal` 
+reimported here
+    |
+    = note: `IntoVal` 
+must be defined only 
+once in the type 
+namespace of this block
+
+error[E0252]: the name 
+`IntoVal` is defined 
+multiple times
+   --> insurance\src\tes
+t.rs:844:38
+    |
+843 |     use 
+soroban_sdk::IntoVal;
+    |         
+-------------------- 
+previous import of the 
+trait `IntoVal` here
+844 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^ `IntoVal` 
+reimported here
+    |
+    = note: `IntoVal` 
+must be defined only 
+once in the type 
+namespace of this block
+
+warning: unused import: 
+`LedgerInfo`
+  --> insurance\src\test
+.rs:12:50
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                        
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unuse
+d_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+  --> insurance\src\test
+.rs:15:5
+   |
+15 | use 
+proptest::prelude::*;
+   |     
+^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`IntoVal`
+   --> insurance\src\tes
+t.rs:770:38
+    |
+770 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^
+
+warning: unused import: 
+`IntoVal`
+   --> insurance\src\tes
+t.rs:806:38
+    |
+806 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^
+
+warning: unused import: 
+`IntoVal`
+   --> insurance\src\tes
+t.rs:844:38
+    |
+844 | use soroban_sdk::{
+symbol_short, vec, 
+IntoVal};
+    |                   
+                   
+^^^^^^^
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1052:25
+     |
+1052 |       let result 
+= client.try_create_poli
+cy(
+     |  ________________
+_________^^^^^^^^^^^^^^^
+^^-
+1053 | |         &owner,
+1054 | |         
+&String::from_str(&env, 
+"Test Policy"),
+1055 | |         
+&String::from_str(&env, 
+"health"),
+1056 | |         &100,
+1057 | |         &-1, 
+// negative coverage
+1058 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1052 ~     let result = 
+client.try_create_policy
+(
+1053 +         &owner,
+1054 +         
+&String::from_str(&env, 
+"Test Policy"),
+1055 +         
+&String::from_str(&env, 
+"health"),
+1056 +         &100,
+1057 +         &-1,
+1058 +         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1059 ~     );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1433:28
+     |
+1433 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1434 | |         &owner,
+1435 | |         
+&String::from_str(&env, 
+"Health Plan"),
+1436 | |         
+&String::from_str(&env, 
+"health"),
+1437 | |         &150,
+1438 | |         &75000,
+1439 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1433 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1438 |         &75000,
+1439 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1440 ~     );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1473:28
+     |
+1473 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1474 | |         &owner,
+1475 | |         
+&String::from_str(&env, 
+"Property Plan"),
+1476 | |         
+&String::from_str(&env, 
+"property"),
+1477 | |         &300,
+1478 | |         
+&200000,
+1479 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1473 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1478 |         &200000,
+1479 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1480 ~     );
+     |
+
+warning: unused import: 
+`Ledger`
+  --> insurance\src\test
+.rs:12:42
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                      
+^^^^^^
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:449:9
+    |
+449 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:885:9
+    |
+885 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:906:9
+    |
+906 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:938:9
+    |
+938 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+Some errors have 
+detailed explanations: 
+E0061, E0252.
+For more information 
+about an error, try 
+`rustc --explain E0061`.
+warning: `insurance` 
+(lib test) generated 10 
+warnings
+error: could not 
+compile `insurance` 
+(lib test) due to 6 
+previous errors; 10 
+warnings emitted
+warning: `scenarios` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios 
+--tests` to apply 1 
+suggestion)
+warning: `insurance` 
+(test "gas_bench") 
+generated 1 warning 
+(run `cargo fix --test 
+"gas_bench" -p 
+insurance` to apply 1 
+suggestion)

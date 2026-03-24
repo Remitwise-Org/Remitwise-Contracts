@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 1000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -70,7 +71,8 @@
                     "hi": 0,
                     "lo": 2000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -94,7 +96,7 @@
                   "string": "Policy 3"
                 },
                 {
-                  "string": "emergency"
+                  "string": "auto"
                 },
                 {
                   "i128": {
@@ -107,7 +109,8 @@
                     "hi": 0,
                     "lo": 3000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -199,6 +202,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -245,6 +254,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -281,6 +298,12 @@
                                     "val": {
                                       "string": "life"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -330,6 +353,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -364,8 +395,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "emergency"
+                                      "string": "auto"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -415,6 +452,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -615,7 +660,8 @@
                     "hi": 0,
                     "lo": 1000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -795,7 +841,8 @@
                     "hi": 0,
                     "lo": 2000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -962,7 +1009,7 @@
                   "string": "Policy 3"
                 },
                 {
-                  "string": "emergency"
+                  "string": "auto"
                 },
                 {
                   "i128": {
@@ -975,7 +1022,8 @@
                     "hi": 0,
                     "lo": 3000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1013,7 +1061,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "emergency"
+                    "string": "auto"
                   }
                 },
                 {

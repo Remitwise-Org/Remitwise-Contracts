@@ -1,0 +1,23 @@
+﻿error: mismatched closing delimiter: `}`
+   --> bill_payments\src\lib.rs:532:29
+    |
+465 |     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+    |                                                                                   - closing delimiter possibly meant for this
+...
+532 |         env.events().publish(
+    |                             ^ unclosed delimiter
+...
+544 |     }
+    |     ^ mismatched closing delimiter
+
+
+error: this file contains an unclosed delimiter
+    --> bill_payments\src\lib.rs:2571:3
+     |
+ 113 | pub enum BillEvent {
+     |                    - unclosed delimiter
+...
+2571 | }
+     |  ^
+
+

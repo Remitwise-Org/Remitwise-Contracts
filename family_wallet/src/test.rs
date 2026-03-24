@@ -9,7 +9,7 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_initialize_wallet_succeeds() {
-    setup_test_env!(env, FamilyWallet, client, owner);
+    setup_test_env!(env, FamilyWallet, client, owner, FamilyWalletClient);
 
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);

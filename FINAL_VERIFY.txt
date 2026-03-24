@@ -1,0 +1,1314 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:26
++ python 
+fix_all_final.py; cargo 
+test --workspace 2>&1 | 
+Out-File -File ...
++                       
+   ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+   Compiling 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+error: expected item, 
+found keyword `let`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:81:5
+   |
+81 |     let 
+overflow_amount = 
+i128::MAX / 50 + 1; // 
+Will overflow when 
+multiplied by 50
+   |     ^^^
+   |     |
+   |     `let` cannot 
+be used for global 
+variables
+   |     help: consider 
+using `static` or 
+`const` instead of `let`
+   |
+   = note: for a full 
+list of items that can 
+appear in modules, see <
+https://doc.rust-lang.or
+g/reference/items.html>
+
+error: could not 
+compile 
+`remittance_split` 
+(test "stress_test_large
+_amounts") due to 1 
+previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: cannot find 
+macro `format` in this 
+scope
+   --> savings_goals\src
+\test.rs:150:53
+    |
+150 |         let 
+expected_name = 
+String::from_str(&env, 
+&format!("G{}", i + 1));
+    |                   
+                        
+          ^^^^^^
+
+warning: unused import: 
+`PolicyPage`
+   --> reporting\src\tes
+ts.rs:161:50
+    |
+161 |     use crate::{In
+surancePolicy, 
+InsuranceTrait, 
+PolicyPage};
+    |                   
+                        
+       ^^^^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`LedgerInfo`
+ --> insurance\src\test.
+rs:6:50
+  |
+6 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+  |                     
+                        
+     ^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+ --> insurance\src\test.
+rs:9:5
+  |
+9 | use 
+proptest::prelude::*;
+  |     
+^^^^^^^^^^^^^^^^^^^^
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+  --> savings_goals\src\
+test.rs:42:5
+   |
+42 |     set_time(&env, 
+2_000_000_000);
+   |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+   --> insurance\src\tes
+t.rs:717:5
+    |
+717 |     
+set_time(&env, 3000 + 
+2592000 * 3 + 100);
+    |     ^^^^^^^^ not 
+found in this scope
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+   --> insurance\src\tes
+t.rs:744:29
+    |
+744 |       let 
+policy_id2 = 
+client.create_policy(
+    |  _________________
+____________^^^^^^^^^^^^
+^-
+745 | |         &owner,
+746 | |         
+&String::from_str(&env, 
+"Life Insurance"),
+747 | |         
+&String::from_str(&env, 
+"life"),
+748 | |         &300,
+749 | |         &100000,
+750 | |     );
+    | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+    |
+note: method defined 
+here
+   --> insurance\src\lib
+.rs:475:12
+    |
+475 |     pub fn 
+create_policy(
+    |            
+^^^^^^^^^^^^^
+...
+482 |         
+external_ref: 
+Option<String>,
+    |         ----------
+------------------
+help: provide the 
+argument
+    |
+744 |     let 
+policy_id2 = 
+client.create_policy(
+...
+749 |         &100000,
+750 ~         /* &core::
+option::Option<soroban_s
+dk::String> */,
+751 ~     );
+    |
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+soroban_sdk::String, 
+u32, i128)` in the 
+current scope
+   --> insurance\src\tes
+t.rs:903:113
+    |
+903 |             args: 
+(&owner, 
+String::from_str(&env, 
+"Policy"), 
+String::from_str(&env, 
+"Type"), 100u32, 10000i1
+28).into_val(&env),
+    |                   
+                        
+                        
+                        
+                      
+^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\env.rs:90:8
+    |
+ 90 |     fn 
+into_val(&self, e: &E) 
+-> T;
+    |        -------- 
+the method is available 
+for `(&soroban_sdk::Addr
+ess, 
+soroban_sdk::String, 
+soroban_sdk::String, 
+u32, i128)` here
+    |
+    = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+    |
+  3 + use 
+soroban_sdk::IntoVal;
+    |
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+soroban_sdk::String, 
+u32, i128)` in the 
+current scope
+   --> insurance\src\tes
+t.rs:935:113
+    |
+935 |             args: 
+(&owner, 
+String::from_str(&env, 
+"Policy"), 
+String::from_str(&env, 
+"Type"), 100u32, 10000i1
+28).into_val(&env),
+    |                   
+                        
+                        
+                        
+                      
+^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.c
+argo\registry\src\index.
+crates.io-1949cf8c6b5b55
+7f\soroban-sdk-21.7.7\sr
+c\env.rs:90:8
+    |
+ 90 |     fn 
+into_val(&self, e: &E) 
+-> T;
+    |        -------- 
+the method is available 
+for `(&soroban_sdk::Addr
+ess, 
+soroban_sdk::String, 
+soroban_sdk::String, 
+u32, i128)` here
+    |
+    = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+    |
+  3 + use 
+soroban_sdk::IntoVal;
+    |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1042:25
+     |
+1042 |       let result 
+= client.try_create_poli
+cy(
+     |  ________________
+_________^^^^^^^^^^^^^^^
+^^-
+1043 | |         &owner,
+1044 | |         
+&String::from_str(&env, 
+"Test Policy"),
+1045 | |         
+&String::from_str(&env, 
+"health"),
+1046 | |         &100,
+1047 | |         &-1, 
+// negative coverage
+1048 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1042 ~     let result = 
+client.try_create_policy
+(
+1043 +         &owner,
+1044 +         
+&String::from_str(&env, 
+"Test Policy"),
+1045 +         
+&String::from_str(&env, 
+"health"),
+1046 +         &100,
+1047 +         &-1,
+1048 +         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1049 ~     );
+     |
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1075:5
+     |
+1075 |     
+set_time(&env, env.ledge
+r().timestamp() + 
+86400); // +1 day
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1340:5
+     |
+1340 |     
+set_time(&env, env.ledge
+r().timestamp() + 
+86400); // +1 day
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1390:5
+     |
+1390 |     
+set_time(&env, 1000);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+i128, u64)` in the 
+current scope
+    --> savings_goals\sr
+c\test.rs:1585:18
+     |
+1579 |               
+args: (
+     |  
+___________________-
+1580 | |                
+ &user,
+1581 | |                
+ String::from_str(&env, 
+"Auth"),
+1582 | |                
+ 1000i128,
+...    |
+1585 | |                
+ .into_val(&env),
+     | |________________
+_-^^^^^^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\env.rs:90:8
+     |
+  90 |       fn 
+into_val(&self, e: &E) 
+-> T;
+     |          
+-------- the method is 
+available for `(&soroban
+_sdk::Address, 
+soroban_sdk::String, 
+i128, u64)` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   3 + use 
+soroban_sdk::IntoVal;
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1392:28
+     |
+1392 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1393 | |         &owner,
+1394 | |         
+&String::from_str(&env, 
+"Life Cover"),
+1395 | |         
+&String::from_str(&env, 
+"life"),
+1396 | |         &200,
+1397 | |         
+&100000,
+1398 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1392 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1397 |         &100000,
+1398 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1399 ~     );
+     |
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+i128, u64)` in the 
+current scope
+    --> savings_goals\sr
+c\test.rs:1615:18
+     |
+1609 |               
+args: (
+     |  
+___________________-
+1610 | |                
+ &user,
+1611 | |                
+ String::from_str(&env, 
+"Auth"),
+1612 | |                
+ 1000i128,
+...    |
+1615 | |                
+ .into_val(&env),
+     | |________________
+_-^^^^^^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\env.rs:90:8
+     |
+  90 |       fn 
+into_val(&self, e: &E) 
+-> T;
+     |          
+-------- the method is 
+available for `(&soroban
+_sdk::Address, 
+soroban_sdk::String, 
+i128, u64)` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   3 + use 
+soroban_sdk::IntoVal;
+     |
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1401:5
+     |
+1401 |     
+set_time(&env, next_due 
+- 1);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1420:5
+     |
+1420 |     
+set_time(&env, 1000);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+i128, u64)` in the 
+current scope
+    --> savings_goals\sr
+c\test.rs:1645:18
+     |
+1639 |               
+args: (
+     |  
+___________________-
+1640 | |                
+ &user,
+1641 | |                
+ String::from_str(&env, 
+"Auth"),
+1642 | |                
+ 1000i128,
+...    |
+1645 | |                
+ .into_val(&env),
+     | |________________
+_-^^^^^^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\env.rs:90:8
+     |
+  90 |       fn 
+into_val(&self, e: &E) 
+-> T;
+     |          
+-------- the method is 
+available for `(&soroban
+_sdk::Address, 
+soroban_sdk::String, 
+i128, u64)` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   3 + use 
+soroban_sdk::IntoVal;
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1422:28
+     |
+1422 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1423 | |         &owner,
+1424 | |         
+&String::from_str(&env, 
+"Health Plan"),
+1425 | |         
+&String::from_str(&env, 
+"health"),
+1426 | |         &150,
+1427 | |         &75000,
+1428 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1422 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1427 |         &75000,
+1428 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1429 ~     );
+     |
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1431:5
+     |
+1431 |     
+set_time(&env, 
+next_due);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1460:5
+     |
+1460 |     
+set_time(&env, 1000);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1462:28
+     |
+1462 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1463 | |         &owner,
+1464 | |         
+&String::from_str(&env, 
+"Property Plan"),
+1465 | |         
+&String::from_str(&env, 
+"property"),
+1466 | |         &300,
+1467 | |         
+&200000,
+1468 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1462 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1467 |         &200000,
+1468 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1469 ~     );
+     |
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1471:5
+     |
+1471 |     
+set_time(&env, 
+late_payment_time);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1498:5
+     |
+1498 |     
+set_time(&env, 1000);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\te
+st.rs:1500:28
+     |
+1500 |       let 
+policy_id = 
+client.create_policy(
+     |  ________________
+____________^^^^^^^^^^^^
+^-
+1501 | |         &owner,
+1502 | |         
+&String::from_str(&env, 
+"Auto Cover"),
+1503 | |         
+&String::from_str(&env, 
+"auto"),
+1504 | |         &100,
+1505 | |         &50000,
+1506 | |     );
+     | |_____- argument 
+#6 of type `&core::optio
+n::Option<soroban_sdk::S
+tring>` is missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1500 |     let 
+policy_id = 
+client.create_policy(
+ ...
+1505 |         &50000,
+1506 ~         /* &core:
+:option::Option<soroban_
+sdk::String> */,
+1507 ~     );
+     |
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1510:5
+     |
+1510 |     
+set_time(&env, 
+next_due);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`set_time` in this scope
+    --> insurance\src\te
+st.rs:1517:5
+     |
+1517 |     
+set_time(&env, next_due 
++ 1000);
+     |     ^^^^^^^^ not 
+found in this scope
+
+error[E0599]: no method 
+named `into_val` found 
+for tuple `(&soroban_sdk
+::Address, 
+soroban_sdk::String, 
+i128, u64)` in the 
+current scope
+    --> savings_goals\sr
+c\test.rs:1675:18
+     |
+1669 |               
+args: (
+     |  
+___________________-
+1670 | |                
+ &user,
+1671 | |                
+ String::from_str(&env, 
+"Auth"),
+1672 | |                
+ 1000i128,
+...    |
+1675 | |                
+ .into_val(&env),
+     | |________________
+_-^^^^^^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\env.rs:90:8
+     |
+  90 |       fn 
+into_val(&self, e: &E) 
+-> T;
+     |          
+-------- the method is 
+available for `(&soroban
+_sdk::Address, 
+soroban_sdk::String, 
+i128, u64)` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`into` with a similar 
+name, but with 
+different arguments
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\convert\mod.rs:455:5
+help: trait `IntoVal` 
+which provides 
+`into_val` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   3 + use 
+soroban_sdk::IntoVal;
+     |
+
+warning: unused import: 
+`Ledger`
+ --> insurance\src\test.
+rs:6:42
+  |
+6 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+  |                     
+                     
+^^^^^^
+
+error[E0277]: a value 
+of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from an 
+iterator over elements 
+of type `u32`
+    --> savings_goals\sr
+c\test.rs:1745:61
+     |
+1745 |     let 
+goal_a_ids: Vec<u32> = 
+goals_a.iter().map(|g| 
+g.id).collect();
+     |                  
+                        
+                   
+^^^^^^^ value of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from `st
+d::iter::Iterator<Item=u
+32>`
+     |
+     = help: the trait 
+`FromIterator<u32>` is 
+not implemented for 
+`soroban_sdk::Vec<u32>`
+note: the method call 
+chain might not have 
+had the expected 
+associated types
+    --> savings_goals\sr
+c\test.rs:1745:47
+     |
+1688 |     let client = 
+SavingsGoalContractClien
+t::new(&env, 
+&contract_id);
+     |                  
+------------------------
+------------------------
+-- this expression has 
+type `SavingsGoalContrac
+tClient<'_>`
+...
+1745 |     let 
+goal_a_ids: Vec<u32> = 
+goals_a.iter().map(|g| 
+g.id).collect();
+     |                  
+                      
+------ ^^^^^^^^^^^^^ 
+`Iterator::Item` 
+changed to `u32` here
+     |                  
+                      |
+     |                  
+                      
+`Iterator::Item` is 
+`SavingsGoal` here
+note: required by a 
+bound in `collect`
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\iter\traits\iterator.rs
+:2015:5
+
+error[E0277]: a value 
+of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from an 
+iterator over elements 
+of type `u32`
+    --> savings_goals\sr
+c\test.rs:1764:61
+     |
+1764 |     let 
+goal_b_ids: Vec<u32> = 
+goals_b.iter().map(|g| 
+g.id).collect();
+     |                  
+                        
+                   
+^^^^^^^ value of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from `st
+d::iter::Iterator<Item=u
+32>`
+     |
+     = help: the trait 
+`FromIterator<u32>` is 
+not implemented for 
+`soroban_sdk::Vec<u32>`
+note: the method call 
+chain might not have 
+had the expected 
+associated types
+    --> savings_goals\sr
+c\test.rs:1764:47
+     |
+1688 |     let client = 
+SavingsGoalContractClien
+t::new(&env, 
+&contract_id);
+     |                  
+------------------------
+------------------------
+-- this expression has 
+type `SavingsGoalContrac
+tClient<'_>`
+...
+1764 |     let 
+goal_b_ids: Vec<u32> = 
+goals_b.iter().map(|g| 
+g.id).collect();
+     |                  
+                      
+------ ^^^^^^^^^^^^^ 
+`Iterator::Item` 
+changed to `u32` here
+     |                  
+                      |
+     |                  
+                      
+`Iterator::Item` is 
+`SavingsGoal` here
+note: required by a 
+bound in `collect`
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\iter\traits\iterator.rs
+:2015:5
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:443:9
+    |
+443 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:875:9
+    |
+875 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+Some errors have 
+detailed explanations: 
+E0061, E0425, E0599.
+For more information 
+about an error, try 
+`rustc --explain E0061`.
+warning: `insurance` 
+(lib test) generated 5 
+warnings
+error: could not 
+compile `insurance` 
+(lib test) due to 20 
+previous errors; 5 
+warnings emitted
+Some errors have 
+detailed explanations: 
+E0277, E0425, E0599.
+For more information 
+about an error, try 
+`rustc --explain E0277`.
+error: could not 
+compile `savings_goals` 
+(lib test) due to 8 
+previous errors
+warning: `reporting` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p reporting 
+--tests` to apply 1 
+suggestion)

@@ -1,0 +1,299 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"THE_ULTIMATE_FINAL_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: constant `INSTA
+NCE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:11:7
+   |
+11 | const INSTANCE_LIFE
+TIME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant `ARCHI
+VE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:15:7
+   |
+15 | const ARCHIVE_LIFET
+IME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: 
+`family_wallet` (lib) 
+generated 2 warnings
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:35:9
+   |
+35 |     let amounts = c
+lient.calculate_split(&l
+arge_amount);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:59:9
+   |
+59 |     let amounts = c
+lient.calculate_split(&m
+ax_safe);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+
+warning: unused import: 
+`PolicyPage`
+   --> reporting\src\tes
+ts.rs:161:50
+    |
+161 |     use crate::{In
+surancePolicy, 
+InsuranceTrait, 
+PolicyPage};
+    |                   
+                        
+       ^^^^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`remittance_split` 
+(test "stress_test_large
+_amounts") generated 2 
+warnings (run `cargo 
+fix --test "stress_test_
+large_amounts" -p 
+remittance_split` to 
+apply 2 suggestions)
+warning: `reporting` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p reporting 
+--tests` to apply 1 
+suggestion)
+warning: 
+`family_wallet` (lib 
+test) generated 2 
+warnings (2 duplicates)
+warning: unused import: 
+`LedgerInfo`
+  --> insurance\src\test
+.rs:12:50
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                        
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unuse
+d_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+  --> insurance\src\test
+.rs:15:5
+   |
+15 | use 
+proptest::prelude::*;
+   |     
+^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`Ledger`
+  --> insurance\src\test
+.rs:12:42
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                      
+^^^^^^
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:448:9
+    |
+448 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:884:9
+    |
+884 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:905:9
+    |
+905 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:937:9
+    |
+937 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+

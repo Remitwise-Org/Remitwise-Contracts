@@ -1,0 +1,713 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"ULTIMATE_FINAL_VERI ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+warning: unused import: 
+`remitwise_common::Cover
+ageType`
+ --> insurance\tests\gas
+_bench.rs:2:5
+  |
+2 | use remitwise_common
+::CoverageType;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `insurance` 
+(test "gas_bench") 
+generated 1 warning 
+(run `cargo fix --test 
+"gas_bench" -p 
+insurance` to apply 1 
+suggestion)
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `scenarios` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios 
+--tests` to apply 1 
+suggestion)
+error[E0432]: 
+unresolved import 
+`remitwise_common`
+ --> examples\reporting_
+example.rs:3:5
+  |
+3 | use remitwise_common
+::Category;
+  |     
+^^^^^^^^^^^^^^^^ use of 
+unresolved module or 
+unlinked crate 
+`remitwise_common`
+  |
+  = help: if you wanted 
+to use a crate named 
+`remitwise_common`, use 
+`cargo add 
+remitwise_common` to 
+add it to your 
+`Cargo.toml`
+
+error[E0609]: no field 
+`name` on type `std::opt
+ion::Option<SavingsGoal>
+`
+  --> examples\savings_g
+oals_example.rs:30:35
+   |
+30 |     println!("  
+Name: {:?}", goal.name);
+   |                    
+               ^^^^ 
+unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+30 |     println!("  
+Name: {:?}", 
+goal.unwrap().name);
+   |                    
+               +++++++++
+
+error[E0609]: no field 
+`current_amount` on 
+type `std::option::Optio
+n<SavingsGoal>`
+  --> examples\savings_g
+oals_example.rs:31:45
+   |
+31 |     println!("  
+Current Amount: {:?}", 
+goal.current_amount);
+   |                    
+                        
+ ^^^^^^^^^^^^^^ unknown 
+field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+31 |     println!("  
+Current Amount: {:?}", g
+oal.unwrap().current_amo
+unt);
+   |                    
+                        
+ +++++++++
+
+error[E0609]: no field 
+`target_amount` on type 
+`std::option::Option<Sav
+ingsGoal>`
+  --> examples\savings_g
+oals_example.rs:32:44
+   |
+32 |     println!("  
+Target Amount: {:?}", 
+goal.target_amount);
+   |                    
+                        
+^^^^^^^^^^^^^ unknown 
+field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+32 |     println!("  
+Target Amount: {:?}", go
+al.unwrap().target_amoun
+t);
+   |                    
+                        
++++++++++
+
+error[E0609]: no field 
+`locked` on type `std::o
+ption::Option<SavingsGoa
+l>`
+  --> examples\savings_g
+oals_example.rs:33:37
+   |
+33 |     println!("  
+Locked: {:?}", 
+goal.locked);
+   |                    
+                 ^^^^^^ 
+unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+33 |     println!("  
+Locked: {:?}", 
+goal.unwrap().locked);
+   |                    
+                 
++++++++++
+
+error[E0609]: no field 
+`current_amount` on 
+type `std::option::Optio
+n<SavingsGoal>`
+  --> examples\savings_g
+oals_example.rs:43:59
+   |
+43 |     
+println!("Updated 
+Current Amount: {:?}", u
+pdated_goal.current_amou
+nt);
+   |                    
+                        
+               
+^^^^^^^^^^^^^^ unknown 
+field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+43 |     
+println!("Updated 
+Current Amount: {:?}", u
+pdated_goal.unwrap().cur
+rent_amount);
+   |                    
+                        
+               +++++++++
+
+warning: unused 
+variable: `user`
+  --> examples\reporting
+_example.rs:20:9
+   |
+20 |     let user = 
+Address::generate(&env);
+   |         ^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_user`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+For more information 
+about this error, try 
+`rustc --explain E0609`.
+For more information 
+about this error, try 
+`rustc --explain E0432`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example "savings_goals_
+example") due to 5 
+previous errors
+warning: build failed, 
+waiting for other jobs 
+to finish...
+warning: 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+generated 1 warning
+error: could not 
+compile 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+due to 1 previous 
+error; 1 warning emitted
+error[E0382]: use of 
+moved value: `config`
+  --> examples\remittanc
+e_split_example.rs:27:34
+   |
+24 |     let config = 
+client.get_config();
+   |         ------ 
+move occurs because 
+`config` has type `std::
+option::Option<SplitConf
+ig>`, which does not 
+implement the `Copy` 
+trait
+25 |     
+println!("Configuration 
+verified:");
+26 |     println!("  
+Spending: {:?}%", config
+.unwrap().spending_perce
+nt);
+   |                    
+               ------ 
+-------- `config` moved 
+due to this method call
+   |                    
+               |
+   |                    
+               help: 
+consider calling 
+`.as_ref()` or 
+`.as_mut()` to borrow 
+the type's contents
+27 |     println!("  
+Savings: {:?}%", config.
+unwrap().savings_percent
+);
+   |                    
+              ^^^^^^ 
+value used here after 
+move
+   |
+note: `std::option::Opti
+on::<T>::unwrap` takes 
+ownership of the 
+receiver `self`, which 
+moves `config`
+  --> /rustc/01f6ddf7588
+f42ae2d7eb0a2f21d44e8e96
+674cf\library\core\src\o
+ption.rs:1013:25
+help: you can `clone` 
+the value and consume 
+it, but this might not 
+be your desired behavior
+   |
+26 |     println!("  
+Spending: {:?}%", config
+.clone().unwrap().spendi
+ng_percent);
+   |                    
+                     
+++++++++
+
+error[E0382]: use of 
+moved value: `config`
+  --> examples\remittanc
+e_split_example.rs:28:32
+   |
+24 |     let config = 
+client.get_config();
+   |         ------ 
+move occurs because 
+`config` has type `std::
+option::Option<SplitConf
+ig>`, which does not 
+implement the `Copy` 
+trait
+...
+27 |     println!("  
+Savings: {:?}%", config.
+unwrap().savings_percent
+);
+   |                    
+              ------ 
+-------- `config` moved 
+due to this method call
+   |                    
+              |
+   |                    
+              help: 
+consider calling 
+`.as_ref()` or 
+`.as_mut()` to borrow 
+the type's contents
+28 |     println!("  
+Bills: {:?}%", config.un
+wrap().bills_percent);
+   |                    
+            ^^^^^^ 
+value used here after 
+move
+   |
+help: you can `clone` 
+the value and consume 
+it, but this might not 
+be your desired behavior
+   |
+27 |     println!("  
+Savings: {:?}%", config.
+clone().unwrap().savings
+_percent);
+   |                    
+                    
+++++++++
+
+error[E0382]: use of 
+moved value: `config`
+  --> examples\remittanc
+e_split_example.rs:29:36
+   |
+24 |     let config = 
+client.get_config();
+   |         ------ 
+move occurs because 
+`config` has type `std::
+option::Option<SplitConf
+ig>`, which does not 
+implement the `Copy` 
+trait
+...
+28 |     println!("  
+Bills: {:?}%", config.un
+wrap().bills_percent);
+   |                    
+            ------ 
+-------- `config` moved 
+due to this method call
+   |                    
+            |
+   |                    
+            help: 
+consider calling 
+`.as_ref()` or 
+`.as_mut()` to borrow 
+the type's contents
+29 |     println!("  
+Insurance: {:?}%", confi
+g.unwrap().insurance_per
+cent);
+   |                    
+                ^^^^^^ 
+value used here after 
+move
+   |
+help: you can `clone` 
+the value and consume 
+it, but this might not 
+be your desired behavior
+   |
+28 |     println!("  
+Bills: {:?}%", config.cl
+one().unwrap().bills_per
+cent);
+   |                    
+                  
+++++++++
+
+For more information 
+about this error, try 
+`rustc --explain E0382`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example "remittance_spl
+it_example") due to 3 
+previous errors
+warning: unused import: 
+`LedgerInfo`
+  --> insurance\src\test
+.rs:12:50
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                        
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unuse
+d_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+  --> insurance\src\test
+.rs:15:5
+   |
+15 | use 
+proptest::prelude::*;
+   |     
+^^^^^^^^^^^^^^^^^^^^
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+   --> insurance\src\tes
+t.rs:28:28
+    |
+ 28 |     let policy_id 
+= client.create_policy(
+    |                   
+         ^^^^^^^^^^^^^
+...
+ 33 |         &None,
+    |         ----- 
+argument #5 of type 
+`&i128` is missing
+    |
+note: method defined 
+here
+   --> insurance\src\lib
+.rs:475:12
+    |
+475 |     pub fn 
+create_policy(
+    |            
+^^^^^^^^^^^^^
+...
+481 |         
+coverage_amount: i128,
+    |         
+---------------------
+help: provide the 
+argument
+    |
+ 28 ~     let policy_id 
+= client.create_policy(
+ 29 +         &owner,
+ 30 +         &name,
+ 31 +         
+&coverage_type,
+ 32 +         &10000,
+ 33 +         /* &i128 
+*/,
+ 34 +         &None,
+ 35 ~     );
+    |
+
+warning: unused import: 
+`Ledger`
+  --> insurance\src\test
+.rs:12:42
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                      
+^^^^^^
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:449:9
+    |
+449 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:885:9
+    |
+885 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:906:9
+    |
+906 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:938:9
+    |
+938 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+warning: `insurance` 
+(lib test) generated 7 
+warnings
+error: could not 
+compile `insurance` 
+(lib test) due to 1 
+previous error; 7 
+warnings emitted

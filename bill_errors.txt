@@ -1,0 +1,41 @@
+﻿cargo : warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+At line:1 char:1
++ cargo check -p bill_payments --target wasm32-unknown-unknown 2>&1 | O ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo              : NotSpecified    : (warning: profil.    ..workspace root::S    tring) [], RemoteEx    ception
+    + FullyQualifiedErr    orId : NativeComman    dError
+ 
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\Cargo.toml
+    Checking bill_payments v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\bill_payments)
+error: mismatched closing delimiter: `}`
+   --> bill_payments\src\lib.rs:532:29
+    |
+465 |     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+    |                                                                                   - closing delimiter possibly meant for this
+...
+532 |         env.events().publish(
+    |                             ^ unclosed delimiter
+...
+544 |     }
+    |     ^ mismatched closing delimiter
+
+error: this file contains an unclosed delimiter
+    --> bill_payments\src\lib.rs:2572:3
+     |
+ 113 | pub enum BillEvent {
+     |                    - unclosed delimiter
+...
+ 129 | impl BillPayments {
+     |                   - unclosed delimiter
+...
+ 770 |     pub fn get_all_bills(env: Env) -> Vec<Bill> {
+     |                                                 - this delimiter might not be properly closed...
+...
+1370 | }
+     | - ...as it matches this but it has different indentation
+...
+2572 | }
+     |  ^
+
+error: could not compile `bill_payments` (lib) due to 2 previous errors

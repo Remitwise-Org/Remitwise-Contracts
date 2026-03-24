@@ -15,7 +15,7 @@ pub fn set_ledger_time(env: &Env, sequence_number: u32, timestamp: u64) {
         base_reserve: 10,
         min_temp_entry_ttl: 1,
         min_persistent_entry_ttl: 1,
-        max_entry_ttl: 100000,
+        max_entry_ttl: 1000000,
     });
 }
 
@@ -25,11 +25,11 @@ pub fn generate_test_address(env: &Env) -> Address {
 
 #[macro_export]
 macro_rules! setup_test_env {
-    ($env:ident, $contract:ident, $client:ident, $owner:ident) => {
+    ($env:ident, $contract:ident, $client:ident, $owner:ident, $client_type:ident) => {
         let $env = Env::default();
         $env.mock_all_auths();
         let contract_id = $env.register_contract(None, $contract);
-        let $client = $contract::Client::new(&$env, &contract_id);
+        let $client = $client_type::new(&$env, &contract_id);
         let $owner = $crate::generate_test_address(&$env);
     };
 }

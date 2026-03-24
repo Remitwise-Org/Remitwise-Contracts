@@ -21,23 +21,23 @@ fn main() {
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // 5. [Read] Verify the configuration
-    let config = client.get_config().unwrap();
+    let config = client.get_config().expect("Config not found");
     println!("Configuration verified:");
-    println!("  Spending: {}%", config.spending_percent);
-    println!("  Savings: {}%", config.savings_percent);
-    println!("  Bills: {}%", config.bills_percent);
-    println!("  Insurance: {}%", config.insurance_percent);
+    println!("  Spending: {:?}%", config.spending_percent);
+    println!("  Savings: {:?}%", config.savings_percent);
+    println!("  Bills: {:?}%", config.bills_percent);
+    println!("  Insurance: {:?}%", config.insurance_percent);
 
     // 6. [Write] Simulate a remittance distribution
     let total_amount = 1000i128;
-    println!("\nCalculating allocation for total amount: {}", total_amount);
+    println!("\nCalculating allocation for total amount: {:?}", total_amount);
     let allocations = client.calculate_split(&total_amount);
 
     println!("Allocations:");
-    println!("  Spending: {}", allocations.get(0).unwrap());
-    println!("  Savings: {}", allocations.get(1).unwrap());
-    println!("  Bills: {}", allocations.get(2).unwrap());
-    println!("  Insurance: {}", allocations.get(3).unwrap());
+    println!("  Spending: {:?}", allocations.get(0));
+    println!("  Savings: {:?}", allocations.get(1));
+    println!("  Bills: {:?}", allocations.get(2));
+    println!("  Insurance: {:?}", allocations.get(3));
 
     println!("\nExample completed successfully!");
 }

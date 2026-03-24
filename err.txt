@@ -1,0 +1,278 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\Cargo.toml
+    Checking bill_payments v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\bill_payments)
+error[E0255]: the name `CONTRACT_VERSION` is defined multiple times
+  --> bill_payments\src\lib.rs:60:1
+   |
+ 6 |     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
+   |                                 ---------------- previous import of the value `CONTRACT_VERSION` here
+...
+60 | const CONTRACT_VERSION: u32 = 1;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CONTRACT_VERSION` redefined here
+   |
+   = note: `CONTRACT_VERSION` must be defined only once in the value namespace of this module
+help: you can use `as` to change the binding name of the import
+   |
+ 6 |     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION as OtherCONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
+   |                                                  ++++++++++++++++++++++++
+
+error[E0255]: the name `MAX_BATCH_SIZE` is defined multiple times
+  --> bill_payments\src\lib.rs:61:1
+   |
+ 7 |     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+   |                                  -------------- previous import of the value `MAX_BATCH_SIZE` here
+...
+61 | const MAX_BATCH_SIZE: u32 = 50;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `MAX_BATCH_SIZE` redefined here
+   |
+   = note: `MAX_BATCH_SIZE` must be defined only once in the value namespace of this module
+help: you can use `as` to change the binding name of the import
+   |
+ 7 |     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE as OtherMAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+   |                                                 ++++++++++++++++++++++
+
+error[E0428]: the name `__SPEC_XDR_TYPE_BILL` is defined multiple times
+  --> bill_payments\src\lib.rs:18:1
+   |
+16 | #[contracttype]
+   | --------------- previous definition of the value `__SPEC_XDR_TYPE_BILL` here
+17 | #[derive(Clone, Debug)]
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ `__SPEC_XDR_TYPE_BILL` redefined here
+   |
+   = note: `__SPEC_XDR_TYPE_BILL` must be defined only once in the value namespace of this module
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `__SPEC_XDR_TYPE_ARCHIVEDBILL` is defined multiple times
+  --> bill_payments\src\lib.rs:87:1
+   |
+85 | #[contracttype]
+   | --------------- previous definition of the value `__SPEC_XDR_TYPE_ARCHIVEDBILL` here
+86 | #[derive(Clone)]
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ `__SPEC_XDR_TYPE_ARCHIVEDBILL` redefined here
+   |
+   = note: `__SPEC_XDR_TYPE_ARCHIVEDBILL` must be defined only once in the value namespace of this module
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused imports: `CONTRACT_VERSION`, `DEFAULT_PAGE_LIMIT`, `MAX_BATCH_SIZE`, and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\lib.rs:6:33
+  |
+6 |     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
+  |                                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+  |                                  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0119]: conflicting implementations of trait `TryFromVal<Env, soroban_sdk::Val>` for type `Bill`
+  --> bill_payments\src\lib.rs:18:1
+   |
+16 | #[contracttype]
+   | --------------- first implementation here
+17 | #[derive(Clone, Debug)]
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ conflicting implementation for `Bill`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `TryFromVal<Env, Bill>` for type `soroban_sdk::Val`
+  --> bill_payments\src\lib.rs:18:1
+   |
+16 | #[contracttype]
+   | --------------- first implementation here
+17 | #[derive(Clone, Debug)]
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ conflicting implementation for `soroban_sdk::Val`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `TryFromVal<Env, soroban_sdk::Val>` for type `ArchivedBill`
+  --> bill_payments\src\lib.rs:87:1
+   |
+85 | #[contracttype]
+   | --------------- first implementation here
+86 | #[derive(Clone)]
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ conflicting implementation for `ArchivedBill`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `TryFromVal<Env, ArchivedBill>` for type `soroban_sdk::Val`
+  --> bill_payments\src\lib.rs:87:1
+   |
+85 | #[contracttype]
+   | --------------- first implementation here
+86 | #[derive(Clone)]
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ conflicting implementation for `soroban_sdk::Val`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `Clone` for type `Bill`
+  --> bill_payments\src\lib.rs:17:10
+   |
+15 | #[derive(Clone, Debug)]
+   |          ----- first implementation here
+16 | #[contracttype]
+17 | #[derive(Clone, Debug)]
+   |          ^^^^^ conflicting implementation for `Bill`
+
+error[E0119]: conflicting implementations of trait `Clone` for type `ArchivedBill`
+  --> bill_payments\src\lib.rs:86:10
+   |
+84 | #[derive(Clone)]
+   |          ----- first implementation here
+85 | #[contracttype]
+86 | #[derive(Clone)]
+   |          ^^^^^ conflicting implementation for `ArchivedBill`
+
+error[E0119]: conflicting implementations of trait `Debug` for type `Bill`
+  --> bill_payments\src\lib.rs:17:17
+   |
+15 | #[derive(Clone, Debug)]
+   |                 ----- first implementation here
+16 | #[contracttype]
+17 | #[derive(Clone, Debug)]
+   |                 ^^^^^ conflicting implementation for `Bill`
+
+error[E0081]: discriminant value `12` assigned more than once
+  --> bill_payments\src\lib.rs:67:1
+   |
+67 | pub enum Error {
+   | ^^^^^^^^^^^^^^
+...
+79 |     InvalidDueDate = 12,
+   |                      -- `12` assigned here
+80 |     InvalidTag = 12,
+   |                  -- `12` assigned here
+
+error[E0592]: duplicate definitions with name `spec_xdr`
+  --> bill_payments\src\lib.rs:18:1
+   |
+16 | #[contracttype]
+   | --------------- other definition for `spec_xdr`
+17 | #[derive(Clone, Debug)]
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ duplicate definitions for `spec_xdr`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0592]: duplicate definitions with name `spec_xdr`
+  --> bill_payments\src\lib.rs:87:1
+   |
+85 | #[contracttype]
+   | --------------- other definition for `spec_xdr`
+86 | #[derive(Clone)]
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ duplicate definitions for `spec_xdr`
+   |
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0034]: multiple applicable items in scope
+  --> bill_payments\src\lib.rs:18:1
+   |
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ multiple `spec_xdr` found
+   |
+note: candidate #1 is defined in an impl for the type `Bill`
+  --> bill_payments\src\lib.rs:18:1
+   |
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+note: candidate #2 is defined in an impl for the type `Bill`
+  --> bill_payments\src\lib.rs:16:1
+   |
+16 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0034]: multiple applicable items in scope
+  --> bill_payments\src\lib.rs:16:1
+   |
+16 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ multiple `spec_xdr` found
+   |
+note: candidate #1 is defined in an impl for the type `Bill`
+  --> bill_payments\src\lib.rs:18:1
+   |
+18 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+note: candidate #2 is defined in an impl for the type `Bill`
+  --> bill_payments\src\lib.rs:16:1
+   |
+16 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0034]: multiple applicable items in scope
+  --> bill_payments\src\lib.rs:87:1
+   |
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ multiple `spec_xdr` found
+   |
+note: candidate #1 is defined in an impl for the type `ArchivedBill`
+  --> bill_payments\src\lib.rs:87:1
+   |
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+note: candidate #2 is defined in an impl for the type `ArchivedBill`
+  --> bill_payments\src\lib.rs:85:1
+   |
+85 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0034]: multiple applicable items in scope
+  --> bill_payments\src\lib.rs:85:1
+   |
+85 | #[contracttype]
+   | ^^^^^^^^^^^^^^^ multiple `spec_xdr` found
+   |
+note: candidate #1 is defined in an impl for the type `ArchivedBill`
+  --> bill_payments\src\lib.rs:87:1
+   |
+87 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+note: candidate #2 is defined in an impl for the type `ArchivedBill`
+  --> bill_payments\src\lib.rs:85:1
+   |
+85 | #[contracttype]
+   | ^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `contracttype` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0063]: missing field `external_ref` in initializer of `Bill`
+   --> bill_payments\src\lib.rs:990:29
+    |
+990 |         let restored_bill = Bill {
+    |                             ^^^^ missing `external_ref`
+
+error[E0063]: missing field `external_ref` in initializer of `Bill`
+    --> bill_payments\src\lib.rs:1115:33
+     |
+1115 |                 let next_bill = Bill {
+     |                                 ^^^^ missing `external_ref`
+
+error[E0599]: no function or associated item named `clamp_limit` found for struct `BillPayments` in the current scope
+    --> bill_payments\src\lib.rs:1219:27
+     |
+ 130 | pub struct BillPayments;
+     | ----------------------- function or associated item `clamp_limit` not found for this struct
+...
+1219 |         let limit = Self::clamp_limit(limit);
+     |                           ^^^^^^^^^^^ function or associated item not found in `BillPayments`
+
+error[E0599]: no function or associated item named `clamp_limit` found for struct `BillPayments` in the current scope
+    --> bill_payments\src\lib.rs:1253:27
+     |
+ 130 | pub struct BillPayments;
+     | ----------------------- function or associated item `clamp_limit` not found for this struct
+...
+1253 |         let limit = Self::clamp_limit(limit);
+     |                           ^^^^^^^^^^^ function or associated item not found in `BillPayments`
+
+Some errors have detailed explanations: E0034, E0063, E0081, E0119, E0255, E0428, E0592, E0599.
+For more information about an error, try `rustc --explain E0034`.
+warning: `bill_payments` (lib) generated 1 warning
+error: could not compile `bill_payments` (lib) due to 22 previous errors; 1 warning emitted

@@ -60,14 +60,7 @@ fn test_multi_contract_user_flow() {
     let recurring = true;
     let frequency_days = 30u32;
 
-    let bill_id = bills_client.create_bill(
-        &user,
-        &bill_name,
-        &bill_amount,
-        &due_date,
-        &recurring,
-        &frequency_days,
-        &SorobanString::from_str(&env, "XLM"),
+    let bill_id = bills_client.create_bill(&user, &bill_name, &bill_amount, &due_date, &recurring, &frequency_days, &None, &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
 
@@ -83,6 +76,7 @@ fn test_multi_contract_user_flow() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
+        &None,
     );
     assert_eq!(policy_id, 1u32, "Policy ID should be 1");
 
@@ -214,6 +208,7 @@ fn test_multiple_entities_creation() {
         &(env.ledger().timestamp() + 30 * 86400),
         &true,
         &30u32,
+        &None,
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill1, 1u32);
@@ -225,6 +220,7 @@ fn test_multiple_entities_creation() {
         &(env.ledger().timestamp() + 15 * 86400),
         &true,
         &30u32,
+        &None,
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill2, 2u32);
@@ -236,6 +232,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "life"),
         &150i128,
         &100_000i128,
+        &None,
     );
     assert_eq!(policy1, 1u32);
 
@@ -245,6 +242,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "emergency"),
         &50i128,
         &10_000i128,
+        &None,
     );
     assert_eq!(policy2, 2u32);
 

@@ -20,27 +20,27 @@ fn main() {
     let target_amount = 5000i128;
     let target_date = env.ledger().timestamp() + 31536000; // 1 year from now
 
-    println!("Creating savings goal: '{}' with target: {}", goal_name, target_amount);
-    let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date).unwrap();
-    println!("Goal created successfully with ID: {}", goal_id);
+    println!("Creating savings goal: '{:?}' with target: {:?}", goal_name, target_amount);
+    let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date);
+    println!("Goal created successfully with ID: {:?}", goal_id);
 
     // 5. [Read] Fetch the goal to check progress
-    let goal = client.get_goal(&goal_id).unwrap();
+    let goal = client.get_goal(&goal_id).expect("Goal not found");
     println!("\nGoal Details:");
-    println!("  Name: {}", goal.name);
-    println!("  Current Amount: {}", goal.current_amount);
-    println!("  Target Amount: {}", goal.target_amount);
-    println!("  Locked: {}", goal.locked);
+    println!("  Name: {:?}", goal.name);
+    println!("  Current Amount: {:?}", goal.current_amount);
+    println!("  Target Amount: {:?}", goal.target_amount);
+    println!("  Locked: {:?}", goal.locked);
 
     // 6. [Write] Add funds to the goal
     let contribution = 1000i128;
-    println!("\nContributing {} to the goal...", contribution);
-    let new_total = client.add_to_goal(&owner, &goal_id, &contribution).unwrap();
-    println!("Contribution successful! New total: {}", new_total);
+    println!("\nContributing {:?} to the goal...", contribution);
+    let new_total = client.add_to_goal(&owner, &goal_id, &contribution);
+    println!("Contribution successful! New total: {:?}", new_total);
 
     // 7. [Read] Verify progress again
-    let updated_goal = client.get_goal(&goal_id).unwrap();
-    println!("Updated Current Amount: {}", updated_goal.current_amount);
+    let updated_goal = client.get_goal(&goal_id).expect("Goal not found");
+    println!("Updated Current Amount: {:?}", updated_goal.current_amount);
 
     println!("\nExample completed successfully!");
 }

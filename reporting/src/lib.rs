@@ -139,7 +139,7 @@ pub struct ContractAddresses {
 /// Error types returned by the reporting contract.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReportingError {
+pub enum ReportingContractError {
     /// Contract has already been initialized.
     AlreadyInitialized = 1,
     /// Contract has not been initialized.
@@ -152,26 +152,26 @@ pub enum ReportingError {
     InvalidRetentionWindow = 5,
 }
 
-impl From<ReportingError> for soroban_sdk::Error {
-    fn from(err: ReportingError) -> Self {
+impl From<ReportingContractError> for soroban_sdk::Error {
+    fn from(err: ReportingContractError) -> Self {
         match err {
-            ReportingError::AlreadyInitialized => soroban_sdk::Error::from((
+            ReportingContractError::AlreadyInitialized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidAction,
             )),
-            ReportingError::NotInitialized => soroban_sdk::Error::from((
+            ReportingContractError::NotInitialized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::MissingValue,
             )),
-            ReportingError::Unauthorized => soroban_sdk::Error::from((
+            ReportingContractError::Unauthorized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidAction,
             )),
-            ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
+            ReportingContractError::AddressesNotConfigured => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::MissingValue,
             )),
-            ReportingError::InvalidRetentionWindow => soroban_sdk::Error::from((
+            ReportingContractError::InvalidRetentionWindow => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
@@ -179,15 +179,15 @@ impl From<ReportingError> for soroban_sdk::Error {
     }
 }
 
-impl From<&ReportingError> for soroban_sdk::Error {
-    fn from(err: &ReportingError) -> Self {
+impl From<&ReportingContractError> for soroban_sdk::Error {
+    fn from(err: &ReportingContractError) -> Self {
         (*err).into()
     }
 }
 
-impl From<soroban_sdk::Error> for ReportingError {
+impl From<soroban_sdk::Error> for ReportingContractError {
     fn from(_err: soroban_sdk::Error) -> Self {
-        ReportingError::Unauthorized
+        ReportingContractError::Unauthorized
     }
 }
 
@@ -328,12 +328,12 @@ impl ReportingContract {
     ///
     /// # Panics
     /// * If `admin` does not authorize the transaction
-    pub fn init(env: Env, admin: Address) -> Result<(), ReportingError> {
+    pub fn init(env: Env, admin: Address) -> Result<(), ReportingContractError> {
         admin.require_auth();
 
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
         if existing.is_some() {
-            return Err(ReportingError::AlreadyInitialized);
+            return Err(ReportingContractError::AlreadyInitialized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -371,17 +371,17 @@ impl ReportingContract {
         bill_payments: Address,
         insurance: Address,
         family_wallet: Address,
-    ) -> Result<(), ReportingError> {
+    ) -> Result<(), ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .ok_or(ReportingError::NotInitialized)?;
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            return Err(ReportingError::Unauthorized);
+            return Err(ReportingContractError::Unauthorized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -802,23 +802,23 @@ impl ReportingContract {
         env: Env,
         caller: Address,
         before_timestamp: u64,
-    ) -> Result<u32, ReportingError> {
+    ) -> Result<u32, ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .ok_or(ReportingError::NotInitialized)?;
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            return Err(ReportingError::Unauthorized);
+            return Err(ReportingContractError::Unauthorized);
         }
 
         // Enforce minimum retention window: reports must be at least 30 days old before archival.
         let current_time = env.ledger().timestamp();
         if before_timestamp > current_time.saturating_sub(REPORT_RETENTION_WINDOW) {
-            return Err(ReportingError::InvalidRetentionWindow);
+            return Err(ReportingContractError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);
@@ -915,23 +915,23 @@ impl ReportingContract {
         env: Env,
         caller: Address,
         before_timestamp: u64,
-    ) -> Result<u32, ReportingError> {
+    ) -> Result<u32, ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .ok_or(ReportingError::NotInitialized)?;
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            return Err(ReportingError::Unauthorized);
+            return Err(ReportingContractError::Unauthorized);
         }
 
         // Enforce minimum archive retention: archived records must be at least 90 days old.
         let current_time = env.ledger().timestamp();
         if before_timestamp > current_time.saturating_sub(ARCHIVE_RETENTION_WINDOW) {
-            return Err(ReportingError::InvalidRetentionWindow);
+            return Err(ReportingContractError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);

@@ -1,0 +1,382 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"THE_ULTIMATE_FINAL_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+   Compiling 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+   Compiling 
+integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+error: unexpected 
+closing delimiter: `}`
+   --> insurance\tests\s
+tress_tests.rs:115:1
+    |
+ 78 |     for _ in 
+0..200 {
+    |                   
+  - the nearest open 
+delimiter
+ 79 |         client.cre
+ate_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+ 80 |     );
+    |     - missing 
+open `(` for this 
+delimiter
+...
+115 | }
+    | ^ unexpected 
+closing delimiter
+
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\tests\ga
+s_bench.rs:62:1
+   |
+49 |     for _ in 
+0..100 {
+   |                    
+ - the nearest open 
+delimiter
+50 |         client.crea
+te_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+51 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+62 | }
+   | ^ unexpected 
+closing delimiter
+
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\src\test
+.rs:38:1
+   |
+16 | fn test_create_poli
+cy_succeeds() {
+   |                    
+              - the 
+nearest open delimiter
+...
+29 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+38 | }
+   | ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(test "stress_tests") 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile `insurance` 
+(test "gas_bench") due 
+to 1 previous error
+error: could not 
+compile `insurance` 
+(lib test) due to 1 
+previous error
+error: unexpected 
+closing delimiter: `}`
+   --> integration_tests
+\tests\multi_contract_in
+tegration.rs:126:1
+    |
+ 17 | fn test_multi_cont
+ract_user_flow() {
+    |                   
+                 - the 
+nearest open delimiter
+...
+ 80 |     );
+    |     - missing 
+open `(` for this 
+delimiter
+...
+126 | }
+    | ^ unexpected 
+closing delimiter
+
+error: could not 
+compile 
+`integration_tests` 
+(test "multi_contract_in
+tegration") due to 1 
+previous error
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:262:26
+    |
+262 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+269 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+262 |     let bill_id = 
+client.create_bill(
+...
+268 |         &0,
+269 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+270 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:297:30
+    |
+297 |         let 
+bill_id = 
+client.create_bill(
+    |                   
+           ^^^^^^^^^^^
+...
+304 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+297 |         let 
+bill_id = 
+client.create_bill(
+...
+303 |             &0,
+304 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+305 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:391:16
+    |
+391 |         
+client.create_bill(
+    |                
+^^^^^^^^^^^
+...
+398 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+391 |         
+client.create_bill(
+...
+397 |             &0,
+398 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+399 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+error: could not 
+compile `bill_payments` 
+(test "stress_test_large
+_amounts") due to 3 
+previous errors

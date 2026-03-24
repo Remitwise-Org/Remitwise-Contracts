@@ -1,19 +1,26 @@
 #![cfg(test)]
+extern crate std;
+use std::format;
 
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
+use soroban_sdk::IntoVal;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
     Address, Env, String, Symbol, TryFromVal,
 };
 
 use testutils::{set_ledger_time, setup_test_env};
+fn set_time(env: &Env, timestamp: u64) {
+    set_ledger_time(env, 1u32, timestamp);
+}
+
 
 // Removed local set_time in favor of testutils::set_ledger_time
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, user);
+    setup_test_env!(env, SavingsGoalContract, client, user, SavingsGoalContractClient);
     client.init();
 
     let name1 = String::from_str(&env, "Goal 1");
@@ -502,7 +509,7 @@ fn test_exact_goal_completion() {
 
 #[test]
 fn test_set_time_lock_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, owner);
+    setup_test_env!(env, SavingsGoalContract, client, owner, SavingsGoalContractClient);
     client.init();
     set_ledger_time(&env, 1, 1000);
 
@@ -1742,7 +1749,10 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
-    let goal_a_ids: Vec<u32> = goals_a.iter().map(|g| g.id).collect();
+    let mut goal_a_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+    for g in goals_a.iter() {
+        goal_a_ids.push_back(g.id);
+    }
     assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
     assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
     assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
@@ -1761,7 +1771,10 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
-    let goal_b_ids: Vec<u32> = goals_b.iter().map(|g| g.id).collect();
+    let mut goal_b_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+    for g in goals_b.iter() {
+        goal_b_ids.push_back(g.id);
+    }
     assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
     assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
 
