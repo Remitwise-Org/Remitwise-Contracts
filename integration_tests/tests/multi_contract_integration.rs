@@ -253,3 +253,85 @@ fn test_multiple_entities_creation() {
     println!("   Created 2 bills");
     println!("   Created 2 insurance policies");
 }
+
+/// Test orchestrator rollback on insurance failure
+#[test]
+fn test_orchestrator_insurance_failure_rollback() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let user = Address::generate(&env);
+    
+    // Deploy all 5 contracts including orchestrator and family_wallet
+    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+    let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
+    
+    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
+    let savings_client = SavingsGoalContractClient::new(&env, &savings_contract_id);
+    
+    let bills_contract_id = env.register_contract(None, BillPayments);
+    let bills_client = BillPaymentsClient::new(&env, &bills_contract_id);
+    
+    let insurance_contract_id = env.register_contract(None, Insurance);
+    let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
+    
+    let family_wallet_contract_id = env.register_contract(None, family_wallet::FamilyWallet);
+    let family_wallet_client = family_wallet::FamilyWalletClient::new(&env, &family_wallet_contract_id);
+    
+    let orchestrator_contract_id = env.register_contract(None, orchestrator::Orchestrator);
+    let orchestrator_client = orchestrator::OrchestratorClient::new(&env, &orchestrator_contract_id);
+    
+    // Setup roles for Family Wallet
+    let admin = Address::generate(&env);
+    family_wallet_client.initialize(&admin);
+    family_wallet_client.add_member(&admin, &user, &SorobanString::from_str(&env, "child"));
+    family_wallet_client.set_spending_limit(&admin, &user, &100_000i128); // large limit
+    
+    // Initialize remittance
+    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
+    
+    // Create goal
+    let goal_id = savings_client.create_goal(
+        &user, 
+        &SorobanString::from_str(&env, "Fund"), 
+        &10_000i128, 
+        &(env.ledger().timestamp() + 365 * 86400)
+    );
+    
+    // Create bill
+    let bill_id = bills_client.create_bill(
+        &user,
+        &SorobanString::from_str(&env, "Bill"),
+        &500i128,
+        &(env.ledger().timestamp() + 30 * 86400),
+        &false,
+        &0u32,
+        &SorobanString::from_str(&env, "XLM"),
+    );
+    
+    // Note: Deliberately skipping setting up the correct policy or making a matching policy
+    let invalid_policy_id = 999; 
+    
+    // Attempt remittance flow with invalid policy
+    // The Insurance contract will return false, which the Orchestrator should intercept
+    // and return an error, which makes Soroban revert any state changes (like adding to Goal or paying Bill)
+    let result = orchestrator_client.try_execute_remittance_flow(
+        &user,
+        &10_000,
+        &family_wallet_contract_id,
+        &remittance_contract_id,
+        &savings_contract_id,
+        &bills_contract_id,
+        &insurance_contract_id,
+        &goal_id,
+        &bill_id,
+        &invalid_policy_id, // invalid
+    );
+    
+    // Must error (specifically InsurancePaymentFailed = 5)
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().unwrap(), orchestrator::OrchestratorError::InsurancePaymentFailed);
+    
+    println!("✅ Orchestrator insurance failure rollback passed!");
+}
+

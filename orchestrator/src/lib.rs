@@ -548,9 +548,13 @@ impl Orchestrator {
 
         // Gas estimation: ~4000 gas
         // Call pay_premium on the insurance contract
-        // This will panic if the policy doesn't exist or is inactive
-        // The panic will cause the entire transaction to revert (atomicity)
-        insurance_client.pay_premium(caller, &policy_id);
+        // This will return false if the policy doesn't exist or is inactive.
+        // If it returns false, we return InsurancePaymentFailed to revert the transaction.
+        let success = insurance_client.pay_premium(caller, &policy_id);
+        
+        if !success {
+            return Err(OrchestratorError::InsurancePaymentFailed);
+        }
 
         Ok(())
     }

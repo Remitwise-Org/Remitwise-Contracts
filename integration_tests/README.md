@@ -38,6 +38,16 @@ Tests creating multiple entities across contracts:
 - Creates 2 insurance policies (Life, Emergency Coverage)
 - Verifies all entities are created successfully with unique IDs
 
+### `test_orchestrator_insurance_failure_rollback`
+
+Tests the orchestrator's rollback capabilities:
+
+- Deploys all core contracts plus Orchestrator and Family Wallet
+- Sets up Family Wallet roles and spending limits
+- Executes a full remittance flow where the insurance policy is explicitly invalid
+- Verifies that the Orchestrator safely handles the failure by reverting the entire transaction
+- Confirms no hidden state mutation when the downstream insurance payment fails
+
 ## Running the Tests
 
 From the workspace root:

@@ -384,6 +384,39 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_insurance_payment_inactive_policy_fails() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            _bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute insurance payment with invalid policy_id (999)
+        // This should fail with InsurancePaymentFailed error since mock returns false
+        let result = client.try_execute_insurance_payment(
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &999, // invalid policy_id
+        );
+
+        // Should fail catching the false return and returning error
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::InsurancePaymentFailed
+        );
+    }
+
+    #[test]
     fn test_execute_remittance_flow_savings_failure_rolls_back() {
         let (
             env,
@@ -415,6 +448,44 @@ mod tests {
 
         // Should fail (panic gets caught and converted to error)
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_remittance_flow_insurance_failure_rolls_back() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute remittance flow with invalid policy_id (999)
+        // The mock will return false, orchestrator returns InsurancePaymentFailed
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,   // valid goal_id
+            &1,   // valid bill_id
+            &999, // invalid policy_id - will cause failure
+        );
+
+        // Should fail
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::InsurancePaymentFailed
+        );
     }
 
     #[test]
