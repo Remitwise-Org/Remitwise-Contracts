@@ -706,7 +706,6 @@ impl Insurance {
         monthly_premium: i128,
         coverage_amount: i128,
         external_ref: Option<String>,
-    ) -> u32 {
     ) -> Result<u32, InsuranceError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_POLICY)?;

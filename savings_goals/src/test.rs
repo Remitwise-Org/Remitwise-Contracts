@@ -1978,10 +1978,10 @@ fn test_batch_add_to_goals_event_emission_success() {
 
     // Find batch events
     let batch_started_events: Vec<_> = events.iter()
-        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_start"))
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_str"))
         .collect();
     let batch_completed_events: Vec<_> = events.iter()
-        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_done"))
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_end"))
         .collect();
 
     assert_eq!(batch_started_events.len(), 1);
@@ -2012,10 +2012,10 @@ fn test_batch_add_to_goals_event_emission_failure() {
     let events = env.events().all();
 
     let batch_started_events: Vec<_> = events.iter()
-        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_start"))
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_str"))
         .collect();
     let batch_failed_events: Vec<_> = events.iter()
-        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_fail"))
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_err"))
         .collect();
 
     assert_eq!(batch_started_events.len(), 1);

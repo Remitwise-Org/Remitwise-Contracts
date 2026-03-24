@@ -9,9 +9,9 @@ use soroban_sdk::{
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const FUNDS_ADDED: Symbol = symbol_short!("added");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
-const BATCH_STARTED: Symbol = symbol_short!("batch_start");
-const BATCH_COMPLETED: Symbol = symbol_short!("batch_done");
-const BATCH_FAILED: Symbol = symbol_short!("batch_fail");
+const BATCH_STARTED: Symbol = symbol_short!("batch_str");
+const BATCH_COMPLETED: Symbol = symbol_short!("batch_end");
+const BATCH_FAILED: Symbol = symbol_short!("batch_err");
 
 #[derive(Clone)]
 #[contracttype]
@@ -120,7 +120,7 @@ pub struct SavingsSchedule {
 }
 
 #[contracttype]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SavingsGoalsError {
     InvalidAmount = 1,
     GoalNotFound = 2,
@@ -766,7 +766,7 @@ impl SavingsGoalContract {
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
         // Validate batch size
-        if contributions.len() > MAX_BATCH_SIZE as usize {
+        if (contributions.len() as u32) > MAX_BATCH_SIZE {
             return Err(SavingsGoalsError::BatchTooLarge);
         }
 
@@ -786,7 +786,7 @@ impl SavingsGoalContract {
         let mut total_amount: i128 = 0;
         let mut goal_ids = Vec::new(&env);
 
-        for (index, item) in contributions.iter().enumerate() {
+        for (_index, item) in contributions.iter().enumerate() {
             // Validate contribution amount
             if item.amount <= 0 {
                 return Err(SavingsGoalsError::InvalidContributionAmount);
@@ -801,7 +801,7 @@ impl SavingsGoalContract {
             // Validate goal exists and caller owns it
             let goal = match goals_map.get(item.goal_id) {
                 Some(g) => g,
-                None => return Err(SavingsGoalsError::GoalNotFound);
+                None => { return Err(SavingsGoalsError::GoalNotFound); }
             };
 
             if goal.owner != caller {
