@@ -33,7 +33,6 @@ pub struct Bill {
     pub currency: String,
 }
 
-
 /// Paginated result for bill queries
 #[contracttype]
 #[derive(Clone)]
@@ -90,7 +89,6 @@ pub struct ArchivedBill {
     /// Intended currency/asset carried over from the originating `Bill`.
     pub currency: String,
 }
-
 
 /// Paginated result for archived bill queries
 #[contracttype]
@@ -1345,7 +1343,9 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.checked_add(delta).unwrap_or_else(|| panic!("overflow"));
+        let next = current
+            .checked_add(delta)
+            .unwrap_or_else(|| panic!("overflow"));
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
@@ -1359,8 +1359,8 @@ impl BillPayments {
 #[cfg(test)]
 mod test {
     use super::*;
-    use remitwise_common::MAX_PAGE_LIMIT;
     use proptest::prelude::*;
+    use remitwise_common::MAX_PAGE_LIMIT;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
         Env, String,
@@ -1386,7 +1386,9 @@ mod test {
                 &(100i128 * (i as i128 + 1)),
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
-                &0, &None, &String::from_str(env, "XLM"),
+                &0,
+                &None,
+                &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
         }
@@ -1619,7 +1621,9 @@ mod test {
                 &(100i128 * (i as i128 + 1)),
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
-                &0, &None, &String::from_str(&env, "XLM"),
+                &0,
+                &None,
+                &String::from_str(&env, "XLM"),
             );
             client.create_bill(
                 &owner_b,
@@ -1627,7 +1631,9 @@ mod test {
                 &(200i128 * (i as i128 + 1)),
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
-                &0, &None, &String::from_str(&env, "XLM"),
+                &0,
+                &None,
+                &String::from_str(&env, "XLM"),
             );
         }
 
@@ -1699,7 +1705,9 @@ mod test {
                 &100,
                 &due_date, // 20000
                 &false,
-                &0, &None, &String::from_str(&env, "XLM"),
+                &0,
+                &None,
+                &String::from_str(&env, "XLM"),
             );
         }
 
@@ -1929,7 +1937,9 @@ mod test {
             &300,
             &base_due_date,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Warp to late payment time
@@ -2095,7 +2105,9 @@ mod test {
             &50,
             &1_000_000,
             &true,
-            &frequency, &None, &String::from_str(&env, "XLM"),
+            &frequency,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -2130,7 +2142,9 @@ mod test {
             &amount,
             &1_000_000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -2164,7 +2178,9 @@ mod test {
             &100,
             &1_000_000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -2203,7 +2219,9 @@ mod test {
             &100,
             &base_due,
             &true,
-            &freq, &None, &String::from_str(&env, "XLM"),
+            &freq,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         client.pay_bill(&owner, &bill_id);
@@ -2395,11 +2413,27 @@ mod test {
 
         // 3. Execution: Attempt to create bills with invalid dates
         // Added '&currency' as the final argument to both calls
-        let result_past =
-            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &None, &currency);
+        let result_past = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &past_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
-        let result_zero =
-            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &None, &currency);
+        let result_zero = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &zero_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
         // 4. Assertions
         assert!(
@@ -2480,7 +2514,9 @@ mod test {
             &150,
             &due_date,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let page = client.get_overdue_bills(&0, &100);
@@ -2514,7 +2550,9 @@ mod test {
             &100,
             &overdue_target,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // This one will be "DueNow" later
@@ -2525,7 +2563,9 @@ mod test {
             &200,
             &due_now_target,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // 3. WARP to the "Present" (2,000_000)
@@ -2558,7 +2598,9 @@ mod test {
             &5000,
             &due_date,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let page = client.get_overdue_bills(&0, &100);

@@ -1,6 +1,6 @@
-use soroban_sdk::{Env, Address, Vec, testutils::Address as _};
 use family_wallet::{FamilyWallet, FamilyWalletClient};
 use remitwise_common::FamilyRole;
+use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -23,14 +23,14 @@ fn main() {
     let mut initial_members = Vec::new(&env);
     initial_members.push_back(owner.clone());
     initial_members.push_back(member1.clone());
-    
+
     client.init(&owner, &initial_members);
     println!("Wallet initialized successfully!");
 
     // 5. [Read] Check roles of members
     let owner_member = client.get_member(&owner).unwrap();
     println!("\nOwner Role: {:?}", owner_member.role);
-    
+
     let m1_member = client.get_member(&member1).unwrap();
     println!("Member 1 Role: {:?}", m1_member.role);
 

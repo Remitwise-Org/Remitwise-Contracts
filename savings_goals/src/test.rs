@@ -15,12 +15,17 @@ fn set_time(env: &Env, timestamp: u64) {
     set_ledger_time(env, 1u32, timestamp);
 }
 
-
 // Removed local set_time in favor of testutils::set_ledger_time
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, user, SavingsGoalContractClient);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
     client.init();
 
     let name1 = String::from_str(&env, "Goal 1");
@@ -102,7 +107,11 @@ fn test_init_idempotent_does_not_wipe_goals() {
     assert_eq!(goal_after_second_init.current_amount, 0);
 
     let all_goals = client.get_all_goals(&owner_a);
-    assert_eq!(all_goals.len(), 1, "get_all_goals must still return the one goal");
+    assert_eq!(
+        all_goals.len(),
+        1,
+        "get_all_goals must still return the one goal"
+    );
 
     // Verify NEXT_ID was not reset: next created goal must get goal_id == 2, not 1
     let name2 = String::from_str(&env, "Second Goal");
@@ -412,7 +421,13 @@ fn test_withdraw_from_goal_unauthorized() {
 
 #[test]
 fn test_withdraw_from_goal_zero_amount_fails() {
-    setup_test_env!(env, SavingsGoalContract, client, user, SavingsGoalContractClient);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
 
     client.init();
     let id = client.create_goal(&user, &String::from_str(&env, "Zero"), &1000, &2000000000);
@@ -425,7 +440,13 @@ fn test_withdraw_from_goal_zero_amount_fails() {
 
 #[test]
 fn test_withdraw_from_goal_nonexistent_goal_fails() {
-    setup_test_env!(env, SavingsGoalContract, client, user, SavingsGoalContractClient);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
 
     client.init();
     let res = client.try_withdraw_from_goal(&user, &999, &100);
@@ -501,7 +522,13 @@ fn test_exact_goal_completion() {
 
 #[test]
 fn test_set_time_lock_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, owner, SavingsGoalContractClient);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        owner,
+        SavingsGoalContractClient
+    );
     client.init();
     set_ledger_time(&env, 1, 1000);
 
@@ -1757,9 +1784,18 @@ fn test_get_all_goals_filters_by_owner() {
     for g in goals_a.iter() {
         goal_a_ids.push_back(g.id);
     }
-    assert!(goal_a_ids.contains(goal_a1), "Goals for A should contain goal_a1");
-    assert!(goal_a_ids.contains(goal_a2), "Goals for A should contain goal_a2");
-    assert!(goal_a_ids.contains(goal_a3), "Goals for A should contain goal_a3");
+    assert!(
+        goal_a_ids.contains(goal_a1),
+        "Goals for A should contain goal_a1"
+    );
+    assert!(
+        goal_a_ids.contains(goal_a2),
+        "Goals for A should contain goal_a2"
+    );
+    assert!(
+        goal_a_ids.contains(goal_a3),
+        "Goals for A should contain goal_a3"
+    );
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1779,8 +1815,14 @@ fn test_get_all_goals_filters_by_owner() {
     for g in goals_b.iter() {
         goal_b_ids.push_back(g.id);
     }
-    assert!(goal_b_ids.contains(goal_b1), "Goals for B should contain goal_b1");
-    assert!(goal_b_ids.contains(goal_b2), "Goals for B should contain goal_b2");
+    assert!(
+        goal_b_ids.contains(goal_b1),
+        "Goals for B should contain goal_b1"
+    );
+    assert!(
+        goal_b_ids.contains(goal_b2),
+        "Goals for B should contain goal_b2"
+    );
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
     for goal_a_id in &goal_a_ids {

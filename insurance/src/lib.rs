@@ -6,8 +6,6 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-
-
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -259,11 +257,7 @@ impl Insurance {
         Ok(())
     }
 
-    pub fn unpause_function(
-        env: Env,
-        caller: Address,
-        func: Symbol,
-    ) -> Result<(), InsuranceError> {
+    pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), InsuranceError> {
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).ok_or(InsuranceError::Unauthorized)?;
         if admin != caller {
@@ -332,11 +326,7 @@ impl Insurance {
         Ok(())
     }
 
-    pub fn set_version(
-        env: Env,
-        caller: Address,
-        new_version: u32,
-    ) -> Result<(), InsuranceError> {
+    pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<(), InsuranceError> {
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(InsuranceError::Unauthorized)?;
         if admin != caller {
@@ -368,12 +358,7 @@ impl Insurance {
         }
     }
 
-    pub fn add_tags_to_policy(
-        env: Env,
-        caller: Address,
-        policy_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn add_tags_to_policy(env: Env, caller: Address, policy_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -384,7 +369,9 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
+        let mut policy = policies
+            .get(policy_id)
+            .unwrap_or_else(|| panic!("Policy not found"));
 
         if policy.owner != caller {
             panic!("Only the policy owner can add tags");
@@ -405,12 +392,7 @@ impl Insurance {
         );
     }
 
-    pub fn remove_tags_from_policy(
-        env: Env,
-        caller: Address,
-        policy_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn remove_tags_from_policy(env: Env, caller: Address, policy_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -421,7 +403,9 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
+        let mut policy = policies
+            .get(policy_id)
+            .unwrap_or_else(|| panic!("Policy not found"));
 
         if policy.owner != caller {
             panic!("Only the policy owner can remove tags");
@@ -641,7 +625,9 @@ impl Insurance {
         let current_time = env.ledger().timestamp();
         let mut paid_count = 0u32;
         for id in policy_ids.iter() {
-            let mut policy = policies_map.get(id).unwrap_or_else(|| panic!("Policy not found"));
+            let mut policy = policies_map
+                .get(id)
+                .unwrap_or_else(|| panic!("Policy not found"));
             policy.next_payment_date = current_time + (30 * 86400);
             let event = PremiumPaidEvent {
                 policy_id: id,
@@ -680,12 +666,7 @@ impl Insurance {
     }
 
     /// Get active policies for an owner (paginated)
-    pub fn get_active_policies(
-        env: Env,
-        owner: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> PolicyPage {
+    pub fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage {
         let limit = Self::clamp_limit(limit);
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
@@ -847,7 +828,9 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
+        let mut policy = policies
+            .get(policy_id)
+            .unwrap_or_else(|| panic!("Policy not found"));
         if policy.owner != caller {
             panic!("Only the policy owner can update this policy reference");
         }

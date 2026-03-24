@@ -1,8 +1,8 @@
 use super::*;
+use soroban_sdk::testutils::storage::Instance;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::testutils::LedgerInfo;
-use soroban_sdk::testutils::storage::Instance;
 use testutils::set_ledger_time;
 
 // Mock contracts for testing
@@ -893,7 +893,10 @@ fn test_archive_unauthorized() {
 
     // Non-admin tries to archive — should return Unauthorized error
     let result = client.try_archive_old_reports(&non_admin, &1701475200);
-    assert!(result.is_err(), "archive_old_reports should fail for non-admin");
+    assert!(
+        result.is_err(),
+        "archive_old_reports should fail for non-admin"
+    );
 }
 
 #[test]
@@ -910,7 +913,10 @@ fn test_cleanup_unauthorized() {
 
     // Non-admin tries to cleanup — should return Unauthorized error
     let result = client.try_cleanup_old_reports(&non_admin, &1704067200);
-    assert!(result.is_err(), "cleanup_old_reports should fail for non-admin");
+    assert!(
+        result.is_err(),
+        "cleanup_old_reports should fail for non-admin"
+    );
 }
 
 /// Archive a report that was generated less than 30 days ago — must be rejected.
@@ -946,7 +952,7 @@ fn test_archive_at_exact_retention_boundary() {
     client.init(&admin);
 
     let boundary = 1701475200u64; // exactly 30 days before ledger time
-    // No reports stored, but the call itself must succeed (not return InvalidRetentionWindow)
+                                  // No reports stored, but the call itself must succeed (not return InvalidRetentionWindow)
     let result = client.try_archive_old_reports(&admin, &boundary);
     assert!(
         result.is_ok(),
@@ -988,7 +994,7 @@ fn test_cleanup_at_exact_retention_boundary() {
     client.init(&admin);
 
     let boundary = 1712224000u64; // exactly 90 days before ledger time
-    // No archives stored, but the call itself must succeed
+                                  // No archives stored, but the call itself must succeed
     let result = client.try_cleanup_old_reports(&admin, &boundary);
     assert!(
         result.is_ok(),

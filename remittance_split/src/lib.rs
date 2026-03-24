@@ -972,7 +972,6 @@ impl RemittanceSplit {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;

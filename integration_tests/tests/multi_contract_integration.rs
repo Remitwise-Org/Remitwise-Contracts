@@ -60,7 +60,15 @@ fn test_multi_contract_user_flow() {
     let recurring = true;
     let frequency_days = 30u32;
 
-    let bill_id = bills_client.create_bill(&user, &bill_name, &bill_amount, &due_date, &recurring, &frequency_days, &None, &SorobanString::from_str(&env, "XLM"),
+    let bill_id = bills_client.create_bill(
+        &user,
+        &bill_name,
+        &bill_amount,
+        &due_date,
+        &recurring,
+        &frequency_days,
+        &None,
+        &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
 

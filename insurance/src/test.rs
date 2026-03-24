@@ -8,10 +8,7 @@ fn set_time(env: &Env, timestamp: u64) {
 
 use crate::InsuranceError;
 use soroban_sdk::IntoVal;
-use soroban_sdk::{
-    testutils::Address as AddressTrait,
-    Address, Env, String,
-};
+use soroban_sdk::{testutils::Address as AddressTrait, Address, Env, String};
 
 use testutils::{set_ledger_time, setup_test_env};
 
@@ -765,7 +762,7 @@ fn test_get_premium_schedules() {
 fn test_create_policy_emits_event() {
     use soroban_sdk::testutils::Events;
     // IntoVal import handled globally or locally once
-use soroban_sdk::{symbol_short, vec, IntoVal};
+    use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -801,7 +798,7 @@ use soroban_sdk::{symbol_short, vec, IntoVal};
 fn test_pay_premium_emits_event() {
     use soroban_sdk::testutils::Events;
     // IntoVal import handled globally or locally once
-use soroban_sdk::{symbol_short, vec, IntoVal};
+    use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -839,7 +836,7 @@ use soroban_sdk::{symbol_short, vec, IntoVal};
 fn test_deactivate_policy_emits_event() {
     use soroban_sdk::testutils::Events;
     // IntoVal import handled globally or locally once
-use soroban_sdk::{symbol_short, vec, IntoVal};
+    use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -908,7 +905,14 @@ fn test_pay_premium_non_owner_auth_failure() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -940,7 +944,14 @@ fn test_deactivate_policy_non_owner_auth_failure() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -980,7 +991,7 @@ fn test_create_policy_success() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
-        &None
+        &None,
     );
 
     // Verify returns id
