@@ -14,8 +14,6 @@ use soroban_sdk::{
 
 #[derive(Clone, Debug)]
 #[contracttype]
-#[derive(Clone, Debug)]
-#[contracttype]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -83,8 +81,6 @@ pub enum Error {
 
 #[derive(Clone)]
 #[contracttype]
-#[derive(Clone)]
-#[contracttype]
 pub struct ArchivedBill {
     pub id: u32,
     pub owner: Address,
@@ -114,6 +110,9 @@ pub enum BillEvent {
     Created,
     Paid,
     ExternalRefUpdated,
+}
+
+#[contracttype]
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -450,6 +449,7 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Created),
             (next_id, bill_owner, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -531,6 +531,7 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -762,11 +763,6 @@ impl BillPayments {
         Ok(())
     }
 
-    /// Get all bills (paid and unpaid)
-    ///
-    /// # Returns
-    /// Vec of all Bill structs
-    pub fn get_all_bills(env: Env) -> Vec<Bill> {
     // -----------------------------------------------------------------------
     // Backward-compat helpers
     // -----------------------------------------------------------------------
