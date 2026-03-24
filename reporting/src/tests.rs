@@ -1,4 +1,11 @@
 use testutils::{set_ledger_time};
+use soroban_sdk::{Env, Address, Vec, Map, symbol_short, testutils::{Address as _, Ledger as _, LedgerInfo, storage::Instance as _}};
+use crate::{
+    ReportingContract, ReportingContractClient,
+    FinancialHealthReport, StorageStats, ArchivedReport, ContractAddresses,
+    Category, RemittanceSummary, SavingsReport, 
+    BillComplianceReport, InsuranceReport, HealthScore, TrendData,
+};
 
 // Mock contracts for testing
 mod remittance_split {
@@ -256,7 +263,8 @@ fn test_configure_addresses_succeeds() {
 
 #[test]
 fn test_configure_addresses_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -802,14 +810,15 @@ fn test_cleanup_old_reports() {
 }
 
 #[test]
-fn test_storage_stats() {
+fn test_storage_stats_comprehensive() {
     let env = Env::default();
     env.mock_all_auths();
     set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    let user = Address::generate(&env);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
 
     client.init(&admin);
 
@@ -828,27 +837,63 @@ fn test_storage_stats() {
         &family_wallet,
     );
 
-    // Initial stats
-    let stats = client.get_storage_stats();
-    assert_eq!(stats.active_reports, 0);
-    assert_eq!(stats.archived_reports, 0);
+    // Scenario 1: Initial state
+    let stats1 = client.get_storage_stats();
+    assert_eq!(stats1.active_reports, 0);
+    assert_eq!(stats1.archived_reports, 0);
 
-    // Store a report
-    let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
-    client.store_report(&user, &report, &202401);
+    // Scenario 2: Store first report
+    let report1 = client.get_financial_health_report(&user1, &10000, &1704067200, &1706745600);
+    client.store_report(&user1, &report1, &202401);
+    
+    let stats2 = client.get_storage_stats();
+    assert_eq!(stats2.active_reports, 1);
+    assert_eq!(stats2.archived_reports, 0);
 
-    // Archive and check stats
-    client.archive_old_reports(&admin, &2000000000);
+    // Scenario 3: Store second report (same user, new period)
+    client.store_report(&user1, &report1, &202402);
+    
+    let stats3 = client.get_storage_stats();
+    assert_eq!(stats3.active_reports, 2);
+    assert_eq!(stats3.archived_reports, 0);
 
-    let stats = client.get_storage_stats();
-    assert_eq!(stats.active_reports, 0);
-    assert_eq!(stats.archived_reports, 1);
+    // Scenario 4: Store third report (different user)
+    let report2 = client.get_financial_health_report(&user2, &10000, &1704067200, &1706745600);
+    client.store_report(&user2, &report2, &202401);
+    
+    let stats4 = client.get_storage_stats();
+    assert_eq!(stats4.active_reports, 3);
+    assert_eq!(stats4.archived_reports, 0);
+
+    // Scenario 5: Update existing report (same user, same period) should not increase count
+    client.store_report(&user2, &report2, &202401);
+    
+    let stats5 = client.get_storage_stats();
+    assert_eq!(stats5.active_reports, 3);
+    assert_eq!(stats5.archived_reports, 0);
+
+    // Scenario 6: Archive reports
+    client.archive_old_reports(&admin, &2000000000); // Archives all generated at 1704067200
+    
+    let stats6 = client.get_storage_stats();
+    assert_eq!(stats6.active_reports, 0);
+    assert_eq!(stats6.archived_reports, 3);
+
+    // Scenario 7: Cleanup archives
+    // Advance time so archives can be cleanly targeted
+    set_ledger_time(&env, 2, 1706745600);
+    client.cleanup_old_reports(&admin, &1706745500); // Cleans up archives created before this time
+    
+    let stats7 = client.get_storage_stats();
+    assert_eq!(stats7.active_reports, 0);
+    assert_eq!(stats7.archived_reports, 0);
 }
 
 #[test]
 #[should_panic(expected = "Only admin can archive reports")]
 fn test_archive_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -863,7 +908,8 @@ fn test_archive_unauthorized() {
 #[test]
 #[should_panic(expected = "Only admin can cleanup reports")]
 fn test_cleanup_unauthorized() {
-    let env = create_test_env();
+    let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -1190,4 +1236,114 @@ fn test_archive_ttl_extended_on_archive_reports() {
         "Instance TTL ({}) must be >= 518,400 after archiving",
         ttl
     );
+}
+
+// ============================================
+// Storage Stats Regression Tests (Issue #316)
+// ============================================
+
+#[test]
+fn test_storage_stats_regression_zero_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); 
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    
+    client.init(&admin);
+
+    let stats = client.get_storage_stats();
+    assert_eq!(stats.active_reports, 0);
+    assert_eq!(stats.archived_reports, 0);
+}
+
+#[test]
+fn test_storage_stats_regression_high_volume() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); 
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    
+    client.init(&admin);
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(&env);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    let num_reports = 10;
+    
+    for i in 0..num_reports {
+        let user = Address::generate(&env);
+        let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+        client.store_report(&user, &report, &(202400 + i as u64));
+    }
+    
+    let stats_after_store = client.get_storage_stats();
+    assert_eq!(stats_after_store.active_reports, num_reports);
+    assert_eq!(stats_after_store.archived_reports, 0);
+
+    // Archive them all
+    client.archive_old_reports(&admin, &2000000000);
+    
+    let stats_after_archive = client.get_storage_stats();
+    assert_eq!(stats_after_archive.active_reports, 0);
+    assert_eq!(stats_after_archive.archived_reports, num_reports);
+}
+
+#[test]
+fn test_storage_stats_regression_post_cleanup() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1704067200); 
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    
+    client.init(&admin);
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(&env);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+    client.store_report(&user, &report, &202401);
+    
+    let stats1 = client.get_storage_stats();
+    assert_eq!(stats1.active_reports, 1);
+    
+    client.archive_old_reports(&admin, &2000000000);
+    
+    let stats2 = client.get_storage_stats();
+    assert_eq!(stats2.active_reports, 0);
+    assert_eq!(stats2.archived_reports, 1);
+    
+    client.cleanup_old_reports(&admin, &2000000000);
+    
+    let stats3 = client.get_storage_stats();
+    assert_eq!(stats3.active_reports, 0);
+    assert_eq!(stats3.archived_reports, 0);
 }

@@ -556,6 +556,52 @@
         }
       ]
     ],
+    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "archive_old_reports",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u64": 2000000000
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "cleanup_old_reports",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u64": 2000000000
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
     []
   ],
   "ledger": {
@@ -650,499 +696,18 @@
                       },
                       {
                         "key": {
+                          "symbol": "ARCH_RPT"
+                        },
+                        "val": {
+                          "map": []
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "REPORTS"
                         },
                         "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "vec": [
-                                  {
-                                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                                  },
-                                  {
-                                    "u64": 202401
-                                  }
-                                ]
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "bill_compliance"
-                                    },
-                                    "val": {
-                                      "map": [
-                                        {
-                                          "key": {
-                                            "symbol": "compliance_percentage"
-                                          },
-                                          "val": {
-                                            "u32": 50
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "overdue_bills"
-                                          },
-                                          "val": {
-                                            "u32": 0
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "paid_amount"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 50
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "paid_bills"
-                                          },
-                                          "val": {
-                                            "u32": 1
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_end"
-                                          },
-                                          "val": {
-                                            "u64": 1706745600
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_start"
-                                          },
-                                          "val": {
-                                            "u64": 1704067200
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_amount"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 150
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_bills"
-                                          },
-                                          "val": {
-                                            "u32": 2
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "unpaid_amount"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 100
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "unpaid_bills"
-                                          },
-                                          "val": {
-                                            "u32": 1
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "generated_at"
-                                    },
-                                    "val": {
-                                      "u64": 1704067200
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "health_score"
-                                    },
-                                    "val": {
-                                      "map": [
-                                        {
-                                          "key": {
-                                            "symbol": "bills_score"
-                                          },
-                                          "val": {
-                                            "u32": 35
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "insurance_score"
-                                          },
-                                          "val": {
-                                            "u32": 20
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "savings_score"
-                                          },
-                                          "val": {
-                                            "u32": 32
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "score"
-                                          },
-                                          "val": {
-                                            "u32": 87
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "insurance_report"
-                                    },
-                                    "val": {
-                                      "map": [
-                                        {
-                                          "key": {
-                                            "symbol": "active_policies"
-                                          },
-                                          "val": {
-                                            "u32": 1
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "annual_premium"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 2400
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "coverage_to_premium_ratio"
-                                          },
-                                          "val": {
-                                            "u32": 2083
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "monthly_premium"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 200
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_end"
-                                          },
-                                          "val": {
-                                            "u64": 1706745600
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_start"
-                                          },
-                                          "val": {
-                                            "u64": 1704067200
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_coverage"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 50000
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "remittance_summary"
-                                    },
-                                    "val": {
-                                      "map": [
-                                        {
-                                          "key": {
-                                            "symbol": "category_breakdown"
-                                          },
-                                          "val": {
-                                            "vec": [
-                                              {
-                                                "map": [
-                                                  {
-                                                    "key": {
-                                                      "symbol": "amount"
-                                                    },
-                                                    "val": {
-                                                      "i128": {
-                                                        "hi": 0,
-                                                        "lo": 5000
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "category"
-                                                    },
-                                                    "val": {
-                                                      "u32": 1
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "percentage"
-                                                    },
-                                                    "val": {
-                                                      "u32": 50
-                                                    }
-                                                  }
-                                                ]
-                                              },
-                                              {
-                                                "map": [
-                                                  {
-                                                    "key": {
-                                                      "symbol": "amount"
-                                                    },
-                                                    "val": {
-                                                      "i128": {
-                                                        "hi": 0,
-                                                        "lo": 3000
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "category"
-                                                    },
-                                                    "val": {
-                                                      "u32": 2
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "percentage"
-                                                    },
-                                                    "val": {
-                                                      "u32": 30
-                                                    }
-                                                  }
-                                                ]
-                                              },
-                                              {
-                                                "map": [
-                                                  {
-                                                    "key": {
-                                                      "symbol": "amount"
-                                                    },
-                                                    "val": {
-                                                      "i128": {
-                                                        "hi": 0,
-                                                        "lo": 1500
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "category"
-                                                    },
-                                                    "val": {
-                                                      "u32": 3
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "percentage"
-                                                    },
-                                                    "val": {
-                                                      "u32": 15
-                                                    }
-                                                  }
-                                                ]
-                                              },
-                                              {
-                                                "map": [
-                                                  {
-                                                    "key": {
-                                                      "symbol": "amount"
-                                                    },
-                                                    "val": {
-                                                      "i128": {
-                                                        "hi": 0,
-                                                        "lo": 500
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "category"
-                                                    },
-                                                    "val": {
-                                                      "u32": 4
-                                                    }
-                                                  },
-                                                  {
-                                                    "key": {
-                                                      "symbol": "percentage"
-                                                    },
-                                                    "val": {
-                                                      "u32": 5
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            ]
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_end"
-                                          },
-                                          "val": {
-                                            "u64": 1706745600
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_start"
-                                          },
-                                          "val": {
-                                            "u64": 1704067200
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_allocated"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 10000
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_received"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 10000
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "savings_report"
-                                    },
-                                    "val": {
-                                      "map": [
-                                        {
-                                          "key": {
-                                            "symbol": "completed_goals"
-                                          },
-                                          "val": {
-                                            "u32": 1
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "completion_percentage"
-                                          },
-                                          "val": {
-                                            "u32": 80
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_end"
-                                          },
-                                          "val": {
-                                            "u64": 1706745600
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "period_start"
-                                          },
-                                          "val": {
-                                            "u64": 1704067200
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_goals"
-                                          },
-                                          "val": {
-                                            "u32": 2
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_saved"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 12000
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "total_target"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 15000
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                ]
-                              }
-                            }
-                          ]
+                          "map": []
                         }
                       },
                       {
@@ -1156,7 +721,7 @@
                                 "symbol": "active_reports"
                               },
                               "val": {
-                                "u32": 1
+                                "u32": 0
                               }
                             },
                             {
@@ -1210,6 +775,72 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 801925984706572462
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          100000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 2032731177588607455
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 2032731177588607455
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          100000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 4837995959683129791
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 4837995959683129791
                   }
                 },
                 "durability": "temporary",
@@ -4101,16 +3732,122 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "get_stored_report"
+                "symbol": "get_storage_stats"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_storage_stats"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "active_reports"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "archived_reports"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "last_updated"
+                  },
+                  "val": {
+                    "u64": 1704067200
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "archive_old_reports"
               }
             ],
             "data": {
               "vec": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "u64": 202401
+                  "u64": 2000000000
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "report"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "ReportsArchived"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }
@@ -4131,481 +3868,242 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_stored_report"
+                "symbol": "archive_old_reports"
+              }
+            ],
+            "data": {
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "get_storage_stats"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_storage_stats"
               }
             ],
             "data": {
               "map": [
                 {
                   "key": {
-                    "symbol": "bill_compliance"
+                    "symbol": "active_reports"
                   },
                   "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "compliance_percentage"
-                        },
-                        "val": {
-                          "u32": 50
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "overdue_bills"
-                        },
-                        "val": {
-                          "u32": 0
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "paid_amount"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 50
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "paid_bills"
-                        },
-                        "val": {
-                          "u32": 1
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_end"
-                        },
-                        "val": {
-                          "u64": 1706745600
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_start"
-                        },
-                        "val": {
-                          "u64": 1704067200
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_amount"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 150
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_bills"
-                        },
-                        "val": {
-                          "u32": 2
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "unpaid_amount"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 100
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "unpaid_bills"
-                        },
-                        "val": {
-                          "u32": 1
-                        }
-                      }
-                    ]
+                    "u32": 0
                   }
                 },
                 {
                   "key": {
-                    "symbol": "generated_at"
+                    "symbol": "archived_reports"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "last_updated"
                   },
                   "val": {
                     "u64": 1704067200
                   }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "cleanup_old_reports"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
+                  "u64": 2000000000
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "report"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "ArchivesCleaned"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "cleanup_old_reports"
+              }
+            ],
+            "data": {
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "get_storage_stats"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_storage_stats"
+              }
+            ],
+            "data": {
+              "map": [
+                {
                   "key": {
-                    "symbol": "health_score"
+                    "symbol": "active_reports"
                   },
                   "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "bills_score"
-                        },
-                        "val": {
-                          "u32": 35
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "insurance_score"
-                        },
-                        "val": {
-                          "u32": 20
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "savings_score"
-                        },
-                        "val": {
-                          "u32": 32
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "score"
-                        },
-                        "val": {
-                          "u32": 87
-                        }
-                      }
-                    ]
+                    "u32": 0
                   }
                 },
                 {
                   "key": {
-                    "symbol": "insurance_report"
+                    "symbol": "archived_reports"
                   },
                   "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "active_policies"
-                        },
-                        "val": {
-                          "u32": 1
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "annual_premium"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 2400
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "coverage_to_premium_ratio"
-                        },
-                        "val": {
-                          "u32": 2083
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "monthly_premium"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 200
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_end"
-                        },
-                        "val": {
-                          "u64": 1706745600
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_start"
-                        },
-                        "val": {
-                          "u64": 1704067200
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_coverage"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 50000
-                          }
-                        }
-                      }
-                    ]
+                    "u32": 0
                   }
                 },
                 {
                   "key": {
-                    "symbol": "remittance_summary"
+                    "symbol": "last_updated"
                   },
                   "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "category_breakdown"
-                        },
-                        "val": {
-                          "vec": [
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "amount"
-                                  },
-                                  "val": {
-                                    "i128": {
-                                      "hi": 0,
-                                      "lo": 5000
-                                    }
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "category"
-                                  },
-                                  "val": {
-                                    "u32": 1
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "percentage"
-                                  },
-                                  "val": {
-                                    "u32": 50
-                                  }
-                                }
-                              ]
-                            },
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "amount"
-                                  },
-                                  "val": {
-                                    "i128": {
-                                      "hi": 0,
-                                      "lo": 3000
-                                    }
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "category"
-                                  },
-                                  "val": {
-                                    "u32": 2
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "percentage"
-                                  },
-                                  "val": {
-                                    "u32": 30
-                                  }
-                                }
-                              ]
-                            },
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "amount"
-                                  },
-                                  "val": {
-                                    "i128": {
-                                      "hi": 0,
-                                      "lo": 1500
-                                    }
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "category"
-                                  },
-                                  "val": {
-                                    "u32": 3
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "percentage"
-                                  },
-                                  "val": {
-                                    "u32": 15
-                                  }
-                                }
-                              ]
-                            },
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "amount"
-                                  },
-                                  "val": {
-                                    "i128": {
-                                      "hi": 0,
-                                      "lo": 500
-                                    }
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "category"
-                                  },
-                                  "val": {
-                                    "u32": 4
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "percentage"
-                                  },
-                                  "val": {
-                                    "u32": 5
-                                  }
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_end"
-                        },
-                        "val": {
-                          "u64": 1706745600
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_start"
-                        },
-                        "val": {
-                          "u64": 1704067200
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_allocated"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 10000
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_received"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 10000
-                          }
-                        }
-                      }
-                    ]
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "savings_report"
-                  },
-                  "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "completed_goals"
-                        },
-                        "val": {
-                          "u32": 1
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "completion_percentage"
-                        },
-                        "val": {
-                          "u32": 80
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_end"
-                        },
-                        "val": {
-                          "u64": 1706745600
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "period_start"
-                        },
-                        "val": {
-                          "u64": 1704067200
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_goals"
-                        },
-                        "val": {
-                          "u32": 2
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_saved"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 12000
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "total_target"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 15000
-                          }
-                        }
-                      }
-                    ]
+                    "u64": 1704067200
                   }
                 }
               ]

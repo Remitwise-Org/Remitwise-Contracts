@@ -294,14 +294,6 @@ pub struct PolicyPage {
     pub count: u32,
 }
 
-#[contracttype]
-#[derive(Clone)]
-pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
-    pub next_cursor: u32,
-    pub count: u32,
-}
-
 #[contract]
 pub struct ReportingContract;
 
@@ -745,6 +737,8 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("REPORTS"), &reports);
 
+        Self::update_storage_stats(&env);
+
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ReportStored),
             (user, period_key),
@@ -980,19 +974,9 @@ impl ReportingContract {
             .get(&symbol_short!("ARCH_RPT"))
             .unwrap_or_else(|| Map::new(env));
 
-        let mut active_count = 0u32;
-        for _ in reports.iter() {
-            active_count += 1;
-        }
-
-        let mut archived_count = 0u32;
-        for _ in archived.iter() {
-            archived_count += 1;
-        }
-
         let stats = StorageStats {
-            active_reports: active_count,
-            archived_reports: archived_count,
+            active_reports: reports.len(),
+            archived_reports: archived.len(),
             last_updated: env.ledger().timestamp(),
         };
 
