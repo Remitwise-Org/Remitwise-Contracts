@@ -895,6 +895,18 @@ function parseEvent(topics, data) {
 
 ---
 
+## Stellar contract events → Kubernetes audit events
+
+Remitwise contracts emit Soroban events for indexing and analytics. For teams that run **Kubernetes**-hosted indexers or compliance tooling, the same events can be forwarded as standard **`events.v1.Event`** resources for centralized auditing (RBAC, retention, and cluster-wide search).
+
+**Stable idempotency key:** `(network, ledger_sequence, transaction_hash, event_index_in_meta)`.
+
+**Full mapping guide:** [`docs/stellar-k8s-audit-events.md`](docs/stellar-k8s-audit-events.md) — network and contract annotations, recommended `reason` / `reportingController` values, and security considerations for multi-tenant clusters.
+
+The `indexer/` service README describes where to plug a Kubernetes sink into the existing TypeScript event pipeline.
+
+---
+
 ## FAQ
 
 **Q: Why are there both primary and secondary topics?**  

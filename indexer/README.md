@@ -42,6 +42,13 @@ This indexer monitors Soroban smart contracts on the Stellar network, processes 
 └─────────────────┘
 ```
 
+## Kubernetes audit forwarding
+
+Operators can forward normalized Stellar contract events to the Kubernetes API as `events.v1.Event` objects for audit trails and dashboards. This does not change on-chain behavior; it is an **optional sink** for the indexer (or a sidecar).
+
+- **Specification:** [`docs/stellar-k8s-audit-events.md`](../docs/stellar-k8s-audit-events.md) — idempotency keys, `reason` naming, labels, and annotations.
+- **Integration point:** after `eventProcessor.ts` parses an event and before persistence, build a K8s `Event` with `reportingController: remitwise-contracts-indexer` and dedupe on `(ledger, tx_hash, event_index)`.
+
 ## Supported Contracts
 
 - **Bill Payments**: Tracks bills, payments, and schedules
