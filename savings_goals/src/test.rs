@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, String, Symbol, TryFromVal,
+    Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
 use testutils::{set_ledger_time, setup_test_env};
@@ -13,7 +13,11 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, user);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
     client.init();
 
     let name1 = String::from_str(&env, "Goal 1");
@@ -39,7 +43,7 @@ fn test_create_goal_allows_past_target_date() {
     env.mock_all_auths();
 
     // Move ledger time forward so our target_date is clearly in the past.
-    set_time(&env, 2_000_000_000);
+    set_ledger_time(&env, 1, 2_000_000_000);
     let past_target_date = 1_000_000_000u64;
 
     let name = String::from_str(&env, "Backfill Goal");
@@ -147,7 +151,8 @@ fn test_next_id_increments_sequentially() {
     for (i, &id) in ids.iter().enumerate() {
         let goal = client.get_goal(&id).unwrap();
         assert_eq!(goal.id, id);
-        let expected_name = String::from_str(&env, &format!("G{}", i + 1));
+        let names = ["G1", "G2", "G3"];
+        let expected_name = String::from_str(&env, names[i]);
         assert_eq!(goal.name, expected_name);
     }
 }
@@ -404,7 +409,7 @@ fn test_withdraw_from_goal_unauthorized() {
 }
 
 #[test]
-#[should_panic(expected = "Amount must be positive")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn test_withdraw_from_goal_zero_amount_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -421,7 +426,7 @@ fn test_withdraw_from_goal_zero_amount_panics() {
 }
 
 #[test]
-#[should_panic(expected = "Goal not found")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_withdraw_from_goal_nonexistent_goal_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -502,7 +507,11 @@ fn test_exact_goal_completion() {
 
 #[test]
 fn test_set_time_lock_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, owner);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
     client.init();
     set_ledger_time(&env, 1, 1000);
 
@@ -1157,14 +1166,19 @@ fn test_multiple_goals_emit_separate_events() {
     client.init();
     env.mock_all_auths();
 
-    // Create multiple goals
-    client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &1735689600);
-    client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
-    client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
+    // Create multiple goals - each create_goal emits exactly 2 events.
+    // env.events().all() in Soroban returns events from the most recent call.
+    let id1 = client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &1735689600);
+    assert_eq!(id1, 1);
+    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
 
-    // Should have 3 * 2 events = 6 events
-    let events = env.events().all();
-    assert_eq!(events.len(), 6);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
+    assert_eq!(id2, 2);
+    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
+
+    let id3 = client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
+    assert_eq!(id3, 3);
+    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
 }
 
 // ============================================================================
@@ -1191,7 +1205,7 @@ fn test_instance_ttl_extended_on_create_goal() {
     env.mock_all_auths();
 
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 100,
         timestamp: 1000,
         network_id: [0; 32],
@@ -1235,7 +1249,7 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
     env.mock_all_auths();
 
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 100,
         timestamp: 1000,
         network_id: [0; 32],
@@ -1261,7 +1275,7 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
     // Advance ledger so TTL drops below threshold (17,280)
     // After create_goal: live_until = 518,500. At seq 510,000: TTL = 8,500
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         timestamp: 500_000,
         network_id: [0; 32],
@@ -1291,7 +1305,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
     env.mock_all_auths();
 
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 100,
         timestamp: 1000,
         network_id: [0; 32],
@@ -1318,7 +1332,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
 
     // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         timestamp: 510_000,
         network_id: [0; 32],
@@ -1332,7 +1346,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
 
     // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 1_020_000,
         timestamp: 1_020_000,
         network_id: [0; 32],
@@ -1373,7 +1387,7 @@ fn test_instance_ttl_extended_on_lock_goal() {
     env.mock_all_auths();
 
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 100,
         timestamp: 1000,
         network_id: [0; 32],
@@ -1398,7 +1412,7 @@ fn test_instance_ttl_extended_on_lock_goal() {
 
     // Advance ledger past threshold
     env.ledger().set(LedgerInfo {
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         timestamp: 510_000,
         network_id: [0; 32],
@@ -1742,7 +1756,10 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
-    let goal_a_ids: Vec<u32> = goals_a.iter().map(|g| g.id).collect();
+    let mut goal_a_ids: Vec<u32> = Vec::new(&env);
+    for g in goals_a.iter() {
+        goal_a_ids.push_back(g.id);
+    }
     assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
     assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
     assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
@@ -1761,7 +1778,10 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
-    let goal_b_ids: Vec<u32> = goals_b.iter().map(|g| g.id).collect();
+    let mut goal_b_ids: Vec<u32> = Vec::new(&env);
+    for g in goals_b.iter() {
+        goal_b_ids.push_back(g.id);
+    }
     assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
     assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
 

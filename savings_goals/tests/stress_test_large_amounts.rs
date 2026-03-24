@@ -114,7 +114,7 @@ fn test_add_to_goal_multiple_large_contributions() {
     assert_eq!(total3, contribution + contribution + contribution);
 }
 #[test]
-#[should_panic(expected = "overflow")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_add_to_goal_overflow_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -318,10 +318,11 @@ fn test_multiple_goals_with_large_amounts() {
     let large_target = i128::MAX / 10;
 
     // Create multiple goals with large targets
-    for i in 0..5 {
+    let goal_names = ["Goal 0", "Goal 1", "Goal 2", "Goal 3", "Goal 4"];
+    for name in goal_names.iter() {
         client.create_goal(
             &owner,
-            &String::from_str(&env, &format!("Goal {}", i)),
+            &String::from_str(&env, name),
             &large_target,
             &2000000,
         );
@@ -371,10 +372,11 @@ fn test_pagination_with_large_amounts() {
     let large_target = i128::MAX / 100;
 
     // Create multiple goals with large targets
-    for i in 0..15 {
+    let goal_names = ["G0","G1","G2","G3","G4","G5","G6","G7","G8","G9","G10","G11","G12","G13","G14"];
+    for name in goal_names.iter() {
         client.create_goal(
             &owner,
-            &String::from_str(&env, &format!("Goal {}", i)),
+            &String::from_str(&env, name),
             &large_target,
             &2000000,
         );
@@ -457,10 +459,11 @@ fn test_sequential_large_operations() {
         i128::MAX / 50,
     ];
 
+    let goal_names = ["Goal 0", "Goal 1", "Goal 2", "Goal 3", "Goal 4"];
     for (i, amount) in amounts_to_test.iter().enumerate() {
         let goal_id = client.create_goal(
             &owner,
-            &String::from_str(&env, &format!("Goal {}", i)),
+            &String::from_str(&env, goal_names[i]),
             amount,
             &2000000,
         );

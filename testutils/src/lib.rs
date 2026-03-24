@@ -5,10 +5,10 @@ use soroban_sdk::{
 };
 
 pub fn set_ledger_time(env: &Env, sequence_number: u32, timestamp: u64) {
-    let proto = env.ledger().protocol_version();
+    let _proto = env.ledger().protocol_version();
 
     env.ledger().set(LedgerInfo {
-        protocol_version: proto,
+        protocol_version: 22,
         sequence_number,
         timestamp,
         network_id: [0; 32],
