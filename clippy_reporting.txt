@@ -1,0 +1,42 @@
+﻿cargo :     Checking remitwise-common v0.1.0 (C:
+\Users\ADMIN\Desktop\mide-drips\Remitwise-Contra
+cts\remitwise-common)
+At line:1 char:1
++ cargo clippy -p reporting --all-targets -- -D 
+warnings 2>&1 | Out-Fil ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking re...mitwise-common):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+    Checking reporting v0.1.0 (C:\Users\ADMIN\De
+sktop\mide-drips\Remitwise-Contracts\reporting)
+error: duplicated attribute
+   --> reporting\src\tests.rs:1:8
+    |
+  1 | #![cfg(test)]
+    |        ^^^^
+    |
+note: first defined here
+   --> reporting\src\lib.rs:997:7
+    |
+997 | #[cfg(test)]
+    |       ^^^^
+help: remove this attribute
+   --> reporting\src\tests.rs:1:8
+    |
+  1 | #![cfg(test)]
+    |        ^^^^
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#duplicated_attributes
+    = note: `-D clippy::duplicated-attributes` 
+implied by `-D warnings`
+    = help: to override `-D warnings` add 
+`#[allow(clippy::duplicated_attributes)]`
+
+error: could not compile `reporting` (lib test) 
+due to 1 previous error

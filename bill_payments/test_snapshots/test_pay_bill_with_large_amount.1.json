@@ -18,26 +18,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Large Bill"
-                },
-                {
-                  "i128": {
-                    "hi": 4611686018427387903,
-                    "lo": 18446744073709551615
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 4611686018427387903,
+                          "lo": 18446744073709551615
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Large Bill"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }

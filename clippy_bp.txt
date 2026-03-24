@@ -1,0 +1,880 @@
+﻿cargo :     Checking soroban-env-host v22.1.3
+At line:1 char:1
++ cargo clippy -p bill_payments --all-targets -- 
+-D warnings 2>&1 | Out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (     
+   Checking soroban-env-host v22.1.3:String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Checking soroban-ledger-snapshot v22.0.11
+    Checking soroban-sdk v22.0.11
+    Checking remitwise-common v0.1.0 (C:\Users\ADM
+IN\Desktop\mide-drips\Remitwise-Contracts\remitwis
+e-common)
+    Checking testutils v0.1.0 (C:\Users\ADMIN\Desk
+top\mide-drips\Remitwise-Contracts\testutils)
+    Checking bill_payments v0.1.0 (C:\Users\ADMIN\
+Desktop\mide-drips\Remitwise-Contracts\bill_paymen
+ts)
+error: duplicated attribute
+    --> bill_payments\src\test.rs:1:8
+     |
+   1 | #![cfg(test)]
+     |        ^^^^
+     |
+note: first defined here
+    --> bill_payments\src\lib.rs:1410:7
+     |
+1410 | #[cfg(test)]
+     |       ^^^^
+help: remove this attribute
+    --> bill_payments\src\test.rs:1:8
+     |
+   1 | #![cfg(test)]
+     |        ^^^^
+     = help: for further information visit https:/
+/rust-lang.github.io/rust-clippy/rust-1.93.0/index
+.html#duplicated_attributes
+     = note: `-D clippy::duplicated-attributes` 
+implied by `-D warnings`
+     = help: to override `-D warnings` add 
+`#[allow(clippy::duplicated_attributes)]`
+
+error: this function has too many arguments (8/7)
+  --> bill_payments\src\test.rs:18:1
+   |
+18 | / fn try_create(
+19 | |     client: &BillPaymentsClient<'_>,
+20 | |     owner: &Address,
+21 | |     name: &String,
+...  |
+26 | |     currency: &String,
+27 | | ) -> Result<u32, Error> {
+   | |_______________________^
+   |
+   = help: for further information visit https://r
+ust-lang.github.io/rust-clippy/rust-1.93.0/index.h
+tml#too_many_arguments
+   = note: `-D clippy::too-many-arguments` 
+implied by `-D warnings`
+   = help: to override `-D warnings` add 
+`#[allow(clippy::too_many_arguments)]`
+
+error: could not compile `bill_payments` (lib 
+test) due to 2 previous errors
+warning: build failed, waiting for other jobs to 
+finish...
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:82:16
+    |
+ 82 |         client.create_bill(
+    |                ^^^^^^^^^^^
+ 83 |             &owner,
+ 84 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+ 84 -             &name,
+ 84 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\gas_bench.rs:51:16
+    |
+ 51 |         client.create_bill(
+    |                ^^^^^^^^^^^
+ 52 |             &owner,
+ 53 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+ 53 -             &name,
+ 53 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:45:26
+    |
+ 45 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+ 46 |         &owner,
+ 47 |         &String::from_str(&env, "Large 
+Bill"),
+    |         
+------------------------------------- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+ 47 -         &String::from_str(&env, "Large 
+Bill"),
+ 47 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> 
+bill_payments\tests\test_notifications.rs:22:26
+    |
+ 22 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+ 23 |         &user,
+ 24 |         &soroban_sdk::String::from_str(&e, 
+"Electricity"),
+    |         
+------------------------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+ 24 -         &soroban_sdk::String::from_str(&e, 
+"Electricity"),
+ 24 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+For more information about this error, try `rustc 
+--explain E0061`.
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:138:16
+    |
+138 |         client.create_bill(
+    |                ^^^^^^^^^^^
+139 |             &owner,
+140 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+140 -             &name,
+140 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:72:26
+    |
+ 72 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+ 73 |         &owner,
+ 74 |         &String::from_str(&env, "Large 
+Bill"),
+    |         
+------------------------------------- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+ 74 -         &String::from_str(&env, "Large 
+Bill"),
+ 74 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error: could not compile `bill_payments` (test 
+"test_notifications") due to 1 previous error
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:180:20
+    |
+180 |             client.create_bill(
+    |                    ^^^^^^^^^^^
+181 |                 user,
+182 |                 &name,
+    |                 ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+182 -                 &name,
+182 +                 /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:102:26
+    |
+102 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+103 |         &owner,
+104 |         &String::from_str(&env, "Large 
+Recurring"),
+    |         
+------------------------------------------ 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+104 -         &String::from_str(&env, "Large 
+Recurring"),
+104 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error: could not compile `bill_payments` (test 
+"gas_bench") due to 1 previous error
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:242:16
+    |
+242 |         client.create_bill(
+    |                ^^^^^^^^^^^
+243 |             &owner,
+244 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+244 -             &name,
+244 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:139:12
+    |
+139 |     client.create_bill(
+    |            ^^^^^^^^^^^
+140 |         &owner,
+141 |         &String::from_str(&env, "Bill1"),
+    |         -------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+141 -         &String::from_str(&env, "Bill1"),
+141 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:282:12
+    |
+282 |     client.create_bill(
+    |            ^^^^^^^^^^^
+283 |         &owner,
+284 |         &name,
+    |         ----- expected `&CreateBillConfig`, 
+found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+284 -         &name,
+284 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:151:12
+    |
+151 |     client.create_bill(
+    |            ^^^^^^^^^^^
+152 |         &owner,
+153 |         &String::from_str(&env, "Bill2"),
+    |         -------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+153 -         &String::from_str(&env, "Bill2"),
+153 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:313:26
+    |
+313 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+314 |         &owner,
+315 |         &name,
+    |         ----- expected `&CreateBillConfig`, 
+found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+315 -         &name,
+315 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:179:12
+    |
+179 |     client.create_bill(
+    |            ^^^^^^^^^^^
+180 |         &owner,
+181 |         &String::from_str(&env, "Bill1"),
+    |         -------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+181 -         &String::from_str(&env, "Bill1"),
+181 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:191:12
+    |
+191 |     client.create_bill(
+    |            ^^^^^^^^^^^
+192 |         &owner,
+193 |         &String::from_str(&env, "Bill2"),
+    |         -------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+193 -         &String::from_str(&env, "Bill2"),
+193 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:368:16
+    |
+368 |         client.create_bill(
+    |                ^^^^^^^^^^^
+369 |             &owner,
+370 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+370 -             &name,
+370 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:219:12
+    |
+219 |     client.create_bill(
+    |            ^^^^^^^^^^^
+220 |         &owner1,
+221 |         &String::from_str(&env, "Owner1 
+Bill"),
+    |         
+-------------------------------------- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+221 -         &String::from_str(&env, "Owner1 
+Bill"),
+221 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:457:20
+    |
+457 |             client.create_bill(
+    |                    ^^^^^^^^^^^
+458 |                 user,
+459 |                 &name,
+    |                 ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+459 -                 &name,
+459 +                 /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:231:12
+    |
+231 |     client.create_bill(
+    |            ^^^^^^^^^^^
+232 |         &owner2,
+233 |         &String::from_str(&env, "Owner2 
+Bill"),
+    |         
+-------------------------------------- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+233 -         &String::from_str(&env, "Owner2 
+Bill"),
+233 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:510:16
+    |
+510 |         client.create_bill(
+    |                ^^^^^^^^^^^
+511 |             &owner,
+512 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+512 -             &name,
+512 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:262:26
+    |
+262 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+263 |         &owner,
+264 |         &String::from_str(&env, "Large 
+Bill"),
+    |         
+------------------------------------- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+264 -         &String::from_str(&env, "Large 
+Bill"),
+264 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:544:16
+    |
+544 |         client.create_bill(
+    |                ^^^^^^^^^^^
+545 |             &owner,
+546 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+546 -             &name,
+546 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:298:30
+    |
+298 |         let bill_id = client.create_bill(
+    |                              ^^^^^^^^^^^
+299 |             &owner,
+300 |             &String::from_str(&env, 
+&format!("Bill{}", i)),
+    |             
+---------------------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+300 -             &String::from_str(&env, 
+&format!("Bill{}", i)),
+300 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:584:16
+    |
+584 |         client.create_bill(
+    |                ^^^^^^^^^^^
+585 |             &owner,
+586 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+586 -             &name,
+586 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:365:26
+    |
+365 |     let bill_id = client.create_bill(
+    |                          ^^^^^^^^^^^
+366 |         &owner,
+367 |         &String::from_str(&env, "Edge 
+Case"),
+    |         
+------------------------------------ expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+367 -         &String::from_str(&env, "Edge 
+Case"),
+367 +         /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_tests.rs:622:16
+    |
+622 |         client.create_bill(
+    |                ^^^^^^^^^^^
+623 |             &owner,
+624 |             &name,
+    |             ----- expected 
+`&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+624 -             &name,
+624 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error[E0061]: this method takes 2 arguments but 8 
+arguments were supplied
+   --> bill_payments\tests\stress_test_large_amoun
+ts.rs:393:16
+    |
+393 |         client.create_bill(
+    |                ^^^^^^^^^^^
+394 |             &owner,
+395 |             &String::from_str(&env, 
+&format!("Bill{}", i)),
+    |             
+---------------------------------------------- 
+expected `&CreateBillConfig`, found `&String`
+    |
+    = note: expected reference 
+`&remitwise_common::CreateBillConfig`
+               found reference 
+`&soroban_sdk::String`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\mide-drips\Remitwise
+-Contracts\bill_payments\src\lib.rs:402:12
+    |
+402 |     pub fn create_bill(
+    |            ^^^^^^^^^^^
+help: remove the extra arguments
+    |
+395 -             &String::from_str(&env, 
+&format!("Bill{}", i)),
+395 +             /* 
+&remitwise_common::CreateBillConfig */,
+    |
+
+error: could not compile `bill_payments` (test 
+"stress_tests") due to 12 previous errors
+error: could not compile `bill_payments` (test 
+"stress_test_large_amounts") due to 13 previous 
+errors

@@ -13,6 +13,20 @@ pub enum Category {
     Insurance = 4,
 }
 
+/// Configuration for creating a new bill
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CreateBillConfig {
+    pub name: soroban_sdk::String,
+    pub amount: i128,
+    pub due_date: u64,
+    pub recurring: bool,
+    pub frequency_days: u32,
+    pub external_ref: Option<soroban_sdk::String>,
+    pub currency: soroban_sdk::String,
+}
+
+
 /// Family roles for access control
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]

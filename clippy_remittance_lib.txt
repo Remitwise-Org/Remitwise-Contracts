@@ -1,0 +1,16 @@
+﻿cargo :     Checking remittance_split v0.1.0 (C:
+\Users\ADMIN\Desktop\mide-drips\Remitwise-Contra
+cts\remittance_split)
+At line:1 char:1
++ cargo clippy -p remittance_split --lib -- -D 
+warnings 2>&1 | Out-File ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking re...mittance_split):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+    Finished `dev` profile [unoptimized + 
+debuginfo] target(s) in 6.43s

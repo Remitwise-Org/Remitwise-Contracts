@@ -18,26 +18,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill0"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -59,26 +98,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill1"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill1"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -100,26 +178,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill2"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -141,26 +258,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill3"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -182,26 +338,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill4"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -223,26 +418,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill5"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill5"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -264,26 +498,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill6"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill6"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -305,26 +578,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill7"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill7"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -346,26 +658,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill8"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill8"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -387,26 +738,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill9"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill9"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -428,26 +818,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill10"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill10"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -469,26 +898,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill11"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill11"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -510,26 +978,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill12"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill12"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -551,26 +1058,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill13"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill13"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -592,26 +1138,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Bill14"
-                },
-                {
-                  "i128": {
-                    "hi": 92233720368547758,
-                    "lo": 1475739525896764129
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 92233720368547758,
+                          "lo": 1475739525896764129
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Bill14"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }

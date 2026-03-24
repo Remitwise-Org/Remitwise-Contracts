@@ -4,6 +4,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
+use remitwise_common::CreateBillConfig;
 use data_migration::{ExportSnapshot as MigrationSnapshot, RemittanceSplitExport, SnapshotPayload};
 use insurance::{Insurance, InsuranceClient};
 use orchestrator::Orchestrator;
@@ -62,16 +63,17 @@ fn test_multi_contract_user_flow() {
     let recurring = true;
     let frequency_days = 30u32;
 
-    let bill_id = bills_client.create_bill(
-        &user,
-        &bill_name,
-        &bill_amount,
-        &due_date,
-        &recurring,
-        &frequency_days,
-        &None,
-        &SorobanString::from_str(&env, "XLM"),
-    );
+    let config = CreateBillConfig {
+        name: bill_name.clone(),
+        amount: bill_amount,
+        due_date,
+        recurring,
+        frequency_days,
+        external_ref: None,
+        currency: SorobanString::from_str(&env, "XLM"),
+    };
+
+    let bill_id = bills_client.create_bill(&user, &config);
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
 
     // Step 4: Create an insurance policy
@@ -211,28 +213,28 @@ fn test_multiple_entities_creation() {
     assert_eq!(goal2, 2u32);
 
     // Create multiple bills
-    let bill1 = bills_client.create_bill(
-        &user,
-        &SorobanString::from_str(&env, "Rent"),
-        &1_500i128,
-        &(env.ledger().timestamp() + 30 * 86400),
-        &true,
-        &30u32,
-        &None,
-        &SorobanString::from_str(&env, "XLM"),
-    );
+    let config1 = CreateBillConfig {
+        name: SorobanString::from_str(&env, "Rent"),
+        amount: 1_500i128,
+        due_date: env.ledger().timestamp() + 30 * 86400,
+        recurring: true,
+        frequency_days: 30u32,
+        external_ref: None,
+        currency: SorobanString::from_str(&env, "XLM"),
+    };
+    let bill1 = bills_client.create_bill(&user, &config1);
     assert_eq!(bill1, 1u32);
 
-    let bill2 = bills_client.create_bill(
-        &user,
-        &SorobanString::from_str(&env, "Internet"),
-        &100i128,
-        &(env.ledger().timestamp() + 15 * 86400),
-        &true,
-        &30u32,
-        &None,
-        &SorobanString::from_str(&env, "XLM"),
-    );
+    let config2 = CreateBillConfig {
+        name: SorobanString::from_str(&env, "Internet"),
+        amount: 100i128,
+        due_date: env.ledger().timestamp() + 15 * 86400,
+        recurring: true,
+        frequency_days: 30u32,
+        external_ref: None,
+        currency: SorobanString::from_str(&env, "XLM"),
+    };
+    let bill2 = bills_client.create_bill(&user, &config2);
     assert_eq!(bill2, 2u32);
 
     // Create multiple insurance policies

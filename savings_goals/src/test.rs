@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
@@ -1777,15 +1777,15 @@ fn test_get_all_goals_filters_by_owner() {
         goal_a_ids.push_back(g.id);
     }
     assert!(
-        goal_a_ids.contains(&goal_a1),
+        goal_a_ids.contains(goal_a1),
         "Goals for A should contain goal_a1"
     );
     assert!(
-        goal_a_ids.contains(&goal_a2),
+        goal_a_ids.contains(goal_a2),
         "Goals for A should contain goal_a2"
     );
     assert!(
-        goal_a_ids.contains(&goal_a3),
+        goal_a_ids.contains(goal_a3),
         "Goals for A should contain goal_a3"
     );
 
@@ -1808,11 +1808,11 @@ fn test_get_all_goals_filters_by_owner() {
         goal_b_ids.push_back(g.id);
     }
     assert!(
-        goal_b_ids.contains(&goal_b1),
+        goal_b_ids.contains(goal_b1),
         "Goals for B should contain goal_b1"
     );
     assert!(
-        goal_b_ids.contains(&goal_b2),
+        goal_b_ids.contains(goal_b2),
         "Goals for B should contain goal_b2"
     );
 

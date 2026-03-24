@@ -1,3 +1,4 @@
+
 #![cfg(test)]
 
 use bill_payments::{BillPayments, BillPaymentsClient};
@@ -21,13 +22,15 @@ fn test_notification_flow() {
     // Create Bill
     let bill_id = client.create_bill(
         &user,
-        &soroban_sdk::String::from_str(&e, "Electricity"),
-        &1000,
-        &1234567890,
-        &false,
-        &0,
-        &None,
-        &soroban_sdk::String::from_str(&e, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: soroban_sdk::String::from_str(&e, "Electricity"),
+            amount: 1000,
+            due_date: 1234567890,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: soroban_sdk::String::from_str(&e, "XLM"),
+        }
     );
 
     // VERIFY: Get Events

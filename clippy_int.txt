@@ -1,0 +1,49 @@
+﻿cargo :     Checking remitwise-common v0.1.0 (C:
+\Users\ADMIN\Desktop\mide-drips\Remitwise-Contra
+cts\remitwise-common)
+At line:1 char:1
++ cargo clippy -p integration_tests 
+--all-targets -- -D warnings 2>&1 | ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking re...mitwise-common):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+    Checking remittance_split v0.1.0 (C:\Users\A
+DMIN\Desktop\mide-drips\Remitwise-Contracts\remi
+ttance_split)
+    Checking orchestrator v0.1.0 (C:\Users\ADMIN
+\Desktop\mide-drips\Remitwise-Contracts\orchestr
+ator)
+    Checking savings_goals v0.1.0 (C:\Users\ADMI
+N\Desktop\mide-drips\Remitwise-Contracts\savings
+_goals)
+    Checking bill_payments v0.1.0 (C:\Users\ADMI
+N\Desktop\mide-drips\Remitwise-Contracts\bill_pa
+yments)
+    Checking insurance v0.1.0 (C:\Users\ADMIN\De
+sktop\mide-drips\Remitwise-Contracts\insurance)
+    Checking integration_tests v0.1.0 (C:\Users\
+ADMIN\Desktop\mide-drips\Remitwise-Contracts\int
+egration_tests)
+error[E0432]: unresolved import 
+`remitwise_common`
+ --> integration_tests\tests\multi_contract_inte
+gration.rs:7:5
+  |
+7 | use remitwise_common::CreateBillConfig;
+  |     ^^^^^^^^^^^^^^^^ use of unresolved 
+module or unlinked crate `remitwise_common`
+  |
+  = help: if you wanted to use a crate named 
+`remitwise_common`, use `cargo add 
+remitwise_common` to add it to your `Cargo.toml`
+
+For more information about this error, try 
+`rustc --explain E0432`.
+error: could not compile `integration_tests` 
+(test "multi_contract_integration") due to 1 
+previous error

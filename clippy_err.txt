@@ -1,0 +1,125 @@
+﻿cargo :     Checking savings_goals v0.1.0 (C:\Us
+ers\ADMIN\Desktop\mide-drips\Remitwise-Contracts
+\savings_goals)
+At line:1 char:1
++ cargo clippy -p savings_goals --all-targets 
+-- -D warnings 2>&1 | Out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking sa...\savings_goals):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+error: manual `RangeInclusive::contains` 
+implementation
+   --> savings_goals\tests\stress_tests.rs:118:9
+    |
+118 |         pages >= 4 && pages <= 5,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ help: 
+use: `(4..=5).contains(&pages)`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#manual_range_contains
+    = note: `-D clippy::manual-range-contains` 
+implied by `-D warnings`
+    = help: to override `-D warnings` add 
+`#[allow(clippy::manual_range_contains)]`
+
+error: could not compile `savings_goals` (test 
+"stress_tests") due to 1 previous error
+warning: build failed, waiting for other jobs 
+to finish...
+error: duplicated attribute
+    --> savings_goals\src\test.rs:1:8
+     |
+   1 | #![cfg(test)]
+     |        ^^^^
+     |
+note: first defined here
+    --> savings_goals\src\lib.rs:1509:7
+     |
+1509 | #[cfg(test)]
+     |       ^^^^
+help: remove this attribute
+    --> savings_goals\src\test.rs:1:8
+     |
+   1 | #![cfg(test)]
+     |        ^^^^
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#duplicated_attributes
+     = note: `-D clippy::duplicated-attributes` 
+implied by `-D warnings`
+     = help: to override `-D warnings` add 
+`#[allow(clippy::duplicated_attributes)]`
+
+error: the borrowed expression implements the 
+required traits
+    --> savings_goals\src\test.rs:1780:29
+     |
+1780 |         goal_a_ids.contains(&goal_a1),
+     |                             ^^^^^^^^ 
+help: change this to: `goal_a1`
+     |
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#needless_borrows_for_generic_args
+     = note: `-D 
+clippy::needless-borrows-for-generic-args` 
+implied by `-D warnings`
+     = help: to override `-D warnings` add `#[al
+low(clippy::needless_borrows_for_generic_args)]`
+
+error: the borrowed expression implements the 
+required traits
+    --> savings_goals\src\test.rs:1784:29
+     |
+1784 |         goal_a_ids.contains(&goal_a2),
+     |                             ^^^^^^^^ 
+help: change this to: `goal_a2`
+     |
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#needless_borrows_for_generic_args
+
+error: the borrowed expression implements the 
+required traits
+    --> savings_goals\src\test.rs:1788:29
+     |
+1788 |         goal_a_ids.contains(&goal_a3),
+     |                             ^^^^^^^^ 
+help: change this to: `goal_a3`
+     |
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#needless_borrows_for_generic_args
+
+error: the borrowed expression implements the 
+required traits
+    --> savings_goals\src\test.rs:1811:29
+     |
+1811 |         goal_b_ids.contains(&goal_b1),
+     |                             ^^^^^^^^ 
+help: change this to: `goal_b1`
+     |
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#needless_borrows_for_generic_args
+
+error: the borrowed expression implements the 
+required traits
+    --> savings_goals\src\test.rs:1815:29
+     |
+1815 |         goal_b_ids.contains(&goal_b2),
+     |                             ^^^^^^^^ 
+help: change this to: `goal_b2`
+     |
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#needless_borrows_for_generic_args
+
+error: could not compile `savings_goals` (lib 
+test) due to 6 previous errors

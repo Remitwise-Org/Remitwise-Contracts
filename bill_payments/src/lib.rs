@@ -4,7 +4,7 @@
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, CreateBillConfig,
 };
 
 use soroban_sdk::{
@@ -183,10 +183,6 @@ impl BillPayments {
     /// * `FrequencyOverflow` - If recurrence cadence can overflow due date arithmetic
     /// @notice Creates a bill only when all input constraints are valid.
     /// @dev Validation executes before any storage mutation (fail-fast semantics).
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -216,11 +212,6 @@ impl BillPayments {
 
     /// Clamp a caller-supplied limit to [1, MAX_PAGE_LIMIT].
     /// A value of 0 is treated as DEFAULT_PAGE_LIMIT.
-
-    // -----------------------------------------------------------------------
-    // Pause / upgrade
-    // -----------------------------------------------------------------------
-
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
@@ -408,27 +399,26 @@ impl BillPayments {
     // Core bill operations
     // -----------------------------------------------------------------------
 
-    #[allow(clippy::too_many_arguments)]
     pub fn create_bill(
         env: Env,
         owner: Address,
-        name: String,
-        amount: i128,
-        due_date: u64,
-        recurring: bool,
-        frequency_days: u32,
-        external_ref: Option<String>,
-        currency: String,
+        config: CreateBillConfig,
     ) -> Result<u32, Error> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
-        Self::validate_create_bill_inputs(&env, amount, due_date, recurring, frequency_days)?;
+        Self::validate_create_bill_inputs(
+            &env,
+            config.amount,
+            config.due_date,
+            config.recurring,
+            config.frequency_days,
+        )?;
 
         // Resolve default currency: blank input → "XLM"
-        let resolved_currency = if currency.is_empty() {
+        let resolved_currency = if config.currency.is_empty() {
             String::from_str(&env, "XLM")
         } else {
-            currency
+            config.currency
         };
 
         Self::extend_instance_ttl(&env);
@@ -449,12 +439,12 @@ impl BillPayments {
         let bill = Bill {
             id: next_id,
             owner: owner.clone(),
-            name: name.clone(),
-            external_ref,
-            amount,
-            due_date,
-            recurring,
-            frequency_days,
+            name: config.name.clone(),
+            external_ref: config.external_ref,
+            amount: config.amount,
+            due_date: config.due_date,
+            recurring: config.recurring,
+            frequency_days: config.frequency_days,
             paid: false,
             created_at: current_time,
             paid_at: None,
@@ -472,7 +462,7 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_ID"), &next_id);
-        Self::adjust_unpaid_total(&env, &bill_owner, amount);
+        Self::adjust_unpaid_total(&env, &bill_owner, config.amount);
 
         // Emit event for audit trail
         env.events().publish(
@@ -484,7 +474,7 @@ impl BillPayments {
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("created"),
-            (next_id, bill_owner, amount, due_date),
+            (next_id, bill_owner, config.amount, config.due_date),
         );
 
         Ok(next_id)
@@ -1404,7 +1394,9 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.checked_add(delta).expect("overflow");
+        let next = current.checked_add(delta).unwrap_or_else(|| {
+            panic!("Total unpaid amount overflow for owner");
+        });
         totals.set(owner.clone(), next);
         env.storage()
             .instance()

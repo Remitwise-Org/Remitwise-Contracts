@@ -114,7 +114,7 @@ fn stress_200_policies_single_user() {
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
     assert!(
-        pages >= 4 && pages <= 5,
+        (4..=5).contains(&pages),
         "Expected 4-5 pages for 200 policies at limit 50, got {}",
         pages
     );

@@ -18,26 +18,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Electricity"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 1000
-                  }
-                },
-                {
-                  "u64": 1234567890
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 1000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1234567890
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Electricity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }

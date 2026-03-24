@@ -86,26 +86,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "string": "Electricity Bill"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 500
-                  }
-                },
-                {
-                  "u64": 2592000
-                },
-                {
-                  "bool": true
-                },
-                {
-                  "u32": 30
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 500
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 2592000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 30
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Electricity Bill"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    }
+                  ]
                 }
               ]
             }

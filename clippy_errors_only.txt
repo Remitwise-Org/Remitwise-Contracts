@@ -1,0 +1,22 @@
+﻿
+error: used `assert_eq!` with a literal bool
+error: used `assert_eq!` with a literal bool
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: doc list item without indentation
+error: could not compile `remittance_split` 
+(lib test) due to 17 previous errors
+
+

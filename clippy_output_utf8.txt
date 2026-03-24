@@ -1,0 +1,67 @@
+﻿cargo :     Checking remitwise-common v0.1.0 (C:\Use
+rs\ADMIN\Desktop\mide-drips\Remitwise-Contracts\remi
+twise-common)
+At line:1 char:1
++ cargo clippy --workspace --all-targets -- -D 
+warnings > clippy_output ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (       
+ Checking re...mitwise-common):String) [],     
+RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro    r
+ 
+    Checking testutils v0.1.0 (C:\Users\ADMIN\Deskto
+p\mide-drips\Remitwise-Contracts\testutils)
+    Checking savings_goals v0.1.0 (C:\Users\ADMIN\De
+sktop\mide-drips\Remitwise-Contracts\savings_goals)
+    Checking remittance_split v0.1.0 (C:\Users\ADMIN
+\Desktop\mide-drips\Remitwise-Contracts\remittance_s
+plit)
+    Checking orchestrator v0.1.0 (C:\Users\ADMIN\Des
+ktop\mide-drips\Remitwise-Contracts\orchestrator)
+    Checking data_migration v0.1.0 (C:\Users\ADMIN\D
+esktop\mide-drips\Remitwise-Contracts\data_migration
+)
+error: multiple input filenames provided (first two 
+filenames are `testutils\src\lib.rs` and 
+`Check-Content`)
+
+error: multiple input filenames provided (first two 
+filenames are `remittance_split\src\lib.rs` and 
+`Check-Content`)
+
+error: multiple input filenames provided (first two 
+filenames are `data_migration\src\lib.rs` and 
+`Check-Content`)
+
+error: multiple input filenames provided (first two 
+filenames are `savings_goals\src\lib.rs` and 
+`Check-Content`)
+
+error: could not compile `testutils` (lib) due to 1 
+previous error
+warning: build failed, waiting for other jobs to 
+finish...
+error: could not compile `remittance_split` (lib) 
+due to 1 previous error
+error: multiple input filenames provided (first two 
+filenames are `orchestrator\src\lib.rs` and 
+`Check-Content`)
+
+error: multiple input filenames provided (first two 
+filenames are `remitwise-common\src\lib.rs` and 
+`Check-Content`)
+
+error: could not compile `savings_goals` (lib) due 
+to 1 previous error
+error: could not compile `data_migration` (lib) due 
+to 1 previous error
+error: could not compile `orchestrator` (lib) due 
+to 1 previous error
+error: could not compile `remitwise-common` (lib 
+test) due to 1 previous error
+error: could not compile `data_migration` (lib 
+test) due to 1 previous error
+error: could not compile `remitwise-common` (lib) 
+due to 1 previous error

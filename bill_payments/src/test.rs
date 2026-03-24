@@ -1,6 +1,7 @@
-#![cfg(test)]
+
 
 use crate::{BillPayments, BillPaymentsClient, Error};
+use remitwise_common::CreateBillConfig;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, String,
@@ -14,6 +15,7 @@ fn setup() -> (Env, Address, Address) {
     (env, owner, contract_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn try_create(
     client: &BillPaymentsClient<'_>,
     owner: &Address,
@@ -24,16 +26,16 @@ fn try_create(
     frequency_days: u32,
     currency: &String,
 ) -> Result<u32, Error> {
-    let result = client.try_create_bill(
-        owner,
-        name,
-        &amount,
-        &due_date,
-        &recurring,
-        &frequency_days,
-        &None,
-        currency,
-    );
+    let config = CreateBillConfig {
+        name: name.clone(),
+        amount,
+        due_date,
+        recurring,
+        frequency_days,
+        external_ref: None,
+        currency: currency.clone(),
+    };
+    let result = client.try_create_bill(owner, &config);
     match result {
         Ok(Ok(id)) => Ok(id),
         Ok(Err(_)) => panic!("unexpected conversion error from client"),

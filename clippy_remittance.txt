@@ -1,0 +1,97 @@
+﻿cargo :     Checking remittance_split v0.1.0 (C:
+\Users\ADMIN\Desktop\mide-drips\Remitwise-Contra
+cts\remittance_split)
+At line:1 char:1
++ cargo clippy -p remittance_split 
+--all-targets -- -D warnings 2>&1 |  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking re...mittance_split):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+error: duplicated attribute
+   --> remittance_split\src\lib.rs:969:7
+    |
+969 | #[cfg(test)]
+    |       ^^^^
+    |
+note: first defined here
+   --> remittance_split\src\lib.rs:968:7
+    |
+968 | #[cfg(test)]
+    |       ^^^^
+help: remove this attribute
+   --> remittance_split\src\lib.rs:969:7
+    |
+969 | #[cfg(test)]
+    |       ^^^^
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#duplicated_attributes
+    = note: `-D clippy::duplicated-attributes` 
+implied by `-D warnings`
+    = help: to override `-D warnings` add 
+`#[allow(clippy::duplicated_attributes)]`
+
+error[E0599]: no variant or associated item 
+named `InvalidSplit` found for enum 
+`RemittanceSplitError` in the current scope
+   --> remittance_split\src\lib.rs:442:59
+    |
+ 29 | pub enum RemittanceSplitError {
+    | ----------------------------- variant or 
+associated item `InvalidSplit` not found for 
+this enum
+...
+442 |         let s0 = split.get(0).ok_or(Remitt
+anceSplitError::InvalidSplit)? as i128;
+    |                                           
+                ^^^^^^^^^^^^ variant or 
+associated item not found in 
+`RemittanceSplitError`
+
+error[E0599]: no variant or associated item 
+named `InvalidSplit` found for enum 
+`RemittanceSplitError` in the current scope
+   --> remittance_split\src\lib.rs:443:59
+    |
+ 29 | pub enum RemittanceSplitError {
+    | ----------------------------- variant or 
+associated item `InvalidSplit` not found for 
+this enum
+...
+443 |         let s1 = split.get(1).ok_or(Remitt
+anceSplitError::InvalidSplit)? as i128;
+    |                                           
+                ^^^^^^^^^^^^ variant or 
+associated item not found in 
+`RemittanceSplitError`
+
+error[E0599]: no variant or associated item 
+named `InvalidSplit` found for enum 
+`RemittanceSplitError` in the current scope
+   --> remittance_split\src\lib.rs:444:59
+    |
+ 29 | pub enum RemittanceSplitError {
+    | ----------------------------- variant or 
+associated item `InvalidSplit` not found for 
+this enum
+...
+444 |         let s2 = split.get(2).ok_or(Remitt
+anceSplitError::InvalidSplit)? as i128;
+    |                                           
+                ^^^^^^^^^^^^ variant or 
+associated item not found in 
+`RemittanceSplitError`
+
+For more information about this error, try 
+`rustc --explain E0599`.
+error: could not compile `remittance_split` 
+(lib) due to 3 previous errors
+warning: build failed, waiting for other jobs 
+to finish...
+error: could not compile `remittance_split` 
+(lib test) due to 4 previous errors

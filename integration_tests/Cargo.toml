@@ -12,6 +12,7 @@ bill_payments = { path = "../bill_payments" }
 insurance = { path = "../insurance" }
 orchestrator = { path = "../orchestrator" }
 data_migration = { path = "../data_migration" }
+remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
 soroban-sdk = { version = "22.0.1", features = ["testutils"] }

@@ -1,0 +1,249 @@
+﻿cargo :     Checking bill_payments v0.1.0 (C:\Us
+ers\ADMIN\Desktop\mide-drips\Remitwise-Contracts
+\bill_payments)
+At line:1 char:1
++ cargo clippy -p bill_payments --all-targets 
+-- -D warnings 2>&1 | Out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking bi...\bill_payments):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+error: redundant field names in struct 
+initialization
+   --> bill_payments\tests\stress_test_large_amo
+unts.rs:150:13
+    |
+150 |             amount: amount,
+    |             ^^^^^^^^^^^^^^ help: replace 
+it with: `amount`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+    = note: `-D clippy::redundant-field-names` 
+implied by `-D warnings`
+    = help: to override `-D warnings` add 
+`#[allow(clippy::redundant_field_names)]`
+
+error: redundant field names in struct 
+initialization
+   --> bill_payments\tests\stress_test_large_amo
+unts.rs:164:13
+    |
+164 |             amount: amount,
+    |             ^^^^^^^^^^^^^^ help: replace 
+it with: `amount`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> bill_payments\tests\stress_test_large_amo
+unts.rs:194:13
+    |
+194 |             amount: amount,
+    |             ^^^^^^^^^^^^^^ help: replace 
+it with: `amount`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> bill_payments\tests\stress_test_large_amo
+unts.rs:208:13
+    |
+208 |             amount: amount,
+    |             ^^^^^^^^^^^^^^ help: replace 
+it with: `amount`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> bill_payments\tests\stress_test_large_amo
+unts.rs:323:17
+    |
+323 |                 amount: amount,
+    |                 ^^^^^^^^^^^^^^ help: 
+replace it with: `amount`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+  --> bill_payments\tests\stress_tests.rs:88:13
+   |
+88 |             due_date: due_date,
+   |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+   |
+   = help: for further information visit https:/
+/rust-lang.github.io/rust-clippy/rust-1.93.0/ind
+ex.html#redundant_field_names
+   = note: `-D clippy::redundant-field-names` 
+implied by `-D warnings`
+   = help: to override `-D warnings` add 
+`#[allow(clippy::redundant_field_names)]`
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:146:13
+    |
+146 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:190:13
+    |
+190 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:254:13
+    |
+254 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:296:13
+    |
+296 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:329:13
+    |
+329 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:386:13
+    |
+386 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:477:13
+    |
+477 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:532:13
+    |
+532 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:568:13
+    |
+568 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:610:13
+    |
+610 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: redundant field names in struct 
+initialization
+   --> 
+bill_payments\tests\stress_tests.rs:650:13
+    |
+650 |             due_date: due_date,
+    |             ^^^^^^^^^^^^^^^^^^ help: 
+replace it with: `due_date`
+    |
+    = help: for further information visit https:
+//rust-lang.github.io/rust-clippy/rust-1.93.0/in
+dex.html#redundant_field_names
+
+error: could not compile `bill_payments` (test 
+"stress_test_large_amounts") due to 5 previous 
+errors
+warning: build failed, waiting for other jobs 
+to finish...
+error: could not compile `bill_payments` (test 
+"stress_tests") due to 12 previous errors

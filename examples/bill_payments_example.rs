@@ -1,4 +1,5 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
+use remitwise_common::CreateBillConfig;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn main() {
@@ -25,9 +26,17 @@ fn main() {
         "Creating bill: '{:?}' for {} {:?}",
         bill_name, amount, currency
     );
-    let bill_id = client.create_bill(
-        &owner, &bill_name, &amount, &due_date, &false, &0, &None, &currency,
-    );
+    let config = CreateBillConfig {
+        name: bill_name.clone(),
+        amount,
+        due_date,
+        recurring: false,
+        frequency_days: 0,
+        external_ref: None,
+        currency: currency.clone(),
+    };
+    let bill_id = client.create_bill(&owner, &config);
+
     println!("Bill created successfully with ID: {}", bill_id);
 
     // 5. [Read] List unpaid bills

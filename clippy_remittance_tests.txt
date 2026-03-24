@@ -1,0 +1,328 @@
+﻿cargo :     Checking remittance_split v0.1.0 (C:
+\Users\ADMIN\Desktop\mide-drips\Remitwise-Contra
+cts\remittance_split)
+At line:1 char:1
++ cargo clippy -p remittance_split --tests -- 
+-D warnings 2>&1 | Out-Fi ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking re...mittance_split):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+error: used `assert_eq!` with a literal bool
+  --> remittance_split\src\test.rs:25:5
+   |
+25 |     assert_eq!(success, true);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https:/
+/rust-lang.github.io/rust-clippy/rust-1.93.0/ind
+ex.html#bool_assert_comparison
+   = note: `-D clippy::bool-assert-comparison` 
+implied by `-D warnings`
+   = help: to override `-D warnings` add 
+`#[allow(clippy::bool_assert_comparison)]`
+help: replace it with `assert!(..)`
+   |
+25 -     assert_eq!(success, true);
+25 +     assert!(success);
+   |
+
+error: used `assert_eq!` with a literal bool
+  --> remittance_split\src\test.rs:82:5
+   |
+82 |     assert_eq!(success, true);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https:/
+/rust-lang.github.io/rust-clippy/rust-1.93.0/ind
+ex.html#bool_assert_comparison
+help: replace it with `assert!(..)`
+   |
+82 -     assert_eq!(success, true);
+82 +     assert!(success);
+   |
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1223:9
+     |
+1223 |     /// Owner authorizes the call, 
+percentages sum to 100, config is stored 
+correctly.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+     = note: `-D clippy::doc-lazy-continuation` 
+implied by `-D warnings`
+     = help: to override `-D warnings` add 
+`#[allow(clippy::doc_lazy_continuation)]`
+help: indent this line
+     |
+1223 |     ///    Owner authorizes the call, 
+percentages sum to 100, config is stored 
+correctly.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1247:9
+     |
+1247 |     /// Calling initialize_split without 
+the owner authorizing should panic.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1247 |     ///    Calling initialize_split 
+without the owner authorizing should panic.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1262:9
+     |
+1262 |     /// Percentages that do not sum to 
+100 must return PercentagesDoNotSumTo100.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1262 |     ///    Percentages that do not sum 
+to 100 must return PercentagesDoNotSumTo100.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1287:9
+     |
+1287 |     /// Calling initialize_split a 
+second time should return AlreadyInitialized.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1287 |     ///    Calling initialize_split a 
+second time should return AlreadyInitialized.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1305:9
+     |
+1305 |     /// Only the owner can call 
+update_split; any other address must get 
+Unauthorized.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1305 |     ///    Only the owner can call 
+update_split; any other address must get 
+Unauthorized.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1327:9
+     |
+1327 |     /// update_split must reject 
+percentages that do not sum to 100.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1327 |     ///    update_split must reject 
+percentages that do not sum to 100.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1354:9
+     |
+1354 |     /// Before initialize_split is 
+called, get_split must return the hardcoded
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1354 |     ///    Before initialize_split is 
+called, get_split must return the hardcoded
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1355:9
+     |
+1355 |     /// default of [50, 30, 15, 5].
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1355 |     ///    default of [50, 30, 15, 5].
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1371:9
+     |
+1371 |     /// Before initialize_split is 
+called, get_config must return None.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1371 |     ///    Before initialize_split is 
+called, get_config must return None.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1383:9
+     |
+1383 |     /// After initialize_split, 
+get_config must return Some with correct owner.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1383 |     ///    After initialize_split, 
+get_config must return Some with correct owner.
+     |         +++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1409:9
+     |
+1409 |     /// Correct amounts for a positive 
+total; insurance receives the remainder.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1409 |     ///     Correct amounts for a 
+positive total; insurance receives the 
+remainder.
+     |         ++++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1434:9
+     |
+1434 |     /// total_amount of 0 or any 
+negative value must return InvalidAmount.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1434 |     ///     total_amount of 0 or any 
+negative value must return InvalidAmount.
+     |         ++++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1462:9
+     |
+1462 |     /// The sum of all split amounts 
+must always equal total_amount exactly
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1462 |     ///     The sum of all split amounts 
+must always equal total_amount exactly
+     |         ++++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1463:9
+     |
+1463 |     /// (insurance absorbs any integer 
+division remainder).
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1463 |     ///     (insurance absorbs any 
+integer division remainder).
+     |         ++++
+
+error: doc list item without indentation
+    --> remittance_split\src\lib.rs:1492:9
+     |
+1492 |     /// Events must be published when 
+initialize_split and update_split are called.
+     |         ^
+     |
+     = help: if this is supposed to be its own 
+paragraph, add a blank line
+     = help: for further information visit https
+://rust-lang.github.io/rust-clippy/rust-1.93.0/i
+ndex.html#doc_lazy_continuation
+help: indent this line
+     |
+1492 |     ///     Events must be published 
+when initialize_split and update_split are 
+called.
+     |         ++++
+
+error: could not compile `remittance_split` 
+(lib test) due to 17 previous errors

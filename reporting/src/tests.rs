@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 
 use crate::{ReportingContract, ReportingContractClient};
 use remitwise_common::Category;

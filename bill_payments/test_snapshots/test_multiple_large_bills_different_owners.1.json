@@ -18,26 +18,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Owner1 Bill"
-                },
-                {
-                  "i128": {
-                    "hi": 4611686018427387903,
-                    "lo": 18446744073709551615
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 4611686018427387903,
+                          "lo": 18446744073709551615
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Owner1 Bill"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -59,26 +98,65 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "Owner2 Bill"
-                },
-                {
-                  "i128": {
-                    "hi": 4611686018427387903,
-                    "lo": 18446744073709551615
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
-                "void",
-                {
-                  "string": "XLM"
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 4611686018427387903,
+                          "lo": 18446744073709551615
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "currency"
+                      },
+                      "val": {
+                        "string": "XLM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "due_date"
+                      },
+                      "val": {
+                        "u64": 1000000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "external_ref"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "frequency_days"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Owner2 Bill"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "recurring"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    }
+                  ]
                 }
               ]
             }

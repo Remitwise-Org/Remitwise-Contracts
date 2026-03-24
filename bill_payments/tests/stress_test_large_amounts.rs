@@ -1,3 +1,4 @@
+
 #![cfg(test)]
 
 //! Stress tests for arithmetic operations with very large i128 values
@@ -44,13 +45,15 @@ fn test_create_bill_near_max_i128() {
 
     let bill_id = client.create_bill(
         &owner,
-        &String::from_str(&env, "Large Bill"),
-        &large_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Large Bill"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -71,13 +74,15 @@ fn test_pay_bill_with_large_amount() {
 
     let bill_id = client.create_bill(
         &owner,
-        &String::from_str(&env, "Large Bill"),
-        &large_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Large Bill"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
@@ -101,13 +106,15 @@ fn test_recurring_bill_with_large_amount() {
 
     let bill_id = client.create_bill(
         &owner,
-        &String::from_str(&env, "Large Recurring"),
-        &large_amount,
-        &1000000,
-        &true,
-        &30,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Large Recurring"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: true,
+            frequency_days: 30,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
@@ -138,25 +145,29 @@ fn test_get_total_unpaid_with_two_large_bills() {
 
     client.create_bill(
         &owner,
-        &String::from_str(&env, "Bill1"),
-        &amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Bill1"),
+            amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
     client.create_bill(
         &owner,
-        &String::from_str(&env, "Bill2"),
-        &amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Bill2"),
+            amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -178,25 +189,29 @@ fn test_get_total_unpaid_overflow_panics() {
 
     client.create_bill(
         &owner,
-        &String::from_str(&env, "Bill1"),
-        &amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Bill1"),
+            amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
     client.create_bill(
         &owner,
-        &String::from_str(&env, "Bill2"),
-        &amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Bill2"),
+            amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     // This should panic due to overflow
@@ -218,25 +233,29 @@ fn test_multiple_large_bills_different_owners() {
     // Each owner can have large bills independently
     client.create_bill(
         &owner1,
-        &String::from_str(&env, "Owner1 Bill"),
-        &large_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Owner1 Bill"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
     client.create_bill(
         &owner2,
-        &String::from_str(&env, "Owner2 Bill"),
-        &large_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Owner2 Bill"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     let total1 = client.get_total_unpaid(&owner1);
@@ -261,13 +280,15 @@ fn test_archive_large_amount_bill() {
 
     let bill_id = client.create_bill(
         &owner,
-        &String::from_str(&env, "Large Bill"),
-        &large_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Large Bill"),
+            amount: large_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     env.mock_all_auths();
@@ -297,13 +318,15 @@ fn test_batch_pay_large_bills() {
     for i in 0..5 {
         let bill_id = client.create_bill(
             &owner,
-            &String::from_str(&env, &format!("Bill{}", i)),
-            &amount,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
+            &remitwise_common::CreateBillConfig {
+                name: String::from_str(&env, &format!("Bill{}", i)),
+                amount,
+                due_date: 1000000,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            }
         );
         bill_ids.push_back(bill_id);
         env.mock_all_auths();
@@ -364,13 +387,15 @@ fn test_edge_case_i128_max_minus_one() {
 
     let bill_id = client.create_bill(
         &owner,
-        &String::from_str(&env, "Edge Case"),
-        &edge_amount,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
+        &remitwise_common::CreateBillConfig {
+            name: String::from_str(&env, "Edge Case"),
+            amount: edge_amount,
+            due_date: 1000000,
+            recurring: false,
+            frequency_days: 0,
+            external_ref: None,
+            currency: String::from_str(&env, "XLM"),
+        }
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -392,13 +417,15 @@ fn test_pagination_with_large_amounts() {
     for i in 0..15 {
         client.create_bill(
             &owner,
-            &String::from_str(&env, &format!("Bill{}", i)),
-            &large_amount,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
+            &remitwise_common::CreateBillConfig {
+                name: String::from_str(&env, &format!("Bill{}", i)),
+                amount: large_amount,
+                due_date: 1000000,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            }
         );
         env.mock_all_auths();
     }

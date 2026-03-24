@@ -1,0 +1,28 @@
+﻿cargo :     Checking bill_payments v0.1.0 (C:\Us
+ers\ADMIN\Desktop\mide-drips\Remitwise-Contracts
+\bill_payments)
+At line:1 char:1
++ cargo clippy -p bill_payments --test 
+gas_bench -- -D warnings 2>&1 |  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   
+     Checking bi...\bill_payments):String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+error: unused import: 
+`remitwise_common::CreateBillConfig`
+ --> bill_payments\tests\gas_bench.rs:1:5
+  |
+1 | use remitwise_common::CreateBillConfig;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D 
+warnings`
+  = help: to override `-D warnings` add 
+`#[allow(unused_imports)]`
+
+error: could not compile `bill_payments` (test 
+"gas_bench") due to 1 previous error
