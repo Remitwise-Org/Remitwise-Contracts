@@ -5,6 +5,11 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD,
+};
+
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const FUNDS_ADDED: Symbol = symbol_short!("added");
@@ -38,8 +43,7 @@ pub struct GoalCompletedEvent {
     pub timestamp: u64,
 }
 
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
-const INSTANCE_BUMP_AMOUNT: u32 = 518400;
+// Storage TTL constants moved to remitwise-common
 
 #[contracttype]
 #[derive(Clone)]
@@ -135,7 +139,6 @@ pub struct AuditEntry {
 
 const SNAPSHOT_VERSION: u32 = 1;
 const MAX_AUDIT_ENTRIES: u32 = 100;
-const CONTRACT_VERSION: u32 = 1;
 const MAX_BATCH_SIZE: u32 = 50;
 
 pub mod pause_functions {
@@ -247,8 +250,13 @@ impl SavingsGoalContract {
         env.storage()
             .persistent()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("paused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("paused"),
+            (),
+        );
     }
 
     pub fn unpause(env: Env, caller: Address) {
@@ -267,8 +275,13 @@ impl SavingsGoalContract {
         env.storage()
             .persistent()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unpaused"),
+            (),
+        );
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
@@ -350,8 +363,11 @@ impl SavingsGoalContract {
         env.storage()
             .persistent()
             .set(&symbol_short!("VERSION"), &new_version);
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("upgraded")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("upgrd"),
             (prev, new_version),
         );
     }
@@ -398,8 +414,11 @@ impl SavingsGoalContract {
         goals.set(goal_id, goal);
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("tags_add")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_add"),
             (goal_id, caller.clone(), tags.clone()),
         );
 
@@ -444,8 +463,11 @@ impl SavingsGoalContract {
         goals.set(goal_id, goal);
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("tags_rem")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_rem"),
             (goal_id, caller.clone(), tags.clone()),
         );
 
@@ -514,16 +536,12 @@ impl SavingsGoalContract {
         Self::append_owner_goal_id(&env, &owner, next_id);
         Self::extend_storage_ttl(&env);
 
-        let event = GoalCreatedEvent {
-            goal_id: next_id,
-            name: goal.name.clone(),
-            target_amount,
-            target_date,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((GOAL_CREATED,), event);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalCreated),
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("goal"),
             (next_id, owner),
         );
 
@@ -595,33 +613,27 @@ impl SavingsGoalContract {
         goals.set(goal_id, goal.clone());
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
-        let funds_event = FundsAddedEvent {
-            goal_id,
-            amount,
-            new_total,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((FUNDS_ADDED,), funds_event);
-
         if was_completed && !previously_completed {
-            let completed_event = GoalCompletedEvent {
-                goal_id,
-                name: goal.name.clone(),
-                final_amount: new_total,
-                timestamp: env.ledger().timestamp(),
-            };
-            env.events().publish((GOAL_COMPLETED,), completed_event);
+            // goal completed logic handled by RemitwiseEvents::emit below
         }
 
         Self::append_audit(&env, symbol_short!("add"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::FundsAdded),
+        
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("added"),
             (goal_id, caller.clone(), amount),
         );
 
         if was_completed && !previously_completed {
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Goal,
+                EventPriority::High,
+                symbol_short!("compl"),
                 (goal_id, caller),
             );
         }
@@ -679,37 +691,30 @@ impl SavingsGoalContract {
             let was_completed = new_total >= goal.target_amount;
             let previously_completed = (new_total - item.amount) >= goal.target_amount;
             goals.set(item.goal_id, goal.clone());
-            let funds_event = FundsAddedEvent {
-                goal_id: item.goal_id,
-                amount: item.amount,
-                new_total,
-                timestamp: env.ledger().timestamp(),
-            };
-            env.events().publish((FUNDS_ADDED,), funds_event);
-            if was_completed && !previously_completed {
-                let completed_event = GoalCompletedEvent {
-                    goal_id: item.goal_id,
-                    name: goal.name.clone(),
-                    final_amount: new_total,
-                    timestamp: env.ledger().timestamp(),
-                };
-                env.events().publish((GOAL_COMPLETED,), completed_event);
-            }
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::FundsAdded),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::High,
+                symbol_short!("added"),
                 (item.goal_id, caller.clone(), item.amount),
             );
             if was_completed && !previously_completed {
-                env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Goal,
+                    EventPriority::High,
+                    symbol_short!("compl"),
                     (item.goal_id, caller.clone()),
                 );
             }
             count += 1;
         }
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("batch_add")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("batch"),
             (count, caller),
         );
         count
@@ -798,8 +803,11 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("withdraw"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::FundsWithdrawn),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("withdr"),
             (goal_id, caller, amount),
         );
 
@@ -835,8 +843,11 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalLocked),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("lock"),
             (goal_id, caller),
         );
 
@@ -872,8 +883,11 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalUnlocked),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unlock"),
             (goal_id, caller),
         );
 
@@ -1333,8 +1347,11 @@ impl SavingsGoalContract {
             .set(&symbol_short!("NEXT_SSCH"), &next_schedule_id);
         Self::extend_storage_ttl(&env);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleCreated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_crt"),
             (next_schedule_id, owner),
         );
 
@@ -1386,8 +1403,11 @@ impl SavingsGoalContract {
             .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleModified),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_mod"),
             (schedule_id, caller),
         );
 
@@ -1420,8 +1440,11 @@ impl SavingsGoalContract {
             .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleCancelled),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_can"),
             (schedule_id, caller),
         );
 
@@ -1460,14 +1483,20 @@ impl SavingsGoalContract {
                 let is_completed = goal.current_amount >= goal.target_amount;
                 goals.set(schedule.goal_id, goal.clone());
 
-                env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("added"),
                     (schedule.goal_id, goal.owner.clone(), schedule.amount),
                 );
 
                 if is_completed {
-                    env.events().publish(
-                        (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::Goal,
+                        EventPriority::High,
+                        symbol_short!("compl"),
                         (schedule.goal_id, goal.owner),
                     );
                 }
@@ -1486,8 +1515,11 @@ impl SavingsGoalContract {
                 schedule.next_due = next;
 
                 if missed > 0 {
-                    env.events().publish(
-                        (symbol_short!("savings"), SavingsEvent::ScheduleMissed),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::State,
+                        EventPriority::Low,
+                        symbol_short!("sch_mis"),
                         (schedule_id, missed),
                     );
                 }
@@ -1498,8 +1530,11 @@ impl SavingsGoalContract {
             schedules.set(schedule_id, schedule);
             executed.push_back(schedule_id);
 
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::ScheduleExecuted),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Medium,
+                symbol_short!("sch_exe"),
                 schedule_id,
             );
         }

@@ -58,7 +58,7 @@ fn test_end_to_end_flow() {
 
     // 3. Configure Split
     let nonce = 0;
-    split_client.initialize_split(&user, &nonce, &50, &30, &15, &5);
+    split_client.initialize_split(&user, &nonce, &Address::generate(&env), &50, &30, &15, &5);
 
     // Assuming we do an "allocate into goals/bills/insurance"
     // We create a sample goal

@@ -1,0 +1,112 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+integration_tests 
+--message-format=short 
+2>&1 | Out-Fil ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+remittance_split\src\lib
+.rs:12:7: warning: 
+constant 
+`SPLIT_INITIALIZED` is 
+never used
+savings_goals\src\lib.rs
+:11:7: warning: 
+constant `GOAL_CREATED` 
+is never used
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+bill_payments\src\lib.rs
+:426:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+bill_payments\src\lib.rs
+:503:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+warning: 
+`remittance_split` 
+(lib) generated 1 
+warning
+warning: 
+`savings_goals` (lib) 
+generated 1 warning
+warning: 
+`bill_payments` (lib) 
+generated 2 warnings 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 2 suggestions)
+insurance\src\lib.rs:64:
+1: error[E0255]: the 
+name `CONTRACT_VERSION` 
+is defined multiple 
+times: 
+`CONTRACT_VERSION` 
+redefined here
+insurance\src\lib.rs:62:
+1: error[E0255]: the 
+name 
+`INSTANCE_BUMP_AMOUNT` 
+is defined multiple 
+times: 
+`INSTANCE_BUMP_AMOUNT` 
+redefined here
+insurance\src\lib.rs:61:
+1: error[E0255]: the 
+name `INSTANCE_LIFETIME_
+THRESHOLD` is defined 
+multiple times: `INSTANC
+E_LIFETIME_THRESHOLD` 
+redefined here
+insurance\src\lib.rs:9:7
+1: warning: unused 
+imports: 
+`CONTRACT_VERSION`, 
+`INSTANCE_BUMP_AMOUNT`, 
+and `INSTANCE_LIFETIME_T
+HRESHOLD`
+warning: `insurance` 
+(lib) generated 1 
+warning
+error: could not 
+compile `insurance` 
+(lib) due to 3 previous 
+errors; 1 warning 
+emitted

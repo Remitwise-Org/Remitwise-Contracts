@@ -1,0 +1,92 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+integration_tests > 
+test_results.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused import: 
+`IntoVal`
+   --> integration_tests
+\tests\multi_contract_in
+tegration.rs:275:42
+    |
+275 | ...c, IntoVal};
+    |       ^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`integration_tests` 
+(test "multi_contract_in
+tegration") generated 1 
+warning (run `cargo fix 
+--test "multi_contract_i
+ntegration" -p 
+integration_tests` to 
+apply 1 suggestion)
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+1.82s
+     Running tests\multi
+_contract_integration.rs
+ (target\debug\deps\mult
+i_contract_integration-c
+c6c2496e6308256.exe)
+
+running 4 tests
+test test_split_with_rounding ... ok
+test test_multi_contract_user_flow ... ok
+test test_event_topic_compliance_across_contracts ... FAILED
+test test_multiple_entities_creation ... ok
+
+failures:
+
+---- test_event_topic_compliance_across_contracts stdout ----
+
+thread 'test_event_topic_compliance_across_contracts' (20760) panicked at integration_tests\tests\multi_contract_integration.rs:335:5:
+assertion `left == right` failed: Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.
+  left: 6
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test_event_topic_compliance_across_contracts" to "test_snapshots\\test_event_topic_compliance_across_contracts.1.json".
+
+
+failures:
+    test_event_topic_compliance_across_contracts
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+error: test failed, to 
+rerun pass `-p 
+integration_tests 
+--test multi_contract_in
+tegration`

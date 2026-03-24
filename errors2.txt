@@ -1,0 +1,174 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check --tests 
+-p remittance_split 
+2>&1 | Out-File 
+-FilePath err ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+error[E0061]: this 
+method takes 6 
+arguments but 7 
+arguments were supplied
+    --> remittance_split
+\src\lib.rs:1404:29
+     |
+1404 |         let 
+result = client.try_upda
+te_split(&other, &0, &Ad
+dress::generate(&env), 
+&40, &40, &10, &10);
+     |                  
+           
+^^^^^^^^^^^^^^^^        
+     -------------------
+----- unexpected 
+argument #3 of type 
+`&soroban_sdk::Address`
+     |
+note: method defined 
+here
+    --> remittance_split
+\src\lib.rs:368:12
+     |
+ 368 |     pub fn 
+update_split(
+     |            
+^^^^^^^^^^^^
+help: remove the extra 
+argument
+     |
+1404 -         let 
+result = client.try_upda
+te_split(&other, &0, &Ad
+dress::generate(&env), 
+&40, &40, &10, &10);
+1404 +         let 
+result = client.try_upda
+te_split(&other, &0, 
+&40, &40, &10, &10);
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 7 
+arguments were supplied
+    --> remittance_split
+\src\lib.rs:1425:29
+     |
+1425 |         let 
+result = client.try_upda
+te_split(&owner, &1, &Ad
+dress::generate(&env), 
+&60, &30, &15, &5);
+     |                  
+           
+^^^^^^^^^^^^^^^^        
+     -------------------
+----- unexpected 
+argument #3 of type 
+`&soroban_sdk::Address`
+     |
+note: method defined 
+here
+    --> remittance_split
+\src\lib.rs:368:12
+     |
+ 368 |     pub fn 
+update_split(
+     |            
+^^^^^^^^^^^^
+help: remove the extra 
+argument
+     |
+1425 -         let 
+result = client.try_upda
+te_split(&owner, &1, &Ad
+dress::generate(&env), 
+&60, &30, &15, &5);
+1425 +         let 
+result = client.try_upda
+te_split(&owner, &1, 
+&60, &30, &15, &5);
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 7 
+arguments were supplied
+    --> remittance_split
+\src\lib.rs:1432:30
+     |
+1432 |         let 
+result2 = client.try_upd
+ate_split(&owner, &1, &A
+ddress::generate(&env), 
+&10, &10, &10, &10);
+     |                  
+            
+^^^^^^^^^^^^^^^^        
+     -------------------
+----- unexpected 
+argument #3 of type 
+`&soroban_sdk::Address`
+     |
+note: method defined 
+here
+    --> remittance_split
+\src\lib.rs:368:12
+     |
+ 368 |     pub fn 
+update_split(
+     |            
+^^^^^^^^^^^^
+help: remove the extra 
+argument
+     |
+1432 -         let 
+result2 = client.try_upd
+ate_split(&owner, &1, &A
+ddress::generate(&env), 
+&10, &10, &10, &10);
+1432 +         let 
+result2 = client.try_upd
+ate_split(&owner, &1, 
+&10, &10, &10, &10);
+     |
+
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+error: could not 
+compile 
+`remittance_split` (lib 
+test) due to 3 previous 
+errors

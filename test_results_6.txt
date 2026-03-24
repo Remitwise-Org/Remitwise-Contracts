@@ -1,0 +1,112 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check -p 
+integration_tests 
+--tests 
+--message-format=short 
+2>&1  ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+bill_payments\src\lib.rs
+:426:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+bill_payments\src\lib.rs
+:503:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+remittance_split\src\lib
+.rs:15:7: warning: 
+constant 
+`SPLIT_INITIALIZED` is 
+never used
+savings_goals\src\lib.rs
+:14:7: warning: 
+constant `GOAL_CREATED` 
+is never used
+warning: 
+`bill_payments` (lib) 
+generated 2 warnings 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 2 suggestions)
+warning: 
+`remittance_split` 
+(lib) generated 1 
+warning
+warning: 
+`savings_goals` (lib) 
+generated 1 warning
+insurance\src\lib.rs:26:
+7: warning: constant 
+`POLICY_CREATED` is 
+never used
+warning: `insurance` 
+(lib) generated 1 
+warning
+    Checking 
+integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)
+integration_tests\tests\
+multi_contract_integrati
+on.rs:275:42: warning: 
+unused import: `IntoVal`
+integration_tests\tests\
+multi_contract_integrati
+on.rs:302:26: 
+error[E0061]: this 
+method takes 8 
+arguments but 5 
+arguments were supplied
+warning: 
+`integration_tests` 
+(test "multi_contract_in
+tegration") generated 1 
+warning
+error: could not 
+compile 
+`integration_tests` 
+(test "multi_contract_in
+tegration") due to 1 
+previous error; 1 
+warning emitted

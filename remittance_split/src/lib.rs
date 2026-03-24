@@ -6,6 +6,11 @@ use soroban_sdk::{
     Address, Env, Map, Symbol, Vec,
 };
 
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD,
+};
+
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
 const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
@@ -58,9 +63,7 @@ pub struct AccountGroup {
     pub insurance: Address,
 }
 
-// Storage TTL constants
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+// Storage TTL constants moved to remitwise-common
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -205,8 +208,13 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("split"), symbol_short!("paused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("paused"),
+            (),
+        );
         Ok(())
     }
     pub fn unpause(env: Env, caller: Address) -> Result<(), RemittanceSplitError> {
@@ -223,8 +231,13 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events()
-            .publish((symbol_short!("split"), symbol_short!("unpaused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unpaused"),
+            (),
+        );
         Ok(())
     }
     pub fn is_paused(env: Env) -> bool {
@@ -277,8 +290,11 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
-        env.events().publish(
-            (symbol_short!("split"), symbol_short!("upgraded")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("upgrd"),
             (prev, new_version),
         );
         Ok(())
@@ -359,8 +375,15 @@ impl RemittanceSplit {
 
         Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::Initialized), owner);
+        
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("init"),
+            owner,
+        );
 
         Ok(true)
     }
@@ -416,16 +439,14 @@ impl RemittanceSplit {
             ],
         );
 
-        let event = SplitInitializedEvent {
-            spending_percent,
-            savings_percent,
-            bills_percent,
-            insurance_percent,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((SPLIT_INITIALIZED,), event);
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::Updated), caller);
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("update"),
+            caller,
+        );
 
         Ok(true)
     }
@@ -484,17 +505,12 @@ impl RemittanceSplit {
 
         // Emit SplitCalculated event
 
-        let event = SplitCalculatedEvent {
-            total_amount,
-            spending_amount: spending,
-            savings_amount: savings,
-            bills_amount: bills,
-            insurance_amount: insurance,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((SPLIT_CALCULATED,), event);
-        env.events().publish(
-            (symbol_short!("split"), SplitEvent::Calculated),
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Low,
+            symbol_short!("calc"),
             total_amount,
         );
 
@@ -603,8 +619,11 @@ impl RemittanceSplit {
         // 10. Advance nonce, record audit, emit event.
         Self::increment_nonce(&env, &from)?;
         Self::append_audit(&env, symbol_short!("distrib"), &from, true);
-        env.events().publish(
-            (symbol_short!("split"), SplitEvent::DistributionCompleted),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("dist_ok"),
             (from, total_amount),
         );
 
@@ -861,9 +880,11 @@ impl RemittanceSplit {
                 insurance_amount: insurance,
                 timestamp: env.ledger().timestamp(),
             };
-            env.events().publish((SPLIT_CALCULATED,), event);
-            env.events().publish(
-                (symbol_short!("split"), SplitEvent::Calculated),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Low,
+                symbol_short!("calc"),
                 total_amount,
             );
         }
@@ -932,8 +953,11 @@ impl RemittanceSplit {
             .instance()
             .set(&symbol_short!("NEXT_RSCH"), &next_schedule_id);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Created),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_crt"),
             (next_schedule_id, owner),
         );
 
@@ -985,8 +1009,11 @@ impl RemittanceSplit {
             .instance()
             .set(&symbol_short!("REM_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Modified),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_mod"),
             (schedule_id, caller),
         );
 
@@ -1023,8 +1050,11 @@ impl RemittanceSplit {
             .instance()
             .set(&symbol_short!("REM_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Cancelled),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_can"),
             (schedule_id, caller),
         );
 
@@ -1071,7 +1101,7 @@ mod test {
         setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
 
         // Initialize split
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Verify event was emitted
@@ -1088,7 +1118,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Initialize split first
-        client.initialize_split(&owner, &0, &40, &30, &20, &10);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &20, &10);
 
         // Get events before calculating
         let events_before = env.events().all().len();
@@ -1115,7 +1145,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Initialize split
-        client.initialize_split(&owner, &0, &50, &25, &15, &10);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &25, &15, &10);
 
         // Calculate split twice
         client.calculate_split(&2000);
@@ -1164,7 +1194,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // initialize_split calls extend_instance_ttl
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
@@ -1200,7 +1230,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // Advance ledger so TTL drops below threshold (17,280)
         // After init: live_until = 518,500. At seq 510,000: TTL = 8,500
@@ -1250,7 +1280,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Phase 1: Initialize at seq 100. live_until = 518,500
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
         env.ledger().set(LedgerInfo {
@@ -1315,7 +1345,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result, "initialize_split should return true on success");
 
         let config = client
@@ -1341,7 +1371,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Should panic because owner has not authorized
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
     }
 
     /// ### 3. test_initialize_split_percentages_must_sum_to_100
@@ -1355,14 +1385,14 @@ mod test {
         let owner = Address::generate(&env);
 
         // 40 + 30 + 15 + 5 = 90, not 100
-        let result = client.try_initialize_split(&owner, &0, &40, &30, &15, &5);
+        let result = client.try_initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &15, &5);
         assert_eq!(
             result,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
         );
 
         // 50 + 50 + 10 + 0 = 110, not 100
-        let result2 = client.try_initialize_split(&owner, &0, &50, &50, &10, &0);
+        let result2 = client.try_initialize_split(&owner, &0, &Address::generate(&env), &50, &50, &10, &0);
         assert_eq!(
             result2,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
@@ -1380,10 +1410,10 @@ mod test {
         let owner = Address::generate(&env);
 
         // First init succeeds
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // Second init must fail with AlreadyInitialized
-        let result = client.try_initialize_split(&owner, &1, &50, &30, &15, &5);
+        let result = client.try_initialize_split(&owner, &1, &Address::generate(&env), &50, &30, &15, &5);
         assert_eq!(result, Err(Ok(RemittanceSplitError::AlreadyInitialized)));
     }
 
@@ -1398,7 +1428,7 @@ mod test {
         let owner = Address::generate(&env);
         let other = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // other address is not the owner — must fail
         let result = client.try_update_split(&other, &0, &40, &40, &10, &10);
@@ -1419,7 +1449,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // 60 + 30 + 15 + 5 = 110 — invalid
         let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
@@ -1475,7 +1505,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         let config = client.get_config();
         assert!(config.is_some(), "get_config should be Some after init");
@@ -1502,7 +1532,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // 50 / 30 / 15 / 5
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         let amounts = client.calculate_split(&1000);
         assert_eq!(amounts.len(), 4);
@@ -1526,7 +1556,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // Zero
         let result_zero = client.try_calculate_split(&0);
@@ -1556,7 +1586,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Use percentages that cause integer division remainders: 33/33/33/1
-        client.initialize_split(&owner, &0, &33, &33, &33, &1);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &33, &33, &33, &1);
 
         // total = 100: 33+33+33 = 99, insurance gets remainder = 1
         let amounts = client.calculate_split(&100);
@@ -1585,7 +1615,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // --- initialize_split event ---
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         let events_after_init = env.events().all();
         assert!(

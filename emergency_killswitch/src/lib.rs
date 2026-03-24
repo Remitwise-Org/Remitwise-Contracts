@@ -1,6 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, Env, Symbol};
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 // ---------------------------------------------------------------------------
 // Storage Keys
@@ -36,8 +37,13 @@ pub enum Error {
 
 /// Thin helper – keeps event topic construction in one place.
 fn emit(env: &Env, action: Symbol) {
-    env.events()
-        .publish((symbol_short!("killswtch"), action), ());
+    RemitwiseEvents::emit(
+        env,
+        EventCategory::System,
+        EventPriority::High,
+        action,
+        (),
+    );
 }
 
 // ---------------------------------------------------------------------------

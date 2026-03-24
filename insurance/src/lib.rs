@@ -6,6 +6,8 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -55,11 +57,7 @@ pub struct PolicyDeactivatedEvent {
     pub timestamp: u64,
 }
 
-// Storage TTL constants
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-
-const CONTRACT_VERSION: u32 = 1;
+// Storage TTL constants moved to remitwise-common
 const MAX_BATCH_SIZE: u32 = 50;
 const STORAGE_PREMIUM_TOTALS: Symbol = symbol_short!("PRM_TOT");
 
@@ -213,8 +211,13 @@ impl Insurance {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("insure"), symbol_short!("paused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("paused"),
+            (),
+        );
         Ok(())
     }
 
@@ -234,8 +237,13 @@ impl Insurance {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events()
-            .publish((symbol_short!("insure"), symbol_short!("unpaused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unpaused"),
+            (),
+        );
         Ok(())
     }
 
@@ -336,8 +344,11 @@ impl Insurance {
         env.storage()
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
-        env.events().publish(
-            (symbol_short!("insure"), symbol_short!("upgraded")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("upgrd"),
             (prev, new_version),
         );
         Ok(())
@@ -386,8 +397,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("POLICIES"), &policies);
 
-        env.events().publish(
-            (symbol_short!("insure"), symbol_short!("tags_add")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_add"),
             (policy_id, caller, tags),
         );
     }
@@ -431,8 +445,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("POLICIES"), &policies);
 
-        env.events().publish(
-            (symbol_short!("insure"), symbol_short!("tags_rem")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_rem"),
             (policy_id, caller, tags),
         );
     }
@@ -512,20 +529,12 @@ impl Insurance {
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::adjust_active_premium_total(&env, &owner, monthly_premium);
 
-        env.events().publish(
-            (POLICY_CREATED,),
-            PolicyCreatedEvent {
-                policy_id: next_id,
-                name,
-                coverage_type,
-                monthly_premium,
-                coverage_amount,
-                timestamp: env.ledger().timestamp(),
-            },
-        );
-
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::PolicyCreated),
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("policy"),
             (next_id, owner),
         );
 
@@ -570,16 +579,12 @@ impl Insurance {
 
         policy.next_payment_date = env.ledger().timestamp() + (30 * 86400);
 
-        let event = PremiumPaidEvent {
-            policy_id,
-            name: policy.name.clone(),
-            amount: policy.monthly_premium,
-            next_payment_date: policy.next_payment_date,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((PREMIUM_PAID,), event);
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::PremiumPaid),
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("paid"),
             (policy_id, caller.clone()),
         );
 
@@ -629,16 +634,11 @@ impl Insurance {
                 .get(id)
                 .unwrap_or_else(|| panic!("Policy not found"));
             policy.next_payment_date = current_time + (30 * 86400);
-            let event = PremiumPaidEvent {
-                policy_id: id,
-                name: policy.name.clone(),
-                amount: policy.monthly_premium,
-                next_payment_date: policy.next_payment_date,
-                timestamp: current_time,
-            };
-            env.events().publish((PREMIUM_PAID,), event);
-            env.events().publish(
-                (symbol_short!("insure"), InsuranceEvent::PremiumPaid),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::High,
+                symbol_short!("paid"),
                 (id, caller.clone()),
             );
             policies_map.set(id, policy);
@@ -647,8 +647,11 @@ impl Insurance {
         env.storage()
             .instance()
             .set(&symbol_short!("POLICIES"), &policies_map);
-        env.events().publish(
-            (symbol_short!("insure"), symbol_short!("batch_pay")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("batch"),
             (paid_count, caller),
         );
         Ok(paid_count)
@@ -798,14 +801,11 @@ impl Insurance {
             Self::adjust_active_premium_total(&env, &caller, -premium_amount);
         }
 
-        let event = PolicyDeactivatedEvent {
-            policy_id,
-            name: policy.name.clone(),
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((POLICY_DEACTIVATED,), event);
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::PolicyDeactivated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("deact"),
             (policy_id, caller),
         );
 
@@ -841,8 +841,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("POLICIES"), &policies);
 
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::ExternalRefUpdated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("ext_ref"),
             (policy_id, caller, external_ref),
         );
 
@@ -957,8 +960,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("POLICIES"), &policies);
 
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::ScheduleCreated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_crt"),
             (next_schedule_id, owner),
         );
 
@@ -1006,8 +1012,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("PREM_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::ScheduleModified),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_mod"),
             (schedule_id, caller),
         );
 
@@ -1046,8 +1055,11 @@ impl Insurance {
             .instance()
             .set(&symbol_short!("PREM_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("insure"), InsuranceEvent::ScheduleCancelled),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Alert,
+            EventPriority::Medium,
+            symbol_short!("sch_can"),
             (schedule_id, caller),
         );
 
@@ -1083,8 +1095,11 @@ impl Insurance {
                     policy.next_payment_date = current_time + (30 * 86400);
                     policies.set(schedule.policy_id, policy.clone());
 
-                    env.events().publish(
-                        (symbol_short!("insure"), InsuranceEvent::PremiumPaid),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::Transaction,
+                        EventPriority::Medium,
+                        symbol_short!("paid"),
                         (schedule.policy_id, policy.owner),
                     );
                 }
@@ -1103,8 +1118,11 @@ impl Insurance {
                 schedule.next_due = next;
 
                 if missed > 0 {
-                    env.events().publish(
-                        (symbol_short!("insure"), InsuranceEvent::ScheduleMissed),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::Alert,
+                        EventPriority::High,
+                        symbol_short!("missed"),
                         (schedule_id, missed),
                     );
                 }
@@ -1115,8 +1133,11 @@ impl Insurance {
             schedules.set(schedule_id, schedule);
             executed.push_back(schedule_id);
 
-            env.events().publish(
-                (symbol_short!("insure"), InsuranceEvent::ScheduleExecuted),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::System,
+                EventPriority::Low,
+                symbol_short!("exec"),
                 schedule_id,
             );
         }

@@ -433,11 +433,7 @@ impl BillPayments {
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
-        // Emit event for audit trail
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::Created),
-            (next_id, bill_owner.clone(), bill_external_ref),
-        );
+        // Emit event for audit trail using Remitwise compliant schema
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -515,11 +511,7 @@ impl BillPayments {
             Self::adjust_unpaid_total(&env, &caller, -paid_amount);
         }
 
-        // Emit event for audit trail
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::Paid),
-            (bill_id, caller.clone(), bill_external_ref),
-        );
+        // Emit event for audit trail using Remitwise compliant schema
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -743,8 +735,11 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::ExternalRefUpdated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("ext_ref"),
             (bill_id, caller, external_ref),
         );
 

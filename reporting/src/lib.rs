@@ -4,7 +4,10 @@ use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
 };
 
-use remitwise_common::Category;
+use remitwise_common::{
+    Category, EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD,
+};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
@@ -403,8 +406,11 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("ADDRS"), &addresses);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::AddressesConfigured),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("addr_ok"),
             caller,
         );
 
@@ -697,8 +703,11 @@ impl ReportingContract {
 
         let generated_at = env.ledger().timestamp();
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportGenerated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("rep_gen"),
             generated_at,
         );
 
@@ -758,8 +767,11 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("REPORTS"), &reports);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportStored),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("rep_str"),
             (user, period_key),
         );
 
@@ -874,8 +886,11 @@ impl ReportingContract {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportsArchived),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("arch_ok"),
             (archived_count, caller),
         );
 
@@ -969,8 +984,11 @@ impl ReportingContract {
 
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ArchivesCleaned),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("arch_cln"),
             (deleted_count, caller),
         );
 
