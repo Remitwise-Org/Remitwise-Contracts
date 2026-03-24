@@ -5,11 +5,11 @@ edition = "2021"
 publish = false
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "21.1.1"
 remittance_split = { path = "../remittance_split" }
 savings_goals = { path = "../savings_goals" }
 bill_payments = { path = "../bill_payments" }
 insurance = { path = "../insurance" }
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "21.1.1", features = ["testutils"] }

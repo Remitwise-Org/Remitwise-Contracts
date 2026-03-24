@@ -35,7 +35,7 @@ default-members = [
 resolver = "2"
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "21.1.1"
 remittance_split = { path = "./remittance_split" }
 savings_goals = { path = "./savings_goals" }
 bill_payments = { path = "./bill_payments" }
@@ -45,10 +45,9 @@ reporting = { path = "./reporting" }
 orchestrator = { path = "./orchestrator" }
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "21.1.1", features = ["testutils"] }
 
 [patch.crates-io]
-ed25519-dalek = { version = "=2.1.1" }
 
 [profile.release]
 opt-level = "z"

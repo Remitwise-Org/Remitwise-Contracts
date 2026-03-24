@@ -1784,3 +1784,275 @@ fn test_get_all_goals_filters_by_owner() {
         }
     }
 }
+
+// ============================================================================
+// Batch Atomicity Tests
+//
+// These tests verify the atomicity guarantees of batch_add_to_goals:
+// - All-or-nothing semantics: either all contributions succeed or none do
+// - Comprehensive validation upfront prevents partial failures
+// - Proper event emission for batch start/completion/failure
+// ============================================================================
+
+/// Test successful batch with multiple goals and goal completions
+#[test]
+fn test_batch_add_to_goals_atomic_success() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    // Create multiple goals
+    let goal1_id = client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &2000000000);
+    let goal2_id = client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &2000000000);
+    let goal3_id = client.create_goal(&user, &String::from_str(&env, "Goal 3"), &500, &2000000000);
+
+    // Prepare batch contributions
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id: goal1_id, amount: 500 },  // Goal 1: 500/1000
+        ContributionItem { goal_id: goal2_id, amount: 1500 }, // Goal 2: 1500/2000
+        ContributionItem { goal_id: goal3_id, amount: 600 },  // Goal 3: 600/500 (completes)
+    ]);
+
+    // Execute batch
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 3);
+
+    // Verify all goals were updated
+    let goal1 = client.get_goal(&goal1_id).unwrap();
+    let goal2 = client.get_goal(&goal2_id).unwrap();
+    let goal3 = client.get_goal(&goal3_id).unwrap();
+
+    assert_eq!(goal1.current_amount, 500);
+    assert_eq!(goal2.current_amount, 1500);
+    assert_eq!(goal3.current_amount, 600);
+
+    // Verify goal 3 was completed
+    assert!(client.is_goal_completed(&goal3_id));
+}
+
+/// Test batch validation failure prevents any processing
+#[test]
+fn test_batch_add_to_goals_validation_failure_no_partial_updates() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    // Create one valid goal
+    let valid_goal_id = client.create_goal(&user, &String::from_str(&env, "Valid Goal"), &1000, &2000000000);
+
+    // Create another user and their goal
+    let other_user = Address::generate(&env);
+    let invalid_goal_id = client.create_goal(&other_user, &String::from_str(&env, "Other User's Goal"), &1000, &2000000000);
+
+    // Prepare batch with mix of valid and invalid contributions
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id: valid_goal_id, amount: 100 },  // Valid
+        ContributionItem { goal_id: invalid_goal_id, amount: 200 }, // Invalid: wrong owner
+        ContributionItem { goal_id: valid_goal_id, amount: 300 },   // Valid but duplicate goal_id
+    ]);
+
+    // Get initial state
+    let initial_goal = client.get_goal(&valid_goal_id).unwrap();
+    let initial_amount = initial_goal.current_amount;
+
+    // Execute batch - should fail validation
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_err());
+
+    // Verify no goals were updated (atomicity)
+    let final_goal = client.get_goal(&valid_goal_id).unwrap();
+    assert_eq!(final_goal.current_amount, initial_amount);
+}
+
+/// Test batch size limit enforcement
+#[test]
+fn test_batch_add_to_goals_size_limit() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    // Create MAX_BATCH_SIZE + 1 goals
+    let mut contributions = Vec::new(&env);
+    for i in 1..=51 { // MAX_BATCH_SIZE is 50
+        let goal_id = client.create_goal(&user, &String::from_str(&env, &format!("Goal {}", i)), &1000, &2000000000);
+        contributions.push_back(ContributionItem { goal_id, amount: 100 });
+    }
+
+    // Batch should be rejected
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_err());
+}
+
+/// Test empty batch handling
+#[test]
+fn test_batch_add_to_goals_empty_batch() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    let contributions = Vec::new(&env);
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 0);
+}
+
+/// Test batch with invalid contribution amounts
+#[test]
+fn test_batch_add_to_goals_invalid_amounts() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "Goal"), &1000, &2000000000);
+
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id, amount: 100 },  // Valid
+        ContributionItem { goal_id, amount: 0 },    // Invalid: zero
+        ContributionItem { goal_id, amount: -50 },  // Invalid: negative
+    ]);
+
+    // Get initial state
+    let initial_goal = client.get_goal(&goal_id).unwrap();
+    let initial_amount = initial_goal.current_amount;
+
+    // Batch should fail validation
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_err());
+
+    // Verify no updates occurred
+    let final_goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(final_goal.current_amount, initial_amount);
+}
+
+/// Test batch overflow protection
+#[test]
+fn test_batch_add_to_goals_overflow_protection() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "Goal"), &i128::MAX, &2000000000);
+
+    // Set goal to almost max
+    client.add_to_goal(&user, goal_id, i128::MAX - 1000).unwrap();
+
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id, amount: 500 },  // This would overflow
+    ]);
+
+    // Get initial state
+    let initial_goal = client.get_goal(&goal_id).unwrap();
+    let initial_amount = initial_goal.current_amount;
+
+    // Batch should fail during processing
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_err());
+
+    // Verify no updates occurred (atomicity)
+    let final_goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(final_goal.current_amount, initial_amount);
+}
+
+/// Test batch event emission for successful operation
+#[test]
+fn test_batch_add_to_goals_event_emission_success() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    // Create goals
+    let goal1_id = client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &2000000000);
+    let goal2_id = client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &2000000000);
+
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id: goal1_id, amount: 500 },
+        ContributionItem { goal_id: goal2_id, amount: 1000 },
+    ]);
+
+    // Clear previous events
+    env.events().all().clear();
+
+    // Execute batch
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_ok());
+
+    // Check events
+    let events = env.events().all();
+
+    // Should have: BatchStarted, FundsAdded(x2), BatchCompleted
+    assert!(events.len() >= 4);
+
+    // Find batch events
+    let batch_started_events: Vec<_> = events.iter()
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_start"))
+        .collect();
+    let batch_completed_events: Vec<_> = events.iter()
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_done"))
+        .collect();
+
+    assert_eq!(batch_started_events.len(), 1);
+    assert_eq!(batch_completed_events.len(), 1);
+}
+
+/// Test batch event emission for failed operation
+#[test]
+fn test_batch_add_to_goals_event_emission_failure() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "Goal"), &1000, &2000000000);
+
+    // Create invalid batch (negative amount)
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id, amount: -100 },
+    ]);
+
+    // Clear previous events
+    env.events().all().clear();
+
+    // Execute batch - should fail
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_err());
+
+    // Check events - should have BatchStarted and BatchFailed
+    let events = env.events().all();
+
+    let batch_started_events: Vec<_> = events.iter()
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_start"))
+        .collect();
+    let batch_failed_events: Vec<_> = events.iter()
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("batch_fail"))
+        .collect();
+
+    assert_eq!(batch_started_events.len(), 1);
+    assert_eq!(batch_failed_events.len(), 1);
+}
+
+/// Test batch with goal completions emits correct events
+#[test]
+fn test_batch_add_to_goals_goal_completion_events() {
+    setup_test_env!(env, SavingsGoalContract, client, user);
+    client.init();
+
+    // Create goals where one will complete
+    let goal1_id = client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &2000000000);
+    let goal2_id = client.create_goal(&user, &String::from_str(&env, "Goal 2"), &500, &2000000000);
+
+    // Add to goal2 to set it up for completion
+    client.add_to_goal(&user, goal2_id, 300).unwrap(); // Now at 300/500
+
+    let contributions = Vec::from_array(&env, [
+        ContributionItem { goal_id: goal1_id, amount: 200 },
+        ContributionItem { goal_id: goal2_id, amount: 200 }, // Completes goal2: 500/500
+    ]);
+
+    // Clear previous events
+    env.events().all().clear();
+
+    // Execute batch
+    let result = client.batch_add_to_goals(&user, &contributions);
+    assert!(result.is_ok());
+
+    // Check for goal completion events
+    let events = env.events().all();
+    let completion_events: Vec<_> = events.iter()
+        .filter(|e| e.1.get(0).unwrap() == symbol_short!("completed"))
+        .collect();
+
+    // Should have one completion event for goal2
+    assert_eq!(completion_events.len(), 1);
+}

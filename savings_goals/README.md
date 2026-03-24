@@ -16,6 +16,48 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Access control for goal management
 - Event emission for audit trails
 - Storage TTL management
+- **Batch atomic operations**: All-or-nothing fund additions to multiple goals with comprehensive validation
+
+## Batch Atomicity
+
+The `batch_add_to_goals` function provides atomic batch funding operations with the following guarantees:
+
+### Atomicity Semantics
+- **All-or-nothing execution**: Either all contributions succeed or none do
+- **Upfront validation**: All inputs are validated before any storage modifications
+- **Rollback on failure**: If any contribution fails, no changes are persisted
+
+### Security Features
+- **Overflow protection**: Prevents integer overflow in goal balances
+- **Authorization checks**: Verifies caller owns all target goals
+- **Amount validation**: Ensures positive contribution amounts
+- **Size limits**: Maximum 50 goals per batch to prevent gas exhaustion
+
+### Event Emission
+- `BatchStartedEvent`: Emitted when batch processing begins
+- `FundsAdded`: Emitted for each successful contribution
+- `GoalCompleted`: Emitted when goals reach their targets
+- `BatchCompletedEvent`: Emitted when all contributions succeed
+- `BatchFailedEvent`: Emitted if batch processing fails
+
+### Usage Example
+```rust
+// Prepare batch contributions
+let contributions = Vec::from_array(&env, [
+    ContributionItem { goal_id: goal1_id, amount: 500 },
+    ContributionItem { goal_id: goal2_id, amount: 1000 },
+    ContributionItem { goal_id: goal3_id, amount: 250 },
+]);
+
+// Execute atomic batch
+let processed_count = client.batch_add_to_goals(&user, &contributions)?;
+assert_eq!(processed_count, 3); // All contributions succeeded
+```
+
+### Error Handling
+- `BatchTooLarge`: Exceeds maximum batch size (50 goals)
+- `BatchValidationFailed`: Invalid contribution data or authorization failure
+- `InsufficientBalance`: (Future use - not currently triggered in batch context)
 
 ## Quickstart
 
@@ -67,6 +109,17 @@ pub struct SavingsGoal {
     pub locked: bool,
 }
 ```
+
+#### ContributionItem
+
+```rust
+pub struct ContributionItem {
+    pub goal_id: u32,
+    pub amount: i128,
+}
+```
+
+Used in batch operations to specify goal contributions.
 
 ### Functions
 
@@ -120,6 +173,23 @@ Withdraws funds from a savings goal.
 **Returns:** Updated current amount
 
 **Panics:** If caller not owner, goal locked, insufficient balance, etc.
+
+#### `batch_add_to_goals(env, caller, contributions) -> Result<u32, SavingsGoalsError>`
+
+Atomically adds funds to multiple savings goals with all-or-nothing semantics.
+
+**Parameters:**
+
+- `caller`: Address of the caller (must own all goals)
+- `contributions`: Vector of ContributionItem structs (max 50 items)
+
+**Returns:** Number of successful contributions (same as input length on success)
+
+**Errors:**
+- `BatchTooLarge`: More than 50 contributions
+- `BatchValidationFailed`: Invalid data or authorization failure
+
+**Atomicity:** All contributions succeed or none do. Comprehensive validation occurs before any storage changes.
 
 #### `lock_goal(env, caller, goal_id) -> bool`
 
@@ -222,6 +292,26 @@ let remaining = savings_goals::withdraw_from_goal(
 );
 ```
 
+### Batch Funding
+
+```rust
+// Create multiple goals
+let emergency_id = savings_goals::create_goal(env, user, "Emergency", 1000_0000000, future_date);
+let vacation_id = savings_goals::create_goal(env, user, "Vacation", 2000_0000000, future_date);
+let education_id = savings_goals::create_goal(env, user, "Education", 5000_0000000, future_date);
+
+// Prepare batch contributions
+let contributions = Vec::from_array(&env, [
+    ContributionItem { goal_id: emergency_id, amount: 500_0000000 },
+    ContributionItem { goal_id: vacation_id, amount: 1000_0000000 },
+    ContributionItem { goal_id: education_id, amount: 2000_0000000 },
+]);
+
+// Execute atomic batch - all succeed or none do
+let processed = savings_goals::batch_add_to_goals(env, user, contributions)?;
+assert_eq!(processed, 3);
+```
+
 ### Querying Goals
 
 ```rust
@@ -240,6 +330,9 @@ let completed = savings_goals::is_goal_completed(env, goal_id);
 - `SavingsEvent::GoalCompleted`: When goal reaches target
 - `SavingsEvent::GoalLocked`: When goal is locked
 - `SavingsEvent::GoalUnlocked`: When goal is unlocked
+- `BatchStartedEvent`: When batch processing begins
+- `BatchCompletedEvent`: When batch processing succeeds
+- `BatchFailedEvent`: When batch processing fails
 
 ## Integration Patterns
 
@@ -272,3 +365,6 @@ let vacation_id = savings_goals::create_goal(env, user, "Vacation", 2000_0000000
 - Input validation for amounts and ownership
 - Balance checks prevent overdrafts
 - Access control ensures user data isolation
+- **Batch atomicity**: All-or-nothing execution prevents partial state corruption
+- **Batch size limits**: Prevents gas exhaustion and DoS attacks
+- **Overflow protection**: Prevents integer overflow in batch operations

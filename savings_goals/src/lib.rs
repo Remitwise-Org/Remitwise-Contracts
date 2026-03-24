@@ -9,6 +9,9 @@ use soroban_sdk::{
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const FUNDS_ADDED: Symbol = symbol_short!("added");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+const BATCH_STARTED: Symbol = symbol_short!("batch_start");
+const BATCH_COMPLETED: Symbol = symbol_short!("batch_done");
+const BATCH_FAILED: Symbol = symbol_short!("batch_fail");
 
 #[derive(Clone)]
 #[contracttype]
@@ -35,6 +38,35 @@ pub struct GoalCompletedEvent {
     pub goal_id: u32,
     pub name: String,
     pub final_amount: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BatchStartedEvent {
+    pub caller: Address,
+    pub contribution_count: u32,
+    pub total_amount: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BatchCompletedEvent {
+    pub caller: Address,
+    pub processed_count: u32,
+    pub total_amount: i128,
+    pub completed_goals: Vec<u32>,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BatchFailedEvent {
+    pub caller: Address,
+    pub attempted_count: u32,
+    pub failed_at_index: u32,
+    pub error_reason: Symbol,
     pub timestamp: u64,
 }
 
@@ -96,6 +128,10 @@ pub enum SavingsGoalsError {
     GoalLocked = 4,
     InsufficientBalance = 5,
     Overflow = 6,
+    BatchTooLarge = 7,
+    BatchValidationFailed = 8,
+    BatchProcessingFailed = 9,
+    InvalidContributionAmount = 10,
 }
 
 impl From<SavingsGoalsError> for soroban_sdk::Error {
@@ -122,6 +158,22 @@ impl From<SavingsGoalsError> for soroban_sdk::Error {
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
             SavingsGoalsError::Overflow => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
+            )),
+            SavingsGoalsError::BatchTooLarge => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
+            )),
+            SavingsGoalsError::BatchValidationFailed => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
+            )),
+            SavingsGoalsError::BatchProcessingFailed => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidAction,
+            )),
+            SavingsGoalsError::InvalidContributionAmount => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
@@ -155,6 +207,9 @@ pub enum SavingsEvent {
     ScheduleMissed,
     ScheduleModified,
     ScheduleCancelled,
+    BatchStarted,
+    BatchCompleted,
+    BatchFailed,
 }
 
 #[contracttype]
@@ -205,6 +260,10 @@ pub enum SavingsGoalError {
     GoalLocked = 3,
     Unauthorized = 4,
     TargetAmountMustBePositive = 5,
+    BatchTooLarge = 6,
+    BatchValidationFailed = 7,
+    BatchProcessingFailed = 8,
+    InvalidContributionAmount = 9,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -702,90 +761,171 @@ impl SavingsGoalContract {
         env: Env,
         caller: Address,
         contributions: Vec<ContributionItem>,
-    ) -> u32 {
+    ) -> Result<u32, SavingsGoalsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
-        if contributions.len() > MAX_BATCH_SIZE {
-            panic!("Batch too large");
+
+        // Validate batch size
+        if contributions.len() > MAX_BATCH_SIZE as usize {
+            return Err(SavingsGoalsError::BatchTooLarge);
         }
+
+        let contribution_count = contributions.len() as u32;
+        if contribution_count == 0 {
+            return Ok(0);
+        }
+
+        // Load goals map once
         let goals_map: Map<u32, SavingsGoal> = env
             .storage()
             .instance()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
-        for item in contributions.iter() {
+
+        // Phase 1: Comprehensive validation
+        let mut total_amount: i128 = 0;
+        let mut goal_ids = Vec::new(&env);
+
+        for (index, item) in contributions.iter().enumerate() {
+            // Validate contribution amount
             if item.amount <= 0 {
-                panic!("Amount must be positive");
+                return Err(SavingsGoalsError::InvalidContributionAmount);
             }
+
+            // Check for overflow in total
+            total_amount = match total_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => return Err(SavingsGoalsError::BatchProcessingFailed),
+            };
+
+            // Validate goal exists and caller owns it
             let goal = match goals_map.get(item.goal_id) {
                 Some(g) => g,
-                None => panic!("Goal not found"),
+                None => return Err(SavingsGoalsError::GoalNotFound);
             };
+
             if goal.owner != caller {
-                panic!("Not owner of all goals");
+                return Err(SavingsGoalsError::Unauthorized);
             }
+
+            // Track goal IDs for duplicate checking
+            if goal_ids.contains(&item.goal_id) {
+                return Err(SavingsGoalsError::BatchValidationFailed);
+            }
+            goal_ids.push_back(item.goal_id);
         }
+
+        // Phase 2: Emit batch start event
+        let batch_start_event = BatchStartedEvent {
+            caller: caller.clone(),
+            contribution_count,
+            total_amount,
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((BATCH_STARTED,), batch_start_event);
+        env.events().publish(
+            (symbol_short!("savings"), SavingsEvent::BatchStarted),
+            (caller.clone(), contribution_count, total_amount),
+        );
+
         Self::extend_instance_ttl(&env);
-        let mut goals: Map<u32, SavingsGoal> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut count = 0u32;
+
+        // Phase 3: Process all contributions in memory first
+        let mut updated_goals = goals_map.clone();
+        let mut completed_goals = Vec::new(&env);
+        let mut processed_count = 0u32;
+
         for item in contributions.iter() {
-            let mut goal = match goals.get(item.goal_id) {
-                Some(g) => g,
-                None => panic!("Goal not found"),
+            let mut goal = updated_goals.get(item.goal_id).unwrap(); // We validated this exists
+
+            // Calculate new amount with overflow check
+            let new_amount = match goal.current_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => {
+                    // Emit failure event
+                    let failure_event = BatchFailedEvent {
+                        caller: caller.clone(),
+                        attempted_count: contribution_count,
+                        failed_at_index: processed_count,
+                        error_reason: symbol_short!("overflow"),
+                        timestamp: env.ledger().timestamp(),
+                    };
+                    env.events().publish((BATCH_FAILED,), failure_event);
+                    env.events().publish(
+                        (symbol_short!("savings"), SavingsEvent::BatchFailed),
+                        (caller, processed_count, symbol_short!("overflow")),
+                    );
+                    return Err(SavingsGoalsError::BatchProcessingFailed);
+                }
             };
-            if goal.owner != caller {
-                panic!("Batch validation failed");
+
+            // Update goal
+            let was_completed = new_amount >= goal.target_amount;
+            let previously_completed = goal.current_amount >= goal.target_amount;
+
+            goal.current_amount = new_amount;
+            updated_goals.set(item.goal_id, goal.clone());
+
+            // Track completion
+            if was_completed && !previously_completed {
+                completed_goals.push_back(item.goal_id);
             }
-            goal.current_amount = match goal
-                .current_amount
-                .checked_add(item.amount) {
-                    Some(v) => v,
-                    None => panic!("overflow"),
-                };
-            let new_total = goal.current_amount;
-            let was_completed = new_total >= goal.target_amount;
-            let previously_completed = (new_total - item.amount) >= goal.target_amount;
-            goals.set(item.goal_id, goal.clone());
+
+            processed_count += 1;
+        }
+
+        // Phase 4: All processing succeeded - commit to storage
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &updated_goals);
+
+        // Phase 5: Emit individual contribution events and completion events
+        for item in contributions.iter() {
+            let goal = updated_goals.get(item.goal_id).unwrap();
             let funds_event = FundsAddedEvent {
                 goal_id: item.goal_id,
                 amount: item.amount,
-                new_total,
+                new_total: goal.current_amount,
                 timestamp: env.ledger().timestamp(),
             };
             env.events().publish((FUNDS_ADDED,), funds_event);
-            if was_completed && !previously_completed {
-                let completed_event = GoalCompletedEvent {
-                    goal_id: item.goal_id,
-                    name: goal.name.clone(),
-                    final_amount: new_total,
-                    timestamp: env.ledger().timestamp(),
-                };
-                env.events().publish((GOAL_COMPLETED,), completed_event);
-            }
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::FundsAdded),
                 (item.goal_id, caller.clone(), item.amount),
             );
-            if was_completed && !previously_completed {
-                env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::GoalCompleted),
-                    (item.goal_id, caller.clone()),
-                );
-            }
-            count += 1;
         }
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+
+        // Emit goal completion events
+        for goal_id in completed_goals.iter() {
+            let goal = updated_goals.get(goal_id).unwrap();
+            let completed_event = GoalCompletedEvent {
+                goal_id,
+                name: goal.name.clone(),
+                final_amount: goal.current_amount,
+                timestamp: env.ledger().timestamp(),
+            };
+            env.events().publish((GOAL_COMPLETED,), completed_event);
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                (goal_id, caller.clone()),
+            );
+        }
+
+        // Phase 6: Emit batch completion event
+        let batch_complete_event = BatchCompletedEvent {
+            caller: caller.clone(),
+            processed_count,
+            total_amount,
+            completed_goals: completed_goals.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish((BATCH_COMPLETED,), batch_complete_event);
         env.events().publish(
-            (symbol_short!("savings"), symbol_short!("batch_add")),
-            (count, caller),
+            (symbol_short!("savings"), SavingsEvent::BatchCompleted),
+            (caller, processed_count, total_amount),
         );
-        count
+
+        Ok(processed_count)
     }
 
     /// Withdraws funds from an existing savings goal.
