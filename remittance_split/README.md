@@ -33,6 +33,20 @@ in strict order before any token interaction occurs:
 - Audit log (last 100 entries, ring-buffer)
 - TTL extension on every state-changing call
 
+## Global pause behavior
+
+When `is_paused()` is true, all **state-changing split and schedule paths** return `Unauthorized`
+(the same error used elsewhere for pause), including:
+
+- `initialize_split`, `update_split`, `distribute_usdc`
+- `calculate_split` and `get_split_allocations` (they emit audit events; blocked while paused)
+- `import_snapshot`
+- `create_remittance_schedule`, `modify_remittance_schedule`, `cancel_remittance_schedule`
+- `set_version` (upgrade safety: no version bumps while frozen)
+
+**Still allowed while paused:** `pause`, `unpause`, `set_pause_admin`, `set_upgrade_admin`, read-only
+queries (`get_*`, `export_snapshot`, `is_paused`, audit log reads), and nonce inspection.
+
 ## Quickstart
 
 ```rust

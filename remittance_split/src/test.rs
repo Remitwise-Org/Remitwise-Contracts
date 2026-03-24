@@ -835,6 +835,178 @@ fn test_cancel_remittance_schedule() {
 }
 
 // ---------------------------------------------------------------------------
+// Global pause — all state-mutating split paths
+// ---------------------------------------------------------------------------
+
+fn setup_ledger_schedule_env(env: &Env) {
+    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        protocol_version: 20,
+        sequence_number: 100,
+        timestamp: 1000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 100_000,
+    });
+}
+
+#[test]
+fn test_update_split_rejected_when_paused_unpause_restores() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.pause(&owner);
+    let r = client.try_update_split(&owner, &1, &40, &40, &10, &10);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+
+    client.unpause(&owner);
+    assert!(client.try_update_split(&owner, &1, &40, &40, &10, &10).is_ok());
+}
+
+#[test]
+fn test_calculate_split_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    assert!(client.try_calculate_split(&1000).is_ok());
+    client.pause(&owner);
+    let r = client.try_calculate_split(&1000);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_create_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    setup_ledger_schedule_env(&env);
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.pause(&owner);
+    let r = client.try_create_remittance_schedule(&owner, &10000, &3000, &86400);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_modify_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    setup_ledger_schedule_env(&env);
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    let sid = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
+    client.pause(&owner);
+    let r = client.try_modify_remittance_schedule(&owner, &sid, &20000, &4000, &86400);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_cancel_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    setup_ledger_schedule_env(&env);
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    let sid = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
+    client.pause(&owner);
+    let r = client.try_cancel_remittance_schedule(&owner, &sid);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_import_snapshot_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    let snap = client.export_snapshot(&owner).unwrap();
+    client.pause(&owner);
+    let nonce = client.get_nonce(&owner);
+    let r = client.try_import_snapshot(&owner, &nonce, &snap);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_set_version_rejected_when_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.pause(&owner);
+    let r = client.try_set_version(&owner, &2);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_set_pause_admin_succeeds_while_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let new_pause = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.pause(&owner);
+    assert!(client.try_set_pause_admin(&owner, &new_pause).is_ok());
+}
+
+#[test]
+fn test_pause_rejected_for_non_pause_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    let r = client.try_pause(&other);
+    assert_eq!(r, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+// ---------------------------------------------------------------------------
 // TTL extension
 // ---------------------------------------------------------------------------
 

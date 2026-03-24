@@ -264,6 +264,7 @@ impl RemittanceSplit {
         new_version: u32,
     ) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
+        Self::require_not_paused(&env)?;
         let config: SplitConfig = env
             .storage()
             .instance()
@@ -445,6 +446,7 @@ impl RemittanceSplit {
         env: Env,
         total_amount: i128,
     ) -> Result<Vec<i128>, RemittanceSplitError> {
+        Self::require_not_paused(&env)?;
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -666,6 +668,7 @@ impl RemittanceSplit {
         snapshot: ExportSnapshot,
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
+        Self::require_not_paused(&env)?;
         Self::require_nonce(&env, &caller, nonce)?;
 
         if snapshot.version != SNAPSHOT_VERSION {
@@ -877,6 +880,7 @@ impl RemittanceSplit {
         interval: u64,
     ) -> Result<u32, RemittanceSplitError> {
         owner.require_auth();
+        Self::require_not_paused(&env)?;
 
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
@@ -940,6 +944,7 @@ impl RemittanceSplit {
         interval: u64,
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
+        Self::require_not_paused(&env)?;
 
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
@@ -990,6 +995,7 @@ impl RemittanceSplit {
         schedule_id: u32,
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
+        Self::require_not_paused(&env)?;
 
         Self::extend_instance_ttl(&env);
 
