@@ -34,6 +34,7 @@ bill_payments = { path = "./bill_payments" }
 insurance = { path = "./insurance" }
 family_wallet = { path = "./family_wallet" }
 reporting = { path = "./reporting" }
+remitwise-common = { path = "./remitwise-common" }
 orchestrator = { path = "./orchestrator" }
 
 [dev-dependencies]

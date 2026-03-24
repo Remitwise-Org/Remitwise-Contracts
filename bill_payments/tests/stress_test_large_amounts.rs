@@ -33,7 +33,7 @@ fn set_time(env: &Env, timestamp: u64) {
 #[test]
 fn test_create_bill_near_max_i128() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -61,7 +61,7 @@ fn test_create_bill_near_max_i128() {
 #[test]
 fn test_pay_bill_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -91,7 +91,7 @@ fn test_pay_bill_with_large_amount() {
 #[test]
 fn test_recurring_bill_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -127,7 +127,7 @@ fn test_recurring_bill_with_large_amount() {
 #[test]
 fn test_get_total_unpaid_with_two_large_bills() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -167,7 +167,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
 #[should_panic(expected = "overflow")]
 fn test_get_total_unpaid_overflow_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -206,7 +206,7 @@ fn test_get_total_unpaid_overflow_panics() {
 #[test]
 fn test_multiple_large_bills_different_owners() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner1 = <soroban_sdk::Address as AddressTrait>::generate(&env);
     let owner2 = <soroban_sdk::Address as AddressTrait>::generate(&env);
@@ -251,7 +251,7 @@ fn test_archive_large_amount_bill() {
     let env = Env::default();
     set_time(&env, 100);
 
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -284,7 +284,7 @@ fn test_archive_large_amount_bill() {
 #[test]
 fn test_batch_pay_large_bills() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -327,7 +327,7 @@ fn test_batch_pay_large_bills() {
 //     let env = Env::default();
 //     set_time(&env, 2_000_000);
 
-//     let contract_id = env.register_contract(None, BillPayments);
+//     let contract_id = env.register(BillPayments, ());
 //     let client = BillPaymentsClient::new(&env, &contract_id);
 //     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -353,7 +353,7 @@ fn test_batch_pay_large_bills() {
 #[test]
 fn test_edge_case_i128_max_minus_one() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -380,7 +380,7 @@ fn test_edge_case_i128_max_minus_one() {
 #[test]
 fn test_pagination_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 

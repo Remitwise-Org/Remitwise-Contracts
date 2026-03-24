@@ -7,7 +7,7 @@ use soroban_sdk::{
     Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
-use testutils::{set_ledger_time, setup_test_env};
+use testutils::set_ledger_time;
 
 // Removed local set_time in favor of testutils::set_ledger_time
 
@@ -15,7 +15,7 @@ use testutils::{set_ledger_time, setup_test_env};
 fn test_create_goal_unique_ids_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     client.init();
@@ -35,7 +35,7 @@ fn test_create_goal_unique_ids_succeeds() {
 #[test]
 fn test_create_goal_allows_past_target_date() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -43,7 +43,7 @@ fn test_create_goal_allows_past_target_date() {
     env.mock_all_auths();
 
     // Move ledger time forward so our target_date is clearly in the past.
-    set_ledger_time(&env, 1, 2_000_000_000);
+    set_ledger_time(&env, 2_000_000_000);
     let past_target_date = 1_000_000_000u64;
 
     let name = String::from_str(&env, "Backfill Goal");
@@ -72,7 +72,7 @@ fn test_init_idempotent_does_not_wipe_goals() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner_a = Address::generate(&env);
 
@@ -99,7 +99,11 @@ fn test_init_idempotent_does_not_wipe_goals() {
     assert_eq!(goal_after_second_init.current_amount, 0);
 
     let all_goals = client.get_all_goals(&owner_a);
-    assert_eq!(all_goals.len(), 1, "get_all_goals must still return the one goal");
+    assert_eq!(
+        all_goals.len(),
+        1,
+        "get_all_goals must still return the one goal"
+    );
 
     // Verify NEXT_ID was not reset: next created goal must get goal_id == 2, not 1
     let name2 = String::from_str(&env, "Second Goal");
@@ -117,7 +121,7 @@ fn test_next_id_increments_sequentially() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -160,7 +164,7 @@ fn test_next_id_increments_sequentially() {
 #[test]
 fn test_add_to_goal_increments() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -176,7 +180,7 @@ fn test_add_to_goal_increments() {
 #[test]
 fn test_add_to_non_existent_goal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -189,7 +193,7 @@ fn test_add_to_non_existent_goal() {
 #[test]
 fn test_get_goal_retrieval() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -205,7 +209,7 @@ fn test_get_goal_retrieval() {
 #[test]
 fn test_get_all_goals() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -221,7 +225,7 @@ fn test_get_all_goals() {
 #[test]
 fn test_is_goal_completed() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -266,7 +270,7 @@ fn test_is_goal_completed() {
 #[test]
 fn test_edge_cases_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -287,7 +291,7 @@ fn test_edge_cases_large_amounts() {
 #[test]
 fn test_zero_amount_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -300,7 +304,7 @@ fn test_zero_amount_fails() {
 #[test]
 fn test_multiple_goals_management() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -322,7 +326,7 @@ fn test_multiple_goals_management() {
 #[test]
 fn test_withdraw_from_goal_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -348,7 +352,7 @@ fn test_withdraw_from_goal_success() {
 #[test]
 fn test_withdraw_from_goal_insufficient_balance() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -371,7 +375,7 @@ fn test_withdraw_from_goal_insufficient_balance() {
 #[test]
 fn test_withdraw_from_goal_locked() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -387,7 +391,7 @@ fn test_withdraw_from_goal_locked() {
 #[test]
 fn test_withdraw_from_goal_unauthorized() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -412,7 +416,7 @@ fn test_withdraw_from_goal_unauthorized() {
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_withdraw_from_goal_zero_amount_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -429,7 +433,7 @@ fn test_withdraw_from_goal_zero_amount_panics() {
 #[should_panic(expected = "Error(Contract, #2)")]
 fn test_withdraw_from_goal_nonexistent_goal_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -441,7 +445,7 @@ fn test_withdraw_from_goal_nonexistent_goal_panics() {
 #[test]
 fn test_lock_unlock_goal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -464,7 +468,7 @@ fn test_lock_unlock_goal() {
 #[test]
 fn test_withdraw_full_balance() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -486,7 +490,7 @@ fn test_withdraw_full_balance() {
 #[test]
 fn test_exact_goal_completion() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -509,11 +513,11 @@ fn test_exact_goal_completion() {
 fn test_set_time_lock_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -526,12 +530,12 @@ fn test_set_time_lock_succeeds() {
 #[test]
 fn test_withdraw_time_locked_goal_before_unlock() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -546,12 +550,12 @@ fn test_withdraw_time_locked_goal_before_unlock() {
 #[test]
 fn test_withdraw_time_locked_goal_after_unlock() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -559,7 +563,7 @@ fn test_withdraw_time_locked_goal_after_unlock() {
     client.unlock_goal(&owner, &goal_id);
     client.set_time_lock(&owner, &goal_id, &3000);
 
-    set_ledger_time(&env, 1, 3500);
+    set_ledger_time(&env, 3500);
     let new_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
     assert_eq!(new_amount, 4000);
 }
@@ -567,12 +571,12 @@ fn test_withdraw_time_locked_goal_after_unlock() {
 #[test]
 fn test_create_savings_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -590,12 +594,12 @@ fn test_create_savings_schedule() {
 #[test]
 fn test_modify_savings_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -611,12 +615,12 @@ fn test_modify_savings_schedule() {
 #[test]
 fn test_cancel_savings_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
@@ -630,18 +634,18 @@ fn test_cancel_savings_schedule() {
 #[test]
 fn test_execute_due_savings_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &3000, &0);
 
-    set_ledger_time(&env, 1, 3500);
+    set_ledger_time(&env, 3500);
     let executed = client.execute_due_savings_schedules();
 
     assert_eq!(executed.len(), 1);
@@ -654,18 +658,18 @@ fn test_execute_due_savings_schedules() {
 #[test]
 fn test_execute_recurring_savings_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &3000, &86400);
 
-    set_ledger_time(&env, 1, 3500);
+    set_ledger_time(&env, 3500);
     client.execute_due_savings_schedules();
 
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
@@ -679,18 +683,18 @@ fn test_execute_recurring_savings_schedule() {
 #[test]
 fn test_execute_missed_savings_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
 
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &3000, &86400);
 
-    set_ledger_time(&env, 1, 3000 + 86400 * 3 + 100);
+    set_ledger_time(&env, 3000 + 86400 * 3 + 100);
     client.execute_due_savings_schedules();
 
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
@@ -701,18 +705,18 @@ fn test_execute_missed_savings_schedules() {
 #[test]
 fn test_savings_schedule_goal_completion() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
+    set_ledger_time(&env, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &1000, &5000);
 
     client.create_savings_schedule(&owner, &goal_id, &1000, &3000, &0);
 
-    set_ledger_time(&env, 1, 3500);
+    set_ledger_time(&env, 3500);
     client.execute_due_savings_schedules();
 
     let goal = client.get_goal(&goal_id).unwrap();
@@ -723,7 +727,7 @@ fn test_savings_schedule_goal_completion() {
 #[test]
 fn test_lock_goal_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -746,7 +750,7 @@ fn test_lock_goal_success() {
 #[test]
 fn test_unlock_goal_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -768,7 +772,7 @@ fn test_unlock_goal_success() {
 #[test]
 fn test_lock_goal_unauthorized_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -791,7 +795,7 @@ fn test_lock_goal_unauthorized_panics() {
 #[test]
 fn test_unlock_goal_unauthorized_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -812,7 +816,7 @@ fn test_unlock_goal_unauthorized_panics() {
 #[test]
 fn test_withdraw_after_lock_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -836,7 +840,7 @@ fn test_withdraw_after_lock_fails() {
 #[test]
 fn test_withdraw_after_unlock_succeeds() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -862,7 +866,7 @@ fn test_withdraw_after_unlock_succeeds() {
 #[test]
 fn test_lock_nonexistent_goal_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -876,7 +880,7 @@ fn test_lock_nonexistent_goal_panics() {
 #[test]
 fn test_create_goal_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -929,7 +933,7 @@ fn test_create_goal_emits_event() {
 #[test]
 fn test_add_to_goal_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -983,7 +987,7 @@ fn test_add_to_goal_emits_event() {
 #[test]
 fn test_goal_completed_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1039,7 +1043,7 @@ fn test_goal_completed_emits_event() {
 #[test]
 fn test_withdraw_from_goal_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1080,7 +1084,7 @@ fn test_withdraw_from_goal_emits_event() {
 #[test]
 fn test_lock_goal_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1120,7 +1124,7 @@ fn test_lock_goal_emits_event() {
 #[test]
 fn test_unlock_goal_emits_event() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1159,7 +1163,7 @@ fn test_unlock_goal_emits_event() {
 #[test]
 fn test_multiple_goals_emit_separate_events() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1170,15 +1174,27 @@ fn test_multiple_goals_emit_separate_events() {
     // env.events().all() in Soroban returns events from the most recent call.
     let id1 = client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &1735689600);
     assert_eq!(id1, 1);
-    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
+    assert_eq!(
+        env.events().all().len(),
+        2,
+        "create_goal should emit 2 events"
+    );
 
     let id2 = client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
     assert_eq!(id2, 2);
-    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
+    assert_eq!(
+        env.events().all().len(),
+        2,
+        "create_goal should emit 2 events"
+    );
 
     let id3 = client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
     assert_eq!(id3, 3);
-    assert_eq!(env.events().all().len(), 2, "create_goal should emit 2 events");
+    assert_eq!(
+        env.events().all().len(),
+        2,
+        "create_goal should emit 2 events"
+    );
 }
 
 // ============================================================================
@@ -1215,7 +1231,7 @@ fn test_instance_ttl_extended_on_create_goal() {
         max_entry_ttl: 700_000,
     });
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1259,7 +1275,7 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
         max_entry_ttl: 700_000,
     });
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1315,7 +1331,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
         max_entry_ttl: 700_000,
     });
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1397,7 +1413,7 @@ fn test_instance_ttl_extended_on_lock_goal() {
         max_entry_ttl: 700_000,
     });
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -1448,7 +1464,7 @@ fn setup_goals(env: &Env, client: &SavingsGoalContractClient, owner: &Address, c
 fn test_get_goals_empty() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1463,7 +1479,7 @@ fn test_get_goals_empty() {
 fn test_get_goals_single_page() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1479,7 +1495,7 @@ fn test_get_goals_single_page() {
 fn test_get_goals_multiple_pages() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1506,7 +1522,7 @@ fn test_get_goals_multiple_pages() {
 fn test_get_goals_multi_owner_isolation() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner_a = Address::generate(&env);
     let owner_b = Address::generate(&env);
@@ -1529,7 +1545,7 @@ fn test_get_goals_multi_owner_isolation() {
 fn test_get_goals_cursor_is_exclusive() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1551,7 +1567,7 @@ fn test_get_goals_cursor_is_exclusive() {
 fn test_limit_zero_uses_default() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1565,7 +1581,7 @@ fn test_limit_zero_uses_default() {
 fn test_get_all_goals_backward_compat() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, SavingsGoalContract);
+    let id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &id);
     let owner = Address::generate(&env);
 
@@ -1579,7 +1595,7 @@ fn test_get_all_goals_backward_compat() {
 #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_add_to_goal_non_owner_auth_failure() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -1609,7 +1625,7 @@ fn test_add_to_goal_non_owner_auth_failure() {
 #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_withdraw_from_goal_non_owner_auth_failure() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -1639,7 +1655,7 @@ fn test_withdraw_from_goal_non_owner_auth_failure() {
 #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_lock_goal_non_owner_auth_failure() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -1669,7 +1685,7 @@ fn test_lock_goal_non_owner_auth_failure() {
 #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_unlock_goal_non_owner_auth_failure() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
     let other = Address::generate(&env);
@@ -1698,7 +1714,7 @@ fn test_unlock_goal_non_owner_auth_failure() {
 #[test]
 fn test_get_all_goals_filters_by_owner() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
 
     client.init();
@@ -1760,9 +1776,18 @@ fn test_get_all_goals_filters_by_owner() {
     for g in goals_a.iter() {
         goal_a_ids.push_back(g.id);
     }
-    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
-    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
-    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
+    assert!(
+        goal_a_ids.contains(&goal_a1),
+        "Goals for A should contain goal_a1"
+    );
+    assert!(
+        goal_a_ids.contains(&goal_a2),
+        "Goals for A should contain goal_a2"
+    );
+    assert!(
+        goal_a_ids.contains(&goal_a3),
+        "Goals for A should contain goal_a3"
+    );
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1782,8 +1807,14 @@ fn test_get_all_goals_filters_by_owner() {
     for g in goals_b.iter() {
         goal_b_ids.push_back(g.id);
     }
-    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
-    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
+    assert!(
+        goal_b_ids.contains(&goal_b1),
+        "Goals for B should contain goal_b1"
+    );
+    assert!(
+        goal_b_ids.contains(&goal_b2),
+        "Goals for B should contain goal_b2"
+    );
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
     for goal_a_id in &goal_a_ids {

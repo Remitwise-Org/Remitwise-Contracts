@@ -154,7 +154,6 @@ pub struct ContributionItem {
     pub amount: i128,
 }
 
-
 #[contract]
 pub struct SavingsGoalContract;
 
@@ -376,12 +375,7 @@ impl SavingsGoalContract {
         }
     }
 
-    pub fn add_tags_to_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -416,12 +410,7 @@ impl SavingsGoalContract {
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
     }
 
-    pub fn remove_tags_from_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -689,12 +678,10 @@ impl SavingsGoalContract {
             if goal.owner != caller {
                 panic!("Batch validation failed");
             }
-            goal.current_amount = match goal
-                .current_amount
-                .checked_add(item.amount) {
-                    Some(v) => v,
-                    None => panic!("overflow"),
-                };
+            goal.current_amount = match goal.current_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => panic!("overflow"),
+            };
             let new_total = goal.current_amount;
             let was_completed = new_total >= goal.target_amount;
             let previously_completed = (new_total - item.amount) >= goal.target_amount;
@@ -1420,12 +1407,10 @@ impl SavingsGoalContract {
             }
 
             if let Some(mut goal) = goals.get(schedule.goal_id) {
-                goal.current_amount = match goal
-                    .current_amount
-                    .checked_add(schedule.amount) {
-                        Some(v) => v,
-                        None => panic!("overflow"),
-                    };
+                goal.current_amount = match goal.current_amount.checked_add(schedule.amount) {
+                    Some(v) => v,
+                    None => panic!("overflow"),
+                };
 
                 let is_completed = goal.current_amount >= goal.target_amount;
                 goals.set(schedule.goal_id, goal.clone());

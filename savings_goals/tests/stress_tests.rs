@@ -43,7 +43,7 @@ fn stress_env() -> Env {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 700_000,
     });
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
     env
 }
 
@@ -51,7 +51,7 @@ fn measure<F, R>(env: &Env, f: F) -> (u64, u64, R)
 where
     F: FnOnce() -> R,
 {
-    let mut budget = env.budget();
+    let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     budget.reset_tracker();
     let result = f();
@@ -69,7 +69,7 @@ where
 #[test]
 fn stress_200_goals_single_user() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -82,7 +82,11 @@ fn stress_200_goals_single_user() {
 
     // Verify via get_all_goals (unbounded)
     let all_goals = client.get_all_goals(&owner);
-    assert_eq!(all_goals.len(), 200, "get_all_goals must return all 200 goals");
+    assert_eq!(
+        all_goals.len(),
+        200,
+        "get_all_goals must return all 200 goals"
+    );
 
     // Verify via paginated get_goals (MAX_PAGE_LIMIT = 50 → 4 pages)
     let mut collected = 0u32;
@@ -103,11 +107,18 @@ fn stress_200_goals_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected, 200, "Paginated get_goals must return all 200 goals");
+    assert_eq!(
+        collected, 200,
+        "Paginated get_goals must return all 200 goals"
+    );
     // get_goals sets next_cursor = last_returned_id; when a page is exactly full the
     // caller receives a non-zero cursor that produces a trailing empty page, so the
     // number of round-trips is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 goals at limit 50, got {}", pages);
+    assert!(
+        pages >= 4 && pages <= 5,
+        "Expected 4-5 pages for 200 goals at limit 50, got {}",
+        pages
+    );
 }
 
 /// Create 200 goals and verify instance TTL stays valid after the instance Map
@@ -115,7 +126,7 @@ fn stress_200_goals_single_user() {
 #[test]
 fn stress_instance_ttl_valid_after_200_goals() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -142,7 +153,7 @@ fn stress_instance_ttl_valid_after_200_goals() {
 #[test]
 fn stress_goals_across_10_users() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
 
     const N_USERS: usize = 10;
@@ -182,7 +193,7 @@ fn stress_goals_across_10_users() {
 #[test]
 fn stress_ttl_re_bumped_after_ledger_advancement() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -234,7 +245,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
 #[test]
 fn stress_ttl_re_bumped_by_add_to_goal_after_ledger_advancement() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -277,7 +288,7 @@ fn stress_ttl_re_bumped_by_add_to_goal_after_ledger_advancement() {
 #[test]
 fn stress_batch_add_to_goals_at_max_batch_size() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -342,9 +353,9 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
         min_persistent_entry_ttl: 1_100_000,
         max_entry_ttl: 1_200_000,
     });
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -404,7 +415,10 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
 
     // TTL must still be positive
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert!(ttl > 0, "Instance TTL must be > 0 after all ledger advancements");
+    assert!(
+        ttl > 0,
+        "Instance TTL must be > 0 after all ledger advancements"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +429,7 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
 #[test]
 fn bench_get_all_goals_200_goals() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -437,7 +451,7 @@ fn bench_get_all_goals_200_goals() {
 #[test]
 fn bench_get_goals_first_page_of_200() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -459,7 +473,7 @@ fn bench_get_goals_first_page_of_200() {
 #[test]
 fn bench_batch_add_to_goals_50_contributions() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 

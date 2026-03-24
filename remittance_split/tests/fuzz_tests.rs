@@ -36,7 +36,7 @@ fn fuzz_calculate_split_sum_preservation() {
     for (total_amount, spending_pct, savings_pct, bills_pct, insurance_pct) in test_cases {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
+        let contract_id = env.register(RemittanceSplit, ());
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -99,7 +99,7 @@ fn fuzz_calculate_split_sum_preservation() {
 fn fuzz_calculate_split_small_amounts() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -159,7 +159,7 @@ fn fuzz_rounding_behavior() {
     for (spending_pct, savings_pct, bills_pct, insurance_pct) in prime_percentages {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
+        let contract_id = env.register(RemittanceSplit, ());
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -206,7 +206,7 @@ fn fuzz_rounding_behavior() {
 fn fuzz_invalid_amounts() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -233,7 +233,7 @@ fn fuzz_invalid_percentages() {
     for (spending_pct, savings_pct, bills_pct, insurance_pct) in invalid_percentages {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
+        let contract_id = env.register(RemittanceSplit, ());
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -262,7 +262,7 @@ fn fuzz_invalid_percentages() {
 fn fuzz_large_amounts() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -311,7 +311,7 @@ fn fuzz_single_category_splits() {
     for (spending_pct, savings_pct, bills_pct, insurance_pct) in single_category_splits {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
+        let contract_id = env.register(RemittanceSplit, ());
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 

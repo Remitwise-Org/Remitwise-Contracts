@@ -21,22 +21,22 @@ fn test_end_to_end_flow() {
     // For simplicity, we bypass native USDC deployment test setups for custom flows
     // or assume our contracts mock token transfers if `WASM` is unavailable.
 
-    let split_id = env.register_contract(None, RemittanceSplit);
+    let split_id = env.register(RemittanceSplit, ());
     let split_client = RemittanceSplitClient::new(&env, &split_id);
 
-    let savings_id = env.register_contract(None, SavingsGoalContract);
+    let savings_id = env.register(SavingsGoalContract, ());
     let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
 
-    let bills_id = env.register_contract(None, BillPayments);
+    let bills_id = env.register(BillPayments, ());
     let bills_client = BillPaymentsClient::new(&env, &bills_id);
 
-    let insurance_id = env.register_contract(None, Insurance);
+    let insurance_id = env.register(Insurance, ());
     //let insurance_client = InsuranceClient::new(&env, &insurance_id);
 
-    let family_id = env.register_contract(None, FamilyWallet);
+    let family_id = env.register(FamilyWallet, ());
     //let family_client = FamilyWalletClient::new(&env, &family_id);
 
-    let reporting_id = env.register_contract(None, ReportingContract);
+    let reporting_id = env.register(ReportingContract, ());
     let reporting_client = ReportingContractClient::new(&env, &reporting_id);
 
     let admin = Address::generate(&env);

@@ -34,7 +34,7 @@ fn set_time(env: &Env, timestamp: u64) {
 #[test]
 fn test_create_goal_near_max_i128() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -57,7 +57,7 @@ fn test_create_goal_near_max_i128() {
 #[test]
 fn test_add_to_goal_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -84,7 +84,7 @@ fn test_add_to_goal_with_large_amount() {
 #[test]
 fn test_add_to_goal_multiple_large_contributions() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -117,7 +117,7 @@ fn test_add_to_goal_multiple_large_contributions() {
 #[should_panic(expected = "Error(Contract, #6)")]
 fn test_add_to_goal_overflow_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -144,7 +144,7 @@ fn test_add_to_goal_overflow_panics() {
 #[test]
 fn test_withdraw_from_goal_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -181,7 +181,7 @@ fn test_withdraw_from_goal_with_large_amount() {
 // #[test]
 // fn test_withdraw_from_goal_with_large_amount() {
 //     let env = Env::default();
-//     let contract_id = env.register_contract(None, SavingsGoalContract);
+//     let contract_id = env.register(SavingsGoalContract, ());
 //     let client = SavingsGoalContractClient::new(&env, &contract_id);
 //     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -214,7 +214,7 @@ fn test_withdraw_from_goal_with_large_amount() {
 #[test]
 fn test_goal_completion_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -244,7 +244,7 @@ fn test_goal_completion_with_large_amounts() {
 #[test]
 fn test_batch_add_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -309,7 +309,7 @@ fn test_batch_add_with_large_amounts() {
 #[test]
 fn test_multiple_goals_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -341,7 +341,7 @@ fn test_multiple_goals_with_large_amounts() {
 #[test]
 fn test_edge_case_i128_max_minus_one() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -363,7 +363,7 @@ fn test_edge_case_i128_max_minus_one() {
 #[test]
 fn test_pagination_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -372,7 +372,10 @@ fn test_pagination_with_large_amounts() {
     let large_target = i128::MAX / 100;
 
     // Create multiple goals with large targets
-    let goal_names = ["G0","G1","G2","G3","G4","G5","G6","G7","G8","G9","G10","G11","G12","G13","G14"];
+    let goal_names = [
+        "G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12", "G13",
+        "G14",
+    ];
     for name in goal_names.iter() {
         client.create_goal(
             &owner,
@@ -403,7 +406,7 @@ fn test_pagination_with_large_amounts() {
 #[test]
 fn test_lock_unlock_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -444,7 +447,7 @@ fn test_lock_unlock_with_large_amounts() {
 #[test]
 fn test_sequential_large_operations() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -483,7 +486,7 @@ fn test_time_lock_with_large_amounts() {
     let env = Env::default();
     set_time(&env, 1000000);
 
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -527,7 +530,7 @@ fn test_time_lock_with_large_amounts() {
 #[test]
 fn test_export_import_snapshot_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 

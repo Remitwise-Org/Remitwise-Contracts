@@ -14,7 +14,7 @@ fn bench_env() -> Env {
         info.sequence_number = 1;
     });
 
-    let mut budget = env.budget();
+    let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     env
 }
@@ -22,7 +22,7 @@ fn bench_env() -> Env {
 #[test]
 fn test_add_to_goal_unauthorized_access() {
     let env = bench_env();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let contract_id = env.register(SavingsGoalContract, ());
     let client = SavingsGoalContractClient::new(&env, &contract_id);
 
     // 1. Setup: Create User A (Owner) and User B (Attacker)

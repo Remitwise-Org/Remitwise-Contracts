@@ -1,5 +1,5 @@
 use insurance::{Insurance, InsuranceClient};
-use remitwise_common::CoverageType;
+
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
 
@@ -19,7 +19,7 @@ fn bench_env() -> Env {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 100_000,
     });
-    let mut budget = env.budget();
+    let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     env
 }
@@ -28,7 +28,7 @@ fn measure<F, R>(env: &Env, f: F) -> (u64, u64, R)
 where
     F: FnOnce() -> R,
 {
-    let mut budget = env.budget();
+    let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     budget.reset_tracker();
     let result = f();
@@ -40,12 +40,12 @@ where
 #[test]
 fn bench_get_total_monthly_premium_worst_case() {
     let env = bench_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "BenchPolicy");
-    let coverage_type = CoverageType::Health;
+
     for _ in 0..100 {
         client.create_policy(
             &owner,

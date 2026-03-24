@@ -9,7 +9,7 @@ fn test_notification_flow() {
     let e = Env::default();
 
     // Register the contract
-    let contract_id = e.register_contract(None, BillPayments);
+    let contract_id = e.register(BillPayments, ());
     let client = BillPaymentsClient::new(&e, &contract_id);
 
     // Setup: Create a User

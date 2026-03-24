@@ -23,7 +23,7 @@ fn set_time(env: &Env, timestamp: u64) {
 #[test]
 fn test_create_policy() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -53,7 +53,7 @@ fn test_create_policy() {
 #[test]
 fn test_create_policy_invalid_premium() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -73,7 +73,7 @@ fn test_create_policy_invalid_premium() {
 #[test]
 fn test_create_policy_invalid_coverage() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -93,7 +93,7 @@ fn test_create_policy_invalid_coverage() {
 #[test]
 fn test_pay_premium() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -131,7 +131,7 @@ fn test_pay_premium() {
 #[test]
 fn test_pay_premium_unauthorized() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
@@ -155,7 +155,7 @@ fn test_pay_premium_unauthorized() {
 #[test]
 fn test_deactivate_policy() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -180,7 +180,7 @@ fn test_deactivate_policy() {
 #[test]
 fn test_get_active_policies() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -224,7 +224,7 @@ fn test_get_active_policies() {
 #[test]
 fn test_get_active_policies_excludes_deactivated() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -269,7 +269,7 @@ fn test_get_active_policies_excludes_deactivated() {
 #[test]
 fn test_get_all_policies_for_owner_pagination() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
@@ -334,7 +334,7 @@ fn test_get_all_policies_for_owner_pagination() {
 #[test]
 fn test_get_total_monthly_premium() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -364,7 +364,7 @@ fn test_get_total_monthly_premium() {
 #[test]
 fn test_get_total_monthly_premium_zero_policies() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -378,7 +378,7 @@ fn test_get_total_monthly_premium_zero_policies() {
 #[test]
 fn test_get_total_monthly_premium_one_policy() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -401,7 +401,7 @@ fn test_get_total_monthly_premium_one_policy() {
 #[test]
 fn test_get_total_monthly_premium_multiple_active_policies() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -440,7 +440,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
 #[test]
 fn test_get_total_monthly_premium_deactivated_policy_excluded() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -479,7 +479,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
 #[test]
 fn test_get_total_monthly_premium_different_owner_isolation() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner_a = Address::generate(&env);
     let owner_b = Address::generate(&env);
@@ -531,7 +531,7 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
 #[test]
 fn test_multiple_premium_payments() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -575,7 +575,7 @@ fn test_multiple_premium_payments() {
 #[test]
 fn test_create_premium_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -605,7 +605,7 @@ fn test_create_premium_schedule() {
 #[test]
 fn test_modify_premium_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -632,7 +632,7 @@ fn test_modify_premium_schedule() {
 #[test]
 fn test_cancel_premium_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -658,7 +658,7 @@ fn test_cancel_premium_schedule() {
 #[test]
 fn test_execute_due_premium_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -689,7 +689,7 @@ fn test_execute_due_premium_schedules() {
 #[test]
 fn test_execute_recurring_premium_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -718,7 +718,7 @@ fn test_execute_recurring_premium_schedule() {
 #[test]
 fn test_execute_missed_premium_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -747,7 +747,7 @@ fn test_execute_missed_premium_schedules() {
 #[test]
 fn test_get_premium_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -785,7 +785,7 @@ fn test_create_policy_emits_event() {
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -820,7 +820,7 @@ fn test_pay_premium_emits_event() {
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -857,7 +857,7 @@ fn test_deactivate_policy_emits_event() {
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -893,7 +893,7 @@ fn test_deactivate_policy_emits_event() {
 #[test]
 fn test_create_policy_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -929,7 +929,7 @@ fn test_create_policy_success() {
 #[test]
 fn test_create_policy_requires_auth() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -950,7 +950,7 @@ fn test_create_policy_requires_auth() {
 #[test]
 fn test_create_policy_negative_premium_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -971,7 +971,7 @@ fn test_create_policy_negative_premium_panics() {
 #[test]
 fn test_create_policy_negative_coverage_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -992,7 +992,7 @@ fn test_create_policy_negative_coverage_panics() {
 #[test]
 fn test_pay_premium_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1027,7 +1027,7 @@ fn test_pay_premium_success() {
 #[test]
 fn test_pay_premium_unauthorized_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let unauthorized_user = Address::generate(&env);
@@ -1051,7 +1051,7 @@ fn test_pay_premium_unauthorized_panics() {
 #[test]
 fn test_pay_premium_inactive_policy_panics() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1077,7 +1077,7 @@ fn test_pay_premium_inactive_policy_panics() {
 #[test]
 fn test_deactivate_policy_owner_only() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let unauthorized_user = Address::generate(&env);
@@ -1118,7 +1118,7 @@ fn test_deactivate_policy_owner_only() {
 #[test]
 fn test_get_policy_nonexistent() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
 
     // Try to get policy that doesn't exist
@@ -1129,7 +1129,7 @@ fn test_get_policy_nonexistent() {
 #[test]
 fn test_get_active_policies_filters_by_owner_and_active() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner_a = Address::generate(&env);
     let owner_b = Address::generate(&env);
@@ -1186,7 +1186,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
 #[test]
 fn test_get_total_monthly_premium_comprehensive() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1233,7 +1233,7 @@ fn test_get_total_monthly_premium_comprehensive() {
 #[test]
 fn test_multiple_policies_same_owner() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1324,7 +1324,7 @@ fn test_multiple_policies_same_owner() {
 #[test]
 fn test_time_drift_premium_schedule_not_executed_before_next_due() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1355,7 +1355,7 @@ fn test_time_drift_premium_schedule_not_executed_before_next_due() {
 #[test]
 fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1395,7 +1395,7 @@ fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
 #[test]
 fn test_time_drift_next_payment_date_uses_actual_payment_time() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -1434,7 +1434,7 @@ fn test_time_drift_next_payment_date_uses_actual_payment_time() {
 #[test]
 fn test_time_drift_no_double_execution_after_schedule_advances() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 

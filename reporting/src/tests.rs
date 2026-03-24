@@ -1,4 +1,12 @@
-use testutils::{set_ledger_time};
+#![cfg(test)]
+
+use crate::{ReportingContract, ReportingContractClient};
+use remitwise_common::Category;
+use soroban_sdk::{
+    testutils::{storage::Instance, Address as _, Ledger, LedgerInfo},
+    Address, Env,
+};
+use testutils::set_ledger_time;
 
 // Mock contracts for testing
 mod remittance_split {
@@ -153,7 +161,7 @@ mod bill_payments {
 }
 
 mod insurance {
-    use crate::{InsurancePolicy, InsuranceTrait, PolicyPage};
+    use crate::{InsurancePolicy, InsuranceTrait};
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -199,7 +207,7 @@ mod insurance {
 fn test_init_reporting_contract_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -213,7 +221,7 @@ fn test_init_reporting_contract_succeeds() {
 fn test_init_twice_fails() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -226,7 +234,7 @@ fn test_init_twice_fails() {
 fn test_configure_addresses_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -256,8 +264,9 @@ fn test_configure_addresses_succeeds() {
 
 #[test]
 fn test_configure_addresses_unauthorized() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let non_admin = Address::generate(&env);
@@ -288,8 +297,8 @@ fn test_configure_addresses_unauthorized() {
 fn test_get_remittance_summary() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
@@ -297,10 +306,10 @@ fn test_get_remittance_summary() {
     client.init(&admin);
 
     // Register mock contracts
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -335,18 +344,18 @@ fn test_get_remittance_summary() {
 fn test_get_savings_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -374,18 +383,18 @@ fn test_get_savings_report() {
 fn test_get_bill_compliance_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -412,18 +421,18 @@ fn test_get_bill_compliance_report() {
 fn test_get_insurance_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -451,18 +460,18 @@ fn test_get_insurance_report() {
 fn test_calculate_health_score() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -490,18 +499,18 @@ fn test_calculate_health_score() {
 fn test_get_financial_health_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -531,8 +540,8 @@ fn test_get_financial_health_report() {
 fn test_get_trend_analysis() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -551,8 +560,8 @@ fn test_get_trend_analysis() {
 fn test_get_trend_analysis_decrease() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -571,18 +580,18 @@ fn test_get_trend_analysis_decrease() {
 fn test_store_and_retrieve_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -623,8 +632,8 @@ fn test_store_and_retrieve_report() {
 fn test_retrieve_nonexistent_report() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
@@ -636,8 +645,8 @@ fn test_retrieve_nonexistent_report() {
 fn test_health_score_no_goals() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
@@ -664,10 +673,10 @@ fn test_health_score_no_goals() {
         }
     }
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, empty_savings::EmptySavings);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(empty_savings::EmptySavings, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -693,18 +702,18 @@ fn test_health_score_no_goals() {
 fn test_archive_old_reports() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -746,8 +755,8 @@ fn test_archive_old_reports() {
 fn test_archive_empty_when_no_old_reports() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -762,18 +771,18 @@ fn test_archive_empty_when_no_old_reports() {
 fn test_cleanup_old_reports() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -805,18 +814,18 @@ fn test_cleanup_old_reports() {
 fn test_storage_stats() {
     let env = Env::default();
     env.mock_all_auths();
-    set_ledger_time(&env, 1, 1704067200); // Standard timestamp for reporting tests
-    let contract_id = env.register_contract(None, ReportingContract);
+    set_ledger_time(&env, 1704067200); // Standard timestamp for reporting tests
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -848,8 +857,9 @@ fn test_storage_stats() {
 #[test]
 #[should_panic(expected = "Only admin can archive reports")]
 fn test_archive_unauthorized() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let non_admin = Address::generate(&env);
@@ -863,8 +873,9 @@ fn test_archive_unauthorized() {
 #[test]
 #[should_panic(expected = "Only admin can cleanup reports")]
 fn test_cleanup_unauthorized() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let non_admin = Address::generate(&env);
@@ -901,7 +912,7 @@ fn create_ttl_test_env(sequence: u32, max_ttl: u32) -> Env {
     env.mock_all_auths();
     env.ledger().set(LedgerInfo {
         timestamp: 1704067200,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: sequence,
         network_id: [0; 32],
         base_reserve: 10,
@@ -917,7 +928,7 @@ fn create_ttl_test_env(sequence: u32, max_ttl: u32) -> Env {
 fn test_instance_ttl_extended_on_init() {
     let env = create_ttl_test_env(100, 700_000);
 
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -938,7 +949,7 @@ fn test_instance_ttl_extended_on_init() {
 fn test_instance_ttl_refreshed_on_configure_addresses() {
     let env = create_ttl_test_env(100, 700_000);
 
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
@@ -948,7 +959,7 @@ fn test_instance_ttl_refreshed_on_configure_addresses() {
     // After init: live_until = 518,500. At seq 510,000: TTL = 8,500
     env.ledger().set(LedgerInfo {
         timestamp: 1704067200,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -958,10 +969,10 @@ fn test_instance_ttl_refreshed_on_configure_addresses() {
     });
 
     // Register mock sub-contracts
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     // configure_addresses calls extend_instance_ttl → re-extends TTL to 518,400
@@ -987,7 +998,7 @@ fn test_instance_ttl_refreshed_on_configure_addresses() {
 fn test_instance_ttl_refreshed_on_store_report() {
     let env = create_ttl_test_env(100, 700_000);
 
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
@@ -995,10 +1006,10 @@ fn test_instance_ttl_refreshed_on_store_report() {
     client.init(&admin);
 
     // Set up sub-contracts
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -1017,7 +1028,7 @@ fn test_instance_ttl_refreshed_on_store_report() {
     // Advance ledger so TTL drops below threshold (17,280)
     env.ledger().set(LedgerInfo {
         timestamp: 1706745600,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -1048,7 +1059,7 @@ fn test_report_data_persists_across_ledger_advancements() {
     env.mock_all_auths();
     env.ledger().set(LedgerInfo {
         timestamp: 1704067200,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 100,
         network_id: [0; 32],
         base_reserve: 10,
@@ -1057,7 +1068,7 @@ fn test_report_data_persists_across_ledger_advancements() {
         max_entry_ttl: 1_200_000,
     });
 
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
@@ -1065,10 +1076,10 @@ fn test_report_data_persists_across_ledger_advancements() {
     // Phase 1: Initialize and configure
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -1087,7 +1098,7 @@ fn test_report_data_persists_across_ledger_advancements() {
     // Phase 2: Advance to seq 510,000 (reporting contract TTL = 8,500 < 17,280)
     env.ledger().set(LedgerInfo {
         timestamp: 1709424000,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -1103,7 +1114,7 @@ fn test_report_data_persists_across_ledger_advancements() {
     // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
     env.ledger().set(LedgerInfo {
         timestamp: 1711929600,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 1_020_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -1141,17 +1152,17 @@ fn test_report_data_persists_across_ledger_advancements() {
 fn test_archive_ttl_extended_on_archive_reports() {
     let env = create_ttl_test_env(100, 3_000_000);
 
-    let contract_id = env.register_contract(None, ReportingContract);
+    let contract_id = env.register(ReportingContract, ());
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     client.init(&admin);
 
-    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
-    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
-    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
-    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let remittance_split_id = env.register(remittance_split::RemittanceSplit, ());
+    let savings_goals_id = env.register(savings_goals::SavingsGoalsContract, ());
+    let bill_payments_id = env.register(bill_payments::BillPayments, ());
+    let insurance_id = env.register(insurance::Insurance, ());
     let family_wallet = Address::generate(&env);
 
     client.configure_addresses(
@@ -1171,7 +1182,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
     // Advance ledger so TTL drops below threshold before archiving
     env.ledger().set(LedgerInfo {
         timestamp: 1704067200,
-        protocol_version: 20,
+        protocol_version: 22,
         sequence_number: 510_000,
         network_id: [0; 32],
         base_reserve: 10,

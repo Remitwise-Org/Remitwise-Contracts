@@ -42,7 +42,7 @@ fn stress_env() -> Env {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 700_000,
     });
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
     env
 }
 
@@ -50,7 +50,7 @@ fn measure<F, R>(env: &Env, f: F) -> (u64, u64, R)
 where
     F: FnOnce() -> R,
 {
-    let mut budget = env.budget();
+    let mut budget = env.cost_estimate().budget();
     budget.reset_unlimited();
     budget.reset_tracker();
     let result = f();
@@ -68,7 +68,7 @@ where
 #[test]
 fn stress_200_policies_single_user() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -106,11 +106,18 @@ fn stress_200_policies_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected, 200, "Pagination must return all 200 active policies");
+    assert_eq!(
+        collected, 200,
+        "Pagination must return all 200 active policies"
+    );
     // get_active_policies sets next_cursor = last_returned_id; when a page is exactly
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
+    assert!(
+        pages >= 4 && pages <= 5,
+        "Expected 4-5 pages for 200 policies at limit 50, got {}",
+        pages
+    );
 }
 
 /// Create 200 policies and verify instance TTL remains valid after the instance
@@ -118,7 +125,7 @@ fn stress_200_policies_single_user() {
 #[test]
 fn stress_instance_ttl_valid_after_200_policies() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -146,7 +153,7 @@ fn stress_instance_ttl_valid_after_200_policies() {
 #[test]
 fn stress_policies_across_10_users() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
 
     const N_USERS: usize = 10;
@@ -210,7 +217,7 @@ fn stress_policies_across_10_users() {
 #[test]
 fn stress_ttl_re_bumped_after_ledger_advancement() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -264,7 +271,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
 #[test]
 fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -310,7 +317,7 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
 #[test]
 fn stress_batch_pay_premiums_at_max_batch_size() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -362,7 +369,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
 #[test]
 fn stress_deactivate_half_of_200_policies() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -412,7 +419,7 @@ fn stress_deactivate_half_of_200_policies() {
 #[test]
 fn bench_get_active_policies_first_page_of_200() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -436,7 +443,7 @@ fn bench_get_active_policies_first_page_of_200() {
 #[test]
 fn bench_get_total_monthly_premium_200_policies() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -461,7 +468,7 @@ fn bench_get_total_monthly_premium_200_policies() {
 #[test]
 fn bench_batch_pay_premiums_50_policies() {
     let env = stress_env();
-    let contract_id = env.register_contract(None, Insurance);
+    let contract_id = env.register(Insurance, ());
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 

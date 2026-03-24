@@ -21,19 +21,19 @@ All contracts are deployed in the test environment:
 
 ```rust
 // Deploy remittance_split
-let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+let remittance_contract_id = env.register(RemittanceSplit, ());
 let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
 
 // Deploy savings_goals
-let savings_contract_id = env.register_contract(None, SavingsGoals);
+let savings_contract_id = env.register(SavingsGoals, ());
 let savings_client = SavingsGoalsClient::new(&env, &savings_contract_id);
 
 // Deploy bill_payments
-let bills_contract_id = env.register_contract(None, BillPayments);
+let bills_contract_id = env.register(BillPayments, ());
 let bills_client = BillPaymentsClient::new(&env, &bills_contract_id);
 
 // Deploy insurance
-let insurance_contract_id = env.register_contract(None, Insurance);
+let insurance_contract_id = env.register(Insurance, ());
 let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
 ```
 

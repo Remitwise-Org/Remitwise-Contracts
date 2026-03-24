@@ -33,7 +33,6 @@ pub struct Bill {
     pub currency: String,
 }
 
-
 /// Paginated result for bill queries
 #[contracttype]
 #[derive(Clone)]
@@ -92,7 +91,6 @@ pub struct ArchivedBill {
     /// Intended currency/asset carried over from the originating `Bill`.
     pub currency: String,
 }
-
 
 /// Paginated result for archived bill queries
 #[contracttype]

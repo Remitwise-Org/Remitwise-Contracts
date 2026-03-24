@@ -222,7 +222,7 @@ use your_contract::{YourContract, YourContractClient};
 fn setup() -> (Env, Address, YourContractClient<'static>) {
     let env = Env::default();
     env.mock_all_auths();                         // mock auth for all calls
-    let contract_id = env.register_contract(None, YourContract);
+    let contract_id = env.register(YourContract, ());
     let client = YourContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     (env, admin, client)
@@ -273,13 +273,13 @@ use your_contract::{YourContract, YourContractClient};
 fn bench_create_record() {
     let env = Env::default();
     env.mock_all_auths();
-    let id = env.register_contract(None, YourContract);
+    let id = env.register(YourContract, ());
     let client = YourContractClient::new(&env, &id);
 
     // ... setup ...
     client.create_record(/* args */);
 
-    let resources = env.budget().borrow().resource_per_type();
+    let resources = env.cost_estimate().budget().borrow().resource_per_type();
     println!("CPU (instructions): {}", resources.cpu_insns);
     println!("Memory (bytes):     {}", resources.mem_bytes);
 

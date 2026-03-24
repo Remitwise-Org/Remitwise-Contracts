@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
+    Symbol, Vec,
 };
 
 // Event topics
@@ -111,9 +112,6 @@ pub enum InsuranceError {
     Unauthorized = 5,
     BatchTooLarge = 6,
 }
-
-
-
 
 #[contracttype]
 #[derive(Clone)]
@@ -1048,7 +1046,7 @@ mod test_events {
     fn test_get_active_policies_empty() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1061,7 +1059,7 @@ mod test_events {
     fn test_get_active_policies_single_page() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1076,7 +1074,7 @@ mod test_events {
     fn test_pay_premium_policy_not_found() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1093,7 +1091,7 @@ mod test_events {
     fn test_get_active_policies_paginated() {
         let env = Env::default();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1116,7 +1114,7 @@ mod test_events {
     fn test_get_active_policies_excludes_inactive() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1135,7 +1133,7 @@ mod test_events {
     fn test_get_active_policies_multi_owner_isolation() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner_a = Address::generate(&env);
         let owner_b = Address::generate(&env);
@@ -1154,7 +1152,7 @@ mod test_events {
     fn test_get_all_policies_for_owner_includes_inactive() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1172,7 +1170,7 @@ mod test_events {
     fn test_limit_zero_uses_default() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1185,7 +1183,7 @@ mod test_events {
     fn test_limit_clamped_to_max() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1201,7 +1199,7 @@ mod test_events {
     fn test_create_policy_emits_event_exists() {
         let env = make_env();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1223,7 +1221,7 @@ mod test_events {
     fn test_pay_premium_emits_event() {
         let env = make_env();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1247,7 +1245,7 @@ mod test_events {
     fn test_policy_lifecycle_emits_all_events() {
         let env = make_env();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1305,7 +1303,7 @@ mod test_events {
             max_entry_ttl: 700_000,
         });
 
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1349,7 +1347,7 @@ mod test_events {
             max_entry_ttl: 700_000,
         });
 
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1404,7 +1402,7 @@ mod test_events {
             max_entry_ttl: 700_000,
         });
 
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1490,7 +1488,7 @@ mod test_events {
             max_entry_ttl: 700_000,
         });
 
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1536,7 +1534,7 @@ mod test_events {
     fn test_pay_premium_after_deactivate() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, Insurance);
+        let contract_id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
@@ -1598,7 +1596,7 @@ mod test_events {
     fn test_time_drift_premium_schedule_not_executed_before_next_due() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1629,7 +1627,7 @@ mod test_events {
     fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1664,7 +1662,7 @@ mod test_events {
     fn test_time_drift_next_payment_date_uses_actual_payment_time() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 
@@ -1702,7 +1700,7 @@ mod test_events {
     fn test_time_drift_no_double_execution_after_schedule_advances() {
         let env = make_env();
         env.mock_all_auths();
-        let id = env.register_contract(None, Insurance);
+        let id = env.register(Insurance, ());
         let client = InsuranceClient::new(&env, &id);
         let owner = Address::generate(&env);
 

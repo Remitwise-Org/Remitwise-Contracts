@@ -575,7 +575,9 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs.get(tx_id).unwrap_or_else(|| panic!("Transaction not found"));
+        let mut pending_tx = pending_txs
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"));
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -1501,7 +1503,9 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
-        let member = members.get(caller.clone()).unwrap_or_else(|| panic!("Not a family member"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
         }

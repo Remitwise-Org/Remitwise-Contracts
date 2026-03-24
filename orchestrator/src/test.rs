@@ -104,12 +104,12 @@ mod tests {
         env.mock_all_auths();
 
         // Register and deploy all contracts
-        let orchestrator_id = env.register_contract(None, Orchestrator);
-        let family_wallet_id = env.register_contract(None, MockFamilyWallet);
-        let remittance_split_id = env.register_contract(None, MockRemittanceSplit);
-        let savings_id = env.register_contract(None, MockSavingsGoals);
-        let bills_id = env.register_contract(None, MockBillPayments);
-        let insurance_id = env.register_contract(None, MockInsurance);
+        let orchestrator_id = env.register(Orchestrator, ());
+        let family_wallet_id = env.register(MockFamilyWallet, ());
+        let remittance_split_id = env.register(MockRemittanceSplit, ());
+        let savings_id = env.register(MockSavingsGoals, ());
+        let bills_id = env.register(MockBillPayments, ());
+        let insurance_id = env.register(MockInsurance, ());
 
         // Create test user address
         let user = generate_test_address(&env);

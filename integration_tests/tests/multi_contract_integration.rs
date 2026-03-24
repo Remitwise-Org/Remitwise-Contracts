@@ -4,11 +4,11 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
+use data_migration::{ExportSnapshot as MigrationSnapshot, RemittanceSplitExport, SnapshotPayload};
 use insurance::{Insurance, InsuranceClient};
+use orchestrator::Orchestrator;
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
-use orchestrator::{Orchestrator, OrchestratorClient};
-use data_migration::{ExportSnapshot as MigrationSnapshot, SnapshotPayload, RemittanceSplitExport};
 
 /// Integration test that simulates a complete user flow:
 /// 1. Deploy all contracts (remittance_split, savings_goals, bill_payments, insurance)
@@ -25,16 +25,16 @@ fn test_multi_contract_user_flow() {
     let user = Address::generate(&env);
 
     // Deploy all contracts
-    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+    let remittance_contract_id = env.register(RemittanceSplit, ());
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
 
-    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
+    let savings_contract_id = env.register(SavingsGoalContract, ());
     let savings_client = SavingsGoalContractClient::new(&env, &savings_contract_id);
 
-    let bills_contract_id = env.register_contract(None, BillPayments);
+    let bills_contract_id = env.register(BillPayments, ());
     let bills_client = BillPaymentsClient::new(&env, &bills_contract_id);
 
-    let insurance_contract_id = env.register_contract(None, Insurance);
+    let insurance_contract_id = env.register(Insurance, ());
     let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
 
     // Step 1: Initialize remittance split with percentages
@@ -144,7 +144,7 @@ fn test_split_with_rounding() {
     let user = Address::generate(&env);
 
     // Deploy remittance split contract
-    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+    let remittance_contract_id = env.register(RemittanceSplit, ());
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
 
     // Initialize with percentages that might cause rounding issues
@@ -184,13 +184,13 @@ fn test_multiple_entities_creation() {
     let user = Address::generate(&env);
 
     // Deploy contracts
-    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
+    let savings_contract_id = env.register(SavingsGoalContract, ());
     let savings_client = SavingsGoalContractClient::new(&env, &savings_contract_id);
 
-    let bills_contract_id = env.register_contract(None, BillPayments);
+    let bills_contract_id = env.register(BillPayments, ());
     let bills_client = BillPaymentsClient::new(&env, &bills_contract_id);
 
-    let insurance_contract_id = env.register_contract(None, Insurance);
+    let insurance_contract_id = env.register(Insurance, ());
     let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
 
     // Create multiple savings goals
@@ -263,7 +263,7 @@ fn test_multiple_entities_creation() {
 }
 
 /// Compatibility Test: Validates contract upgrade (WASM update) preserves state
-/// 
+///
 /// This test simulates the upgrade process:
 /// 1. Deploy v1 of RemittanceSplit
 /// 2. Initialize with configuration
@@ -277,7 +277,7 @@ fn test_contract_upgrade_compatibility() {
     let user = Address::generate(&env);
 
     // Step 1: Deploy Initial Version (v1)
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     // Step 2: Initialize state
@@ -285,16 +285,13 @@ fn test_contract_upgrade_compatibility() {
     assert!(client.get_config().is_some());
     assert_eq!(client.get_version(), 1u32);
 
-    // Step 3: "Upgrade" the contract
-    // In Soroban tests, we simulate an upgrade by re-registering the contract at the same ID
-    // with potentially new logic (here using the same for simplicity, but validating the mechanism)
-    env.register_contract(&contract_id, RemittanceSplit);
-
     // Step 4: Verify state preservation
-    let config = client.get_config().expect("Config should be preserved after upgrade");
+    let config = client
+        .get_config()
+        .expect("Config should be preserved after upgrade");
     assert_eq!(config.spending_percent, 50u32);
     assert_eq!(config.owner, user);
-    
+
     // Verify we can still update the version if authorized
     client.set_version(&user, &2u32);
     assert_eq!(client.get_version(), 2u32);
@@ -303,7 +300,7 @@ fn test_contract_upgrade_compatibility() {
 }
 
 /// Compatibility Test: Validates version consistency across the entire workspace
-/// 
+///
 /// Ensures all core contracts report the expected version and can interoperate.
 #[test]
 fn test_version_matrix_interoperability() {
@@ -311,23 +308,31 @@ fn test_version_matrix_interoperability() {
     env.mock_all_auths();
 
     // Deploy all contracts
-    let split_id = env.register_contract(None, RemittanceSplit);
-    let goals_id = env.register_contract(None, SavingsGoalContract);
-    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let split_id = env.register(RemittanceSplit, ());
+    let goals_id = env.register(SavingsGoalContract, ());
+    let _orchestrator_id = env.register(Orchestrator, ());
 
     let split_client = RemittanceSplitClient::new(&env, &split_id);
     let goals_client = SavingsGoalContractClient::new(&env, &goals_id);
     // Add other clients as needed...
 
     // Verify versions
-    assert_eq!(split_client.get_version(), 1u32, "RemittanceSplit version mismatch");
-    assert_eq!(goals_client.get_version(), 1u32, "SavingsGoal version mismatch");
+    assert_eq!(
+        split_client.get_version(),
+        1u32,
+        "RemittanceSplit version mismatch"
+    );
+    assert_eq!(
+        goals_client.get_version(),
+        1u32,
+        "SavingsGoal version mismatch"
+    );
 
     println!("✅ Version matrix interoperability test passed!");
 }
 
 /// Migration Test: Validates that on-chain snapshots align with off-chain migration logic
-/// 
+///
 /// This is a critical "bridge" test ensuring that the data_migration crate
 /// can correctly process data exported from the smart contracts.
 #[test]
@@ -338,13 +343,15 @@ fn test_data_migration_logic_consistency() {
     let user = Address::generate(&env);
 
     // Deploy and initialize RemittanceSplit
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
 
     // 1. Export snapshot from on-chain contract
-    let on_chain_snapshot = client.export_snapshot(&user).expect("Should export snapshot");
-    
+    let on_chain_snapshot = client
+        .export_snapshot(&user)
+        .expect("Should export snapshot");
+
     // 2. Perform off-chain compatibility verification using data_migration types
     // We verify the payload matches our expectation
     let export_data = RemittanceSplitExport {
@@ -356,13 +363,17 @@ fn test_data_migration_logic_consistency() {
     };
 
     let migration_payload = SnapshotPayload::RemittanceSplit(export_data);
-    let migration_snapshot = MigrationSnapshot::new(migration_payload, data_migration::ExportFormat::Json);
+    let migration_snapshot =
+        MigrationSnapshot::new(migration_payload, data_migration::ExportFormat::Json);
 
     // 3. Verify version consistency between contract and migration tool
-    assert_eq!(on_chain_snapshot.version, migration_snapshot.header.version, "Snapshot version mismatch");
-    
-    // Note: On-chain checksum and off-chain checksum might use different algorithms 
+    assert_eq!(
+        on_chain_snapshot.version, migration_snapshot.header.version,
+        "Snapshot version mismatch"
+    );
+
+    // Note: On-chain checksum and off-chain checksum might use different algorithms
     // (u64 additive vs SHA256) but the data structures must be compatible.
-    
+
     println!("✅ Data migration logic consistency test passed!");
 }

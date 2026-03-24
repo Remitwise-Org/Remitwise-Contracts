@@ -9,7 +9,7 @@ use soroban_sdk::{
 fn setup() -> (Env, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, BillPayments);
+    let contract_id = env.register(BillPayments, ());
     let owner = Address::generate(&env);
     (env, owner, contract_id)
 }
@@ -24,17 +24,16 @@ fn try_create(
     frequency_days: u32,
     currency: &String,
 ) -> Result<u32, Error> {
-    let result = client
-        .try_create_bill(
-            owner,
-            name,
-            &amount,
-            &due_date,
-            &recurring,
-            &frequency_days,
-            &None,
-            currency,
-        );
+    let result = client.try_create_bill(
+        owner,
+        name,
+        &amount,
+        &due_date,
+        &recurring,
+        &frequency_days,
+        &None,
+        currency,
+    );
     match result {
         Ok(Ok(id)) => Ok(id),
         Ok(Err(_)) => panic!("unexpected conversion error from client"),

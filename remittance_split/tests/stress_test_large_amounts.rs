@@ -20,7 +20,7 @@ use soroban_sdk::Env;
 #[test]
 fn test_calculate_split_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -32,7 +32,7 @@ fn test_calculate_split_with_large_amount() {
     // Test with i128::MAX / 200 to ensure multiplication by percentages doesn't overflow
     let large_amount = i128::MAX / 200;
     // client.calculate_split returns Vec<i128> directly
-    let amounts = client.calculate_split(&large_amount);
+    let _amounts = client.calculate_split(&large_amount);
 
     let result = client.try_calculate_split(&large_amount);
     assert!(result.is_ok());
@@ -46,7 +46,7 @@ fn test_calculate_split_with_large_amount() {
 #[test]
 fn test_calculate_split_near_max_safe_value() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -56,7 +56,7 @@ fn test_calculate_split_near_max_safe_value() {
 
     // Maximum safe value for multiplication by 100 (largest percentage)
     let max_safe = i128::MAX / 100 - 1;
-    let amounts = client.calculate_split(&max_safe);
+    let _amounts = client.calculate_split(&max_safe);
 
     let result = client.try_calculate_split(&max_safe);
     assert!(result.is_ok());
@@ -69,7 +69,7 @@ fn test_calculate_split_near_max_safe_value() {
 //#[test]
 // fn test_calculate_split_overflow_detection() {
 //     let env = Env::default();
-//     let contract_id = env.register_contract(None, RemittanceSplit);
+//     let contract_id = env.register(RemittanceSplit, ());
 //     let client = RemittanceSplitClient::new(&env, &contract_id);
 //     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -77,9 +77,9 @@ fn test_calculate_split_near_max_safe_value() {
 
 //     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
-    // Value that will overflow when multiplied by percentage
-    let overflow_amount = i128::MAX / 50 + 1; // Will overflow when multiplied by 50
-
+//     // Value that will overflow when multiplied by percentage
+//     let overflow_amount = i128::MAX / 50 + 1; // Will overflow when multiplied by 50
+//
 //     let result = client.try_calculate_split(&overflow_amount);
 
 //     // Should return Overflow error, not panic
@@ -89,7 +89,7 @@ fn test_calculate_split_near_max_safe_value() {
 #[test]
 fn test_calculate_split_with_minimal_percentages() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -110,7 +110,7 @@ fn test_calculate_split_with_minimal_percentages() {
 #[test]
 fn test_get_split_allocations_with_large_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -132,7 +132,7 @@ fn test_get_split_allocations_with_large_amount() {
 #[test]
 fn test_multiple_splits_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -154,7 +154,7 @@ fn test_multiple_splits_with_large_amounts() {
 #[test]
 fn test_edge_case_i128_max_divided_by_100() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -175,7 +175,7 @@ fn test_edge_case_i128_max_divided_by_100() {
 #[test]
 fn test_split_with_100_percent_to_one_category() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -202,7 +202,7 @@ fn test_split_with_100_percent_to_one_category() {
 #[test]
 fn test_rounding_behavior_with_large_amounts() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -226,7 +226,7 @@ fn test_rounding_behavior_with_large_amounts() {
 #[test]
 fn test_sequential_large_calculations() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -256,7 +256,7 @@ fn test_sequential_large_calculations() {
 #[test]
 fn test_checked_arithmetic_prevents_silent_overflow() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
@@ -285,7 +285,7 @@ fn test_checked_arithmetic_prevents_silent_overflow() {
 #[test]
 fn test_insurance_remainder_calculation_with_large_values() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 

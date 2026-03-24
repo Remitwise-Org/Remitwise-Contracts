@@ -2,17 +2,17 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+    testutils::{Address as AddressTrait, Events},
+    Address, Env, IntoVal, Symbol, TryFromVal,
 };
 
 use testutils::{set_ledger_time, setup_test_env};
 
-// Removed local set_time in favor of testutils::set_ledger_time
+// Removed local set_ledger_time in favor of testutils::set_ledger_time
 
 #[test]
 fn test_initialize_split_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
+    setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
 
     let success = client.initialize_split(
         &owner, &0,  // nonce
@@ -35,7 +35,7 @@ fn test_initialize_split_succeeds() {
 #[test]
 fn test_initialize_split_invalid_sum() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -46,13 +46,16 @@ fn test_initialize_split_invalid_sum() {
         &50, &50, &10, // Sums to 110
         &0,
     );
-    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidPercentages)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 #[test]
 fn test_initialize_split_already_initialized() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -67,7 +70,7 @@ fn test_initialize_split_already_initialized() {
 #[test]
 fn test_update_split() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -88,7 +91,7 @@ fn test_update_split() {
 #[test]
 fn test_update_split_unauthorized() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
@@ -104,7 +107,7 @@ fn test_update_split_unauthorized() {
 #[test]
 fn test_calculate_split() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -129,7 +132,7 @@ fn test_calculate_split() {
 #[test]
 fn test_calculate_split_rounding() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -154,7 +157,7 @@ fn test_calculate_split_rounding() {
 #[test]
 fn test_calculate_split_zero_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -168,7 +171,7 @@ fn test_calculate_split_zero_amount() {
 #[test]
 fn test_calculate_complex_rounding() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -200,7 +203,7 @@ fn test_calculate_complex_rounding() {
 
 #[test]
 fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
+    setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
     set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
@@ -220,12 +223,12 @@ fn test_create_remittance_schedule_succeeds() {
 #[test]
 fn test_modify_remittance_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -241,12 +244,12 @@ fn test_modify_remittance_schedule() {
 #[test]
 fn test_cancel_remittance_schedule() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -260,12 +263,12 @@ fn test_cancel_remittance_schedule() {
 #[test]
 fn test_get_remittance_schedules() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -279,12 +282,12 @@ fn test_get_remittance_schedules() {
 #[test]
 fn test_remittance_schedule_validation() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 5000);
+    set_ledger_time(&env, 5000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -295,12 +298,12 @@ fn test_remittance_schedule_validation() {
 #[test]
 fn test_remittance_schedule_zero_amount() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -310,7 +313,7 @@ fn test_remittance_schedule_zero_amount() {
 #[test]
 fn test_initialize_split_events() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -337,7 +340,7 @@ fn test_initialize_split_events() {
 #[test]
 fn test_update_split_events() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -367,7 +370,7 @@ fn test_update_split_events() {
 #[test]
 fn test_calculate_split_events() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -400,7 +403,7 @@ fn test_calculate_split_events() {
 #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
 fn test_update_split_non_owner_auth_failure() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
@@ -432,7 +435,7 @@ fn test_update_split_non_owner_auth_failure() {
 #[test]
 fn test_split_boundary_100_0_0_0() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -460,7 +463,7 @@ fn test_split_boundary_100_0_0_0() {
 #[test]
 fn test_split_boundary_0_100_0_0() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -486,7 +489,7 @@ fn test_split_boundary_0_100_0_0() {
 #[test]
 fn test_split_boundary_0_0_100_0() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -512,7 +515,7 @@ fn test_split_boundary_0_0_100_0() {
 #[test]
 fn test_split_boundary_0_0_0_100() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -539,7 +542,7 @@ fn test_split_boundary_0_0_0_100() {
 #[test]
 fn test_split_boundary_25_25_25_25() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -567,7 +570,7 @@ fn test_split_boundary_25_25_25_25() {
 #[test]
 fn test_update_split_boundary_percentages() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
@@ -613,7 +616,7 @@ fn test_update_split_boundary_percentages() {
 fn test_update_split_not_initialized() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, RemittanceSplit);
+    let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
 
