@@ -176,6 +176,15 @@ pub enum Error {
 
 #[contractimpl]
 impl FamilyWallet {
+    /// Initializes the family wallet with an owner and a set of initial members.
+    /// 
+    /// ### Arguments
+    /// * `owner` - The address that will have full administrative control.
+    /// * `initial_members` - A list of addresses to be added as regular members.
+    /// 
+    /// ### Security
+    /// * Requires owner authorization.
+    /// * Can only be called once.
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
         owner.require_auth();
 
@@ -475,6 +484,19 @@ impl FamilyWallet {
         true
     }
 
+    /// Proposes a new multi-sig transaction.
+    /// 
+    /// If the transaction does not require multi-sig (e.g., small withdrawal), 
+    /// it executes immediately. Otherwise, it creates a pending transaction 
+    /// that requires further signatures.
+    /// 
+    /// ### Arguments
+    /// * `proposer` - The address proposing the transaction.
+    /// * `tx_type` - The category of the transaction (LargeWithdrawal, RoleChange, etc.).
+    /// * `data` - The specific details of the transaction (recipient, amount, etc.).
+    /// 
+    /// ### Returns
+    /// * `u64` - The unique transaction ID, or 0 if executed immediately.
     pub fn propose_transaction(
         env: Env,
         proposer: Address,
@@ -558,6 +580,17 @@ impl FamilyWallet {
         tx_id
     }
 
+    /// Signs a pending multi-sig transaction.
+    /// 
+    /// If the signature threshold for the transaction type is reached, 
+    /// the transaction is executed automatically.
+    /// 
+    /// ### Arguments
+    /// * `signer` - The authorized signer adding their approval.
+    /// * `tx_id` - The ID of the pending transaction.
+    /// 
+    /// ### Returns
+    /// * `bool` - True if the signature was successfully added.
     pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> bool {
         signer.require_auth();
         Self::require_not_paused(&env);
@@ -718,6 +751,16 @@ impl FamilyWallet {
         )
     }
 
+    /// Proposes or executes an emergency transfer.
+    /// 
+    /// If emergency mode is ON, the transfer executes immediately (subject to cooldown).
+    /// If emergency mode is OFF, this creates a multi-sig proposal.
+    /// 
+    /// ### Arguments
+    /// * `proposer` - The address initiating the emergency transfer.
+    /// * `token` - The address of the token to transfer.
+    /// * `recipient` - The transfer destination.
+    /// * `amount` - The amount of tokens.
     pub fn propose_emergency_transfer(
         env: Env,
         proposer: Address,

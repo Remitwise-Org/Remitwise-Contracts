@@ -1,0 +1,21 @@
+﻿
+running 8 tests
+test bench_archive_transactions ... {"contract":"family_wallet","method":"archive_old_transactions","scenario":"10_executed_txs","cpu":390675,"mem":90594}
+ok
+test bench_batch_add_family_members ... {"contract":"family_wallet","method":"batch_add_family_members","scenario":"20_members","cpu":556534,"mem":101502}
+ok
+test bench_cleanup_expired_pending ... {"contract":"family_wallet","method":"cleanup_expired_pending","scenario":"10_expired_txs","cpu":617140,"mem":127538}
+ok
+test bench_emergency_transfer_direct ... {"contract":"family_wallet","method":"propose_emergency_transfer","scenario":"direct_exec_mode_on","cpu":395269,"mem":67938}
+ok
+test bench_init ... {"contract":"family_wallet","method":"init","scenario":"5_initial_members","cpu":111193,"mem":19048}
+ok
+test bench_propose_transaction ... {"contract":"family_wallet","method":"propose_transaction","scenario":"large_withdrawal","cpu":233380,"mem":46583}
+ok
+test bench_sign_transaction_executing ... {"contract":"family_wallet","method":"sign_transaction","scenario":"executing_2_of_2","cpu":422826,"mem":78512}
+ok
+test bench_sign_transaction_non_executing ... {"contract":"family_wallet","method":"sign_transaction","scenario":"non_executing_1_of_3","cpu":268848,"mem":55278}
+ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
