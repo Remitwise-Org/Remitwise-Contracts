@@ -1,56 +1,67 @@
 # Remittance Split Contract
 
-A Soroban smart contract for configuring and calculating remittance fund allocations across spending, savings, bills, and insurance categories.
+A Soroban smart contract for configuring and executing percentage-based USDC distributions
+across spending, savings, bills, and insurance categories.
 
-## Overview
+## Security Model
 
-The Remittance Split contract manages percentage-based allocations for incoming remittances, automatically distributing funds according to user-defined ratios for different financial categories.
+`distribute_usdc` is the only function that moves funds. It enforces the following invariants
+in strict order before any token interaction occurs:
+
+1. **Auth first** — `from.require_auth()` is the very first operation; no state is read before
+   the caller proves authority.
+2. **Pause guard** — the contract must not be globally paused.
+3. **Owner-only** — `from` must equal the address stored as `config.owner` at initialization.
+   Any other address is rejected with `Unauthorized`, even if it can self-authorize.
+4. **Trusted token** — `usdc_contract` must match the address pinned in `config.usdc_contract`
+   at initialization time. Passing a different address returns `UntrustedTokenContract`,
+   preventing token-substitution attacks.
+5. **Amount validation** — `total_amount` must be > 0.
+6. **Self-transfer guard** — none of the four destination accounts may equal `from`.
+   Returns `SelfTransferNotAllowed` if any match.
+7. **Replay protection** — nonce must equal `get_nonce(from)` and is incremented after success.
+8. **Audit + event** — a `DistributionCompleted` event is emitted on success for off-chain indexing.
 
 ## Features
 
-- Configure allocation percentages (spending, savings, bills, insurance)
-- Calculate split amounts from total remittance
-- Update split configurations
-- Access control for configuration management
-- Event emission for audit trails
-- Backward compatibility with vector-based storage
+- Percentage-based allocation (spending / savings / bills / insurance, must sum to 100)
+- Hardened `distribute_usdc` with 7-layer auth checks
+- Nonce-based replay protection on all state-changing operations
+- Pause / unpause with admin controls
+- Remittance schedules (create / modify / cancel)
+- Snapshot export/import with checksum verification
+- Audit log (last 100 entries, ring-buffer)
+- TTL extension on every state-changing call
 
 ## Quickstart
 
-This section provides a minimal example of how to interact with the Remittance Split contract.
-
-**Gotchas:**
-- The configured percentages MUST sum up exactly to 100.
-- `initialize_split` must be called with a valid `nonce` for replay protection.
-- To execute actual underlying asset transfers, use `distribute_usdc` rather than just calculating numbers.
-
-### Write Example: Initializing the Split
-*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
 ```rust
-
-let success = client.initialize_split(
-    &owner_address,
-    &0,  
-    &50, 
-    &30, 
-    &15, 
-    &5   
+// 1. Initialize — pin the trusted USDC contract address at setup time
+client.initialize_split(
+    &owner,
+    &0,           // nonce
+    &usdc_addr,   // trusted token contract — immutable after init
+    &50,          // spending %
+    &30,          // savings %
+    &15,          // bills %
+    &5,           // insurance %
 );
 
-```
-
-### Read Example: Fetching the Configuration
-```rust
-
-let config = client.get_config();
-
+// 2. Distribute
+client.distribute_usdc(
+    &usdc_addr,   // must match the address stored at init
+    &owner,       // must be config.owner and must authorize
+    &1,           // nonce (increments after each call)
+    &AccountGroup { spending, savings, bills, insurance },
+    &1_000_0000000, // stroops
+);
 ```
 
 ## API Reference
 
 ### Data Structures
 
-#### SplitConfig
+#### `SplitConfig`
 
 ```rust
 pub struct SplitConfig {
@@ -59,151 +70,128 @@ pub struct SplitConfig {
     pub savings_percent: u32,
     pub bills_percent: u32,
     pub insurance_percent: u32,
+    pub timestamp: u64,
     pub initialized: bool,
+    /// Trusted USDC contract address — pinned at initialization, validated on every distribute_usdc call.
+    pub usdc_contract: Address,
+}
+```
+
+#### `AccountGroup`
+
+```rust
+pub struct AccountGroup {
+    pub spending: Address,
+    pub savings: Address,
+    pub bills: Address,
+    pub insurance: Address,
 }
 ```
 
 ### Functions
 
-#### `initialize_split(env, owner, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
+#### `initialize_split(env, owner, nonce, usdc_contract, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
-Initializes a remittance split configuration.
+Initializes the split configuration and pins the trusted USDC token contract address.
 
-**Parameters:**
+- `owner` must authorize.
+- `usdc_contract` is stored immutably and validated on every `distribute_usdc` call.
+- Percentages must sum to exactly 100.
+- Can only be called once (`AlreadyInitialized` on repeat).
 
-- `owner`: Address of the split owner (must authorize)
-- `spending_percent`: Percentage for spending (0-100)
-- `savings_percent`: Percentage for savings (0-100)
-- `bills_percent`: Percentage for bills (0-100)
-- `insurance_percent`: Percentage for insurance (0-100)
+#### `distribute_usdc(env, usdc_contract, from, nonce, accounts, total_amount) -> bool`
 
-**Returns:** True on success
+Distributes USDC from `from` to the four split destination accounts.
 
-**Panics:** If percentages don't sum to 100 or already initialized
+**Security checks (in order):**
+1. `from.require_auth()`
+2. Contract not paused
+3. `from == config.owner`
+4. `usdc_contract == config.usdc_contract`
+5. `total_amount > 0`
+6. No destination account equals `from`
+7. Nonce matches
 
-#### `update_split(env, caller, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
+**Errors:**
+| Error | Condition |
+|---|---|
+| `Unauthorized` | Caller is not the config owner, or contract is paused |
+| `UntrustedTokenContract` | `usdc_contract` ≠ stored trusted address |
+| `SelfTransferNotAllowed` | Any destination account equals `from` |
+| `InvalidAmount` | `total_amount` ≤ 0 |
+| `NotInitialized` | Contract not yet initialized |
+| `InvalidNonce` | Replay attempt |
 
-Updates an existing split configuration.
+#### `update_split(env, caller, nonce, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
-**Parameters:**
-
-- `caller`: Address of the caller (must be owner)
-- `spending_percent`: New spending percentage
-- `savings_percent`: New savings percentage
-- `bills_percent`: New bills percentage
-- `insurance_percent`: New insurance percentage
-
-**Returns:** True on success
-
-**Panics:** If caller not owner, percentages invalid, or not initialized
-
-#### `get_split(env) -> Vec<u32>`
-
-Gets the current split percentages.
-
-**Returns:** Vector [spending, savings, bills, insurance] percentages
-
-#### `get_config(env) -> Option<SplitConfig>`
-
-Gets the full split configuration.
-
-**Returns:** SplitConfig struct or None if not initialized
+Updates split percentages. Owner-only, nonce-protected.
 
 #### `calculate_split(env, total_amount) -> Vec<i128>`
 
-Calculates split amounts from a total remittance amount.
+Pure calculation — returns `[spending, savings, bills, insurance]` amounts.
+Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
 
-**Parameters:**
+#### `get_config(env) -> Option<SplitConfig>`
 
-- `total_amount`: Total amount to split (must be positive)
+Returns the current configuration, or `None` if not initialized.
 
-**Returns:** Vector [spending, savings, bills, insurance] amounts
+#### `get_nonce(env, address) -> u64`
 
-**Panics:** If total_amount not positive
+Returns the current nonce for `address`. Pass this value as the `nonce` argument on the next call.
 
-## Usage Examples
-
-### Initializing Split Configuration
-
-```rust
-// Initialize with 50% spending, 30% savings, 15% bills, 5% insurance
-let success = remittance_split::initialize_split(
-    env,
-    user_address,
-    50, // spending
-    30, // savings
-    15, // bills
-    5,  // insurance
-);
-```
-
-### Calculating Split Amounts
+## Error Reference
 
 ```rust
-// Calculate allocation for 1000 XLM remittance
-let amounts = remittance_split::calculate_split(env, 1000_0000000);
-
-// amounts = [500_0000000, 300_0000000, 150_0000000, 50_0000000]
-let spending_amount = amounts.get(0).unwrap();
-let savings_amount = amounts.get(1).unwrap();
-let bills_amount = amounts.get(2).unwrap();
-let insurance_amount = amounts.get(3).unwrap();
-```
-
-### Updating Configuration
-
-```rust
-// Update to 40% spending, 40% savings, 10% bills, 10% insurance
-let success = remittance_split::update_split(
-    env,
-    user_address,
-    40, 40, 10, 10
-);
+pub enum RemittanceSplitError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    PercentagesDoNotSumTo100 = 3,
+    InvalidAmount = 4,
+    Overflow = 5,
+    Unauthorized = 6,
+    InvalidNonce = 7,
+    UnsupportedVersion = 8,
+    ChecksumMismatch = 9,
+    InvalidDueDate = 10,
+    ScheduleNotFound = 11,
+    UntrustedTokenContract = 12,   // NEW: token substitution attack prevention
+    SelfTransferNotAllowed = 13,   // NEW: self-transfer guard
+}
 ```
 
 ## Events
 
-- `SplitEvent::Initialized`: When split is initialized
-- `SplitEvent::Updated`: When split is updated
-- `SplitEvent::Calculated`: When split calculation is performed
+| Topic | Data | When |
+|---|---|---|
+| `("split", Initialized)` | `owner: Address` | `initialize_split` succeeds |
+| `("split", Updated)` | `caller: Address` | `update_split` succeeds |
+| `("split", Calculated)` | `total_amount: i128` | `calculate_split` called |
+| `("split", DistributionCompleted)` | `(from: Address, total_amount: i128)` | `distribute_usdc` succeeds |
 
-## Integration Patterns
+## Security Assumptions
 
-### With Other Contracts
+- The `usdc_contract` address passed to `initialize_split` must be a legitimate SEP-41 token.
+  The contract does not verify the token's bytecode — it trusts the address provided at init.
+- The owner is responsible for keeping their signing key secure. There is no key rotation
+  mechanism; deploy a new contract instance if ownership must change.
+- Nonces are per-address and stored in instance storage. They are not shared across contract
+  instances.
+- The pause mechanism is a defense-in-depth control. It does not protect against a compromised
+  owner key.
 
-The split contract serves as a central allocation engine:
+## Running Tests
 
-```rust
-// Get split amounts
-let split = remittance_split::calculate_split(env, remittance_amount);
-
-// Allocate to savings goals
-savings_goals::add_to_goal(env, user, goal_id, split.get(1).unwrap())?;
-
-// Create bill payments
-bill_payments::create_bill(env, user, "Monthly Bills".into(), split.get(2).unwrap(), due_date, false, 0)?;
-
-// Pay insurance premiums
-insurance::pay_premium(env, user, policy_id);
+```bash
+cargo test -p remittance_split
 ```
 
-### Automated Remittance Processing
-
-```rust
-// Process incoming remittance
-fn process_remittance(env: Env, user: Address, amount: i128) {
-    let split = remittance_split::calculate_split(env, amount);
-
-    // Auto-allocate funds
-    allocate_to_savings(env, user, split.get(1).unwrap());
-    allocate_to_bills(env, user, split.get(2).unwrap());
-    allocate_to_insurance(env, user, split.get(3).unwrap());
-}
-```
-
-## Security Considerations
-
-- Owner authorization required for configuration changes
-- Percentage validation ensures allocations sum to 100%
-- Initialization check prevents duplicate setup
-- Access control prevents unauthorized modifications
+Test coverage includes:
+- Happy-path distribution with real SAC token balances verified
+- All 7 auth checks individually (owner, token, self-transfer, pause, nonce, amount, init)
+- Replay attack prevention
+- Rounding correctness (sum always equals total)
+- Overflow detection for large i128 values
+- Boundary percentages (100/0/0/0, 0/0/0/100, 25/25/25/25)
+- Multiple sequential distributions with nonce advancement
+- Event emission verification
+- TTL extension

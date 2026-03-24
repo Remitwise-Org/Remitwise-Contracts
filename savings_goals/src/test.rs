@@ -39,7 +39,7 @@ fn test_create_goal_allows_past_target_date() {
     env.mock_all_auths();
 
     // Move ledger time forward so our target_date is clearly in the past.
-    set_time(&env, 2_000_000_000);
+    set_ledger_time(&env, 1, 2_000_000_000);
     let past_target_date = 1_000_000_000u64;
 
     let name = String::from_str(&env, "Backfill Goal");
@@ -1430,6 +1430,14 @@ fn setup_goals(env: &Env, client: &SavingsGoalContractClient, owner: &Address, c
     }
 }
 
+fn page_goal_ids(env: &Env, page: &GoalPage) -> soroban_sdk::Vec<u32> {
+    let mut ids = soroban_sdk::Vec::new(env);
+    for goal in page.items.iter() {
+        ids.push_back(goal.id);
+    }
+    ids
+}
+
 #[test]
 fn test_get_goals_empty() {
     let env = Env::default();
@@ -1531,6 +1539,74 @@ fn test_get_goals_cursor_is_exclusive() {
     for g in second.items.iter() {
         assert!(g.id > last_id, "cursor should be exclusive");
     }
+}
+
+#[test]
+fn test_get_goals_rejects_invalid_cursor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 4);
+
+    let res = client.try_get_goals(&owner, &999_999, &2);
+    assert!(res.is_err(), "non-zero cursor must exist for this owner");
+}
+
+#[test]
+fn test_get_goals_rejects_cursor_from_another_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner_a, 3);
+    setup_goals(&env, &client, &owner_b, 2);
+
+    let owner_b_first_page = client.get_goals(&owner_b, &0, &1);
+    let foreign_cursor = owner_b_first_page.items.get(0).unwrap().id;
+    let res = client.try_get_goals(&owner_a, &foreign_cursor, &2);
+    assert!(res.is_err(), "cursor must be bound to the requested owner");
+}
+
+#[test]
+fn test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 6);
+
+    let page1 = client.get_goals(&owner, &0, &3);
+    let page1_ids = page_goal_ids(&env, &page1);
+    assert_eq!(page1_ids.get(0), Some(1));
+    assert_eq!(page1_ids.get(1), Some(2));
+    assert_eq!(page1_ids.get(2), Some(3));
+
+    // Simulate concurrent writes between paged reads.
+    setup_goals(&env, &client, &owner, 2);
+
+    let page2 = client.get_goals(&owner, &page1.next_cursor, &3);
+    let page2_ids = page_goal_ids(&env, &page2);
+    assert_eq!(page2_ids.get(0), Some(4));
+    assert_eq!(page2_ids.get(1), Some(5));
+    assert_eq!(page2_ids.get(2), Some(6));
+
+    let page3 = client.get_goals(&owner, &page2.next_cursor, &3);
+    let page3_ids = page_goal_ids(&env, &page3);
+    assert_eq!(page3_ids.get(0), Some(7));
+    assert_eq!(page3_ids.get(1), Some(8));
+    assert_eq!(page3.count, 2);
+    assert_eq!(page3.next_cursor, 0);
 }
 
 #[test]

@@ -36,6 +36,10 @@ pub enum RemittanceSplitError {
     ChecksumMismatch = 9,
     InvalidDueDate = 10,
     ScheduleNotFound = 11,
+    /// The supplied token contract address does not match the trusted USDC contract.
+    UntrustedTokenContract = 12,
+    /// A destination account is the same as the sender, which would be a no-op transfer.
+    SelfTransferNotAllowed = 13,
 }
 
 #[derive(Clone)]
@@ -69,6 +73,9 @@ pub struct SplitConfig {
     pub insurance_percent: u32,
     pub timestamp: u64,
     pub initialized: bool,
+    /// The only token contract address permitted for distribute_usdc calls.
+    /// Stored at initialization time; prevents substitution attacks.
+    pub usdc_contract: Address,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,6 +96,8 @@ pub enum SplitEvent {
     Initialized,
     Updated,
     Calculated,
+    /// Emitted when distribute_usdc successfully completes all transfers.
+    DistributionCompleted,
 }
 
 /// Snapshot for data export/import (migration). Checksum is a simple numeric digest for on-chain verification.
@@ -280,6 +289,8 @@ impl RemittanceSplit {
     /// # Arguments
     /// * `owner` - Address of the split owner (must authorize)
     /// * `nonce` - Caller's transaction nonce (must equal get_nonce(owner)) for replay protection
+    /// * `usdc_contract` - The trusted USDC token contract address; only this address is
+    ///   permitted in future `distribute_usdc` calls (prevents token substitution attacks)
     /// * `spending_percent` - Percentage for spending (0-100)
     /// * `savings_percent` - Percentage for savings (0-100)
     /// * `bills_percent` - Percentage for bills (0-100)
@@ -288,15 +299,16 @@ impl RemittanceSplit {
     /// # Returns
     /// True if initialization was successful
     ///
-    /// # Panics
-    /// - If owner doesn't authorize the transaction
-    /// - If nonce is invalid (replay)
-    /// - If percentages don't sum to 100
-    /// - If split is already initialized (use update_split instead)
+    /// # Errors
+    /// - `Unauthorized` if owner doesn't authorize the transaction
+    /// - `InvalidNonce` if nonce is invalid (replay protection)
+    /// - `PercentagesDoNotSumTo100` if percentages don't sum to 100
+    /// - `AlreadyInitialized` if split is already initialized (use update_split instead)
     pub fn initialize_split(
         env: Env,
         owner: Address,
         nonce: u64,
+        usdc_contract: Address,
         spending_percent: u32,
         savings_percent: u32,
         bills_percent: u32,
@@ -328,6 +340,7 @@ impl RemittanceSplit {
             insurance_percent,
             timestamp: env.ledger().timestamp(),
             initialized: true,
+            usdc_contract,
         };
 
         env.storage()
@@ -479,6 +492,36 @@ impl RemittanceSplit {
         Ok(vec![&env, spending, savings, bills, insurance])
     }
 
+    /// Distribute USDC from `from` to the four split destination accounts according
+    /// to the configured percentages.
+    ///
+    /// # Security invariants enforced
+    /// 1. `from.require_auth()` is the very first operation — no state is read before
+    ///    the caller proves authority.
+    /// 2. The contract must not be paused.
+    /// 3. `from` must be the configured split owner — prevents any third party from
+    ///    triggering transfers out of an owner's account even if they can self-authorize.
+    /// 4. `usdc_contract` must match the address stored at initialization time —
+    ///    prevents token-substitution attacks where a malicious token is passed in.
+    /// 5. None of the destination accounts may equal `from` — prevents silent no-op
+    ///    transfers that could be used to inflate audit logs or waste gas.
+    /// 6. Nonce replay protection is checked before any token interaction.
+    /// 7. A `DistributionCompleted` event is emitted on success for off-chain indexing.
+    ///
+    /// # Arguments
+    /// * `usdc_contract` - Token contract address (must match the trusted address stored at init)
+    /// * `from` - Sender address (must be the config owner and must authorize)
+    /// * `nonce` - Replay-protection nonce (must equal `get_nonce(from)`)
+    /// * `accounts` - Destination accounts for each split category
+    /// * `total_amount` - Total amount to distribute (must be > 0)
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `from` is not the config owner or contract is paused
+    /// - `UntrustedTokenContract` if `usdc_contract` ≠ stored trusted address
+    /// - `SelfTransferNotAllowed` if any destination account equals `from`
+    /// - `InvalidNonce` on replay
+    /// - `InvalidAmount` if `total_amount` ≤ 0
+    /// - `NotInitialized` if the contract has not been initialized
     pub fn distribute_usdc(
         env: Env,
         usdc_contract: Address,
@@ -487,14 +530,51 @@ impl RemittanceSplit {
         accounts: AccountGroup,
         total_amount: i128,
     ) -> Result<bool, RemittanceSplitError> {
+        // 1. Auth first — before any storage reads or state checks.
+        from.require_auth();
+
+        // 2. Pause guard.
+        Self::require_not_paused(&env)?;
+
+        // 3. Contract must be initialized; load config for subsequent checks.
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        // 4. Only the configured owner may trigger distributions.
+        if config.owner != from {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        // 5. Token contract must match the trusted address pinned at initialization.
+        if config.usdc_contract != usdc_contract {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
+        // 6. Amount validation.
         if total_amount <= 0 {
             Self::append_audit(&env, symbol_short!("distrib"), &from, false);
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        from.require_auth();
+        // 7. No destination account may equal the sender (self-transfer guard).
+        if accounts.spending == from
+            || accounts.savings == from
+            || accounts.bills == from
+            || accounts.insurance == from
+        {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::SelfTransferNotAllowed);
+        }
+
+        // 8. Replay protection.
         Self::require_nonce(&env, &from, nonce)?;
 
+        // 9. Calculate split amounts and execute transfers.
         let amounts = Self::calculate_split_amounts(&env, total_amount, false)?;
         let token = TokenClient::new(&env, &usdc_contract);
 
@@ -511,8 +591,14 @@ impl RemittanceSplit {
             token.transfer(&from, &accounts.insurance, &amounts[3]);
         }
 
+        // 10. Advance nonce, record audit, emit event.
         Self::increment_nonce(&env, &from)?;
         Self::append_audit(&env, symbol_short!("distrib"), &from, true);
+        env.events().publish(
+            (symbol_short!("split"), SplitEvent::DistributionCompleted),
+            (from, total_amount),
+        );
+
         Ok(true)
     }
 

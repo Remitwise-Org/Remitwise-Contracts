@@ -253,3 +253,76 @@ fn test_multiple_entities_creation() {
     println!("   Created 2 bills");
     println!("   Created 2 insurance policies");
 }
+
+/// Workspace-wide event topic compliance tests.
+///
+/// These tests verify that events emitted by key contracts follow the
+/// deterministic Remitwise topic schema:
+/// `("Remitwise", category: u32, priority: u32, action: Symbol)`.
+///
+/// The test triggers representative actions in each contract and inspects
+/// `env.events().all()` to validate topics and payload shapes. Any deviation
+/// will cause the test to fail, highlighting contracts that must be updated
+/// to the shared `RemitwiseEvents` helper.
+#[test]
+fn test_event_topic_compliance_across_contracts() {
+    use soroban_sdk::{symbol_short, Vec, IntoVal};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let user = Address::generate(&env);
+
+    // Deploy representative contracts
+    let remittance_id = env.register_contract(None, RemittanceSplit);
+    let remittance_client = RemittanceSplitClient::new(&env, &remittance_id);
+
+    let savings_id = env.register_contract(None, SavingsGoalContract);
+    let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
+
+    let bills_id = env.register_contract(None, BillPayments);
+    let bills_client = BillPaymentsClient::new(&env, &bills_id);
+
+    let insurance_id = env.register_contract(None, Insurance);
+    let insurance_client = InsuranceClient::new(&env, &insurance_id);
+
+    // Trigger events in each contract
+    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
+
+    let goal_name = SorobanString::from_str(&env, "Compliance Goal");
+    let _ = savings_client.create_goal(&user, &goal_name, &1000i128, &(env.ledger().timestamp() + 86400));
+
+    let bill_name = SorobanString::from_str(&env, "Compliance Bill");
+    let _ = bills_client.create_bill(
+        &user,
+        &bill_name,
+        &100i128,
+        &(env.ledger().timestamp() + 86400),
+        &true,
+        &30u32,
+        &SorobanString::from_str(&env, "XLM"),
+    );
+
+    let policy_name = SorobanString::from_str(&env, "Compliance Policy");
+    let coverage_type = SorobanString::from_str(&env, "health");
+    let _ = insurance_client.create_policy(&user, &policy_name, &coverage_type, &50i128, &1000i128);
+
+    // Collect published events
+    let events = env.events().all();
+    assert!(events.len() > 0, "No events were emitted by the sample actions");
+
+    // Validate each event's topics conform to Remitwise schema
+    let mut non_compliant = Vec::new(&env);
+
+    for ev in events.iter() {
+        let topics = &ev.1;
+        // Expect topics to be a vector of length 4 starting with symbol_short!("Remitwise")
+        let ok = topics.len() == 4 && topics.get(0).unwrap() == symbol_short!("Remitwise").into_val(&env);
+        if !ok {
+            non_compliant.push_back(ev.clone());
+        }
+    }
+
+    // Fail if any non-compliant events found, listing one example for debugging
+    assert_eq!(non_compliant.len(), 0u32, "Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.");
+}
