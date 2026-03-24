@@ -2,11 +2,11 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+    testutils::{Address as AddressTrait, Events},
+    Address, Env, IntoVal, Symbol, TryFromVal, Vec,
 };
 
-use testutils::{set_ledger_time, setup_test_env};
+use testutils::set_ledger_time;
 
 // Removed local set_time in favor of testutils::set_ledger_time
 

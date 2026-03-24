@@ -78,7 +78,7 @@ fn test_calculate_split_near_max_safe_value() {
 //     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
     // Value that will overflow when multiplied by percentage
-    let overflow_amount = i128::MAX / 50 + 1; // Will overflow when multiplied by 50
+    // let overflow_amount = i128::MAX / 50 + 1; // Will overflow when multiplied by 50
 
 //     let result = client.try_calculate_split(&overflow_amount);
 
