@@ -403,6 +403,21 @@ Manages family roles, spending controls, multisig approvals, and emergency trans
 
 For full design details, see [docs/family-wallet-design.md](docs/family-wallet-design.md).
 
+### Data Migration
+
+Utilities for contract data export and import (JSON, Binary, CSV).
+
+**Key Functions:**
+
+- `export_to_csv`: Export savings goals to a tabular CSV format.
+- `import_goals_from_csv`: Import goals from CSV with strict schema validation.
+- `export_to_json` / `import_from_json`: Versioned snapshot migration.
+
+**CSV Hardening:**
+- Strict header validation (exact match and order).
+- Row-level type and value validation (e.g., non-negative amounts).
+- Rejection of ambiguous or malformed data.
+
 ## Events
 
 All contracts emit events for important state changes, enabling real-time tracking and frontend integration. Events follow Soroban best practices and include:

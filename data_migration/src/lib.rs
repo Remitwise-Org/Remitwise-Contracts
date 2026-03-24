@@ -13,6 +13,17 @@ use std::collections::HashMap;
 /// Current schema version for migration compatibility.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// Expected headers for Savings Goals CSV export/import.
+pub const SAVINGS_GOAL_HEADERS: &[&str] = &[
+    "id",
+    "owner",
+    "name",
+    "target_amount",
+    "current_amount",
+    "target_date",
+    "locked",
+];
+
 /// Minimum supported schema version for import.
 pub const MIN_SUPPORTED_VERSION: u32 = 1;
 
@@ -260,13 +271,68 @@ pub fn import_from_binary(bytes: &[u8]) -> Result<ExportSnapshot, MigrationError
     Ok(snapshot)
 }
 
-/// Import goals from CSV into SavingsGoalsExport (no header checksum; use for merge/import).
+/// Import goals from CSV into SavingsGoalsExport with strict schema validation.
+///
+/// # Security and Validation
+/// - **Header Integrity**: Validates that headers exactly match `SAVINGS_GOAL_HEADERS` (case-sensitive, exact order).
+/// - **Row Integrity**: Ensures each row has the correct number of fields and valid types.
+/// - **Rejection**: Rejects any ambiguous headers, extra columns, or malformed data types.
+///
+/// # NatSpec-style Documentation
+/// @notice Imports savings goals from a CSV byte stream.
+/// @param bytes The raw CSV data.
+/// @return Result containing a vector of exported savings goals or a migration error.
 pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, MigrationError> {
-    let mut rdr = csv::Reader::from_reader(bytes);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(bytes);
+
+    // 1. Strict Header Validation
+    {
+        let headers = rdr
+            .headers()
+            .map_err(|e| MigrationError::InvalidFormat(format!("Failed to read headers: {}", e)))?;
+
+        if headers.len() != SAVINGS_GOAL_HEADERS.len() {
+            return Err(MigrationError::ValidationFailed(format!(
+                "Header length mismatch: expected {}, found {}",
+                SAVINGS_GOAL_HEADERS.len(),
+                headers.len()
+            )));
+        }
+
+        for (i, expected) in SAVINGS_GOAL_HEADERS.iter().enumerate() {
+            if headers.get(i) != Some(expected) {
+                return Err(MigrationError::ValidationFailed(format!(
+                    "Header mismatch at column {}: expected '{}', found '{:?}'",
+                    i,
+                    expected,
+                    headers.get(i)
+                )));
+            }
+        }
+    }
+
     let mut goals = Vec::new();
-    for result in rdr.deserialize() {
-        let record: CsvGoalRow =
-            result.map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+    for (row_idx, result) in rdr.deserialize().enumerate() {
+        let record: CsvGoalRow = result.map_err(|e| {
+            MigrationError::DeserializeError(format!("Row {} error: {}", row_idx + 1, e))
+        })?;
+
+        // 2. Extra Row-Level Validation (Internal Consistency)
+        if record.target_amount < 0 {
+            return Err(MigrationError::ValidationFailed(format!(
+                "Row {}: target_amount cannot be negative",
+                row_idx + 1
+            )));
+        }
+        if record.current_amount < 0 {
+            return Err(MigrationError::ValidationFailed(format!(
+                "Row {}: current_amount cannot be negative",
+                row_idx + 1
+            )));
+        }
+
         goals.push(SavingsGoalExport {
             id: record.id,
             owner: record.owner,
@@ -277,6 +343,13 @@ pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, Mig
             locked: record.locked,
         });
     }
+
+    if goals.is_empty() {
+        return Err(MigrationError::ValidationFailed(
+            "CSV contains no data rows".into(),
+        ));
+    }
+
     Ok(goals)
 }
 
@@ -439,5 +512,68 @@ mod tests {
 
         let MigrationEvent::V1(v1) = loaded;
         assert_eq!(v1.version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_csv_import_wrong_headers_fails() {
+        let csv_data = "id,owner,bad_header,target_amount,current_amount,target_date,locked\n1,G1,Name,1000,500,2000000000,true";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+        if let Err(MigrationError::ValidationFailed(msg)) = result {
+            assert!(msg.contains("Header mismatch at column 2"));
+        } else {
+            panic!("Expected ValidationFailed error");
+        }
+    }
+
+    #[test]
+    fn test_csv_import_missing_columns_fails() {
+        let csv_data = "id,owner,name,target_amount,current_amount,target_date\n1,G1,Emergency,1000,500,2000000000";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+        if let Err(MigrationError::ValidationFailed(msg)) = result {
+            assert!(msg.contains("Header length mismatch"));
+        } else {
+            panic!("Expected ValidationFailed error");
+        }
+    }
+
+    #[test]
+    fn test_csv_import_malformed_row_data_fails() {
+        let csv_data = "id,owner,name,target_amount,current_amount,target_date,locked\n1,G1,Emergency,not_a_number,500,2000000000,true";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+        assert!(matches!(result, Err(MigrationError::DeserializeError(_))));
+    }
+
+    #[test]
+    fn test_csv_import_negative_amounts_fails() {
+        let csv_data = "id,owner,name,target_amount,current_amount,target_date,locked\n1,G1,Emergency,-1000,500,2000000000,true";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+        if let Err(MigrationError::ValidationFailed(msg)) = result {
+            assert!(msg.contains("target_amount cannot be negative"));
+        } else {
+            panic!("Expected ValidationFailed error");
+        }
+    }
+
+    #[test]
+    fn test_csv_import_empty_file_fails() {
+        let csv_data = "";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_csv_import_only_headers_fails() {
+        let csv_data = "id,owner,name,target_amount,current_amount,target_date,locked";
+        let result = import_goals_from_csv(csv_data.as_bytes());
+        assert!(result.is_err());
+        if let Err(MigrationError::ValidationFailed(msg)) = result {
+            assert!(msg.contains("CSV contains no data rows"));
+        } else {
+            panic!("Expected ValidationFailed error");
+        }
     }
 }
