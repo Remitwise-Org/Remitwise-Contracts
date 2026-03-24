@@ -154,6 +154,8 @@ Locks a goal to prevent withdrawals.
 
 **Returns:** True on success
 
+**Idempotency:** If the goal is already locked, returns `true` without writing storage, audit entries, or emitting `GoalLocked` again (deterministic for indexers).
+
 **Panics:** If caller not owner or goal not found
 
 #### `unlock_goal(env, caller, goal_id) -> bool`
@@ -166,6 +168,8 @@ Unlocks a goal to allow withdrawals.
 - `goal_id`: ID of the goal
 
 **Returns:** True on success
+
+**Idempotency:** If the goal is already unlocked, returns `true` without writing storage, audit entries, or emitting `GoalUnlocked` again. Does not modify `unlock_date` (time-lock fields).
 
 **Panics:** If caller not owner or goal not found
 

@@ -142,7 +142,7 @@ impl From<soroban_sdk::Error> for SavingsGoalsError {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum SavingsEvent {
     GoalCreated,
     FundsAdded,
@@ -296,7 +296,10 @@ impl SavingsGoalContract {
 
     pub fn pause(env: Env, caller: Address) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = match Self::get_pause_admin(&env) {
+            Some(a) => a,
+            None => panic!("Unauthorized"),
+        };
         if admin != caller {
             panic!("Unauthorized");
         }
@@ -309,7 +312,10 @@ impl SavingsGoalContract {
 
     pub fn unpause(env: Env, caller: Address) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = match Self::get_pause_admin(&env) {
+            Some(a) => a,
+            None => panic!("Unauthorized"),
+        };
         if admin != caller {
             panic!("Unauthorized");
         }
@@ -329,7 +335,10 @@ impl SavingsGoalContract {
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = match Self::get_pause_admin(&env) {
+            Some(a) => a,
+            None => panic!("Unauthorized"),
+        };
         if admin != caller {
             panic!("Unauthorized");
         }
@@ -346,7 +355,10 @@ impl SavingsGoalContract {
 
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = match Self::get_pause_admin(&env) {
+            Some(a) => a,
+            None => panic!("Unauthorized"),
+        };
         if admin != caller {
             panic!("Unauthorized");
         }
@@ -881,6 +893,13 @@ impl SavingsGoalContract {
         Ok(new_amount)
     }
 
+    /// @notice Sets `locked = true` for a goal owned by `caller`.
+    /// @dev Idempotent: if the goal is already locked, returns `true` without mutating storage,
+    ///      appending audit entries, or emitting `GoalLocked` (stable for indexers).
+    /// @param caller Goal owner; must authorize.
+    /// @param goal_id Target goal.
+    /// @return Always `true` when the goal ends in the locked state (including no-op idempotent path).
+    /// @custom:security Non-owners still panic; missing goals panic (existing behavior).
     pub fn lock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::LOCK);
@@ -905,6 +924,11 @@ impl SavingsGoalContract {
             panic!("Only the goal owner can lock this goal");
         }
 
+        // Idempotent: already locked — no storage write, audit entry, or event (deterministic for indexers).
+        if goal.locked {
+            return true;
+        }
+
         goal.locked = true;
         goals.set(goal_id, goal);
         env.storage()
@@ -920,6 +944,13 @@ impl SavingsGoalContract {
         true
     }
 
+    /// @notice Sets `locked = false` for a goal owned by `caller`.
+    /// @dev Idempotent: if the goal is already unlocked, returns `true` without mutating storage,
+    ///      appending audit entries, or emitting `GoalUnlocked`. Does not clear `unlock_date`;
+    ///      time-lock semantics for withdrawals are unchanged.
+    /// @param caller Goal owner; must authorize.
+    /// @param goal_id Target goal.
+    /// @return Always `true` when the goal ends in the unlocked state (including no-op idempotent path).
     pub fn unlock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::UNLOCK);
@@ -942,6 +973,11 @@ impl SavingsGoalContract {
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("unlock"), &caller, false);
             panic!("Only the goal owner can unlock this goal");
+        }
+
+        // Idempotent: already unlocked — no storage write, audit entry, or event.
+        if !goal.locked {
+            return true;
         }
 
         goal.locked = false;
