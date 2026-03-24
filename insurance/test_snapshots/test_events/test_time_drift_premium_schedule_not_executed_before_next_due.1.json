@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 100000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -161,6 +162,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -208,6 +215,14 @@
                                     },
                                     "val": {
                                       "u32": 1
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   }
                                 ]
@@ -472,7 +487,8 @@
                     "hi": 0,
                     "lo": 100000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -581,7 +597,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }

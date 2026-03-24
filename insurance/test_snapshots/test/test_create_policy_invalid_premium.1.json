@@ -8,13 +8,13 @@
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 0,
+    "sequence_number": 1,
+    "timestamp": 1000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 700000,
     "ledger_entries": [
       [
         {
@@ -45,7 +45,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1
         ]
       ],
       [
@@ -66,7 +66,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1
         ]
       ]
     ]
@@ -99,7 +99,7 @@
                   "string": "Bad"
                 },
                 {
-                  "string": "Type"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -112,7 +112,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -137,7 +138,7 @@
             ],
             "data": {
               "error": {
-                "contract": 1
+                "contract": 3
               }
             }
           }
@@ -158,7 +159,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 3
                 }
               }
             ],
@@ -183,7 +184,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 3
                 }
               }
             ],
@@ -204,7 +205,7 @@
                       "string": "Bad"
                     },
                     {
-                      "string": "Type"
+                      "string": "health"
                     },
                     {
                       "i128": {
@@ -217,7 +218,8 @@
                         "hi": 0,
                         "lo": 10000
                       }
-                    }
+                    },
+                    "void"
                   ]
                 }
               ]

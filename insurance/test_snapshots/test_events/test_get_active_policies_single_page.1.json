@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -70,7 +71,8 @@
                     "hi": 0,
                     "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -107,7 +109,8 @@
                     "hi": 0,
                     "lo": 30000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -144,7 +147,8 @@
                     "hi": 0,
                     "lo": 40000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -159,28 +163,13 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
+              "function_name": "deactivate_policy",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 250
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50000
-                  }
+                  "u32": 2
                 }
               ]
             }
@@ -229,7 +218,7 @@
                           "symbol": "NEXT_ID"
                         },
                         "val": {
-                          "u32": 5
+                          "u32": 4
                         }
                       },
                       {
@@ -270,6 +259,12 @@
                                     "val": {
                                       "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -319,6 +314,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -334,7 +337,7 @@
                                       "symbol": "active"
                                     },
                                     "val": {
-                                      "bool": true
+                                      "bool": false
                                     }
                                   },
                                   {
@@ -355,6 +358,12 @@
                                     "val": {
                                       "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -404,6 +413,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -440,6 +457,12 @@
                                     "val": {
                                       "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -489,6 +512,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -525,6 +556,12 @@
                                     "val": {
                                       "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -574,91 +611,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 5
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
                                   },
                                   {
                                     "key": {
-                                      "symbol": "coverage_amount"
+                                      "symbol": "tags"
                                     },
                                     "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 50000
-                                      }
+                                      "vec": []
                                     }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 5
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 250
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
                                   }
                                 ]
                               }
@@ -679,7 +639,7 @@
                               "val": {
                                 "i128": {
                                   "hi": 0,
-                                  "lo": 750
+                                  "lo": 400
                                 }
                               }
                             }
@@ -925,7 +885,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1034,7 +995,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1105,7 +1067,8 @@
                     "hi": 0,
                     "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1214,7 +1177,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1285,7 +1249,8 @@
                     "hi": 0,
                     "lo": 30000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1394,7 +1359,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1465,7 +1431,8 @@
                     "hi": 0,
                     "lo": 40000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1574,7 +1541,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1620,7 +1588,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "create_policy"
+                "symbol": "deactivate_policy"
               }
             ],
             "data": {
@@ -1629,22 +1597,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 250
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50000
-                  }
+                  "u32": 2
                 }
               ]
             }
@@ -1662,41 +1615,11 @@
           "v0": {
             "topics": [
               {
-                "symbol": "created"
+                "symbol": "deactive"
               }
             ],
             "data": {
               "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 50000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 250
-                    }
-                  }
-                },
                 {
                   "key": {
                     "symbol": "name"
@@ -1710,7 +1633,7 @@
                     "symbol": "policy_id"
                   },
                   "val": {
-                    "u32": 5
+                    "u32": 2
                   }
                 },
                 {
@@ -1742,7 +1665,7 @@
               {
                 "vec": [
                   {
-                    "symbol": "PolicyCreated"
+                    "symbol": "PolicyDeactivated"
                   }
                 ]
               }
@@ -1750,11 +1673,12 @@
             "data": {
               "vec": [
                 {
-                  "u32": 5
+                  "u32": 2
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1774,11 +1698,11 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "create_policy"
+                "symbol": "deactivate_policy"
               }
             ],
             "data": {
-              "u32": 5
+              "bool": true
             }
           }
         }
@@ -1843,7 +1767,7 @@
                     "symbol": "count"
                   },
                   "val": {
-                    "u32": 5
+                    "u32": 3
                   }
                 },
                 {
@@ -1880,6 +1804,12 @@
                             "val": {
                               "string": "health"
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -1929,86 +1859,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
-                          }
-                        ]
-                      },
-                      {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "active"
-                            },
-                            "val": {
-                              "bool": true
-                            }
                           },
                           {
                             "key": {
-                              "symbol": "coverage_amount"
+                              "symbol": "tags"
                             },
                             "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 20000
-                              }
+                              "vec": []
                             }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "string": "health"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "id"
-                            },
-                            "val": {
-                              "u32": 2
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 100
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Policy"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 2592000
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "schedule_id"
-                            },
-                            "val": "void"
                           }
                         ]
                       },
@@ -2040,6 +1898,12 @@
                             "val": {
                               "string": "health"
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -2089,6 +1953,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       },
@@ -2120,6 +1992,12 @@
                             "val": {
                               "string": "health"
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -2169,86 +2047,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
-                          }
-                        ]
-                      },
-                      {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "active"
-                            },
-                            "val": {
-                              "bool": true
-                            }
                           },
                           {
                             "key": {
-                              "symbol": "coverage_amount"
+                              "symbol": "tags"
                             },
                             "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 50000
-                              }
+                              "vec": []
                             }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "string": "health"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "id"
-                            },
-                            "val": {
-                              "u32": 5
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 250
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Policy"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 2592000
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "schedule_id"
-                            },
-                            "val": "void"
                           }
                         ]
                       }

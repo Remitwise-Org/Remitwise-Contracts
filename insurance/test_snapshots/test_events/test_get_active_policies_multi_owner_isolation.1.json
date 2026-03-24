@@ -17,44 +17,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 10000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "string": "Policy"
+                  "string": "A1"
                 },
                 {
                   "string": "health"
@@ -68,83 +31,10 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 20000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 150
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 30000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -165,84 +55,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "Policy"
+                  "string": "B1"
                 },
                 {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 100
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 20000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 150
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 30000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
+                  "string": "life"
                 },
                 {
                   "i128": {
@@ -253,9 +69,10 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 40000
+                    "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -263,43 +80,7 @@
         }
       ]
     ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_policy",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 250
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50000
-                  }
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
+    [],
     []
   ],
   "ledger": {
@@ -340,7 +121,7 @@
                           "symbol": "NEXT_ID"
                         },
                         "val": {
-                          "u32": 8
+                          "u32": 2
                         }
                       },
                       {
@@ -384,6 +165,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -397,7 +184,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 50
+                                        "lo": 100
                                       }
                                     }
                                   },
@@ -406,7 +193,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Policy"
+                                      "string": "A1"
                                     }
                                   },
                                   {
@@ -430,6 +217,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -464,8 +259,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "string": "life"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -473,431 +274,6 @@
                                     },
                                     "val": {
                                       "u32": 2
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 100
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 3
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 30000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 3
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 150
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 4
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 10000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 4
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 50
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 5
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 20000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 5
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 100
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 6
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 30000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 6
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 150
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 7
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 40000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 7
                                     }
                                   },
                                   {
@@ -916,7 +292,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Policy"
+                                      "string": "B1"
                                     }
                                   },
                                   {
@@ -940,91 +316,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 8
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "active"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
                                   },
                                   {
                                     "key": {
-                                      "symbol": "coverage_amount"
+                                      "symbol": "tags"
                                     },
                                     "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 50000
-                                      }
+                                      "vec": []
                                     }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "coverage_type"
-                                    },
-                                    "val": {
-                                      "string": "health"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 8
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "monthly_premium"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 250
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Policy"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "next_payment_date"
-                                    },
-                                    "val": {
-                                      "u64": 2592000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
                                   }
                                 ]
                               }
@@ -1045,7 +344,7 @@
                               "val": {
                                 "i128": {
                                   "hi": 0,
-                                  "lo": 300
+                                  "lo": 100
                                 }
                               }
                             },
@@ -1056,7 +355,7 @@
                               "val": {
                                 "i128": {
                                   "hi": 0,
-                                  "lo": 750
+                                  "lo": 200
                                 }
                               }
                             }
@@ -1109,40 +408,7 @@
       [
         {
           "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 1033654523790656264
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 1033654523790656264
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
             "key": {
               "ledger_key_nonce": {
                 "nonce": 5541220902715666415
@@ -1157,175 +423,10 @@
             "data": {
               "contract_data": {
                 "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 5541220902715666415
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 2032731177588607455
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 2032731177588607455
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 4270020994084947596
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 4270020994084947596
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 4837995959683129791
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 4837995959683129791
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 6277191135259896685
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 6277191135259896685
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 8370022561469687789
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 8370022561469687789
                   }
                 },
                 "durability": "temporary",
@@ -1385,7 +486,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Policy"
+                  "string": "A1"
                 },
                 {
                   "string": "health"
@@ -1393,7 +494,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50
+                    "lo": 100
                   }
                 },
                 {
@@ -1401,7 +502,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1449,7 +551,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 50
+                      "lo": 100
                     }
                   }
                 },
@@ -1458,7 +560,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Policy"
+                    "string": "A1"
                   }
                 },
                 {
@@ -1510,7 +612,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1562,18 +665,18 @@
             "data": {
               "vec": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "Policy"
+                  "string": "B1"
                 },
                 {
-                  "string": "health"
+                  "string": "life"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 100
+                    "lo": 200
                   }
                 },
                 {
@@ -1581,7 +684,8 @@
                     "hi": 0,
                     "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1619,7 +723,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "string": "life"
                   }
                 },
                 {
@@ -1629,7 +733,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 100
+                      "lo": 200
                     }
                   }
                 },
@@ -1638,7 +742,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Policy"
+                    "string": "B1"
                   }
                 },
                 {
@@ -1689,8 +793,9 @@
                   "u32": 2
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                "void"
               ]
             }
           }
@@ -1736,1086 +841,6 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 150
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 30000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 30000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 150
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 3
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 3
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 3
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 10000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 10000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 50
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 4
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 4
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 4
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 100
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 20000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 20000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 100
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 5
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 5
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 5
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 150
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 30000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 30000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 150
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 6
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 6
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 6
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 200
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 40000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 40000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 200
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 7
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 7
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 7
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "Policy"
-                },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 250
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 50000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 250
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Policy"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 8
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 8
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
-              }
-            ],
-            "data": {
-              "u32": 8
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
                 "symbol": "get_active_policies"
               }
             ],
@@ -2828,7 +853,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 20
+                  "u32": 10
                 }
               ]
             }
@@ -2859,7 +884,7 @@
                     "symbol": "count"
                   },
                   "val": {
-                    "u32": 3
+                    "u32": 1
                   }
                 },
                 {
@@ -2899,6 +924,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -2912,7 +943,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 50
+                                "lo": 100
                               }
                             }
                           },
@@ -2921,7 +952,7 @@
                               "symbol": "name"
                             },
                             "val": {
-                              "string": "Policy"
+                              "string": "A1"
                             }
                           },
                           {
@@ -2945,9 +976,102 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
-                      },
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "get_active_policies"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 10
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_active_policies"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
                       {
                         "map": [
                           {
@@ -2974,8 +1098,14 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "string": "life"
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -2992,7 +1122,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 100
+                                "lo": 200
                               }
                             }
                           },
@@ -3001,7 +1131,7 @@
                               "symbol": "name"
                             },
                             "val": {
-                              "string": "Policy"
+                              "string": "B1"
                             }
                           },
                           {
@@ -3017,7 +1147,7 @@
                               "symbol": "owner"
                             },
                             "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
                           },
                           {
@@ -3025,86 +1155,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
-                          }
-                        ]
-                      },
-                      {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "active"
-                            },
-                            "val": {
-                              "bool": true
-                            }
                           },
                           {
                             "key": {
-                              "symbol": "coverage_amount"
+                              "symbol": "tags"
                             },
                             "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 30000
-                              }
+                              "vec": []
                             }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "string": "health"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "id"
-                            },
-                            "val": {
-                              "u32": 3
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 150
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Policy"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 2592000
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "schedule_id"
-                            },
-                            "val": "void"
                           }
                         ]
                       }

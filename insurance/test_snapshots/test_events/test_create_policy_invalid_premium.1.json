@@ -99,7 +99,7 @@
                   "string": "Life"
                 },
                 {
-                  "string": "Health"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -112,7 +112,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -204,7 +205,7 @@
                       "string": "Life"
                     },
                     {
-                      "string": "Health"
+                      "string": "health"
                     },
                     {
                       "i128": {
@@ -217,7 +218,8 @@
                         "hi": 0,
                         "lo": 10000
                       }
-                    }
+                    },
+                    "void"
                   ]
                 }
               ]

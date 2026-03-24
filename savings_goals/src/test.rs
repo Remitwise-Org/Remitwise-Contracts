@@ -147,7 +147,7 @@ fn test_next_id_increments_sequentially() {
     for (i, &id) in ids.iter().enumerate() {
         let goal = client.get_goal(&id).unwrap();
         assert_eq!(goal.id, id);
-        let expected_name = String::from_str(&env, &format!("G{}", i + 1));
+        let expected_name = String::from_str(&env, &std::format!("G{}", i + 1));
         assert_eq!(goal.name, expected_name);
     }
 }

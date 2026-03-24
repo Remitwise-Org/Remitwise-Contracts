@@ -31,9 +31,86 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50000
+                    "lo": 10000
                   }
-                }
+                },
+                "void"
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "create_policy",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Emergency Insurance"
+                },
+                {
+                  "string": "emergency"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 200
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 20000
+                  }
+                },
+                "void"
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "create_policy",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Life Insurance"
+                },
+                {
+                  "string": "life"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 300
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 30000
+                  }
+                },
+                "void"
               ]
             }
           },
@@ -80,7 +157,7 @@
                           "symbol": "NEXT_ID"
                         },
                         "val": {
-                          "u32": 1
+                          "u32": 3
                         }
                       },
                       {
@@ -110,7 +187,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 50000
+                                        "lo": 10000
                                       }
                                     }
                                   },
@@ -121,6 +198,12 @@
                                     "val": {
                                       "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -170,6 +253,212 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "u32": 2
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "active"
+                                    },
+                                    "val": {
+                                      "bool": true
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "coverage_amount"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 20000
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "coverage_type"
+                                    },
+                                    "val": {
+                                      "string": "emergency"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "id"
+                                    },
+                                    "val": {
+                                      "u32": 2
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "monthly_premium"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 200
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "name"
+                                    },
+                                    "val": {
+                                      "string": "Emergency Insurance"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "next_payment_date"
+                                    },
+                                    "val": {
+                                      "u64": 2592000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "owner"
+                                    },
+                                    "val": {
+                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "schedule_id"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "u32": 3
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "active"
+                                    },
+                                    "val": {
+                                      "bool": true
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "coverage_amount"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 30000
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "coverage_type"
+                                    },
+                                    "val": {
+                                      "string": "life"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "id"
+                                    },
+                                    "val": {
+                                      "u32": 3
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "monthly_premium"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 300
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "name"
+                                    },
+                                    "val": {
+                                      "string": "Life Insurance"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "next_payment_date"
+                                    },
+                                    "val": {
+                                      "u64": 2592000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "owner"
+                                    },
+                                    "val": {
+                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "schedule_id"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -190,7 +479,7 @@
                               "val": {
                                 "i128": {
                                   "hi": 0,
-                                  "lo": 100
+                                  "lo": 600
                                 }
                               }
                             }
@@ -229,6 +518,72 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 801925984706572462
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 1033654523790656264
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 1033654523790656264
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 5541220902715666415
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 5541220902715666415
                   }
                 },
                 "durability": "temporary",
@@ -302,9 +657,10 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50000
+                    "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -333,7 +689,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 50000
+                      "lo": 10000
                     }
                   }
                 },
@@ -413,7 +769,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -438,6 +795,370 @@
             ],
             "data": {
               "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "create_policy"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Emergency Insurance"
+                },
+                {
+                  "string": "emergency"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 200
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 20000
+                  }
+                },
+                "void"
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 20000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "string": "emergency"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 200
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "Emergency Insurance"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "policy_id"
+                  },
+                  "val": {
+                    "u32": 2
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "insure"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "PolicyCreated"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 2
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                "void"
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "create_policy"
+              }
+            ],
+            "data": {
+              "u32": 2
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "create_policy"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Life Insurance"
+                },
+                {
+                  "string": "life"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 300
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 30000
+                  }
+                },
+                "void"
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 30000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "string": "life"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 300
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "Life Insurance"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "policy_id"
+                  },
+                  "val": {
+                    "u32": 3
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "insure"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "PolicyCreated"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 3
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                "void"
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "create_policy"
+              }
+            ],
+            "data": {
+              "u32": 3
             }
           }
         }

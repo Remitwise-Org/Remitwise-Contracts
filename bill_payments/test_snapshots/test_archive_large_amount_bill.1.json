@@ -34,6 +34,7 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -192,6 +193,14 @@
                                     },
                                     "val": {
                                       "u64": 1000000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   }
                                 ]
@@ -465,9 +474,45 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "bill"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "Created"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                "void"
               ]
             }
           }
@@ -569,6 +614,41 @@
                 {
                   "u32": 1
                 }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "bill"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "Paid"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                "void"
               ]
             }
           }
@@ -831,6 +911,14 @@
                   },
                   "val": {
                     "u64": 1000000
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
                   }
                 }
               ]

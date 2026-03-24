@@ -20,7 +20,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "Type"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -68,13 +69,13 @@
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 1000,
+    "sequence_number": 1,
+    "timestamp": 1001000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 700000,
     "ledger_entries": [
       [
         {
@@ -143,8 +144,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "Type"
+                                      "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -178,7 +185,7 @@
                                       "symbol": "next_payment_date"
                                     },
                                     "val": {
-                                      "u64": 2593000
+                                      "u64": 3593000
                                     }
                                   },
                                   {
@@ -194,6 +201,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -228,7 +243,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518401
         ]
       ],
       [
@@ -261,7 +276,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          700000
         ]
       ],
       [
@@ -294,7 +309,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          700000
         ]
       ],
       [
@@ -315,7 +330,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518401
         ]
       ]
     ]
@@ -348,7 +363,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "Type"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -361,7 +376,8 @@
                     "hi": 0,
                     "lo": 10000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -399,7 +415,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "Type"
+                    "string": "health"
                   }
                 },
                 {
@@ -434,7 +450,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -470,7 +486,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -568,8 +585,14 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "Type"
+                    "string": "health"
                   }
+                },
+                {
+                  "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
                 },
                 {
                   "key": {
@@ -603,7 +626,7 @@
                     "symbol": "next_payment_date"
                   },
                   "val": {
-                    "u64": 2592000
+                    "u64": 3592000
                   }
                 },
                 {
@@ -619,6 +642,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }
@@ -698,7 +729,7 @@
                     "symbol": "next_payment_date"
                   },
                   "val": {
-                    "u64": 2593000
+                    "u64": 3593000
                   }
                 },
                 {
@@ -714,7 +745,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 1000
+                    "u64": 1001000
                   }
                 }
               ]
@@ -750,7 +781,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -846,8 +878,14 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "Type"
+                    "string": "health"
                   }
+                },
+                {
+                  "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
                 },
                 {
                   "key": {
@@ -881,7 +919,7 @@
                     "symbol": "next_payment_date"
                   },
                   "val": {
-                    "u64": 2593000
+                    "u64": 3593000
                   }
                 },
                 {
@@ -897,6 +935,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }

@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 100000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -146,6 +147,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -192,8 +199,36 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "PRM_TOT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
                               }
                             }
                           ]
@@ -339,7 +374,8 @@
                     "hi": 0,
                     "lo": 100000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -448,7 +484,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -583,7 +620,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }

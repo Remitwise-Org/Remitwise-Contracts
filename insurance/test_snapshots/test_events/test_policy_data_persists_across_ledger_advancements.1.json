@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 75000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -92,7 +93,8 @@
                     "hi": 0,
                     "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -186,6 +188,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -232,6 +240,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -268,6 +284,12 @@
                                     "val": {
                                       "string": "travel"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -317,6 +339,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -517,7 +547,8 @@
                     "hi": 0,
                     "lo": 75000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -626,7 +657,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -780,7 +812,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -849,7 +882,8 @@
                     "hi": 0,
                     "lo": 20000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -958,7 +992,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -1061,6 +1096,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "id"
                   },
                   "val": {
@@ -1107,6 +1148,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }
@@ -1187,6 +1236,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "id"
                   },
                   "val": {
@@ -1233,6 +1288,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }

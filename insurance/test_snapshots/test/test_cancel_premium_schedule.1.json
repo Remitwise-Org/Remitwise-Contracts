@@ -17,7 +17,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "Health"
                 },
                 {
                   "string": "health"
@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 50000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -57,7 +58,7 @@
                   "u32": 1
                 },
                 {
-                  "u64": 3000
+                  "u64": 2000000
                 },
                 {
                   "u64": 2592000
@@ -96,12 +97,12 @@
   "ledger": {
     "protocol_version": 21,
     "sequence_number": 1,
-    "timestamp": 1000,
+    "timestamp": 1000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 100000,
+    "max_entry_ttl": 700000,
     "ledger_entries": [
       [
         {
@@ -183,6 +184,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -205,7 +212,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Health Insurance"
+                                      "string": "Health"
                                     }
                                   },
                                   {
@@ -213,7 +220,7 @@
                                       "symbol": "next_payment_date"
                                     },
                                     "val": {
-                                      "u64": 2593000
+                                      "u64": 3592000
                                     }
                                   },
                                   {
@@ -230,6 +237,14 @@
                                     },
                                     "val": {
                                       "u32": 1
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   }
                                 ]
@@ -263,7 +278,7 @@
                                       "symbol": "created_at"
                                     },
                                     "val": {
-                                      "u64": 1000
+                                      "u64": 1000000
                                     }
                                   },
                                   {
@@ -301,7 +316,7 @@
                                       "symbol": "next_due"
                                     },
                                     "val": {
-                                      "u64": 3000
+                                      "u64": 2000000
                                     }
                                   },
                                   {
@@ -361,7 +376,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ],
       [
@@ -394,7 +409,7 @@
             },
             "ext": "v0"
           },
-          100000
+          700000
         ]
       ],
       [
@@ -427,7 +442,7 @@
             },
             "ext": "v0"
           },
-          100000
+          700000
         ]
       ],
       [
@@ -460,7 +475,7 @@
             },
             "ext": "v0"
           },
-          100000
+          700000
         ]
       ],
       [
@@ -481,7 +496,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ]
     ]
@@ -511,7 +526,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "Health"
                 },
                 {
                   "string": "health"
@@ -527,7 +542,8 @@
                     "hi": 0,
                     "lo": 50000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -584,7 +600,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Health Insurance"
+                    "string": "Health"
                   }
                 },
                 {
@@ -600,7 +616,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 1000
+                    "u64": 1000000
                   }
                 }
               ]
@@ -636,7 +652,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -694,7 +711,7 @@
                   "u32": 1
                 },
                 {
-                  "u64": 3000
+                  "u64": 2000000
                 },
                 {
                   "u64": 2592000
@@ -909,7 +926,7 @@
                     "symbol": "created_at"
                   },
                   "val": {
-                    "u64": 1000
+                    "u64": 1000000
                   }
                 },
                 {
@@ -947,7 +964,7 @@
                     "symbol": "next_due"
                   },
                   "val": {
-                    "u64": 3000
+                    "u64": 2000000
                   }
                 },
                 {

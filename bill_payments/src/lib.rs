@@ -1398,6 +1398,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
@@ -1632,6 +1633,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
             client.create_bill(
@@ -1641,6 +1643,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -1714,6 +1717,7 @@ mod test {
                 &due_date, // 20000
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -1830,6 +1834,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &1,    // frequency_days = 1
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1864,6 +1869,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1901,6 +1907,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &365,  // frequency_days = 365
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1942,6 +1949,7 @@ mod test {
             &base_due_date,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1973,6 +1981,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2022,6 +2031,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2068,6 +2078,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2106,6 +2117,7 @@ mod test {
             &1_000_000,
             &true,
             &frequency,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2142,6 +2154,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2177,6 +2190,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2217,6 +2231,7 @@ mod test {
             &base_due,
             &true,
             &freq,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2242,13 +2257,14 @@ mod test {
             n_future in 0usize..6usize,
         ) {
             let env = make_env();
-            env.ledger().set_timestamp(now);
+            // Create bills at an early time so due_dates are in the future at creation
+            env.ledger().set_timestamp(1);
             env.mock_all_auths();
             let cid = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &cid);
             let owner = Address::generate(&env);
 
-            // Create bills with due_date < now (overdue)
+            // Create bills with due_date < now (will be overdue once we advance time)
             for i in 0..n_overdue {
                 client.create_bill(
                     &owner,
@@ -2257,6 +2273,7 @@ mod test {
                     &(now - 1 - i as u64),
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
@@ -2270,9 +2287,13 @@ mod test {
                     &(now + 1 + i as u64),
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
+
+            // Advance time to `now` so overdue bills are past due
+            env.ledger().set_timestamp(now);
 
             let page = client.get_overdue_bills(&0, &50);
             for bill in page.items.iter() {
@@ -2304,6 +2325,7 @@ mod test {
                     &(now + i as u64), // due_date >= now — strict less-than is required to be overdue
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
@@ -2329,7 +2351,8 @@ mod test {
         ) {
             let env = make_env();
             let pay_time = base_due + pay_offset;
-            env.ledger().set_timestamp(pay_time);
+            // Create bill at time 1 (before base_due) so due_date is valid
+            env.ledger().set_timestamp(1);
             env.mock_all_auths();
             let cid = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &cid);
@@ -2342,9 +2365,12 @@ mod test {
                 &base_due,
                 &true,
                 &freq_days,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
 
+            // Advance to pay_time before paying
+            env.ledger().set_timestamp(pay_time);
             client.pay_bill(&owner, &bill_id);
 
             let next_bill = client.get_bill(&2).unwrap();
@@ -2387,10 +2413,10 @@ mod test {
         // 3. Execution: Attempt to create bills with invalid dates
         // Added '&currency' as the final argument to both calls
         let result_past =
-            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &currency);
+            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &None, &currency);
 
         let result_zero =
-            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &currency);
+            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &None, &currency);
 
         // 4. Assertions
         assert!(
@@ -2442,6 +2468,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2471,6 +2498,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2506,6 +2534,7 @@ mod test {
             &overdue_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2518,6 +2547,7 @@ mod test {
             &due_now_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2552,6 +2582,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 

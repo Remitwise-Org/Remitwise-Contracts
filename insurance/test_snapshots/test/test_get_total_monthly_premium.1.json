@@ -20,7 +20,7 @@
                   "string": "P1"
                 },
                 {
-                  "string": "T1"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -33,7 +33,8 @@
                     "hi": 0,
                     "lo": 1000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -57,7 +58,7 @@
                   "string": "P2"
                 },
                 {
-                  "string": "T2"
+                  "string": "life"
                 },
                 {
                   "i128": {
@@ -70,7 +71,8 @@
                     "hi": 0,
                     "lo": 2000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -82,13 +84,13 @@
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 0,
+    "sequence_number": 1,
+    "timestamp": 1000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 700000,
     "ledger_entries": [
       [
         {
@@ -157,8 +159,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "T1"
+                                      "string": "health"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -192,7 +200,7 @@
                                       "symbol": "next_payment_date"
                                     },
                                     "val": {
-                                      "u64": 2592000
+                                      "u64": 3592000
                                     }
                                   },
                                   {
@@ -208,6 +216,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -242,8 +258,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "T2"
+                                      "string": "life"
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -277,7 +299,7 @@
                                       "symbol": "next_payment_date"
                                     },
                                     "val": {
-                                      "u64": 2592000
+                                      "u64": 3592000
                                     }
                                   },
                                   {
@@ -293,6 +315,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -327,7 +357,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518401
         ]
       ],
       [
@@ -360,7 +390,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          700000
         ]
       ],
       [
@@ -393,7 +423,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          700000
         ]
       ],
       [
@@ -414,7 +444,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518401
         ]
       ]
     ]
@@ -447,7 +477,7 @@
                   "string": "P1"
                 },
                 {
-                  "string": "T1"
+                  "string": "health"
                 },
                 {
                   "i128": {
@@ -460,7 +490,8 @@
                     "hi": 0,
                     "lo": 1000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -498,7 +529,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "T1"
+                    "string": "health"
                   }
                 },
                 {
@@ -533,7 +564,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -569,7 +600,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -627,7 +659,7 @@
                   "string": "P2"
                 },
                 {
-                  "string": "T2"
+                  "string": "life"
                 },
                 {
                   "i128": {
@@ -640,7 +672,8 @@
                     "hi": 0,
                     "lo": 2000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -678,7 +711,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "T2"
+                    "string": "life"
                   }
                 },
                 {
@@ -713,7 +746,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -749,7 +782,8 @@
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                },
+                "void"
               ]
             }
           }
