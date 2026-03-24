@@ -1,3 +1,51 @@
+# Integration Tests — Event Topic Compliance
+
+This folder contains workspace-level integration tests that validate deterministic
+event topic naming and payload conventions across contracts.
+
+Overview
+- The tests trigger representative actions in core contracts (remittance_split,
+  savings_goals, bill_payments, insurance) and inspect emitted events via the
+  Soroban test `Env`.
+- Events are expected to follow the Remitwise deterministic topic schema:
+
+  1. `symbol_short!("Remitwise")` — fixed namespace
+  2. `category: u32` — `EventCategory` value
+  3. `priority: u32` — `EventPriority` value
+  4. `action: Symbol` — specific event/action identifier
+
+Why this test exists
+- Enforces a single, predictable event schema so indexers and downstream
+  consumers can reliably parse and filter events across multiple contracts.
+
+Security notes
+- Events are public on-chain — do NOT emit sensitive personal data (PII,
+  full account numbers, unencrypted amounts tied to private identifiers).
+- The tests assert schema conformance only; they do not (and must not) attempt
+  to decrypt or exfiltrate private information.
+
+Running tests
+
+From the repository root run:
+
+```bash
+cargo test -p integration_tests
+```
+
+Expected outcome
+- Tests will fail when a contract emits events that do not conform to the
+  Remitwise schema. Use the failure output to update the contract's event
+  emission (prefer `remitwise-common::RemitwiseEvents::emit`) and re-run tests.
+
+Commit message suggestion
+
+```
+test: add deterministic event topic naming compliance tests
+```
+
+Contact
+- For modifications to the canonical schema, update `remitwise-common/src/lib.rs`
+  and coordinate with indexers consuming events.
 # Integration Tests
 
 This module contains integration tests that verify the interaction between multiple RemitWise contracts.

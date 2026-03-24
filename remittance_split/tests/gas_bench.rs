@@ -43,12 +43,17 @@ fn bench_distribute_usdc_worst_case() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
-    let admin = <Address as AddressTrait>::generate(&env);
-    let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
-
+    // The payer is the split owner — distribute_usdc requires caller == config.owner
     let payer = <Address as AddressTrait>::generate(&env);
+    let token_admin = <Address as AddressTrait>::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = token_contract.address();
+
     let amount = 10_000i128;
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
+    StellarAssetClient::new(&env, &token_addr).mint(&payer, &amount);
+
+    // Initialize with payer as owner and the real token address
+    client.initialize_split(&payer, &0, &token_addr, &50, &30, &15, &5);
 
     let accounts = AccountGroup {
         spending: <Address as AddressTrait>::generate(&env),
@@ -57,15 +62,10 @@ fn bench_distribute_usdc_worst_case() {
         insurance: <Address as AddressTrait>::generate(&env),
     };
 
-    let _nonce = 0u64;
+    // nonce after initialize_split = 1
+    let nonce = 1u64;
     let (cpu, mem, distributed) = measure(&env, || {
-        client.distribute_usdc(
-            &token_contract.address(),
-            &payer,
-            &_nonce,
-            &accounts,
-            &amount,
-        )
+        client.distribute_usdc(&token_addr, &payer, &nonce, &accounts, &amount)
     });
     assert!(distributed);
 

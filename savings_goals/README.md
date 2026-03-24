@@ -16,6 +16,28 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Access control for goal management
 - Event emission for audit trails
 - Storage TTL management
+- Deterministic cursor pagination with owner-bound consistency checks
+
+## Pagination Stability
+
+`get_goals(owner, cursor, limit)` now uses the owner goal-ID index as the canonical ordering source.
+
+- Ordering is deterministic: ascending goal creation ID for that owner.
+- Cursor is exclusive: page N+1 starts strictly after the cursor ID.
+- Cursor is owner-bound: a non-zero cursor must exist in that owner's index.
+- Invalid/stale non-zero cursors are rejected to prevent silent duplicate/skip behavior.
+
+### Cursor Semantics
+
+- `cursor = 0` starts from the first goal.
+- `next_cursor = 0` means there are no more pages.
+- If writes happen between reads, new goals are appended and will appear in later pages without duplicating already-read items.
+
+### Security Notes
+
+- Pagination validates index-to-storage consistency and owner binding.
+- Any detected index/storage mismatch fails fast instead of returning ambiguous data.
+- This reduces the risk of inconsistent client state caused by malformed or stale cursors.
 
 ## Quickstart
 
@@ -166,6 +188,24 @@ Gets all goals for an owner.
 - `owner`: Address of the goal owner
 
 **Returns:** Vector of SavingsGoal structs
+
+#### `get_goals(env, owner, cursor, limit) -> GoalPage`
+
+Returns a deterministic page of goals for an owner.
+
+**Parameters:**
+
+- `owner`: Address of the goal owner
+- `cursor`: Exclusive cursor (`0` for first page)
+- `limit`: Max records to return (`0` uses default, capped by max)
+
+**Returns:** `GoalPage { items, next_cursor, count }`
+
+**Cursor guarantees:**
+
+- `next_cursor` is the last returned goal ID when more pages exist
+- `next_cursor = 0` means end of list
+- Non-zero invalid cursors are rejected
 
 #### `is_goal_completed(env, goal_id) -> bool`
 

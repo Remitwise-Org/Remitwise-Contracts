@@ -893,12 +893,16 @@ impl SavingsGoalContract {
     // PAGINATED LIST QUERIES
     // -----------------------------------------------------------------------
 
-    /// Get a page of savings goals for `owner`.
+    /// @notice Returns a deterministic page of goals for one owner.
+    /// @dev Paging order is anchored to the owner-goal ID index (append-only,
+    ///      ascending by creation ID), not map iteration order.
+    /// @dev `cursor` is exclusive and must match an existing goal ID in the
+    ///      owner's index when non-zero; invalid cursors are rejected.
     ///
     /// # Arguments
-    /// * `owner`  – whose goals to return
-    /// * `cursor` – start after this goal ID (pass 0 for the first page)
-    /// * `limit`  – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    /// * `owner`  - whose goals to return
+    /// * `cursor` - start after this goal ID (pass 0 for the first page)
+    /// * `limit`  - max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
     /// # Returns
     /// `GoalPage { items, next_cursor, count }`.
@@ -911,35 +915,66 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
+        let owner_goal_ids: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&Self::STORAGE_OWNER_GOAL_IDS)
+            .unwrap_or_else(|| Map::new(&env));
+        let ids = owner_goal_ids
+            .get(owner.clone())
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if ids.is_empty() {
+            return GoalPage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        }
+
+        let mut start_index: u32 = 0;
+        if cursor != 0 {
+            let mut found = false;
+            for i in 0..ids.len() {
+                if ids.get(i) == Some(cursor) {
+                    start_index = i + 1;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                panic!("Invalid cursor");
+            }
+        }
+
+        let mut end_index = start_index + limit;
+        if end_index > ids.len() {
+            end_index = ids.len();
+        }
+
         let mut result = Vec::new(&env);
-        let mut next_cursor: u32 = 0;
-        let mut collected: u32 = 0;
-
-        for (id, goal) in goals.iter() {
-            if id <= cursor {
-                continue;
-            }
+        for i in start_index..end_index {
+            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Pagination index out of sync"));
+            let goal = goals
+                .get(goal_id)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
             if goal.owner != owner {
-                continue;
+                panic!("Pagination index owner mismatch");
             }
-            if collected < limit {
-                result.push_back(goal);
-                collected += 1;
-                next_cursor = id; // track last returned ID
-            } else {
-                break;
-            }
+            result.push_back(goal);
         }
 
-        // If we didn't fill the page, there are no more items
-        if collected < limit {
-            next_cursor = 0;
-        }
+        let next_cursor = if end_index < ids.len() {
+            ids.get(end_index - 1)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"))
+        } else {
+            0
+        };
 
         GoalPage {
             items: result,
             next_cursor,
-            count: collected,
+            count: end_index - start_index,
         }
     }
 
