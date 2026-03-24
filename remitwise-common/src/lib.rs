@@ -26,7 +26,6 @@ pub struct CreateBillConfig {
     pub currency: soroban_sdk::String,
 }
 
-
 /// Family roles for access control
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]

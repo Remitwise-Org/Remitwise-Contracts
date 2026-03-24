@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 
 //! Stress tests for arithmetic operations with very large i128 values
@@ -53,7 +52,7 @@ fn test_create_bill_near_max_i128() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -82,7 +81,7 @@ fn test_pay_bill_with_large_amount() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -114,7 +113,7 @@ fn test_recurring_bill_with_large_amount() {
             frequency_days: 30,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -153,7 +152,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -167,7 +166,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -197,7 +196,7 @@ fn test_get_total_unpaid_overflow_panics() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -211,7 +210,7 @@ fn test_get_total_unpaid_overflow_panics() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     // This should panic due to overflow
@@ -241,7 +240,7 @@ fn test_multiple_large_bills_different_owners() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -255,7 +254,7 @@ fn test_multiple_large_bills_different_owners() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     let total1 = client.get_total_unpaid(&owner1);
@@ -288,7 +287,7 @@ fn test_archive_large_amount_bill() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     env.mock_all_auths();
@@ -326,7 +325,7 @@ fn test_batch_pay_large_bills() {
                 frequency_days: 0,
                 external_ref: None,
                 currency: String::from_str(&env, "XLM"),
-            }
+            },
         );
         bill_ids.push_back(bill_id);
         env.mock_all_auths();
@@ -395,7 +394,7 @@ fn test_edge_case_i128_max_minus_one() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -425,7 +424,7 @@ fn test_pagination_with_large_amounts() {
                 frequency_days: 0,
                 external_ref: None,
                 currency: String::from_str(&env, "XLM"),
-            }
+            },
         );
         env.mock_all_auths();
     }

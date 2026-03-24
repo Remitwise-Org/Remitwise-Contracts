@@ -4,11 +4,11 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
-use remitwise_common::CreateBillConfig;
 use data_migration::{ExportSnapshot as MigrationSnapshot, RemittanceSplitExport, SnapshotPayload};
 use insurance::{Insurance, InsuranceClient};
 use orchestrator::Orchestrator;
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
+use remitwise_common::CreateBillConfig;
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
 
 /// Integration test that simulates a complete user flow:

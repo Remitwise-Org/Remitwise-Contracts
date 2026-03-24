@@ -1,5 +1,3 @@
-
-
 use crate::{BillPayments, BillPaymentsClient, Error};
 use remitwise_common::CreateBillConfig;
 use soroban_sdk::{

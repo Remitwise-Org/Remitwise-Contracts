@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 
 use bill_payments::{BillPayments, BillPaymentsClient};
@@ -30,7 +29,7 @@ fn test_notification_flow() {
             frequency_days: 0,
             external_ref: None,
             currency: soroban_sdk::String::from_str(&e, "XLM"),
-        }
+        },
     );
 
     // VERIFY: Get Events

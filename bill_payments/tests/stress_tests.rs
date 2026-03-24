@@ -1,4 +1,3 @@
-
 //! Stress tests for bill_payments storage limits and TTL behavior.
 //!
 //! Issue #178: Stress Test Storage Limits and TTL
@@ -81,17 +80,17 @@ fn stress_200_bills_single_user() {
 
     for _ in 0..200 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     // Verify aggregate total
@@ -139,17 +138,17 @@ fn stress_instance_ttl_valid_after_200_bills() {
 
     for _ in 0..200 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -183,17 +182,17 @@ fn stress_bills_across_10_users() {
     for user in &users {
         for _ in 0..BILLS_PER_USER {
             client.create_bill(
-        user,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: AMOUNT_PER_BILL,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+                user,
+                &remitwise_common::CreateBillConfig {
+                    name: name.clone(),
+                    amount: AMOUNT_PER_BILL,
+                    due_date,
+                    recurring: false,
+                    frequency_days: 0,
+                    external_ref: None,
+                    currency: String::from_str(&env, "XLM"),
+                },
+            );
         }
     }
 
@@ -247,17 +246,17 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     // Phase 1: create 50 bills — TTL is set to INSTANCE_BUMP_AMOUNT
     for _ in 0..50 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     let ttl_batch1 = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -298,7 +297,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     let ttl_rebumped = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -331,7 +330,7 @@ fn stress_ttl_re_bumped_by_pay_bill_after_ledger_advancement() {
             frequency_days: 0,
             external_ref: None,
             currency: String::from_str(&env, "XLM"),
-        }
+        },
     );
 
     // Advance ledger so TTL drops below threshold
@@ -379,17 +378,17 @@ fn stress_archive_100_paid_bills() {
     // Create 100 bills (IDs 1..=100)
     for _ in 0..100 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 200i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 200i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     // Pay all 100 bills (non-recurring, so no new bills created)
@@ -470,17 +469,17 @@ fn stress_archive_across_5_users() {
         let first = next_id;
         for _ in 0..BILLS_PER_USER {
             client.create_bill(
-        user,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+                user,
+                &remitwise_common::CreateBillConfig {
+                    name: name.clone(),
+                    amount: 100i128,
+                    due_date,
+                    recurring: false,
+                    frequency_days: 0,
+                    external_ref: None,
+                    currency: String::from_str(&env, "XLM"),
+                },
+            );
             next_id += 1;
         }
         let last = next_id - 1;
@@ -525,17 +524,17 @@ fn bench_get_unpaid_bills_first_page_of_200() {
 
     for _ in 0..200 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
@@ -561,17 +560,17 @@ fn bench_get_unpaid_bills_last_page_of_200() {
 
     for _ in 0..200 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     // Navigate to the last page cursor
@@ -603,17 +602,17 @@ fn bench_archive_paid_bills_100() {
 
     for _ in 0..100 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
     for id in 1u32..=100 {
         client.pay_bill(&owner, &id);
@@ -643,17 +642,17 @@ fn bench_get_total_unpaid_200_bills() {
 
     for _ in 0..200 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date,
-            recurring: false,
-            frequency_days: 0,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date,
+                recurring: false,
+                frequency_days: 0,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     let expected = 200i128 * 100;

@@ -1,5 +1,3 @@
-
-
 use crate::{ReportingContract, ReportingContractClient};
 use remitwise_common::Category;
 use soroban_sdk::{

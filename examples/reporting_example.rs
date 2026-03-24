@@ -1,4 +1,3 @@
-
 use reporting::ReportingContractClient;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
@@ -17,7 +16,6 @@ fn main() {
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
-
 
     // Dependencies
     let split_addr = Address::generate(&env);

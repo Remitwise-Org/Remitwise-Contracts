@@ -2,9 +2,9 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, CreateBillConfig,
+    clamp_limit, CreateBillConfig, EventCategory, EventPriority, RemitwiseEvents,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
 };
 
 use soroban_sdk::{
@@ -399,11 +399,7 @@ impl BillPayments {
     // Core bill operations
     // -----------------------------------------------------------------------
 
-    pub fn create_bill(
-        env: Env,
-        owner: Address,
-        config: CreateBillConfig,
-    ) -> Result<u32, Error> {
+    pub fn create_bill(env: Env, owner: Address, config: CreateBillConfig) -> Result<u32, Error> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
         Self::validate_create_bill_inputs(

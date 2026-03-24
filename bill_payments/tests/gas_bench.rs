@@ -1,4 +1,3 @@
-
 use bill_payments::{BillPayments, BillPaymentsClient};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -50,17 +49,17 @@ fn bench_get_total_unpaid_worst_case() {
     let name = String::from_str(&env, "BenchBill");
     for _ in 0..100 {
         client.create_bill(
-        &owner,
-        &remitwise_common::CreateBillConfig {
-            name: name.clone(),
-            amount: 100i128,
-            due_date: 1_000_000u64,
-            recurring: false,
-            frequency_days: 0u32,
-            external_ref: None,
-            currency: String::from_str(&env, "XLM"),
-        }
-    );
+            &owner,
+            &remitwise_common::CreateBillConfig {
+                name: name.clone(),
+                amount: 100i128,
+                due_date: 1_000_000u64,
+                recurring: false,
+                frequency_days: 0u32,
+                external_ref: None,
+                currency: String::from_str(&env, "XLM"),
+            },
+        );
     }
 
     // Gaps and calculation logic...
