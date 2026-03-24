@@ -12,7 +12,11 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_initialize_split_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
 
     let success = client.initialize_split(
         &owner, &0,  // nonce
@@ -46,7 +50,7 @@ fn test_initialize_split_invalid_sum() {
         &50, &50, &10, // Sums to 110
         &0,
     );
-    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidPercentages)));
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
 }
 
 #[test]
@@ -200,8 +204,12 @@ fn test_calculate_complex_rounding() {
 
 #[test]
 fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, client, owner);
-    set_ledger_time(&env, 1000);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    set_ledger_time(&env, 1, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -225,7 +233,7 @@ fn test_modify_remittance_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -246,7 +254,7 @@ fn test_cancel_remittance_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -265,7 +273,7 @@ fn test_get_remittance_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -284,7 +292,7 @@ fn test_remittance_schedule_validation() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 5000);
+    set_ledger_time(&env, 1, 5000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -300,7 +308,7 @@ fn test_remittance_schedule_zero_amount() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
-    set_time(&env, 1000);
+    set_ledger_time(&env, 1, 1000);
 
     client.initialize_split(&owner, &0, &50, &30, &15, &5);
 
@@ -628,4 +636,407 @@ fn test_update_split_not_initialized() {
     assert_eq!(split.get(1).unwrap(), 30);
     assert_eq!(split.get(2).unwrap(), 15);
     assert_eq!(split.get(3).unwrap(), 5);
+}
+
+// ============================================================================
+// Issue #252 – validate_snapshot_import hardening tests
+// ============================================================================
+
+/// Helper: build a minimal valid MultiSplitSnapshot with a single entry at 100%.
+fn make_single_entry_snapshot(env: &Env, owner: &Address) -> MultiSplitSnapshot {
+    let mut entries = Vec::new(env);
+    entries.push_back(SplitEntry {
+        owner: owner.clone(),
+        percentage: 100,
+    });
+    MultiSplitSnapshot {
+        version: 1,
+        declared_len: 1,
+        entries,
+    }
+}
+
+/// Helper: build a valid two-entry snapshot (60 / 40).
+fn make_two_entry_snapshot(env: &Env, owner_a: &Address, owner_b: &Address) -> MultiSplitSnapshot {
+    let mut entries = Vec::new(env);
+    entries.push_back(SplitEntry {
+        owner: owner_a.clone(),
+        percentage: 60,
+    });
+    entries.push_back(SplitEntry {
+        owner: owner_b.clone(),
+        percentage: 40,
+    });
+    MultiSplitSnapshot {
+        version: 1,
+        declared_len: 2,
+        entries,
+    }
+}
+
+// ── Happy path ───────────────────────────────────────────────────────────────
+
+/// Invariant: a single entry at exactly 100% is accepted.
+#[test]
+fn test_validate_snapshot_import_single_entry_100_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let snapshot = make_single_entry_snapshot(&env, &owner);
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+/// Invariant: two entries summing to exactly 100% are accepted.
+#[test]
+fn test_validate_snapshot_import_multi_entry_sums_to_100_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let snapshot = make_two_entry_snapshot(&env, &owner, &other);
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+// ── Percentage errors ────────────────────────────────────────────────────────
+
+/// Invariant: sum < 100 must be rejected with PercentageSumInvalid.
+#[test]
+fn test_validate_snapshot_import_sum_less_than_100_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 40 });
+    entries.push_back(SplitEntry { owner: other.clone(), percentage: 40 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::PercentageSumInvalid)));
+}
+
+/// Invariant: sum > 100 must be rejected with PercentageSumInvalid.
+#[test]
+fn test_validate_snapshot_import_sum_greater_than_100_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 60 });
+    entries.push_back(SplitEntry { owner: other.clone(), percentage: 60 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::PercentageSumInvalid)));
+}
+
+/// Invariant: an individual entry with percentage == 0 must be rejected with ZeroPercentage.
+#[test]
+fn test_validate_snapshot_import_zero_percentage_entry_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 0 });
+    entries.push_back(SplitEntry { owner: other.clone(), percentage: 100 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::ZeroPercentage)));
+}
+
+/// Invariant: an individual entry with percentage > 100 must be rejected with PercentageOutOfRange.
+#[test]
+fn test_validate_snapshot_import_percentage_over_100_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 101 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 1, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::PercentageOutOfRange)));
+}
+
+// ── Duplicate owner ──────────────────────────────────────────────────────────
+
+/// Invariant: two entries with the same owner address must be rejected with DuplicateOwner.
+#[test]
+fn test_validate_snapshot_import_duplicate_owner_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 50 });
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 50 }); // duplicate
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::DuplicateOwner)));
+}
+
+// ── Empty input guard ────────────────────────────────────────────────────────
+
+/// Invariant: an empty entries list must be rejected with EmptySnapshot.
+#[test]
+fn test_validate_snapshot_import_empty_entries_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let entries: Vec<SplitEntry> = Vec::new(&env);
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 0, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::EmptySnapshot)));
+}
+
+// ── Structural integrity ─────────────────────────────────────────────────────
+
+/// Invariant: declared_len != actual entries.len() must be rejected with LengthMismatch.
+#[test]
+fn test_validate_snapshot_import_length_mismatch_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 100 });
+    // declared_len says 2 but only 1 entry present
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::LengthMismatch)));
+}
+
+// ── Version check ────────────────────────────────────────────────────────────
+
+/// Invariant: an unsupported version must be rejected with UnsupportedVersion.
+#[test]
+fn test_validate_snapshot_import_wrong_version_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 100 });
+    let snapshot = MultiSplitSnapshot { version: 99, declared_len: 1, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::UnsupportedVersion)));
+}
+
+// ── Owner / authorisation errors ─────────────────────────────────────────────
+
+/// Invariant: a caller who is not the stored contract owner must be rejected with Unauthorized.
+#[test]
+fn test_validate_snapshot_import_non_owner_caller_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    // attacker uses nonce 0 (their own nonce, not owner's)
+    let snapshot = make_single_entry_snapshot(&env, &attacker);
+    let result = client.try_validate_snapshot_import(&attacker, &0, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::Unauthorized)));
+}
+
+/// Invariant: calling validate_snapshot_import before initialize_split must be rejected.
+#[test]
+fn test_validate_snapshot_import_not_initialized_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    // No initialize_split called
+    let snapshot = make_single_entry_snapshot(&env, &owner);
+    let result = client.try_validate_snapshot_import(&owner, &0, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::Unauthorized)));
+}
+
+// ── Replay protection ────────────────────────────────────────────────────────
+
+/// Invariant: replaying the same valid snapshot (same nonce) must be rejected.
+#[test]
+fn test_validate_snapshot_import_replay_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let snapshot = make_single_entry_snapshot(&env, &owner);
+
+    // First import succeeds (nonce == 1 after initialize_split)
+    let first = client.try_validate_snapshot_import(&owner, &1, &snapshot.clone());
+    assert_eq!(first, Ok(Ok(true)));
+
+    // Replaying with the same nonce (1) must fail — nonce is now 2
+    let replay = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(replay, Err(Ok(SplitImportError::Unauthorized)));
+}
+
+// ── Boundary conditions ──────────────────────────────────────────────────────
+
+/// Invariant: minimum valid percentage (1) is accepted when sum == 100.
+#[test]
+fn test_validate_snapshot_import_min_percentage_1_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 99 });
+    entries.push_back(SplitEntry { owner: other.clone(), percentage: 1 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 2, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+/// Invariant: maximum valid single-entry percentage (100) is accepted.
+#[test]
+fn test_validate_snapshot_import_max_percentage_100_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let snapshot = make_single_entry_snapshot(&env, &owner);
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+/// Invariant: percentage of exactly 101 (one over max) must be rejected.
+#[test]
+fn test_validate_snapshot_import_percentage_101_boundary_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: 101 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 1, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::PercentageOutOfRange)));
+}
+
+/// Invariant: maximum u32 percentage value must be rejected with PercentageOutOfRange.
+#[test]
+fn test_validate_snapshot_import_u32_max_percentage_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: owner.clone(), percentage: u32::MAX });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 1, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Err(Ok(SplitImportError::PercentageOutOfRange)));
+}
+
+/// Invariant: four entries each at 25% (equal split) are accepted.
+#[test]
+fn test_validate_snapshot_import_four_equal_entries_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    let c = Address::generate(&env);
+    let d = Address::generate(&env);
+
+    let mut entries = Vec::new(&env);
+    entries.push_back(SplitEntry { owner: a.clone(), percentage: 25 });
+    entries.push_back(SplitEntry { owner: b.clone(), percentage: 25 });
+    entries.push_back(SplitEntry { owner: c.clone(), percentage: 25 });
+    entries.push_back(SplitEntry { owner: d.clone(), percentage: 25 });
+    let snapshot = MultiSplitSnapshot { version: 1, declared_len: 4, entries };
+
+    let result = client.try_validate_snapshot_import(&owner, &1, &snapshot);
+    assert_eq!(result, Ok(Ok(true)));
 }

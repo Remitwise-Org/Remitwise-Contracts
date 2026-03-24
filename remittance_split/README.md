@@ -207,3 +207,84 @@ fn process_remittance(env: Env, user: Address, amount: i128) {
 - Percentage validation ensures allocations sum to 100%
 - Initialization check prevents duplicate setup
 - Access control prevents unauthorized modifications
+
+## Snapshot Import Validation
+
+`validate_snapshot_import` is the hardened entry point for importing multi-party split snapshots (Issue #252). Every rule is checked before any state is written — the function is all-or-nothing.
+
+### Validation rules
+
+| # | Rule | Why it exists |
+|---|------|---------------|
+| 1 | `version` must equal `SNAPSHOT_VERSION` (1) | Prevents importing data from an incompatible schema |
+| 2 | `entries` must not be empty | An empty snapshot has no meaningful state to import |
+| 3 | `declared_len` must equal `entries.len()` | Detects truncation or tampering in transit |
+| 4 | Each `percentage` must be > 0 | A zero-share entry is semantically invalid |
+| 5 | Each `percentage` must be ≤ 100 | Values above 100 are out of range and indicate corruption |
+| 6 | Sum of all percentages must equal exactly 100 | Ensures the full remittance is allocated with no gap or overlap |
+| 7 | No two entries may share the same `owner` | Duplicate owners would allow double-counting |
+| 8 | Caller must be the stored contract owner | Prevents unauthorised parties from overwriting split state |
+| 9 | Nonce must equal `get_nonce(caller)` | Prevents replay of a previously valid snapshot |
+
+### Error Reference
+
+| Variant | Code | Description |
+|---------|------|-------------|
+| `EmptySnapshot` | 100 | The entries list is empty |
+| `ZeroPercentage` | 101 | An entry has percentage == 0 |
+| `PercentageOutOfRange` | 102 | An entry has percentage > 100 |
+| `PercentageSumInvalid` | 103 | Sum of percentages ≠ 100 |
+| `DuplicateOwner` | 104 | Two entries share the same owner address |
+| `OwnerMismatch` | 105 | Entry owner does not match the verified caller |
+| `ZeroAddress` | 106 | An entry contains a zero/null address |
+| `FieldOutOfRange` | 107 | A numeric field is outside its valid range |
+| `LengthMismatch` | 108 | `declared_len` ≠ actual `entries.len()` |
+| `UnsupportedVersion` | 109 | Snapshot version is not supported |
+| `ChecksumMismatch` | 110 | Checksum does not match recomputed value |
+| `Unauthorized` | 111 | Caller is not the contract owner, or nonce is wrong |
+| `AlreadyInitialized` | 112 | Contract already initialised (use `update_split`) |
+
+### Security Assumptions
+
+What the module **trusts**:
+- The Soroban host correctly enforces `caller.require_auth()`.
+- The host's `Address` type guarantees uniqueness — two distinct `Address` values are never equal unless they represent the same account.
+
+What the module **verifies on-chain**:
+- Caller identity against the stored `SplitConfig.owner`.
+- Nonce freshness to prevent snapshot replay attacks.
+- All percentage arithmetic using checked operations to prevent integer overflow.
+- Structural integrity (`declared_len` vs actual length) to detect truncated or padded payloads.
+
+### Re-entrancy / double-import
+
+Soroban contracts execute atomically within a single transaction. There is no async callback mechanism, so re-entrancy is not possible. Double-import is prevented by the nonce: each successful call increments the nonce, making the same call invalid on the next invocation.
+
+### Usage Example
+
+```rust
+// 1. Fetch the current nonce for the owner
+let nonce = client.get_nonce(&owner);
+
+// 2. Build the snapshot
+let mut entries = Vec::new(&env);
+entries.push_back(SplitEntry { owner: alice.clone(), percentage: 60 });
+entries.push_back(SplitEntry { owner: bob.clone(),   percentage: 40 });
+
+let snapshot = MultiSplitSnapshot {
+    version: 1,
+    declared_len: 2,
+    entries,
+};
+
+// 3. Import — all validations run before any state is written
+client.validate_snapshot_import(&owner, &nonce, &snapshot);
+```
+
+## Running Tests
+
+```bash
+cargo test -p remittance_split
+```
+
+Expected: all tests pass with zero warnings.
