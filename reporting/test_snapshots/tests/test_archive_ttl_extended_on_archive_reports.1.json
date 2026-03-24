@@ -1774,6 +1774,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -1842,6 +1850,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -1984,6 +2000,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -2041,6 +2063,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -2160,6 +2190,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -2206,6 +2242,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -2454,6 +2498,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -2522,6 +2574,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -2664,6 +2724,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -2721,6 +2787,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       },
@@ -2760,6 +2834,12 @@
                             "val": {
                               "u64": 1735689600
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -2822,6 +2902,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -2941,6 +3029,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -2987,6 +3081,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }

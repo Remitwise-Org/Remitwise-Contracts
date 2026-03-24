@@ -3,8 +3,8 @@
 
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
 };
 
 use soroban_sdk::{
@@ -142,10 +142,6 @@ impl BillPayments {
     /// # Errors
     /// * `InvalidAmount` - If amount is zero or negative
     /// * `InvalidFrequency` - If recurring is true but frequency_days is 0
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -175,11 +171,6 @@ impl BillPayments {
 
     /// Clamp a caller-supplied limit to [1, MAX_PAGE_LIMIT].
     /// A value of 0 is treated as DEFAULT_PAGE_LIMIT.
-
-    // -----------------------------------------------------------------------
-    // Pause / upgrade
-    // -----------------------------------------------------------------------
-
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
@@ -766,13 +757,6 @@ impl BillPayments {
     ///
     /// # Returns
     /// Vec of all Bill structs
-    // -----------------------------------------------------------------------
-    // Backward-compat helpers
-    // -----------------------------------------------------------------------
-
-    /// Legacy helper: returns ALL unpaid bills for owner in one Vec.
-    /// Only safe for owners with a small number of bills. Prefer the
-    /// paginated `get_unpaid_bills` for production use.
     pub fn get_all_unpaid_bills_legacy(env: Env, owner: Address) -> Vec<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -1361,7 +1345,7 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.checked_add(delta).expect("overflow");
+        let next = current.checked_add(delta).unwrap_or_else(|| panic!("overflow"));
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
@@ -1375,6 +1359,7 @@ impl BillPayments {
 #[cfg(test)]
 mod test {
     use super::*;
+    use remitwise_common::MAX_PAGE_LIMIT;
     use proptest::prelude::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
@@ -1401,7 +1386,7 @@ mod test {
                 &(100i128 * (i as i128 + 1)),
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
-                &0, &None, &String::from_str(&env, "XLM"),
+                &0, &None, &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
         }

@@ -55,6 +55,7 @@ mod savings_goals {
                 target_date: 1735689600u64,
                 locked: true,
                 unlock_date: None,
+                tags: Vec::new(&env),
             });
             goals.push_back(SavingsGoal {
                 id: 2u32,
@@ -65,6 +66,7 @@ mod savings_goals {
                 target_date: 1735689600u64,
                 locked: true,
                 unlock_date: None,
+                tags: Vec::new(&env),
             });
             goals
         }
@@ -99,6 +101,8 @@ mod bill_payments {
                 created_at: 1704067200u64,
                 paid_at: None,
                 schedule_id: None,
+                external_ref: None,
+                tags: Vec::new(&env),
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             BillPage {
@@ -132,6 +136,8 @@ mod bill_payments {
                 created_at: 1704067200u64,
                 paid_at: None,
                 schedule_id: None,
+                external_ref: None,
+                tags: Vec::new(&env),
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             bills.push_back(Bill {
@@ -146,6 +152,8 @@ mod bill_payments {
                 created_at: 1704067200u64,
                 paid_at: Some(1704153600u64),
                 schedule_id: None,
+                external_ref: None,
+                tags: Vec::new(&env),
                 currency: SorobanString::from_str(&env, "XLM"),
             });
             BillPage {
@@ -158,7 +166,7 @@ mod bill_payments {
 }
 
 mod insurance {
-    use crate::{InsurancePolicy, InsuranceTrait, PolicyPage};
+    use crate::{InsurancePolicy, InsuranceTrait};
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -184,6 +192,8 @@ mod insurance {
                 active: true,
                 next_payment_date: 1735689600u64,
                 schedule_id: None,
+                external_ref: None,
+                tags: Vec::new(&env),
             });
             crate::PolicyPage {
                 items: policies,

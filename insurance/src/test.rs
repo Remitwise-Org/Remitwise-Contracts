@@ -1,4 +1,4 @@
-#![cfg(test)]
+// #![cfg(test)] removed to avoid duplication with lib.rs mod test guard
 
 use super::*;
 fn set_time(env: &Env, timestamp: u64) {
@@ -9,10 +9,9 @@ fn set_time(env: &Env, timestamp: u64) {
 use crate::InsuranceError;
 use soroban_sdk::IntoVal;
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, Ledger, LedgerInfo},
+    testutils::Address as AddressTrait,
     Address, Env, String,
 };
-use proptest::prelude::*;
 
 use testutils::{set_ledger_time, setup_test_env};
 
@@ -445,7 +444,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
         &1000,
         &None,
     );
-    let policy2 = client.create_policy(
+    let _policy2 = client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 2"),
         &String::from_str(&env, "life"),
@@ -881,7 +880,7 @@ fn test_create_policy_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     // Do not mock auth for other, attempt to create policy for owner as other
     // If owner didn't authorize, it panics.
@@ -902,7 +901,7 @@ fn test_pay_premium_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     client.mock_auths(&[soroban_sdk::testutils::MockAuth {
         address: &owner,
@@ -934,7 +933,7 @@ fn test_deactivate_policy_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     client.mock_auths(&[soroban_sdk::testutils::MockAuth {
         address: &owner,

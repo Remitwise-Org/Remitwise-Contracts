@@ -1563,13 +1563,13 @@ impl FamilyWallet {
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
-            .extend_ttl(INSTANCE_BUMP_AMOUNT, INSTANCE_BUMP_AMOUNT);
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
     fn extend_archive_ttl(env: &Env) {
         env.storage()
             .instance()
-            .extend_ttl(ARCHIVE_BUMP_AMOUNT, ARCHIVE_BUMP_AMOUNT);
+            .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
     }
 
     fn update_storage_stats(env: &Env) {

@@ -1,0 +1,174 @@
+﻿cargo : warning: profiles for 
+the non root package will be 
+ignored, specify profiles at 
+the workspace root:
+At line:1 char:1
++ cargo clippy --workspace 
+--all-targets -- -D warnings 
+> clippy_final. ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo            
+  : NotSpecified    : 
+(warning: profil.    
+..workspace root::S    tring) 
+[], RemoteEx    ception
+    + FullyQualifiedErr    
+orId : NativeComman    dError
+ 
+package:   C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\Cargo.toml
+    Checking remittance_split 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\remittance_split)
+    Checking bill_payments 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\bill_payments)
+    Checking insurance v0.1.0 
+(C:\Users\ADMIN\Desktop\remmy-
+drips\Remitwise-Contracts\insu
+rance)
+    Checking reporting v0.1.0 
+(C:\Users\ADMIN\Desktop\remmy-
+drips\Remitwise-Contracts\repo
+rting)
+    Checking savings_goals 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\savings_goals)
+error: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> 
+bill_payments\src\lib.rs:7:66
+  |
+7 |     
+INSTANCE_LIFETIME_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT, 
+DEFAULT_PAGE_LIMIT,
+  |                           
+                              
+         ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` 
+implied by `-D warnings`
+  = help: to override `-D 
+warnings` add 
+`#[allow(unused_imports)]`
+
+error: unused imports: 
+`DEFAULT_PAGE_LIMIT` and 
+`MAX_PAGE_LIMIT`
+ --> 
+bill_payments\src\lib.rs:7:50
+  |
+7 |     
+INSTANCE_LIFETIME_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT, 
+DEFAULT_PAGE_LIMIT,
+  |                           
+                       
+^^^^^^^^^^^^^^  
+^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` 
+implied by `-D warnings`
+  = help: to override `-D 
+warnings` add 
+`#[allow(unused_imports)]`
+
+error: could not compile 
+`bill_payments` (lib) due to 
+1 previous error
+warning: build failed, 
+waiting for other jobs to 
+finish...
+error: this expression 
+creates a reference which is 
+immediately dereferenced by 
+the compiler
+    --> bill_payments\src\lib.
+rs:1388:46
+     |
+1388 |                 &0, 
+&None, 
+&String::from_str(&env, 
+"XLM"),
+     |                        
+                      ^^^^ 
+help: change this to: `env`
+     |
+     = help: for further 
+information visit https://rust
+-lang.github.io/rust-clippy/ru
+st-1.93.0/index.html#needless_
+borrow
+     = note: `-D 
+clippy::needless-borrow` 
+implied by `-D warnings`
+     = help: to override `-D 
+warnings` add `#[allow(clippy:
+:needless_borrow)]`
+
+error: unused import: `remitwi
+se_common::CoverageType`
+ --> insurance\tests\gas_bench
+.rs:2:5
+  |
+2 | use remitwise_common::Cove
+rageType;
+  |     
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` 
+implied by `-D warnings`
+  = help: to override `-D 
+warnings` add 
+`#[allow(unused_imports)]`
+
+error: could not compile 
+`insurance` (test 
+"gas_bench") due to 1 
+previous error
+error: manual 
+`RangeInclusive::contains` 
+implementation
+   --> insurance\tests\stress_
+tests.rs:113:13
+    |
+113 |     assert!(pages >= 4 
+&& pages <= 5, "Expected 4-5 
+pages for 200 policies at 
+limit 50, got {}", pages);
+    |             
+^^^^^^^^^^^^^^^^^^^^^^^^ 
+help: use: 
+`(4..=5).contains(&pages)`
+    |
+    = help: for further 
+information visit https://rust
+-lang.github.io/rust-clippy/ru
+st-1.93.0/index.html#manual_ra
+nge_contains
+    = note: `-D clippy::manual
+-range-contains` implied by 
+`-D warnings`
+    = help: to override `-D 
+warnings` add `#[allow(clippy:
+:manual_range_contains)]`
+
+error: could not compile 
+`insurance` (test 
+"stress_tests") due to 1 
+previous error
+error: could not compile 
+`bill_payments` (lib test) 
+due to 2 previous errors

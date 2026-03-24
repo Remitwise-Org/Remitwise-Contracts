@@ -67,7 +67,7 @@
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 100000,
+    "max_entry_ttl": 1000000,
     "ledger_entries": [
       [
         {
@@ -156,7 +156,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ],
       [
@@ -189,7 +189,7 @@
             },
             "ext": "v0"
           },
-          100000
+          1000000
         ]
       ],
       [
@@ -222,7 +222,7 @@
             },
             "ext": "v0"
           },
-          100000
+          1000000
         ]
       ],
       [
@@ -371,7 +371,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ]
     ]
@@ -659,6 +659,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -716,6 +722,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       },
@@ -755,6 +769,12 @@
                             "val": {
                               "u64": 1735689600
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -817,6 +837,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }

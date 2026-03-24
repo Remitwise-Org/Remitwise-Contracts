@@ -32,7 +32,7 @@ fn test_calculate_split_with_large_amount() {
     // Test with i128::MAX / 200 to ensure multiplication by percentages doesn't overflow
     let large_amount = i128::MAX / 200;
     // client.calculate_split returns Vec<i128> directly
-    let amounts = client.calculate_split(&large_amount);
+    let _amounts = client.calculate_split(&large_amount);
 
     let result = client.try_calculate_split(&large_amount);
     assert!(result.is_ok());
@@ -56,7 +56,7 @@ fn test_calculate_split_near_max_safe_value() {
 
     // Maximum safe value for multiplication by 100 (largest percentage)
     let max_safe = i128::MAX / 100 - 1;
-    let amounts = client.calculate_split(&max_safe);
+    let _amounts = client.calculate_split(&max_safe);
 
     let result = client.try_calculate_split(&max_safe);
     assert!(result.is_ok());

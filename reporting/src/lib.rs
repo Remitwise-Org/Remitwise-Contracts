@@ -261,6 +261,7 @@ pub struct SavingsGoal {
     pub target_date: u64,
     pub locked: bool,
     pub unlock_date: Option<u64>,
+    pub tags: Vec<soroban_sdk::String>,
 }
 
 #[contracttype]
@@ -269,6 +270,7 @@ pub struct Bill {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
     pub amount: i128,
     pub due_date: u64,
     pub recurring: bool,
@@ -277,6 +279,7 @@ pub struct Bill {
     pub created_at: u64,
     pub paid_at: Option<u64>,
     pub schedule_id: Option<u32>,
+    pub tags: Vec<soroban_sdk::String>,
     pub currency: soroban_sdk::String,
 }
 
@@ -294,12 +297,14 @@ pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
     pub coverage_type: soroban_sdk::String,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
     pub active: bool,
     pub next_payment_date: u64,
     pub schedule_id: Option<u32>,
+    pub tags: Vec<soroban_sdk::String>,
 }
 
 #[contracttype]

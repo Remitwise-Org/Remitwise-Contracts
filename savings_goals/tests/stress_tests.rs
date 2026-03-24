@@ -107,7 +107,7 @@ fn stress_200_goals_single_user() {
     // get_goals sets next_cursor = last_returned_id; when a page is exactly full the
     // caller receives a non-zero cursor that produces a trailing empty page, so the
     // number of round-trips is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 goals at limit 50, got {}", pages);
+    assert!((4..=5).contains(&pages), "Expected 4-5 pages for 200 goals at limit 50, got {}", pages);
 }
 
 /// Create 200 goals and verify instance TTL stays valid after the instance Map

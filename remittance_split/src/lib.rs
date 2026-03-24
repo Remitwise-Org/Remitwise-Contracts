@@ -437,9 +437,18 @@ impl RemittanceSplit {
         }
 
         let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
+        let s0 = match split.get(0) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
+        let s1 = match split.get(1) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
+        let s2 = match split.get(2) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
 
         let spending = total_amount
             .checked_mul(s0)
@@ -1211,7 +1220,7 @@ mod test {
     // Issue #60 – Full Test Suite for Remittance Split Contract
     // ============================================================================
 
-    /// 1. test_initialize_split_success
+    /// ### 1. test_initialize_split_success
     /// Owner authorizes the call, percentages sum to 100, config is stored correctly.
     #[test]
     fn test_initialize_split_success() {
@@ -1235,7 +1244,7 @@ mod test {
         assert!(config.initialized);
     }
 
-    /// 2. test_initialize_split_requires_auth
+    /// ### 2. test_initialize_split_requires_auth
     /// Calling initialize_split without the owner authorizing should panic.
     #[test]
     #[should_panic]
@@ -1250,7 +1259,7 @@ mod test {
         client.initialize_split(&owner, &0, &50, &30, &15, &5);
     }
 
-    /// 3. test_initialize_split_percentages_must_sum_to_100
+    /// ### 3. test_initialize_split_percentages_must_sum_to_100
     /// Percentages that do not sum to 100 must return PercentagesDoNotSumTo100.
     #[test]
     fn test_initialize_split_percentages_must_sum_to_100() {
@@ -1275,7 +1284,7 @@ mod test {
         );
     }
 
-    /// 4. test_initialize_split_already_initialized_panics
+    /// ### 4. test_initialize_split_already_initialized_panics
     /// Calling initialize_split a second time should return AlreadyInitialized.
     #[test]
     fn test_initialize_split_already_initialized_panics() {
@@ -1293,7 +1302,7 @@ mod test {
         assert_eq!(result, Err(Ok(RemittanceSplitError::AlreadyInitialized)));
     }
 
-    /// 5. test_update_split_owner_only
+    /// ### 5. test_update_split_owner_only
     /// Only the owner can call update_split; any other address must get Unauthorized.
     #[test]
     fn test_update_split_owner_only() {
@@ -1315,7 +1324,7 @@ mod test {
         assert!(ok);
     }
 
-    /// 6. test_update_split_percentages_must_sum_to_100
+    /// ### 6. test_update_split_percentages_must_sum_to_100
     /// update_split must reject percentages that do not sum to 100.
     #[test]
     fn test_update_split_percentages_must_sum_to_100() {
@@ -1342,7 +1351,7 @@ mod test {
         );
     }
 
-    /// 7. test_get_split_returns_default_before_init
+    /// ### 7. test_get_split_returns_default_before_init
     /// Before initialize_split is called, get_split must return the hardcoded
     /// default of [50, 30, 15, 5].
     #[test]
@@ -1359,7 +1368,7 @@ mod test {
         assert_eq!(split.get(3).unwrap(), 5);
     }
 
-    /// 8. test_get_config_returns_none_before_init
+    /// ### 8. test_get_config_returns_none_before_init
     /// Before initialize_split is called, get_config must return None.
     #[test]
     fn test_get_config_returns_none_before_init() {
@@ -1371,7 +1380,7 @@ mod test {
         assert!(config.is_none(), "get_config should be None before init");
     }
 
-    /// 9. test_get_config_returns_some_after_init
+    /// ### 9. test_get_config_returns_some_after_init
     /// After initialize_split, get_config must return Some with correct owner.
     #[test]
     fn test_get_config_returns_some_after_init() {
@@ -1397,7 +1406,7 @@ mod test {
         assert_eq!(config.insurance_percent, 5);
     }
 
-    /// 10. test_calculate_split_positive_amount
+    /// ### 10. test_calculate_split_positive_amount
     /// Correct amounts for a positive total; insurance receives the remainder.
     #[test]
     fn test_calculate_split_positive_amount() {
@@ -1422,7 +1431,7 @@ mod test {
         assert_eq!(amounts.get(3).unwrap(), 50);
     }
 
-    /// 11. test_calculate_split_zero_or_negative_panics
+    /// ### 11. test_calculate_split_zero_or_negative_panics
     /// total_amount of 0 or any negative value must return InvalidAmount.
     #[test]
     fn test_calculate_split_zero_or_negative_panics() {
@@ -1450,7 +1459,7 @@ mod test {
         );
     }
 
-    /// 12. test_calculate_split_rounding
+    /// ### 12. test_calculate_split_rounding
     /// The sum of all split amounts must always equal total_amount exactly
     /// (insurance absorbs any integer division remainder).
     #[test]
@@ -1480,7 +1489,7 @@ mod test {
         assert_eq!(sum3, 1000, "split amounts must sum to total_amount");
     }
 
-    /// 13. test_event_emitted_on_initialize_and_update
+    /// ### 13. test_event_emitted_on_initialize_and_update
     /// Events must be published when initialize_split and update_split are called.
     #[test]
     fn test_event_emitted_on_initialize_and_update() {

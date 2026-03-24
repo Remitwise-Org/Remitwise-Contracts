@@ -1,6 +1,6 @@
 use soroban_sdk::{Env, Address, testutils::Address as _};
 use reporting::ReportingContractClient;
-use remitwise_common::Category;
+// use remitwise_common::Category; // removed as unused
 
 // Mock contracts for the reporting example
 // In a real scenario, these would be the actual deployed contract IDs
@@ -17,7 +17,7 @@ fn main() {
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
-    let user = Address::generate(&env);
+    let _user = Address::generate(&env);
     
     // Dependencies
     let split_addr = Address::generate(&env);

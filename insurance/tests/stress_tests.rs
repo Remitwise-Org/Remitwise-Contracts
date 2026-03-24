@@ -110,7 +110,7 @@ fn stress_200_policies_single_user() {
     // get_active_policies sets next_cursor = last_returned_id; when a page is exactly
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
+    assert!((4..=5).contains(&pages), "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
 }
 
 /// Create 200 policies and verify instance TTL remains valid after the instance

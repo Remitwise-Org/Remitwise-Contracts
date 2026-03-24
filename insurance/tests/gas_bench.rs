@@ -1,5 +1,5 @@
 use insurance::{Insurance, InsuranceClient};
-use remitwise_common::CoverageType;
+// use remitwise_common::CoverageType; // removed as unused
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
 

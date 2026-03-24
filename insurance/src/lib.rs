@@ -362,7 +362,7 @@ impl Insurance {
             panic!("Tags cannot be empty");
         }
         for tag in tags.iter() {
-            if tag.len() == 0 || tag.len() > 32 {
+            if tag.is_empty() || tag.len() > 32 {
                 panic!("Tag must be between 1 and 32 characters");
             }
         }
@@ -384,7 +384,7 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).expect("Policy not found");
+        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
 
         if policy.owner != caller {
             panic!("Only the policy owner can add tags");
@@ -421,7 +421,7 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).expect("Policy not found");
+        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
 
         if policy.owner != caller {
             panic!("Only the policy owner can remove tags");
@@ -641,7 +641,7 @@ impl Insurance {
         let current_time = env.ledger().timestamp();
         let mut paid_count = 0u32;
         for id in policy_ids.iter() {
-            let mut policy = policies_map.get(id).unwrap();
+            let mut policy = policies_map.get(id).unwrap_or_else(|| panic!("Policy not found"));
             policy.next_payment_date = current_time + (30 * 86400);
             let event = PremiumPaidEvent {
                 policy_id: id,
@@ -847,7 +847,7 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).expect("Policy not found");
+        let mut policy = policies.get(policy_id).unwrap_or_else(|| panic!("Policy not found"));
         if policy.owner != caller {
             panic!("Only the policy owner can update this policy reference");
         }
