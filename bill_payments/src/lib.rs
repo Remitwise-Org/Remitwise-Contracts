@@ -456,6 +456,7 @@ impl BillPayments {
             EventPriority::Medium,
             symbol_short!("created"),
             (next_id, bill_owner, amount, due_date),
+        )
         );
 
         Ok(next_id)
@@ -537,6 +538,7 @@ impl BillPayments {
             EventPriority::High,
             symbol_short!("paid"),
             (bill_id, caller, paid_amount),
+        );
         );
 
         Ok(())
@@ -1367,6 +1369,8 @@ impl BillPayments {
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
 }
+}
+
 
 // -----------------------------------------------------------------------
 // Tests
