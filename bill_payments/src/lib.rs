@@ -450,13 +450,13 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Created),
             (next_id, bill_owner, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("created"),
             (next_id, bill_owner, amount, due_date),
-        )
         );
 
         Ok(next_id)
@@ -532,13 +532,13 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
             EventPriority::High,
             symbol_short!("paid"),
             (bill_id, caller, paid_amount),
-        );
         );
 
         Ok(())
