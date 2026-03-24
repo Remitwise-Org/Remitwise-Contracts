@@ -1,4 +1,15 @@
-use testutils::{set_ledger_time};
+use super::*;
+use soroban_sdk::{
+    testutils::{storage::Instance as _, Address as _, Ledger, LedgerInfo},
+    Address, Env,
+};
+use testutils::set_ledger_time;
+
+fn create_test_env() -> Env {
+    let env = Env::default();
+    env.mock_all_auths();
+    env
+}
 
 // Mock contracts for testing
 mod remittance_split {
@@ -1191,3 +1202,412 @@ fn test_archive_ttl_extended_on_archive_reports() {
         ttl
     );
 }
+
+// ============================================================================
+// Deterministic Trend Analysis Tests (#312)
+//
+// Verify that get_trend_analysis and get_trend_analysis_multi produce
+// identical, deterministic output for identical historical inputs regardless
+// of call order, ledger timestamp, or user address.
+// ============================================================================
+
+fn make_client(env: &Env) -> (ReportingContractClient, Address) {
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    client.init(&admin);
+    (client, admin)
+}
+
+fn make_history(env: &Env, pairs: &[(u64, i128)]) -> Vec<(u64, i128)> {
+    let mut v: Vec<(u64, i128)> = Vec::new(env);
+    for &p in pairs {
+        v.push_back(p);
+    }
+    v
+}
+
+// --- get_trend_analysis: same output on repeated calls ----------------------
+
+#[test]
+fn test_trend_deterministic_repeated_calls() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t1 = client.get_trend_analysis(&user, &12000i128, &10000i128);
+    let t2 = client.get_trend_analysis(&user, &12000i128, &10000i128);
+
+    assert_eq!(t1.current_amount, t2.current_amount);
+    assert_eq!(t1.previous_amount, t2.previous_amount);
+    assert_eq!(t1.change_amount, t2.change_amount);
+    assert_eq!(t1.change_percentage, t2.change_percentage);
+}
+
+// --- get_trend_analysis: different users, same amounts → same result --------
+
+#[test]
+fn test_trend_deterministic_different_users_same_amounts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let ta = client.get_trend_analysis(&user_a, &8000i128, &10000i128);
+    let tb = client.get_trend_analysis(&user_b, &8000i128, &10000i128);
+
+    assert_eq!(ta.current_amount, tb.current_amount);
+    assert_eq!(ta.change_percentage, tb.change_percentage);
+}
+
+// --- get_trend_analysis: different ledger timestamps → same result ----------
+
+#[test]
+fn test_trend_deterministic_across_timestamps() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    set_ledger_time(&env, 1, 1_700_000_000);
+    let t1 = client.get_trend_analysis(&user, &5000i128, &4000i128);
+
+    set_ledger_time(&env, 2, 1_800_000_000);
+    let t2 = client.get_trend_analysis(&user, &5000i128, &4000i128);
+
+    assert_eq!(t1.change_amount, t2.change_amount);
+    assert_eq!(t1.change_percentage, t2.change_percentage);
+}
+
+// --- increase: 50 % ---------------------------------------------------------
+
+#[test]
+fn test_trend_increase_50_percent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &15000i128, &10000i128);
+
+    assert_eq!(t.current_amount, 15000);
+    assert_eq!(t.previous_amount, 10000);
+    assert_eq!(t.change_amount, 5000);
+    assert_eq!(t.change_percentage, 50);
+}
+
+// --- decrease: 20 % ---------------------------------------------------------
+
+#[test]
+fn test_trend_decrease_20_percent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &8000i128, &10000i128);
+
+    assert_eq!(t.change_amount, -2000);
+    assert_eq!(t.change_percentage, -20);
+}
+
+// --- zero previous: current > 0 → 100 % ------------------------------------
+
+#[test]
+fn test_trend_zero_previous_nonzero_current() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &5000i128, &0i128);
+
+    assert_eq!(t.change_percentage, 100);
+    assert_eq!(t.change_amount, 5000);
+}
+
+// --- both zero → 0 % --------------------------------------------------------
+
+#[test]
+fn test_trend_both_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &0i128, &0i128);
+
+    assert_eq!(t.change_amount, 0);
+    assert_eq!(t.change_percentage, 0);
+}
+
+// --- no change: 0 % ---------------------------------------------------------
+
+#[test]
+fn test_trend_no_change() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &7500i128, &7500i128);
+
+    assert_eq!(t.change_amount, 0);
+    assert_eq!(t.change_percentage, 0);
+}
+
+// --- exact 100 % increase ---------------------------------------------------
+
+#[test]
+fn test_trend_exact_double() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &20000i128, &10000i128);
+
+    assert_eq!(t.change_percentage, 100);
+    assert_eq!(t.change_amount, 10000);
+}
+
+// --- exact 100 % decrease (all lost) ----------------------------------------
+
+#[test]
+fn test_trend_full_decrease() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let t = client.get_trend_analysis(&user, &0i128, &10000i128);
+
+    assert_eq!(t.change_percentage, -100);
+    assert_eq!(t.change_amount, -10000);
+}
+
+// --- large values stay deterministic ----------------------------------------
+
+#[test]
+fn test_trend_large_values_deterministic() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let prev = 1_000_000_000_000i128;
+    let curr = 1_250_000_000_000i128;
+
+    let t1 = client.get_trend_analysis(&user, &curr, &prev);
+    let t2 = client.get_trend_analysis(&user, &curr, &prev);
+
+    assert_eq!(t1.change_percentage, 25);
+    assert_eq!(t1.change_amount, t2.change_amount);
+    assert_eq!(t1.change_percentage, t2.change_percentage);
+}
+
+// --- sparse history (2 points) ----------------------------------------------
+
+#[test]
+fn test_trend_multi_sparse_two_points() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 1000), (2, 1200)]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 1);
+    let t = results.get(0).unwrap();
+    assert_eq!(t.previous_amount, 1000);
+    assert_eq!(t.current_amount, 1200);
+    assert_eq!(t.change_amount, 200);
+    assert_eq!(t.change_percentage, 20);
+}
+
+// --- dense history (5 points) -----------------------------------------------
+
+#[test]
+fn test_trend_multi_dense_five_points() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[
+        (1, 1000),
+        (2, 1100),
+        (3, 1210),
+        (4, 1331),
+        (5, 1464),
+    ]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 4);
+    assert_eq!(results.get(0).unwrap().change_percentage, 10);
+    assert_eq!(results.get(1).unwrap().change_percentage, 10);
+    assert_eq!(results.get(2).unwrap().change_percentage, 10);
+}
+
+// --- dense history is deterministic on repeat --------------------------------
+
+#[test]
+fn test_trend_multi_dense_deterministic() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 500), (2, 600), (3, 720), (4, 864)]);
+
+    let r1 = client.get_trend_analysis_multi(&user, &history);
+    let r2 = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(r1.len(), r2.len());
+    for i in 0..r1.len() {
+        let a = r1.get(i).unwrap();
+        let b = r2.get(i).unwrap();
+        assert_eq!(a.change_amount, b.change_amount);
+        assert_eq!(a.change_percentage, b.change_percentage);
+    }
+}
+
+// --- boundary: single point → empty result ----------------------------------
+
+#[test]
+fn test_trend_multi_single_point_returns_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 1000)]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 0);
+}
+
+// --- boundary: empty input → empty result -----------------------------------
+
+#[test]
+fn test_trend_multi_empty_returns_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history: Vec<(u64, i128)> = Vec::new(&env);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 0);
+}
+
+// --- boundary: window with zero crossings -----------------------------------
+
+#[test]
+fn test_trend_multi_window_with_zero_crossing() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 0), (2, 500), (3, 0)]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 2);
+    let first = results.get(0).unwrap();
+    assert_eq!(first.change_percentage, 100);
+
+    let second = results.get(1).unwrap();
+    assert_eq!(second.change_percentage, -100);
+}
+
+// --- boundary: two equal points → 0 % change --------------------------------
+
+#[test]
+fn test_trend_multi_flat_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 3000), (2, 3000), (3, 3000)]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 2);
+    for i in 0..results.len() {
+        assert_eq!(results.get(i).unwrap().change_percentage, 0);
+        assert_eq!(results.get(i).unwrap().change_amount, 0);
+    }
+}
+
+// --- boundary: alternating up/down ------------------------------------------
+
+#[test]
+fn test_trend_multi_alternating_up_down() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 1000), (2, 2000), (3, 1000), (4, 2000)]);
+    let results = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(results.len(), 3);
+    assert_eq!(results.get(0).unwrap().change_percentage, 100);
+    assert_eq!(results.get(1).unwrap().change_percentage, -50);
+    assert_eq!(results.get(2).unwrap().change_percentage, 100);
+}
+
+// --- multi: different users same input → same output -------------------------
+
+#[test]
+fn test_trend_multi_deterministic_across_users() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let history = make_history(&env, &[(1, 1000), (2, 1500), (3, 1200)]);
+
+    let ra = client.get_trend_analysis_multi(&user_a, &history);
+    let rb = client.get_trend_analysis_multi(&user_b, &history);
+
+    assert_eq!(ra.len(), rb.len());
+    for i in 0..ra.len() {
+        assert_eq!(
+            ra.get(i).unwrap().change_percentage,
+            rb.get(i).unwrap().change_percentage
+        );
+    }
+}
+
+// --- multi: deterministic across ledger timestamps --------------------------
+
+#[test]
+fn test_trend_multi_deterministic_across_timestamps() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _) = make_client(&env);
+    let user = Address::generate(&env);
+    let history = make_history(&env, &[(1, 2000), (2, 2500), (3, 2250)]);
+
+    set_ledger_time(&env, 10, 1_600_000_000);
+    let r1 = client.get_trend_analysis_multi(&user, &history);
+
+    set_ledger_time(&env, 20, 1_700_000_000);
+    let r2 = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(r1.len(), r2.len());
+    for i in 0..r1.len() {
+        assert_eq!(
+            r1.get(i).unwrap().change_percentage,
+            r2.get(i).unwrap().change_percentage
+        );
+    }
+}
+
