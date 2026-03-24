@@ -1,0 +1,1173 @@
+cargo : warning: profiles for the non root 
+package will be ignored, specify profiles at 
+the workspace root:
+At line:1 char:1
++ cargo test --no-run --package savings_goals 
+2> error.txt; python -c " ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (wa 
+   rning: profil...workspace root::String) [],  
+   RemoteException
+    + FullyQualifiedErrorId : NativeCommandErro 
+   r
+ 
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Re
+mitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.toml
+   Compiling savings_goals v0.1.0 (C:\Users\ADMI
+N\Desktop\remmy-drips\Remitwise-Contracts\saving
+s_goals)
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+  --> savings_goals\src\test.rs:29:69
+   |
+29 |     let id1 = client.create_goal(&user, 
+&name1, &1000, &1735689600).unwrap();
+   |                                            
+                         ^^^^^^ method not 
+found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+  --> savings_goals\src\test.rs:30:69
+   |
+30 |     let id2 = client.create_goal(&user, 
+&name2, &2000, &1735689600).unwrap();
+   |                                            
+                         ^^^^^^ method not 
+found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+  --> savings_goals\src\test.rs:53:73
+   |
+53 |     let id = client.create_goal(&user, 
+&name, &1000, &past_target_date).unwrap();
+   |                                            
+                             ^^^^^^ method not 
+found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+  --> savings_goals\src\test.rs:89:83
+   |
+89 |     let goal_id_1 = 
+client.create_goal(&owner_a, &name1, &target1, 
+&target_date1).unwrap();
+   |                                            
+                                       ^^^^^^ 
+method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:109:85
+    |
+109 |     let goal_id_2 = 
+client.create_goal(&owner_a, &name2, 
+&10000i128, &target_date1).unwrap();
+    |                                           
+                                          
+^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:135:11
+    |
+130 | /         client.create_goal(
+131 | |             &owner,
+132 | |             &String::from_str(&env, 
+"G1"),
+133 | |             &1000i128,
+134 | |             &2000000000u64,
+135 | |         ).unwrap(),
+    | |          -^^^^^^ method not found in 
+`u32`
+    | |__________|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:141:11
+    |
+136 | /         client.create_goal(
+137 | |             &owner,
+138 | |             &String::from_str(&env, 
+"G2"),
+139 | |             &2000i128,
+140 | |             &2000000000u64,
+141 | |         ).unwrap(),
+    | |          -^^^^^^ method not found in 
+`u32`
+    | |__________|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:147:11
+    |
+142 | /         client.create_goal(
+143 | |             &owner,
+144 | |             &String::from_str(&env, 
+"G3"),
+145 | |             &3000i128,
+146 | |             &2000000000u64,
+147 | |         ).unwrap(),
+    | |          -^^^^^^ method not found in 
+`u32`
+    | |__________|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:172:93
+    |
+172 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Save"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+  ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:174:60
+    |
+174 |     let new_balance = 
+client.add_to_goal(&user, &id, &500).unwrap();
+    |                                           
+                 ^^^^^^ method not found in 
+`i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:201:67
+    |
+201 |     let id = client.create_goal(&user, 
+&name, &5000, &2000000000).unwrap();
+    |                                           
+                        ^^^^^^ method not found 
+in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:216:80
+    |
+216 |     client.create_goal(&user, 
+&String::from_str(&env, "A"), &100, 
+&2000000000).unwrap();
+    |                                           
+                                     ^^^^^^ 
+method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:217:80
+    |
+217 |     client.create_goal(&user, 
+&String::from_str(&env, "B"), &200, 
+&2000000000).unwrap();
+    |                                           
+                                     ^^^^^^ 
+method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:236:69
+    |
+236 |     let id = client.create_goal(&user, 
+&name, &target, &2000000000).unwrap();
+    |                                           
+                          ^^^^^^ method not 
+found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:245:45
+    |
+245 |     client.add_to_goal(&user, &id, 
+&target).unwrap();
+    |                                           
+  ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:261:40
+    |
+261 |     client.add_to_goal(&user, &id, 
+&1).unwrap();
+    |                                        
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:282:7
+    |
+277 |       let id = client.create_goal(
+    |  ______________-
+278 | |         &user,
+279 | |         &String::from_str(&env, "Max"),
+280 | |         &i128::MAX,
+281 | |         &2000000000,
+282 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:284:56
+    |
+284 |     client.add_to_goal(&user, &id, 
+&(i128::MAX - 100)).unwrap();
+    |                                           
+             ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:311:92
+    |
+311 |     let id1 = client.create_goal(&user, 
+&String::from_str(&env, "G1"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+ ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:312:92
+    |
+312 |     let id2 = client.create_goal(&user, 
+&String::from_str(&env, "G2"), &2000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+ ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:314:43
+    |
+314 |     client.add_to_goal(&user, &id1, 
+&500).unwrap();
+    |                                           
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:315:44
+    |
+315 |     client.add_to_goal(&user, &id2, 
+&1500).unwrap();
+    |                                           
+ ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:338:7
+    |
+333 |       let id = client.create_goal(
+    |  ______________-
+334 | |         &user,
+335 | |         &String::from_str(&env, 
+"Success"),
+336 | |         &1000,
+337 | |         &2000000000,
+338 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:341:42
+    |
+341 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:343:67
+    |
+343 |     let new_balance = 
+client.withdraw_from_goal(&user, &id, 
+&200).unwrap();
+    |                                           
+                        ^^^^^^ method not found 
+in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:364:7
+    |
+359 |       let id = client.create_goal(
+    |  ______________-
+360 | |         &user,
+361 | |         &String::from_str(&env, 
+"Insufficient"),
+362 | |         &1000,
+363 | |         &2000000000,
+364 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:367:42
+    |
+367 |     client.add_to_goal(&user, &id, 
+&100).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:382:95
+    |
+382 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Locked"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+    ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:384:42
+    |
+384 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:404:7
+    |
+399 |       let id = client.create_goal(
+    |  ______________-
+400 | |         &user,
+401 | |         &String::from_str(&env, 
+"Unauthorized"),
+402 | |         &1000,
+403 | |         &2000000000,
+404 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:407:42
+    |
+407 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:418:93
+    |
+418 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Zero"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+  ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:421:42
+    |
+421 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:444:93
+    |
+444 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Lock"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+  ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:467:93
+    |
+467 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Full"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+  ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:470:42
+    |
+470 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:472:67
+    |
+472 |     let new_balance = 
+client.withdraw_from_goal(&user, &id, 
+&500).unwrap();
+    |                                           
+                        ^^^^^^ method not found 
+in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:489:94
+    |
+489 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Exact"), &1000, 
+&2000000000).unwrap();
+    |                                           
+                                                
+   ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:492:42
+    |
+492 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:495:42
+    |
+495 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:508:99
+    |
+508 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:526:99
+    |
+526 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:528:49
+    |
+528 |     client.add_to_goal(&owner, &goal_id, 
+&5000).unwrap();
+    |                                           
+      ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:546:99
+    |
+546 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:548:49
+    |
+548 |     client.add_to_goal(&owner, &goal_id, 
+&5000).unwrap();
+    |                                           
+      ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:553:73
+    |
+553 |     let new_amount = 
+client.withdraw_from_goal(&owner, &goal_id, 
+&1000).unwrap();
+    |                                           
+                              ^^^^^^ method not 
+found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:567:99
+    |
+567 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:590:99
+    |
+590 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:611:99
+    |
+611 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:630:99
+    |
+630 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:654:99
+    |
+654 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:679:99
+    |
+679 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &10000, 
+&5000).unwrap();
+    |                                           
+                                                
+        ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:701:98
+    |
+701 |     let goal_id = 
+client.create_goal(&owner, 
+&String::from_str(&env, "Education"), &1000, 
+&5000).unwrap();
+    |                                           
+                                                
+       ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:727:7
+    |
+722 |       let id = client.create_goal(
+    |  ______________-
+723 | |         &user,
+724 | |         &String::from_str(&env, "Lock 
+Test"),
+725 | |         &1000,
+726 | |         &2000000000,
+727 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:750:7
+    |
+745 |       let id = client.create_goal(
+    |  ______________-
+746 | |         &user,
+747 | |         &String::from_str(&env, "Unlock 
+Test"),
+748 | |         &1000,
+749 | |         &2000000000,
+750 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:773:7
+    |
+768 |       let id = client.create_goal(
+    |  ______________-
+769 | |         &user,
+770 | |         &String::from_str(&env, "Auth 
+Test"),
+771 | |         &1000,
+772 | |         &2000000000,
+773 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:796:7
+    |
+791 |       let id = client.create_goal(
+    |  ______________-
+792 | |         &user,
+793 | |         &String::from_str(&env, "Auth 
+Test"),
+794 | |         &1000,
+795 | |         &2000000000,
+796 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:816:7
+    |
+811 |       let id = client.create_goal(
+    |  ______________-
+812 | |         &user,
+813 | |         &String::from_str(&env, 
+"Withdraw Fail"),
+814 | |         &1000,
+815 | |         &2000000000,
+816 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:819:42
+    |
+819 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:840:7
+    |
+835 |       let id = client.create_goal(
+    |  ______________-
+836 | |         &user,
+837 | |         &String::from_str(&env, 
+"Withdraw Success"),
+838 | |         &1000,
+839 | |         &2000000000,
+840 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:843:42
+    |
+843 |     client.add_to_goal(&user, &id, 
+&500).unwrap();
+    |                                          
+^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:845:67
+    |
+845 |     let new_balance = 
+client.withdraw_from_goal(&user, &id, 
+&200).unwrap();
+    |                                           
+                        ^^^^^^ method not found 
+in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:882:7
+    |
+877 |       let goal_id = client.create_goal(
+    |  ___________________-
+878 | |         &user,
+879 | |         &String::from_str(&env, 
+"Education"),
+880 | |         &10000,
+881 | |         &1735689600, // Future date
+882 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:935:7
+    |
+930 |       let goal_id = client.create_goal(
+    |  ___________________-
+931 | |         &user,
+932 | |         &String::from_str(&env, 
+"Medical"),
+933 | |         &5000,
+934 | |         &1735689600,
+935 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:938:65
+    |
+938 |     let new_amount = 
+client.add_to_goal(&user, &goal_id, 
+&1000).unwrap();
+    |                                           
+                      ^^^^^^ method not found 
+in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+   --> savings_goals\src\test.rs:989:7
+    |
+984 |       let goal_id = client.create_goal(
+    |  ___________________-
+985 | |         &user,
+986 | |         &String::from_str(&env, 
+"Emergency Fund"),
+987 | |         &1000,
+988 | |         &1735689600,
+989 | |     ).unwrap();
+    | |      -^^^^^^ method not found in `u32`
+    | |______|
+    |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+   --> savings_goals\src\test.rs:992:48
+    |
+992 |     client.add_to_goal(&user, &goal_id, 
+&1000).unwrap();
+    |                                           
+     ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1044:7
+     |
+1039 |       let goal_id = client.create_goal(
+     |  ___________________-
+1040 | |         &user,
+1041 | |         &String::from_str(&env, 
+"Withdraw Event"),
+1042 | |         &5000,
+1043 | |         &1735689600,
+1044 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1046:48
+     |
+1046 |     client.add_to_goal(&user, &goal_id, 
+&1500).unwrap();
+     |                                          
+      ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1047:54
+     |
+1047 |     client.withdraw_from_goal(&user, 
+&goal_id, &600).unwrap();
+     |                                          
+            ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1085:7
+     |
+1080 |       let goal_id = client.create_goal(
+     |  ___________________-
+1081 | |         &user,
+1082 | |         &String::from_str(&env, "Lock 
+Event"),
+1083 | |         &5000,
+1084 | |         &1735689600,
+1085 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1125:7
+     |
+1120 |       let goal_id = client.create_goal(
+     |  ___________________-
+1121 | |         &user,
+1122 | |         &String::from_str(&env, 
+"Unlock Event"),
+1123 | |         &5000,
+1124 | |         &1735689600,
+1125 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1160:86
+     |
+1160 |     client.create_goal(&user, 
+&String::from_str(&env, "Goal 1"), &1000, 
+&1735689600).unwrap();
+     |                                          
+                                            
+^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1161:86
+     |
+1161 |     client.create_goal(&user, 
+&String::from_str(&env, "Goal 2"), &2000, 
+&1735689600).unwrap();
+     |                                          
+                                            
+^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1162:86
+     |
+1162 |     client.create_goal(&user, 
+&String::from_str(&env, "Goal 3"), &3000, 
+&1735689600).unwrap();
+     |                                          
+                                            
+^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1215:7
+     |
+1210 |       let goal_id = client.create_goal(
+     |  ___________________-
+1211 | |         &user,
+1212 | |         &String::from_str(&env, 
+"Emergency Fund"),
+1213 | |         &10000,
+1214 | |         &1735689600,
+1215 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1258:7
+     |
+1253 |       let goal_id = client.create_goal(
+     |  ___________________-
+1254 | |         &user,
+1255 | |         &String::from_str(&env, 
+"Vacation"),
+1256 | |         &5000,
+1257 | |         &2000000000,
+1258 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1274:65
+     |
+1274 |     let new_balance = 
+client.add_to_goal(&user, &goal_id, 
+&500).unwrap();
+     |                                          
+                       ^^^^^^ method not found 
+in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1315:7
+     |
+1310 |       let id1 = client.create_goal(
+     |  _______________-
+1311 | |         &user,
+1312 | |         &String::from_str(&env, 
+"Education"),
+1313 | |         &10000,
+1314 | |         &2000000000,
+1315 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1316:96
+     |
+1316 |     let id2 = client.create_goal(&user, 
+&String::from_str(&env, "House"), &50000, 
+&2000000000).unwrap();
+     |                                          
+                                                
+      ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1330:44
+     |
+1330 |     client.add_to_goal(&user, &id1, 
+&3000).unwrap();
+     |                                          
+  ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1345:45
+     |
+1345 |     client.add_to_goal(&user, &id2, 
+&10000).unwrap();
+     |                                          
+   ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1396:7
+     |
+1391 |       let goal_id = client.create_goal(
+     |  ___________________-
+1392 | |         &user,
+1393 | |         &String::from_str(&env, 
+"Retirement"),
+1394 | |         &100000,
+1395 | |         &2000000000,
+1396 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1428:11
+     |
+1423 | /         client.create_goal(
+1424 | |             owner,
+1425 | |             
+&soroban_sdk::String::from_str(env, "Goal"),
+1426 | |             &(1000i128 * (i as i128 + 
+1)),
+1427 | |             &(env.ledger().timestamp() 
++ 86400 * (i as u64 + 1)),
+1428 | |         ).unwrap();
+     | |          -^^^^^^ method not found in 
+`u32`
+     | |__________|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1589:93
+     |
+1589 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Auth"), &1000, 
+&2000000000).unwrap();
+     |                                          
+                                                
+   ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1590:43
+     |
+1590 |     client.add_to_goal(&other, &id, 
+&500).unwrap();
+     |                                          
+ ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1619:93
+     |
+1619 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Auth"), &1000, 
+&2000000000).unwrap();
+     |                                          
+                                                
+   ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `i128` in the current scope
+    --> savings_goals\src\test.rs:1620:50
+     |
+1620 |     client.withdraw_from_goal(&other, 
+&id, &100).unwrap();
+     |                                          
+        ^^^^^^ method not found in `i128`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1649:93
+     |
+1649 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Auth"), &1000, 
+&2000000000).unwrap();
+     |                                          
+                                                
+   ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1679:93
+     |
+1679 |     let id = client.create_goal(&user, 
+&String::from_str(&env, "Auth"), &1000, 
+&2000000000).unwrap();
+     |                                          
+                                                
+   ^^^^^^ method not found in `u32`
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1702:7
+     |
+1697 |       let goal_a1 = client.create_goal(
+     |  ___________________-
+1698 | |         &owner_a,
+1699 | |         &String::from_str(&env, "Goal 
+A1"),
+1700 | |         &1000,
+1701 | |         &1735689600,
+1702 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1708:7
+     |
+1703 |       let goal_a2 = client.create_goal(
+     |  ___________________-
+1704 | |         &owner_a,
+1705 | |         &String::from_str(&env, "Goal 
+A2"),
+1706 | |         &2000,
+1707 | |         &1735689600,
+1708 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1714:7
+     |
+1709 |       let goal_a3 = client.create_goal(
+     |  ___________________-
+1710 | |         &owner_a,
+1711 | |         &String::from_str(&env, "Goal 
+A3"),
+1712 | |         &3000,
+1713 | |         &1735689600,
+1714 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1722:7
+     |
+1717 |       let goal_b1 = client.create_goal(
+     |  ___________________-
+1718 | |         &owner_b,
+1719 | |         &String::from_str(&env, "Goal 
+B1"),
+1720 | |         &5000,
+1721 | |         &1735689600,
+1722 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+error[E0599]: no method named `unwrap` found 
+for type `u32` in the current scope
+    --> savings_goals\src\test.rs:1728:7
+     |
+1723 |       let goal_b2 = client.create_goal(
+     |  ___________________-
+1724 | |         &owner_b,
+1725 | |         &String::from_str(&env, "Goal 
+B2"),
+1726 | |         &6000,
+1727 | |         &1735689600,
+1728 | |     ).unwrap();
+     | |      -^^^^^^ method not found in `u32`
+     | |______|
+     |
+
+For more information about this error, try 
+`rustc --explain E0599`.
+error: could not compile `savings_goals` (lib 
+test) due to 95 previous errors
+

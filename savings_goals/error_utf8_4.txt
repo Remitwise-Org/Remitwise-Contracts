@@ -1,0 +1,850 @@
+cargo : warning: profiles for the non root package 
+will be ignored, specify profiles at the workspace 
+root:
+At line:1 char:1
++ cargo test --no-run --package savings_goals 2> 
+error.txt; python -c " ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo          : NotSpecified: (warning:  
+   profil...workspace root::String) [], RemoteExcepti  
+  on
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise
+-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise
+-Contracts\Cargo.toml
+   Compiling savings_goals v0.1.0 (C:\Users\ADMIN\Deskt
+op\remmy-drips\Remitwise-Contracts\savings_goals)
+error[E0609]: no field `target_date` on type 
+`core::option::Option<SavingsGoal>`
+  --> savings_goals\src\test.rs:57:21
+   |
+57 |     assert_eq!(goal.target_date, 
+past_target_date);
+   |                     ^^^^^^^^^^^ unknown field
+   |
+help: one of the expressions' fields has a field of 
+the same name
+   |
+57 |     assert_eq!(goal.unwrap().target_date, 
+past_target_date);
+   |                     +++++++++
+
+error[E0609]: no field `id` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:156:25
+    |
+156 |         assert_eq!(goal.id, id);
+    |                         ^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+156 |         assert_eq!(goal.unwrap().id, id);
+    |                         +++++++++
+
+error[E0609]: no field `name` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:158:25
+    |
+158 |         assert_eq!(goal.name, expected_name);
+    |                         ^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+158 |         assert_eq!(goal.unwrap().name, 
+expected_name);
+    |                         +++++++++
+
+error[E0609]: no field `name` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:204:21
+    |
+204 |     assert_eq!(goal.name, name);
+    |                     ^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+204 |     assert_eq!(goal.unwrap().name, name);
+    |                     +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:250:14
+    |
+250 |         goal.current_amount, target,
+    |              ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+250 |         goal.unwrap().current_amount, target,
+    |              +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:286:21
+    |
+286 |     assert_eq!(goal.current_amount, i128::MAX - 
+100);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+286 |     assert_eq!(goal.unwrap().current_amount, 
+i128::MAX - 100);
+    |                     +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:320:19
+    |
+320 |     assert_eq!(g1.current_amount, 500);
+    |                   ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+320 |     assert_eq!(g1.unwrap().current_amount, 500);
+    |                   +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:321:19
+    |
+321 |     assert_eq!(g2.current_amount, 1500);
+    |                   ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+321 |     assert_eq!(g2.unwrap().current_amount, 1500);
+    |                   +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:347:21
+    |
+347 |     assert_eq!(goal.current_amount, 300);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+347 |     assert_eq!(goal.unwrap().current_amount, 
+300);
+    |                     +++++++++
+
+error[E0609]: no field `locked` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:447:18
+    |
+447 |     assert!(goal.locked);
+    |                  ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+447 |     assert!(goal.unwrap().locked);
+    |                  +++++++++
+
+error[E0609]: no field `locked` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:451:19
+    |
+451 |     assert!(!goal.locked);
+    |                   ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+451 |     assert!(!goal.unwrap().locked);
+    |                   +++++++++
+
+error[E0609]: no field `locked` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:455:18
+    |
+455 |     assert!(goal.locked);
+    |                  ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+455 |     assert!(goal.unwrap().locked);
+    |                  +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:476:21
+    |
+476 |     assert_eq!(goal.current_amount, 0);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+476 |     assert_eq!(goal.unwrap().current_amount, 0);
+    |                     +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:499:21
+    |
+499 |     assert_eq!(goal.current_amount, 1000);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+499 |     assert_eq!(goal.unwrap().current_amount, 
+1000);
+    |                     +++++++++
+
+error[E0609]: no field `unlock_date` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:513:21
+    |
+513 |     assert_eq!(goal.unlock_date, Some(10000));
+    |                     ^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+513 |     assert_eq!(goal.unwrap().unlock_date, 
+Some(10000));
+    |                     +++++++++
+
+error[E0609]: no field `amount` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:596:25
+    |
+596 |     assert_eq!(schedule.amount, 1000);
+    |                         ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+596 |     assert_eq!(schedule.unwrap().amount, 1000);
+    |                         +++++++++
+
+error[E0609]: no field `next_due` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:597:25
+    |
+597 |     assert_eq!(schedule.next_due, 4000);
+    |                         ^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+597 |     assert_eq!(schedule.unwrap().next_due, 4000);
+    |                         +++++++++
+
+error[E0609]: no field `interval` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:598:25
+    |
+598 |     assert_eq!(schedule.interval, 172800);
+    |                         ^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+598 |     assert_eq!(schedule.unwrap().interval, 
+172800);
+    |                         +++++++++
+
+error[E0609]: no field `active` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:617:23
+    |
+617 |     assert!(!schedule.active);
+    |                       ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+617 |     assert!(!schedule.unwrap().active);
+    |                       +++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:638:33
+    |
+638 |     assert_eq!(executed.get(0), schedule_id);
+    |                                 ^^^^^^^^^^^ 
+expected `Option<u32>`, found `u32`
+    |
+    = note: expected enum `core::option::Option<u32>`
+               found type `u32`
+help: try wrapping the expression in 
+`core::prelude::v1::Some`
+    |
+638 |     assert_eq!(executed.get(0), 
+core::prelude::v1::Some(schedule_id));
+    |                                 
+++++++++++++++++++++++++           +
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:641:21
+    |
+641 |     assert_eq!(goal.current_amount, 500);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+641 |     assert_eq!(goal.unwrap().current_amount, 
+500);
+    |                     +++++++++
+
+error[E0609]: no field `active` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:662:22
+    |
+662 |     assert!(schedule.active);
+    |                      ^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+662 |     assert!(schedule.unwrap().active);
+    |                      +++++++++
+
+error[E0609]: no field `next_due` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:663:25
+    |
+663 |     assert_eq!(schedule.next_due, 3000 + 86400);
+    |                         ^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+663 |     assert_eq!(schedule.unwrap().next_due, 3000 
++ 86400);
+    |                         +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:666:21
+    |
+666 |     assert_eq!(goal.current_amount, 500);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+666 |     assert_eq!(goal.unwrap().current_amount, 
+500);
+    |                     +++++++++
+
+error[E0609]: no field `missed_count` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:687:25
+    |
+687 |     assert_eq!(schedule.missed_count, 3);
+    |                         ^^^^^^^^^^^^ unknown 
+field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+687 |     assert_eq!(schedule.unwrap().missed_count, 
+3);
+    |                         +++++++++
+
+error[E0609]: no field `next_due` on type 
+`core::option::Option<SavingsSchedule>`
+   --> savings_goals\src\test.rs:688:22
+    |
+688 |     assert!(schedule.next_due > 3000 + 86400 * 
+3);
+    |                      ^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+688 |     assert!(schedule.unwrap().next_due > 3000 + 
+86400 * 3);
+    |                      +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:709:21
+    |
+709 |     assert_eq!(goal.current_amount, 1000);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+709 |     assert_eq!(goal.unwrap().current_amount, 
+1000);
+    |                     +++++++++
+
+error[E0609]: no field `locked` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:730:35
+    |
+730 |     assert!(!client.get_goal(&id).locked);
+    |                                   ^^^^^^ unknown 
+field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+730 |     
+assert!(!client.get_goal(&id).unwrap().locked);
+    |                                   +++++++++
+
+error[E0609]: no field `current_amount` on type 
+`core::option::Option<SavingsGoal>`
+   --> savings_goals\src\test.rs:849:21
+    |
+849 |     assert_eq!(goal.current_amount, 300);
+    |                     ^^^^^^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of 
+the same name
+    |
+849 |     assert_eq!(goal.unwrap().current_amount, 
+300);
+    |                     +++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:891:30
+    |
+891 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+    |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+    |                     |
+    |                     expected due to this
+    |
+    = note: expected struct `soroban_sdk::Symbol`
+                 found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+891 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+    |                                                  
+                               +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:895:17
+    |
+894 |             let event_data: GoalCreatedEvent =
+    |                             ---------------- 
+expected due to this
+895 |                 
+GoalCreatedEvent::try_from_val(&env, &event.2);
+    |                 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `GoalCreatedEvent`, found 
+`Result<GoalCreatedEvent, ...>`
+    |
+    = note: expected struct `GoalCreatedEvent`
+                 found enum 
+`core::result::Result<GoalCreatedEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<GoalCreatedEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+895 |                 
+GoalCreatedEvent::try_from_val(&env, 
+&event.2).expect("REASON");
+    |                                                  
+             +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:902:17
+    |
+901 |             let topic1: SavingsEvent =
+    |                         ------------ expected 
+due to this
+902 |                 SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+    |
+    = note: expected enum `SavingsEvent`
+               found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+902 |                 SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+    |                                                  
+                        +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:947:30
+    |
+947 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+    |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+    |                     |
+    |                     expected due to this
+    |
+    = note: expected struct `soroban_sdk::Symbol`
+                 found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+947 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+    |                                                  
+                               +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:951:17
+    |
+950 |             let event_data: FundsAddedEvent =
+    |                             --------------- 
+expected due to this
+951 |                 
+FundsAddedEvent::try_from_val(&env, &event.2);
+    |                 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected 
+`FundsAddedEvent`, found `Result<FundsAddedEvent, 
+ConversionError>`
+    |
+    = note: expected struct `FundsAddedEvent`
+                 found enum 
+`core::result::Result<FundsAddedEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<FundsAddedEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+951 |                 
+FundsAddedEvent::try_from_val(&env, 
+&event.2).expect("REASON");
+    |                                                  
+            +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> savings_goals\src\test.rs:959:17
+    |
+958 |             let topic1: SavingsEvent =
+    |                         ------------ expected 
+due to this
+959 |                 SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+    |
+    = note: expected enum `SavingsEvent`
+               found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+    |
+959 |                 SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+    |                                                  
+                        +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1000:30
+     |
+1000 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+     |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+     |                     |
+     |                     expected due to this
+     |
+     = note: expected struct `soroban_sdk::Symbol`
+                  found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1000 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+     |                                                 
+                                +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1004:17
+     |
+1003 |             let event_data: GoalCompletedEvent =
+     |                             ------------------ 
+expected due to this
+1004 |                 
+GoalCompletedEvent::try_from_val(&env, &event.2);
+     |                 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `GoalCompletedEvent`, found 
+`Result<GoalCompletedEvent, ...>`
+     |
+     = note: expected struct `GoalCompletedEvent`
+                  found enum 
+`core::result::Result<GoalCompletedEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<GoalCompletedEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1004 |                 
+GoalCompletedEvent::try_from_val(&env, 
+&event.2).expect("REASON");
+     |                                                 
+                +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1012:17
+     |
+1011 |             let topic1: SavingsEvent =
+     |                         ------------ expected 
+due to this
+1012 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+     |
+     = note: expected enum `SavingsEvent`
+                found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1012 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+     |                                                 
+                         +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1054:30
+     |
+1054 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+     |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+     |                     |
+     |                     expected due to this
+     |
+     = note: expected struct `soroban_sdk::Symbol`
+                  found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1054 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+     |                                                 
+                                +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1057:17
+     |
+1056 |             let topic1: SavingsEvent =
+     |                         ------------ expected 
+due to this
+1057 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+     |
+     = note: expected enum `SavingsEvent`
+                found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1057 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+     |                                                 
+                         +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1094:30
+     |
+1094 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+     |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+     |                     |
+     |                     expected due to this
+     |
+     = note: expected struct `soroban_sdk::Symbol`
+                  found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1094 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+     |                                                 
+                                +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1097:17
+     |
+1096 |             let topic1: SavingsEvent =
+     |                         ------------ expected 
+due to this
+1097 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+     |
+     = note: expected enum `SavingsEvent`
+                found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1097 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+     |                                                 
+                         +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1133:30
+     |
+1133 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, &topics.get(0).unwrap());
+     |                     ------   
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+expected `Symbol`, found `Result<Symbol, 
+ConversionError>`
+     |                     |
+     |                     expected due to this
+     |
+     = note: expected struct `soroban_sdk::Symbol`
+                  found enum 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<soroban_sdk::Symbol, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1133 |         let topic0: Symbol = 
+Symbol::try_from_val(&env, 
+&topics.get(0).unwrap()).expect("REASON");
+     |                                                 
+                                +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> savings_goals\src\test.rs:1136:17
+     |
+1135 |             let topic1: SavingsEvent =
+     |                         ------------ expected 
+due to this
+1136 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap());
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SavingsEvent`, 
+found `Result<SavingsEvent, ConversionError>`
+     |
+     = note: expected enum `SavingsEvent`
+                found enum 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>`
+help: consider using `Result::expect` to unwrap the 
+`core::result::Result<SavingsEvent, 
+soroban_sdk::ConversionError>` value, panicking if the 
+value is a `Result::Err`
+     |
+1136 |                 
+SavingsEvent::try_from_val(&env, 
+&topics.get(1).unwrap()).expect("REASON");
+     |                                                 
+                         +++++++++++++++++
+
+error[E0609]: no field `id` on type 
+`core::option::Option<SavingsGoal>`
+    --> savings_goals\src\test.rs:1526:38
+     |
+1526 |     let last_id = first.items.get(1).id;
+     |                                      ^^ unknown 
+field
+     |
+help: one of the expressions' fields has a field of 
+the same name
+     |
+1526 |     let last_id = 
+first.items.get(1).unwrap().id;
+     |                                      +++++++++
+
+Some errors have detailed explanations: E0308, E0609.
+For more information about an error, try `rustc 
+--explain E0308`.
+error: could not compile `savings_goals` (lib test) 
+due to 45 previous errors
