@@ -494,6 +494,77 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_insurance_payment_inactive_policy_fails() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            _bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute insurance payment with inactive policy_id (999)
+        // This should fail with InsurancePaymentFailed error since mock pay_premium returns false
+        let result = client.try_execute_insurance_payment(
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &999, // inactive policy_id
+        );
+
+        // Should fail
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::InsurancePaymentFailed
+        );
+    }
+
+    #[test]
+    fn test_execute_remittance_flow_inactive_policy_fails() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute remittance flow with inactive policy_id (999)
+        // This should bubble up InsurancePaymentFailed error 
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,   // valid goal_id
+            &1,   // valid bill_id
+            &999, // inactive policy_id - will cause failure
+        );
+
+        // Should fail
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::InsurancePaymentFailed
+        );
+    }
+
+    #[test]
     fn test_get_execution_stats_succeeds() {
         let (env, orchestrator_id, _, _, _, _, _, _) = setup_test_env();
 
