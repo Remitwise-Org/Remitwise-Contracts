@@ -114,6 +114,10 @@ pub enum BillEvent {
     Created,
     Paid,
     ExternalRefUpdated,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -121,7 +125,6 @@ pub struct StorageStats {
     pub total_archived_amount: i128,
     pub last_updated: u64,
 }
-
 #[contract]
 pub struct BillPayments;
 
@@ -450,6 +453,7 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Created),
             (next_id, bill_owner, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -531,6 +535,7 @@ impl BillPayments {
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller, bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -763,14 +768,6 @@ impl BillPayments {
     }
 
     /// Get all bills (paid and unpaid)
-    ///
-    /// # Returns
-    /// Vec of all Bill structs
-    pub fn get_all_bills(env: Env) -> Vec<Bill> {
-    // -----------------------------------------------------------------------
-    // Backward-compat helpers
-    // -----------------------------------------------------------------------
-
     /// Legacy helper: returns ALL unpaid bills for owner in one Vec.
     /// Only safe for owners with a small number of bills. Prefer the
     /// paginated `get_unpaid_bills` for production use.
@@ -1367,6 +1364,8 @@ impl BillPayments {
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
 }
+}
+
 
 // -----------------------------------------------------------------------
 // Tests
