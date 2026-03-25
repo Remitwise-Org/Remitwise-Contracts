@@ -281,11 +281,12 @@ impl RemittanceSplit {
             .ok_or(RemittanceSplitError::NotInitialized)?;
         
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+        let current_upgrade_admin_ref = current_upgrade_admin.clone();
+
         // Authorization logic:
         // 1. If no upgrade admin exists, only contract owner can set initial admin
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match current_upgrade_admin_ref {
             None => {
                 // Initial admin setup - only owner can set
                 if config.owner != caller {

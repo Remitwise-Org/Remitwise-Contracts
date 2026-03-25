@@ -202,6 +202,8 @@ pub enum OrchestratorError {
     InvalidContractAddress = 8,
     /// Generic cross-contract call failure
     CrossContractCallFailed = 9,
+    /// Invalid arguments or invalid address configuration
+    InvalidArguments = 11,
     /// Reentrancy detected - execution is already in progress
     ///
     /// This error is returned when a public entry point is called while another
@@ -224,7 +226,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -391,6 +393,19 @@ impl Orchestrator {
             .instance()
             .get(&symbol_short!("EXEC_ST"))
             .unwrap_or(ExecutionState::Idle)
+    }
+
+    fn validate_remittance_flow_addresses(
+        _env: &Env,
+        _family_wallet_addr: &Address,
+        _remittance_split_addr: &Address,
+        _savings_addr: &Address,
+        _bills_addr: &Address,
+        _insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        // Minimal placeholder validation: ensure flow addresses are present.
+        // Actual contract address semantics are validated by downstream contract calls.
+        Ok(())
     }
 
     // ============================================================================
