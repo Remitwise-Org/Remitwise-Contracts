@@ -1,0 +1,1580 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+final_test_output_v2 ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Blocking waiting 
+for file lock on 
+package cache
+warning: unused import: 
+`contracterror`
+ --> savings_goals\src\l
+ib.rs:4:15
+  |
+4 |     contract, 
+contracterror, 
+contractimpl, 
+contracttype, 
+symbol_short, Address, 
+Env, Map, String,
+  |               
+^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`GOAL_CREATED` is never 
+used
+  --> savings_goals\src\
+lib.rs:14:7
+   |
+14 | const 
+GOAL_CREATED: Symbol = s
+ymbol_short!("created");
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`FUNDS_ADDED` is never 
+used
+  --> savings_goals\src\
+lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: 
+Symbol = 
+symbol_short!("added");
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is 
+never used
+  --> savings_goals\src\
+lib.rs:16:7
+   |
+16 | const 
+GOAL_COMPLETED: Symbol 
+= symbol_short!("complet
+ed");
+   |       
+^^^^^^^^^^^^^^
+
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 |             let 
+event = 
+SplitCalculatedEvent {
+    |                 
+^^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: 
+Symbol = 
+symbol_short!("init");
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: 
+Symbol = 
+symbol_short!("calc");
+   |       
+^^^^^^^^^^^^^^^^
+
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: 
+`savings_goals` (lib) 
+generated 4 warnings 
+(run `cargo fix --lib 
+-p savings_goals` to 
+apply 1 suggestion)
+warning: 
+`remittance_split` 
+(lib) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split` to 
+apply 1 suggestion)
+warning: unused 
+imports: `String` and 
+`TokenClient`
+ --> family_wallet\tests
+\gas_bench.rs:3:43
+  |
+3 | use 
+soroban_sdk::{Address, 
+Env, Vec, vec, String, 
+token::{TokenClient, 
+StellarAssetClient}};
+  |                     
+                      
+^^^^^^          
+^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: hiding a 
+lifetime that's elided 
+elsewhere is confusing
+  --> family_wallet\test
+s\gas_bench.rs:40:22
+   |
+40 | fn 
+setup_wallet(env: &Env) 
+-> (FamilyWalletClient, 
+Address, Vec<Address>) {
+   |                    
+  ^^^^      
+^^^^^^^^^^^^^^^^^^ the 
+same lifetime is hidden 
+here
+   |                    
+  |
+   |                    
+  the lifetime is 
+elided here
+   |
+   = help: the same 
+lifetime is referred to 
+in inconsistent ways, 
+making the signature 
+confusing
+   = note: `#[warn(misma
+tched_lifetime_syntaxes)
+]` on by default
+help: use `'_` for type 
+paths
+   |
+40 | fn 
+setup_wallet(env: &Env) 
+-> (FamilyWalletClient<'
+_>, Address, 
+Vec<Address>) {
+   |                    
+                        
+      ++++
+
+warning: 
+`family_wallet` (test 
+"gas_bench") generated 
+2 warnings (run `cargo 
+fix --test "gas_bench" 
+-p family_wallet` to 
+apply 2 suggestions)
+warning: function 
+`set_time` is never used
+  --> savings_goals\src\
+test.rs:14:4
+   |
+14 | fn set_time(env: 
+&Env, timestamp: u64) {
+   |    ^^^^^^^^
+
+warning: 
+`savings_goals` (lib 
+test) generated 5 
+warnings (4 duplicates)
+warning: 
+`remittance_split` (lib 
+test) generated 3 
+warnings (3 duplicates)
+error[E0425]: cannot 
+find value 
+`events_before` in this 
+scope
+    --> insurance\src\li
+b.rs:1446:35
+     |
+1446 |         
+assert_eq!(events_after 
+- events_before, 2);
+     |                  
+                 
+^^^^^^^^^^^^^ help: a 
+local variable with a 
+similar name exists: 
+`events_after`
+
+error[E0433]: failed to 
+resolve: use of 
+undeclared type 
+`CoverageType`
+    --> insurance\src\li
+b.rs:1473:14
+     |
+1473 |             
+&CoverageType::Health,
+     |              
+^^^^^^^^^^^^ use of 
+undeclared type 
+`CoverageType`
+     |
+help: consider 
+importing this enum
+     |
+1188 +     use remitwise
+_common::CoverageType;
+     |
+
+error[E0433]: failed to 
+resolve: use of 
+undeclared type 
+`CoverageType`
+    --> insurance\src\li
+b.rs:1539:14
+     |
+1539 |             
+&CoverageType::Health,
+     |              
+^^^^^^^^^^^^ use of 
+undeclared type 
+`CoverageType`
+     |
+help: consider 
+importing this enum
+     |
+1188 +     use remitwise
+_common::CoverageType;
+     |
+
+error[E0425]: cannot 
+find value 
+`policy_names` in this 
+scope
+    --> insurance\src\li
+b.rs:1681:33
+     |
+1681 |         for (i, 
+policy_name) in policy_n
+ames.iter().enumerate() 
+{
+     |                  
+               
+^^^^^^^^^^^^ not found 
+in this scope
+
+error[E0425]: cannot 
+find value 
+`coverage_type` in this 
+scope
+    --> insurance\src\li
+b.rs:1687:18
+     |
+1687 |                 
+&coverage_type,
+     |                  
+^^^^^^^^^^^^^ not found 
+in this scope
+
+error[E0425]: cannot 
+find value `policy_ids` 
+in this scope
+    --> insurance\src\li
+b.rs:1692:13
+     |
+1692 |             polic
+y_ids.push_back(policy_i
+d);
+     |             
+^^^^^^^^^^ help: a 
+local variable with a 
+similar name exists: 
+`policy_id`
+
+error[E0425]: cannot 
+find value `name` in 
+this scope
+    --> insurance\src\li
+b.rs:1818:14
+     |
+1818 |             
+&name,
+     |              
+^^^^ not found in this 
+scope
+
+error[E0425]: cannot 
+find value 
+`coverage_type` in this 
+scope
+    --> insurance\src\li
+b.rs:1819:14
+     |
+1819 |             
+&coverage_type,
+     |              
+^^^^^^^^^^^^^ not found 
+in this scope
+
+error[E0425]: cannot 
+find value 
+`monthly_premium` in 
+this scope
+    --> insurance\src\li
+b.rs:1820:14
+     |
+1820 |             
+&monthly_premium,
+     |              
+^^^^^^^^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find value 
+`coverage_amount` in 
+this scope
+    --> insurance\src\li
+b.rs:1821:14
+     |
+1821 |             
+&coverage_amount,
+     |              
+^^^^^^^^^^^^^^^ not 
+found in this scope
+
+error[E0433]: failed to 
+resolve: use of 
+undeclared type 
+`CoverageType`
+    --> insurance\src\li
+b.rs:1824:14
+     |
+1824 |             
+&CoverageType::Health,
+     |              
+^^^^^^^^^^^^ use of 
+undeclared type 
+`CoverageType`
+     |
+help: consider 
+importing this enum
+     |
+1188 +     use remitwise
+_common::CoverageType;
+     |
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1749:5
+     |
+1749 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(unn
+ameable_test_items)]` 
+on by default
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1806:5
+     |
+1806 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1879:5
+     |
+1879 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1909:5
+     |
+1909 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1943:5
+     |
+1943 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:1980:5
+     |
+1980 |     #[test]
+     |     ^^^^^^^
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:2020:5
+     |
+2020 | /     proptest! {
+2021 | |         /// 
+After paying a premium 
+at any timestamp `now`,
+2022 | |         /// 
+next_payment_date must 
+always equal now + 30 
+days.
+2023 | |         #[test]
+...    |
+2051 | |     }
+     | |_____^
+     |
+     = note: this 
+warning originates in 
+the attribute macro 
+`test` which comes from 
+the expansion of the 
+macro `proptest` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+warning: cannot test 
+inner items
+    --> insurance\src\li
+b.rs:2053:5
+     |
+2053 | /     proptest! {
+2054 | |         /// A 
+premium schedule must 
+not execute before its 
+due date,
+2055 | |         /// 
+and must execute at or 
+after its due date.
+2056 | |         #[test]
+...    |
+2095 | |     }
+     | |_____^
+     |
+     = note: this 
+warning originates in 
+the attribute macro 
+`test` which comes from 
+the expansion of the 
+macro `proptest` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1265:32
+     |
+1265 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1266 | |             
+&owner,
+1267 | |             
+&String::from_str(&env, 
+"Health Insurance"),
+1268 | |             
+&String::from_str(&env, 
+"health"),
+1269 | |             
+&100,
+1270 | |             
+&50000,
+1271 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1265 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1270 |             
+&50000,
+1271 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1272 ~         );
+     |
+
+error[E0600]: cannot 
+apply unary operator 
+`!` to type `()`
+    --> insurance\src\li
+b.rs:1360:9
+     |
+1360 |         
+assert!(result);
+     |         
+^^^^^^^^^^^^^^^ cannot 
+apply unary operator `!`
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1376:32
+     |
+1376 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1377 | |             
+&owner,
+1378 | |             
+&String::from_str(&env, 
+"Life Insurance"),
+1379 | |             
+&String::from_str(&env, 
+"life"),
+1380 | |             
+&200,
+1381 | |             
+&100000,
+1382 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1376 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1381 |             
+&100000,
+1382 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1383 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1470:32
+     |
+1470 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1471 | |             
+&owner,
+1472 | |             
+&String::from_str(&env, 
+"Complete Lifecycle"),
+1473 | |             
+&CoverageType::Health,
+1474 | |             
+&150,
+1475 | |             
+&75000,
+1476 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1470 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1475 |             
+&75000,
+1476 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1477 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1536:32
+     |
+1536 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1537 | |             
+&owner,
+1538 | |             
+&String::from_str(&env, 
+"Health Insurance"),
+1539 | |             
+&CoverageType::Health,
+1540 | |             
+&100,
+1541 | |             
+&50000,
+1542 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1536 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1541 |             
+&50000,
+1542 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1543 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1578:16
+     |
+1578 |           
+client.create_policy(
+     |  ________________
+^^^^^^^^^^^^^-
+1579 | |             
+&owner,
+1580 | |             
+&String::from_str(&env, 
+"Life Insurance"),
+1581 | |             
+&String::from_str(&env, 
+"life"),
+1582 | |             
+&200,
+1583 | |             
+&100000,
+1584 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1578 |         
+client.create_policy(
+ ...
+1583 |             
+&100000,
+1584 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1585 ~         );
+     |
+
+error[E0425]: cannot 
+find function 
+`create_test_env` in 
+this scope
+    --> insurance\src\li
+b.rs:1614:19
+     |
+1614 |         let env 
+= create_test_env();
+     |                  
+ ^^^^^^^^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`create_test_env` in 
+this scope
+    --> insurance\src\li
+b.rs:1633:19
+     |
+1633 |         let env 
+= create_test_env();
+     |                  
+ ^^^^^^^^^^^^^^^ not 
+found in this scope
+
+error[E0425]: cannot 
+find function 
+`create_test_env` in 
+this scope
+    --> insurance\src\li
+b.rs:1652:19
+     |
+1652 |         let env 
+= create_test_env();
+     |                  
+ ^^^^^^^^^^^^^^^ not 
+found in this scope
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1673:32
+     |
+1673 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1674 | |             
+&owner,
+1675 | |             
+&String::from_str(&env, 
+"Auto Insurance"),
+1676 | |             
+&String::from_str(&env, 
+"auto"),
+1677 | |             
+&150,
+1678 | |             
+&75000,
+1679 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1673 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1678 |             
+&75000,
+1679 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1680 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1720:33
+     |
+1720 |           let 
+policy_id2 = 
+client.create_policy(
+     |  ________________
+_________________^^^^^^^
+^^^^^^-
+1721 | |             
+&owner,
+1722 | |             
+&String::from_str(&env, 
+"Travel Insurance"),
+1723 | |             
+&String::from_str(&env, 
+"travel"),
+1724 | |             
+&50,
+1725 | |             
+&20000,
+1726 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1720 |         let 
+policy_id2 = 
+client.create_policy(
+ ...
+1725 |             
+&20000,
+1726 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1727 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1769:32
+     |
+1769 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1770 | |             
+&owner,
+1771 | |             
+&String::from_str(&env, 
+"Dental"),
+1772 | |             
+&String::from_str(&env, 
+"dental"),
+1773 | |             
+&75,
+1774 | |             
+&25000,
+1775 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1769 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1774 |             
+&25000,
+1775 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1776 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 10 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1816:32
+     |
+1816 |         let 
+policy_id = 
+client.create_policy(
+     |                  
+              
+^^^^^^^^^^^^^
+...
+1823 |             
+&String::from_str(&env, 
+"Health Plan"),
+     |             -----
+------------------------
+--------- unexpected 
+argument #7 of type 
+`&soroban_sdk::String`
+1824 |             
+&CoverageType::Health,
+     |             
+--------------------- 
+unexpected argument #8
+1825 |             &150,
+     |             ---- 
+unexpected argument #9 
+of type `&{integer}`
+1826 |             
+&50000,
+     |             
+------ unexpected 
+argument #10 of type 
+`&{integer}`
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+help: remove the extra 
+arguments
+     |
+1822 -             
+&None,
+1823 -             
+&String::from_str(&env, 
+"Health Plan"),
+1822 +             
+&None,
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1890:32
+     |
+1890 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1891 | |             
+&owner,
+1892 | |             
+&String::from_str(&env, 
+"Life Cover"),
+1893 | |             
+&String::from_str(&env, 
+"life"),
+1894 | |             
+&200,
+1895 | |             
+&100000,
+1896 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1890 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1895 |             
+&100000,
+1896 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1897 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1920:32
+     |
+1920 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1921 | |             
+&owner,
+1922 | |             
+&String::from_str(&env, 
+"Health Plan"),
+1923 | |             
+&String::from_str(&env, 
+"health"),
+1924 | |             
+&150,
+1925 | |             
+&75000,
+1926 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1920 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1925 |             
+&75000,
+1926 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1927 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1955:32
+     |
+1955 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1956 | |             
+&owner,
+1957 | |             
+&String::from_str(&env, 
+"Property Plan"),
+1958 | |             
+&String::from_str(&env, 
+"property"),
+1959 | |             
+&300,
+1960 | |             
+&200000,
+1961 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1955 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1960 |             
+&200000,
+1961 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1962 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:1992:32
+     |
+1992 |           let 
+policy_id = 
+client.create_policy(
+     |  ________________
+________________^^^^^^^^
+^^^^^-
+1993 | |             
+&owner,
+1994 | |             
+&String::from_str(&env, 
+"Auto Cover"),
+1995 | |             
+&String::from_str(&env, 
+"auto"),
+1996 | |             
+&100,
+1997 | |             
+&50000,
+1998 | |         );
+     | |_________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1992 |         let 
+policy_id = 
+client.create_policy(
+ ...
+1997 |             
+&50000,
+1998 ~             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1999 ~         );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:2034:36
+     |
+2034 |               
+let policy_id = 
+client.create_policy(
+     |  ________________
+____________________^^^^
+^^^^^^^^^-
+2035 | |                
+ &owner,
+2036 | |                
+ 
+&String::from_str(&env, 
+"Policy"),
+2037 | |                
+ 
+&String::from_str(&env, 
+"health"),
+2038 | |                
+ &100,
+2039 | |                
+ &10000,
+2040 | |             );
+     | |_____________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+2034 |             let 
+policy_id = 
+client.create_policy(
+ ...
+2039 |                 
+&10000,
+2040 ~                 
+/* &core::option::Option
+<soroban_sdk::String> 
+*/,
+2041 ~             );
+     |
+
+error[E0061]: this 
+method takes 6 
+arguments but 5 
+arguments were supplied
+    --> insurance\src\li
+b.rs:2068:36
+     |
+2068 |               
+let policy_id = 
+client.create_policy(
+     |  ________________
+____________________^^^^
+^^^^^^^^^-
+2069 | |                
+ &owner,
+2070 | |                
+ 
+&String::from_str(&env, 
+"Policy"),
+2071 | |                
+ 
+&String::from_str(&env, 
+"health"),
+2072 | |                
+ &100,
+2073 | |                
+ &10000,
+2074 | |             );
+     | |_____________- 
+argument #6 of type `&co
+re::option::Option<sorob
+an_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> insurance\src\li
+b.rs:475:12
+     |
+ 475 |     pub fn 
+create_policy(
+     |            
+^^^^^^^^^^^^^
+...
+ 482 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+2068 |             let 
+policy_id = 
+client.create_policy(
+ ...
+2073 |                 
+&10000,
+2074 ~                 
+/* &core::option::Option
+<soroban_sdk::String> 
+*/,
+2075 ~             );
+     |
+
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1288:13
+     |
+1288 |         let 
+policy_id = client.creat
+e_policy(&owner, &name, 
+&coverage_type, &100, 
+&10000, &None);
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+     |
+     = note: `#[warn(unu
+sed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1312:13
+     |
+1312 |         let 
+policy_id = 
+client.create_policy(
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1325:13
+     |
+1325 |         let 
+policy_id = client.creat
+e_policy(&owner, &name, 
+&coverage_type, &100, 
+&10000, &None);
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+
+Some errors have 
+detailed explanations: 
+E0061, E0425, E0433, 
+E0600.
+For more information 
+about an error, try 
+`rustc --explain E0061`.
+warning: `insurance` 
+(lib test) generated 11 
+warnings
+error: could not 
+compile `insurance` 
+(lib test) due to 30 
+previous errors; 11 
+warnings emitted
+warning: build failed, 
+waiting for other jobs 
+to finish...

@@ -84,6 +84,13 @@ pub struct SavingsSchedule {
 }
 
 #[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContributionItem {
+    pub goal_id: u32,
+    pub amount: i128,
+}
+
+#[contracttype]
 #[derive(Clone, Copy, Debug)]
 pub enum SavingsGoalsError {
     InvalidAmount = 1,
@@ -526,13 +533,13 @@ impl SavingsGoalContract {
         name: String,
         target_amount: i128,
         target_date: u64,
-    ) -> Result<u32, SavingsGoalError> {
+    ) -> Result<u32, SavingsGoalsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
 
         if target_amount <= 0 {
             Self::append_audit(&env, symbol_short!("create"), &owner, false);
-            return Err(SavingsGoalError::InvalidAmount);
+            return Err(SavingsGoalsError::InvalidAmount);
         }
 
         Self::extend_storage_ttl(&env);
@@ -605,13 +612,13 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, SavingsGoalError> {
+    ) -> Result<i128, SavingsGoalsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
         if amount <= 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
-            return Err(SavingsGoalError::InvalidAmount);
+            return Err(SavingsGoalsError::InvalidAmount);
         }
 
         Self::extend_storage_ttl(&env);
@@ -626,7 +633,7 @@ impl SavingsGoalContract {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("add"), &caller, false);
-                return Err(SavingsGoalError::GoalNotFound);
+                return Err(SavingsGoalsError::GoalNotFound);
             }
         };
 
@@ -639,7 +646,7 @@ impl SavingsGoalContract {
         goal.current_amount = goal
             .current_amount
             .checked_add(amount)
-            .ok_or(SavingsGoalError::Overflow)?;
+            .ok_or(SavingsGoalsError::Overflow)?;
         let new_total = goal.current_amount;
         let was_completed = new_total >= goal.target_amount;
         let previously_completed = (new_total - amount) >= goal.target_amount;
@@ -779,13 +786,13 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, SavingsGoalError> {
+    ) -> Result<i128, SavingsGoalsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::InvalidAmount);
+            return Err(SavingsGoalsError::InvalidAmount);
         }
 
         Self::extend_storage_ttl(&env);
@@ -800,37 +807,37 @@ impl SavingsGoalContract {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-                return Err(SavingsGoalError::GoalNotFound);
+                return Err(SavingsGoalsError::GoalNotFound);
             }
         };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::Unauthorized);
+            return Err(SavingsGoalsError::Unauthorized);
         }
 
         if goal.locked {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::GoalLocked);
+            return Err(SavingsGoalsError::GoalLocked);
         }
 
         if let Some(unlock_date) = goal.unlock_date {
             let current_time = env.ledger().timestamp();
             if current_time < unlock_date {
                 Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-                return Err(SavingsGoalError::GoalLocked);
+                return Err(SavingsGoalsError::GoalLocked);
             }
         }
 
         if amount > goal.current_amount {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::InsufficientBalance);
+            return Err(SavingsGoalsError::InsufficientBalance);
         }
 
         goal.current_amount = goal
             .current_amount
             .checked_sub(amount)
-            .ok_or(SavingsGoalError::Overflow)?;
+            .ok_or(SavingsGoalsError::Overflow)?;
         let new_amount = goal.current_amount;
 
         goals.set(goal_id, goal);

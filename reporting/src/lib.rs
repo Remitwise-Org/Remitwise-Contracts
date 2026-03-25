@@ -249,7 +249,7 @@ pub trait InsuranceTrait {
 // Data structures from other contracts (needed for client traits)
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SavingsGoal {
     pub id: u32,
     pub owner: Address,
@@ -263,7 +263,7 @@ pub struct SavingsGoal {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -282,7 +282,7 @@ pub struct Bill {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BillPage {
     pub items: Vec<Bill>,
     pub next_cursor: u32,
@@ -290,7 +290,7 @@ pub struct BillPage {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
@@ -303,6 +303,14 @@ pub struct InsurancePolicy {
     pub next_payment_date: u64,
     pub schedule_id: Option<u32>,
     pub tags: Vec<soroban_sdk::String>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contract]

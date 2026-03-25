@@ -1,0 +1,294 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+insurance --lib 2>&1 | 
+Out-File -Encoding UTF8 
+test_ins ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+   Compiling serde_core 
+v1.0.228
+   Compiling serde 
+v1.0.228
+   Compiling serde_json 
+v1.0.149
+   Compiling serde_with 
+v3.18.0
+   Compiling hex v0.4.3
+   Compiling 
+crate-git-revision 
+v0.0.6
+   Compiling 
+stellar-strkey v0.0.8
+   Compiling 
+stellar-xdr v21.2.0
+   Compiling 
+soroban-env-common 
+v21.2.1
+   Compiling 
+soroban-sdk-macros 
+v21.7.7
+   Compiling 
+soroban-spec v21.7.7
+   Compiling 
+soroban-spec-rust 
+v21.7.7
+   Compiling 
+soroban-env-macros 
+v21.2.1
+   Compiling 
+soroban-env-host v21.2.1
+   Compiling 
+soroban-ledger-snapshot 
+v21.7.7
+   Compiling 
+soroban-sdk v21.7.7
+   Compiling testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+   Compiling 
+remitwise-common v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remitwise-common
+)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1327:13
+     |
+1327 |         let 
+policy_id = client.creat
+e_policy(&owner, &name, 
+&coverage_type, &100, 
+&10000, &None);
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+     |
+     = note: `#[warn(unu
+sed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1351:13
+     |
+1351 |         let 
+policy_id = 
+client.create_policy(
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+
+warning: unused 
+variable: `policy_id`
+    --> insurance\src\li
+b.rs:1364:13
+     |
+1364 |         let 
+policy_id = client.creat
+e_policy(&owner, &name, 
+&coverage_type, &100, 
+&10000, &None);
+     |             
+^^^^^^^^^ help: if this 
+is intentional, prefix 
+it with an underscore: 
+`_policy_id`
+
+warning: unused 
+variable: `policy_id1`
+    --> insurance\src\li
+b.rs:1448:13
+     |
+1448 |         let 
+policy_id1 = client.crea
+te_policy(&owner, 
+&name1, 
+&coverage_type1, &100, 
+&10000, &None);
+     |             
+^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_policy_id1`
+
+warning: unused 
+variable: `policy_id2`
+    --> insurance\src\li
+b.rs:1452:13
+     |
+1452 |         let 
+policy_id2 = client.crea
+te_policy(&owner, 
+&name2, 
+&coverage_type2, &200, 
+&20000, &None);
+     |             
+^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_policy_id2`
+
+warning: unused 
+variable: `policy_id3`
+    --> insurance\src\li
+b.rs:1456:13
+     |
+1456 |         let 
+policy_id3 = client.crea
+te_policy(&owner, 
+&name3, 
+&coverage_type3, &300, 
+&30000, &None);
+     |             
+^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_policy_id3`
+
+warning: unused 
+variable: `policy_id3`
+    --> insurance\src\li
+b.rs:1508:13
+     |
+1508 |         let 
+policy_id3 = client.crea
+te_policy(&owner, 
+&name3, 
+&coverage_type3, &300, 
+&30000, &None);
+     |             
+^^^^^^^^^^ help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_policy_id3`
+
+warning: `insurance` 
+(lib test) generated 7 
+warnings (run `cargo 
+fix --lib -p insurance 
+--tests` to apply 7 
+suggestions)
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+8m 42s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\insurance-e47ecd94
+655d24a3.exe)
+
+running 67 tests
+test test::test_create_policy_invalid_coverage ... ok
+test test::test_create_policy_emits_event ... ok
+test test::test_create_policy_success ... ok
+test test::test_cancel_premium_schedule ... ok
+test test::test_create_policy_succeeds ... ok
+test test::test_create_premium_schedule_succeeds ... ok
+test test::test_deactivate_policy ... ok
+test test::test_deactivate_policy_emits_event ... ok
+test test::test_execute_due_premium_schedules ... ok
+test test::test_create_policy_invalid_premium ... ok
+test test::test_create_policy_negative_coverage_panics ... ok
+test test::test_create_policy_negative_premium_panics ... ok
+test test::test_get_active_policies_excludes_deactivated ... ok
+test test::test_get_active_policies ... ok
+test test::test_create_policy_requires_auth ... ok
+test test::test_create_policy_non_owner_auth_failure - should panic ... ok
+test test::test_get_policy_nonexistent ... ok
+test test::test_deactivate_policy_owner_only ... ok
+test test::test_deactivate_policy_non_owner_auth_failure - should panic ... ok
+test test::test_get_premium_schedules ... ok
+test test::test_execute_recurring_premium_schedule ... ok
+test test::test_get_total_monthly_premium_deactivated_policy_excluded ... ok
+test test::test_get_total_monthly_premium_different_owner_isolation ... ok
+test test::test_execute_missed_premium_schedules ... ok
+test test::test_get_total_monthly_premium_zero_policies ... ok
+test test::test_modify_premium_schedule ... ok
+test test::test_get_active_policies_filters_by_owner_and_active ... ok
+test test::test_get_total_monthly_premium ... ok
+test test::test_get_all_policies_for_owner_pagination ... ok
+test test::test_get_total_monthly_premium_multiple_active_policies ... ok
+test test::test_get_total_monthly_premium_comprehensive ... ok
+test test::test_pay_premium ... ok
+test test::test_get_total_monthly_premium_one_policy ... ok
+test test::test_pay_premium_unauthorized ... ok
+test test::test_pay_premium_emits_event ... ok
+test test::test_pay_premium_success ... ok
+test test::test_time_drift_no_double_execution_after_schedule_advances ... ok
+test test::test_multiple_premium_payments ... ok
+test test::test_pay_premium_non_owner_auth_failure - should panic ... ok
+test test::test_pay_premium_inactive_policy_panics ... ok
+test test::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test::test_multiple_policies_same_owner ... ok
+test test_events::test_create_policy_emits_event ... ok
+test test_events::test_create_policy_invalid_premium ... ok
+test test::test_pay_premium_unauthorized_panics ... ok
+test test::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+test test_events::test_create_policy_invalid_amount ... ok
+test test_events::test_deactivate_policy_emits_event ... ok
+test test::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+test test_events::test_instance_ttl_extended_on_deactivate_policy ... ok
+test test_events::test_instance_ttl_extended_on_create_policy ... ok
+test test_events::test_create_policy_emits_event_exists ... ok
+test test_events::test_pay_premium_emits_event ... ok
+test test_events::test_instance_ttl_refreshed_on_pay_premium ... ok
+test test_events::test_pay_premium_after_deactivate ... ok
+test test_events::test_set_external_ref_unauthorized - should panic ... ok
+test test_events::test_policy_data_persists_across_ledger_advancements ... ok
+test test_events::test_get_active_policies_pagination_with_deactivation ... ok
+test test_events::test_set_external_ref_success ... ok
+test test_events::test_policy_lifecycle_emits_all_events ... ok
+test test_events::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+test test_events::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+test test_events::test_get_active_policies_pagination ... ok
+test test_events::test_time_drift_no_double_execution_after_schedule_advances ... ok
+test test_events::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test_events::prop_pay_premium_sets_next_payment_date ... ok
+test test_events::prop_execute_due_schedules_only_triggers_past_due has been running for over 60 seconds
+test test_events::prop_execute_due_schedules_only_triggers_past_due ... ok
+
+test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 145.02s
+

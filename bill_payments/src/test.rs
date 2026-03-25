@@ -251,14 +251,6 @@ mod testsuit {
             client.get_bill(&bill_id).is_none(),
             "cancelled bill should still return None"
         );
-            &None,
-                    &String::from_str(&env, "XLM"),
-        );
-        env.mock_all_auths();
-        client.cancel_bill(&owner, &bill_id);
-        let bill = client.get_bill(&bill_id);
-        assert!(bill.is_none());
-    }
 
     #[test]
     fn test_cancel_bill_owner_succeeds() {
@@ -276,11 +268,6 @@ mod testsuit {
             client.get_bill(&bill_id).is_none(),
             "bill should be removed after owner cancellation"
         );
-        );
-        env.mock_all_auths();
-        client.cancel_bill(&owner, &bill_id);
-        let bill = client.get_bill(&bill_id);
-        assert!(bill.is_none());
     }
 
     #[test]

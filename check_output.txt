@@ -1,0 +1,260 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\Cargo.toml
+    Checking savings_goals v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\savings_goals)
+    Checking insurance v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance)
+    Checking reporting v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\reporting)
+warning: unused variable: `event`
+   --> remittance_split\src\lib.rs:875:17
+    |
+875 |             let event = SplitCalculatedEvent {
+    |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_event`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `SPLIT_INITIALIZED` is never used
+  --> remittance_split\src\lib.rs:15:7
+   |
+15 | const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
+   |       ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `SPLIT_CALCULATED` is never used
+  --> remittance_split\src\lib.rs:16:7
+   |
+16 | const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
+   |       ^^^^^^^^^^^^^^^^
+
+warning: `remittance_split` (lib) generated 3 warnings (run `cargo fix --lib -p remittance_split` to apply 1 suggestion)
+error: mismatched closing delimiter: `}`
+    --> insurance\src\lib.rs:1394:45
+     |
+1375 |     fn test_create_policy_emits_event_exists() {
+     |                                                - closing delimiter possibly meant for this
+...
+1394 |         let policy_id = client.create_policy(
+     |                                             ^ unclosed delimiter
+...
+1423 |     }
+     |     ^ mismatched closing delimiter
+
+error: could not compile `insurance` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error[E0425]: cannot find type `PolicyPage` in this scope
+   --> reporting\src\lib.rs:245:82
+    |
+245 |     fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
+    |                                                                                  ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:529:22
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+529 |     ) -> Result<u32, SavingsGoalError> {
+    |                      ^^^^^^^^^^^^^^^^
+    |
+help: an enum with a similar name exists
+    |
+529 |     ) -> Result<u32, SavingsGoalsError> {
+    |                                 +
+help: you might be missing a type parameter
+    |
+193 | impl<SavingsGoalError> SavingsGoalContract {
+    |     ++++++++++++++++++
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:608:23
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+608 |     ) -> Result<i128, SavingsGoalError> {
+    |                       ^^^^^^^^^^^^^^^^
+    |
+help: an enum with a similar name exists
+    |
+608 |     ) -> Result<i128, SavingsGoalsError> {
+    |                                  +
+help: you might be missing a type parameter
+    |
+193 | impl<SavingsGoalError> SavingsGoalContract {
+    |     ++++++++++++++++++
+
+error[E0425]: cannot find type `ContributionItem` in this scope
+   --> savings_goals\src\lib.rs:681:28
+    |
+681 |         contributions: Vec<ContributionItem>,
+    |                            ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+193 | impl<ContributionItem> SavingsGoalContract {
+    |     ++++++++++++++++++
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:782:23
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+782 |     ) -> Result<i128, SavingsGoalError> {
+    |                       ^^^^^^^^^^^^^^^^
+    |
+help: an enum with a similar name exists
+    |
+782 |     ) -> Result<i128, SavingsGoalsError> {
+    |                                  +
+help: you might be missing a type parameter
+    |
+193 | impl<SavingsGoalError> SavingsGoalContract {
+    |     ++++++++++++++++++
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:529:22
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+529 |     ) -> Result<u32, SavingsGoalError> {
+    |                      ^^^^^^^^^^^^^^^^ help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:608:23
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+608 |     ) -> Result<i128, SavingsGoalError> {
+    |                       ^^^^^^^^^^^^^^^^ help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0425]: cannot find type `ContributionItem` in this scope
+   --> savings_goals\src\lib.rs:681:28
+    |
+681 |         contributions: Vec<ContributionItem>,
+    |                            ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find type `SavingsGoalError` in this scope
+   --> savings_goals\src\lib.rs:782:23
+    |
+ 88 | pub enum SavingsGoalsError {
+    | -------------------------- similarly named enum `SavingsGoalsError` defined here
+...
+782 |     ) -> Result<i128, SavingsGoalError> {
+    |                       ^^^^^^^^^^^^^^^^ help: an enum with a similar name exists: `SavingsGoalsError`
+
+warning: unused import: `contracterror`
+ --> savings_goals\src\lib.rs:4:15
+  |
+4 |     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
+  |               ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:535:24
+    |
+535 |             return Err(SavingsGoalError::InvalidAmount);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:614:24
+    |
+614 |             return Err(SavingsGoalError::InvalidAmount);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:629:28
+    |
+629 |                 return Err(SavingsGoalError::GoalNotFound);
+    |                            ^^^^^^^^^^^^^^^^
+    |                            |
+    |                            use of undeclared type `SavingsGoalError`
+    |                            help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:642:20
+    |
+642 |             .ok_or(SavingsGoalError::Overflow)?;
+    |                    ^^^^^^^^^^^^^^^^
+    |                    |
+    |                    use of undeclared type `SavingsGoalError`
+    |                    help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:788:24
+    |
+788 |             return Err(SavingsGoalError::InvalidAmount);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:803:28
+    |
+803 |                 return Err(SavingsGoalError::GoalNotFound);
+    |                            ^^^^^^^^^^^^^^^^
+    |                            |
+    |                            use of undeclared type `SavingsGoalError`
+    |                            help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:809:24
+    |
+809 |             return Err(SavingsGoalError::Unauthorized);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:814:24
+    |
+814 |             return Err(SavingsGoalError::GoalLocked);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:821:28
+    |
+821 |                 return Err(SavingsGoalError::GoalLocked);
+    |                            ^^^^^^^^^^^^^^^^
+    |                            |
+    |                            use of undeclared type `SavingsGoalError`
+    |                            help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:827:24
+    |
+827 |             return Err(SavingsGoalError::InsufficientBalance);
+    |                        ^^^^^^^^^^^^^^^^
+    |                        |
+    |                        use of undeclared type `SavingsGoalError`
+    |                        help: an enum with a similar name exists: `SavingsGoalsError`
+
+error[E0433]: failed to resolve: use of undeclared type `SavingsGoalError`
+   --> savings_goals\src\lib.rs:833:20
+    |
+833 |             .ok_or(SavingsGoalError::Overflow)?;
+    |                    ^^^^^^^^^^^^^^^^
+    |                    |
+    |                    use of undeclared type `SavingsGoalError`
+    |                    help: an enum with a similar name exists: `SavingsGoalsError`
+
+Some errors have detailed explanations: E0425, E0433.
+For more information about an error, try `rustc --explain E0425`.
+warning: `savings_goals` (lib) generated 1 warning
+error: could not compile `savings_goals` (lib) due to 19 previous errors; 1 warning emitted
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `reporting` (lib) due to 1 previous error

@@ -1,0 +1,174 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check 
+--workspace 2>&1 | 
+Out-File -FilePath 
+check_output_v4.txt ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 |             let 
+event = 
+SplitCalculatedEvent {
+    |                 
+^^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: 
+Symbol = 
+symbol_short!("init");
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: 
+Symbol = 
+symbol_short!("calc");
+   |       
+^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`contracterror`
+ --> savings_goals\src\l
+ib.rs:4:15
+  |
+4 |     contract, 
+contracterror, 
+contractimpl, 
+contracttype, 
+symbol_short, Address, 
+Env, Map, String,
+  |               
+^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`GOAL_CREATED` is never 
+used
+  --> savings_goals\src\
+lib.rs:14:7
+   |
+14 | const 
+GOAL_CREATED: Symbol = s
+ymbol_short!("created");
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`FUNDS_ADDED` is never 
+used
+  --> savings_goals\src\
+lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: 
+Symbol = 
+symbol_short!("added");
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is 
+never used
+  --> savings_goals\src\
+lib.rs:16:7
+   |
+16 | const 
+GOAL_COMPLETED: Symbol 
+= symbol_short!("complet
+ed");
+   |       
+^^^^^^^^^^^^^^
+
+warning: 
+`remittance_split` 
+(lib) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split` to 
+apply 1 suggestion)
+warning: 
+`savings_goals` (lib) 
+generated 4 warnings 
+(run `cargo fix --lib 
+-p savings_goals` to 
+apply 1 suggestion)
+    Checking scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+    Checking 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+    Finished `dev` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+12.17s

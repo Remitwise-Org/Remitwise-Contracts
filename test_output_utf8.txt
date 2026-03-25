@@ -1,0 +1,216 @@
+﻿cargo : warning: profiles for 
+the non root package will be 
+ignored, specify profiles at 
+the workspace root:
+At line:1 char:1
++ cargo test --color never > 
+test_output.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo            
+  : NotSpecified    : 
+(warning: profil.    
+..workspace root::S    tring) 
+[], RemoteEx    ception
+    + FullyQualifiedErr    
+orId : NativeComman    dError
+ 
+package:   C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\Cargo.toml
+warning: unused import: 
+`contracterror`
+ --> 
+savings_goals\src\lib.rs:4:15
+  |
+4 | ...t, contracterror, co...
+  |       ^^^^^^^^^^^^^
+  |
+  = note: 
+`#[warn(unused_imports)]` 
+(part of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`GOAL_CREATED` is never used
+  --> 
+savings_goals\src\lib.rs:14:7
+   |
+14 | const GOAL_CREATED: Sy...
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` (part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: constant 
+`FUNDS_ADDED` is never used
+  --> 
+savings_goals\src\lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: Sym...
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is never used
+  --> 
+savings_goals\src\lib.rs:16:7
+   |
+16 | const GOAL_COMPLETED: 
+S...
+   |       ^^^^^^^^^^^^^^
+
+warning: unused variable: 
+`event`
+   --> remittance_split\src\li
+b.rs:875:17
+    |
+875 | ... let event = Split...
+    |         ^^^^^ help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_event`
+    |
+    = note: 
+`#[warn(unused_variables)]` 
+(part of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is never 
+used
+  --> remittance_split\src\lib
+.rs:15:7
+   |
+15 | const SPLIT_INITIALIZED: 
+S...
+   |       ^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` (part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: constant 
+`SPLIT_CALCULATED` is never 
+used
+  --> remittance_split\src\lib
+.rs:16:7
+   |
+16 | const SPLIT_CALCULATED: 
+S...
+   |       ^^^^^^^^^^^^^^^^
+
+   Compiling insurance v0.1.0 
+(C:\Users\ADMIN\Desktop\remmy-
+drips\Remitwise-Contracts\insu
+rance)
+warning: `savings_goals` 
+(lib) generated 4 warnings 
+(run `cargo fix --lib -p 
+savings_goals` to apply 1 
+suggestion)
+warning: `remittance_split` 
+(lib) generated 3 warnings 
+(run `cargo fix --lib -p 
+remittance_split` to apply 1 
+suggestion)
+   Compiling savings_goals 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\savings_goals)
+   Compiling family_wallet 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\family_wallet)
+   Compiling bill_payments 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\bill_payments)
+error: unexpected closing 
+delimiter: `}`
+    --> 
+insurance\src\lib.rs:2107:1
+     |
+1187 | mod test_events {
+     |                 - this 
+opening brace...
+...
+2106 | }
+     | - ...matches this 
+closing brace
+2107 | }
+     | ^ unexpected closing 
+delimiter
+
+error: could not compile 
+`insurance` (lib) due to 1 
+previous error
+warning: build failed, 
+waiting for other jobs to 
+finish...
+error: could not compile 
+`insurance` (lib test) due to 
+1 previous error
+warning: unused imports: 
+`String` and `TokenClient`
+ --> family_wallet\tests\gas_b
+ench.rs:3:43
+  |
+3 | use 
+soroban_sdk::{Address, Env, 
+Vec, vec, String, 
+token::{TokenClient, 
+StellarAssetClient}};
+  |                           
+                ^^^^^^        
+  ^^^^^^^^^^^
+  |
+  = note: 
+`#[warn(unused_imports)]` 
+(part of `#[warn(unused)]`) 
+on by default
+
+warning: hiding a lifetime 
+that's elided elsewhere is 
+confusing
+  --> family_wallet\tests\gas_
+bench.rs:40:22
+   |
+40 | fn setup_wallet(env: 
+&Env) -> (FamilyWalletClient, 
+Address, Vec<Address>) {
+   |                      
+^^^^      ^^^^^^^^^^^^^^^^^^ 
+the same lifetime is hidden 
+here
+   |                      |
+   |                      the 
+lifetime is elided here
+   |
+   = help: the same lifetime 
+is referred to in 
+inconsistent ways, making the 
+signature confusing
+   = note: `#[warn(mismatched_
+lifetime_syntaxes)]` on by 
+default
+help: use `'_` for type paths
+   |
+40 | fn setup_wallet(env: 
+&Env) -> 
+(FamilyWalletClient<'_>, 
+Address, Vec<Address>) {
+   |                          
+                        ++++
+
+warning: `family_wallet` 
+(test "gas_bench") generated 
+2 warnings (run `cargo fix 
+--test "gas_bench" -p 
+family_wallet` to apply 2 
+suggestions)

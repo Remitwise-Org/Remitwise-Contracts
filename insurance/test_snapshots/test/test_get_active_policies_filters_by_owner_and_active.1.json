@@ -1272,7 +1272,7 @@
                     "symbol": "next_cursor"
                   },
                   "val": {
-                    "u32": 2
+                    "u32": 0
                   }
                 }
               ]
@@ -1451,7 +1451,7 @@
                     "symbol": "next_cursor"
                   },
                   "val": {
-                    "u32": 3
+                    "u32": 0
                   }
                 }
               ]

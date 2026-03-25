@@ -1354,7 +1354,7 @@
                     "symbol": "next_cursor"
                   },
                   "val": {
-                    "u32": 3
+                    "u32": 0
                   }
                 }
               ]

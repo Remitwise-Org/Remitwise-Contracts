@@ -108,11 +108,8 @@ pub enum BillEvent {
     ExternalRefUpdated,
 }
 
-<<<<<<< HEAD
-=======
 #[contracttype]
 #[derive(Clone)]
->>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -437,11 +434,7 @@ impl BillPayments {
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
-<<<<<<< HEAD
-        // Emit event for audit trail
-=======
         // Emit event for audit trail using Remitwise compliant schema
->>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -520,11 +513,7 @@ impl BillPayments {
             Self::adjust_unpaid_total(&env, &caller, -paid_amount);
         }
 
-<<<<<<< HEAD
-        // Emit event for audit trail
-=======
         // Emit event for audit trail using Remitwise compliant schema
->>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,

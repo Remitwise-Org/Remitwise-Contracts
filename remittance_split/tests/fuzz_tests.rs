@@ -43,7 +43,7 @@ fn try_init(
     let token = dummy_token(env);
     client
         .try_initialize_split(owner, &0, &token, &s, &g, &b, &i)
-        .map(|r| r.unwrap())
+        .map(|r: Result<bool, _>| r.unwrap())
         .map_err(|_| ())
 }
 
