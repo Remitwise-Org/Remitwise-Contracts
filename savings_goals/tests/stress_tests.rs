@@ -349,12 +349,13 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
     let owner = Address::generate(&env);
 
     // Phase 1: create 30 goals at sequence 100
+    let target_date_phase1 = env.ledger().timestamp() + 1_800_000u64;
     for _ in 0..30 {
         client.create_goal(
             &owner,
             &String::from_str(&env, "Phase1"),
             &1_000i128,
-            &2_000_000_000u64,
+            &target_date_phase1,
         );
     }
     assert_eq!(client.get_all_goals(&owner).len(), 30);
@@ -370,12 +371,13 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
         min_persistent_entry_ttl: 1_100_000,
         max_entry_ttl: 1_200_000,
     });
+    let target_date_phase2 = env.ledger().timestamp() + 1_800_000u64;
     for _ in 0..20 {
         client.create_goal(
             &owner,
             &String::from_str(&env, "Phase2"),
             &2_000i128,
-            &2_100_000_000u64,
+            &target_date_phase2,
         );
     }
     assert_eq!(

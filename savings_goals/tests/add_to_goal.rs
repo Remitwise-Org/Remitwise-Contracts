@@ -32,7 +32,7 @@ fn test_add_to_goal_unauthorized_access() {
     // 2. Owner A creates a goal
     let goal_name = String::from_str(&env, "Owner A Goal");
     let target_amount = 10_000i128;
-    let deadline = 1_800_000u64;
+    let deadline = env.ledger().timestamp() + 1_800_000u64;
 
     let goal_id = client.create_goal(&owner_a, &goal_name, &target_amount, &deadline);
 
