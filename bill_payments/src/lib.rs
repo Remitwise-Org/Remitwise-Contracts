@@ -114,6 +114,8 @@ pub enum BillEvent {
     Created,
     Paid,
     ExternalRefUpdated,
+}
+
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -447,9 +449,6 @@ impl BillPayments {
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
         // Emit event for audit trail
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::Created),
-            (next_id, bill_owner, bill_external_ref),
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -528,9 +527,6 @@ impl BillPayments {
         }
 
         // Emit event for audit trail
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::Paid),
-            (bill_id, caller, bill_external_ref),
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,

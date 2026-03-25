@@ -1216,8 +1216,6 @@ impl Insurance {
 
         policy.schedule_id = Some(next_schedule_id);
 
-        client.create_policy(&owner, &name, &coverage_type, &-100, &10000, &None);
-    }
         schedules.set(next_schedule_id, schedule);
         env.storage()
             .instance()
@@ -1485,8 +1483,6 @@ mod test_events {
         assert_eq!(page.count, 0);
         assert_eq!(page.next_cursor, 0);
     }
-
-        client.create_policy(&owner, &name, &coverage_type, &100, &0, &None);
     #[test]
     fn test_get_active_policies_single_page() {
         let env = make_env();
