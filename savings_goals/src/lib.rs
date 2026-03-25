@@ -40,6 +40,7 @@ pub struct GoalCompletedEvent {
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
 const INSTANCE_BUMP_AMOUNT: u32 = 518400;
+const MAX_TARGET_DATE_OFFSET_SECONDS: u64 = 315_360_000; // 10 years
 
 /// Pagination constants
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
@@ -96,6 +97,7 @@ pub enum SavingsGoalsError {
     GoalLocked = 4,
     InsufficientBalance = 5,
     Overflow = 6,
+    InvalidTargetDate = 7,
 }
 
 impl From<SavingsGoalsError> for soroban_sdk::Error {
@@ -122,6 +124,10 @@ impl From<SavingsGoalsError> for soroban_sdk::Error {
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
             SavingsGoalsError::Overflow => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
+            )),
+            SavingsGoalsError::InvalidTargetDate => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
@@ -246,6 +252,25 @@ impl SavingsGoalContract {
         }
     }
 
+    /// @notice Validate a target date for goal creation.
+    /// @dev Rejects stale timestamps and far-future values to reduce overflow risk.
+    /// @param target_date Unix timestamp in seconds.
+    fn validate_target_date(env: &Env, target_date: u64) -> Result<(), SavingsGoalsError> {
+        let now = env.ledger().timestamp();
+        if target_date <= now {
+            return Err(SavingsGoalsError::InvalidTargetDate);
+        }
+
+        let max_allowed = now
+            .checked_add(MAX_TARGET_DATE_OFFSET_SECONDS)
+            .ok_or(SavingsGoalsError::Overflow)?;
+        if target_date > max_allowed {
+            return Err(SavingsGoalsError::InvalidTargetDate);
+        }
+
+        Ok(())
+    }
+
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -284,13 +309,31 @@ impl SavingsGoalContract {
     pub fn init(env: Env) {
         let storage = env.storage().persistent();
         if storage.get::<_, u32>(&Self::STORAGE_NEXT_ID).is_none() {
-            storage.set(&Self::STORAGE_NEXT_ID, &1u32);
+            storage.set(&Self::STORAGE_NEXT_ID, &0u32);
         }
         if storage
             .get::<_, Map<u32, SavingsGoal>>(&Self::STORAGE_GOALS)
             .is_none()
         {
             storage.set(&Self::STORAGE_GOALS, &Map::<u32, SavingsGoal>::new(&env));
+        }
+        if storage
+            .get::<_, Map<Address, Vec<u32>>>(&Self::STORAGE_OWNER_GOAL_IDS)
+            .is_none()
+        {
+            storage.set(
+                &Self::STORAGE_OWNER_GOAL_IDS,
+                &Map::<Address, Vec<u32>>::new(&env),
+            );
+        }
+        if storage.get::<_, Map<u32, SavingsSchedule>>(&symbol_short!("SAV_SCH")).is_none() {
+            storage.set(&symbol_short!("SAV_SCH"), &Map::<u32, SavingsSchedule>::new(&env));
+        }
+        if storage.get::<_, u32>(&symbol_short!("NEXT_SSCH")).is_none() {
+            storage.set(&symbol_short!("NEXT_SSCH"), &0u32);
+        }
+        if storage.get::<_, Map<Address, u64>>(&symbol_short!("NONCES")).is_none() {
+            storage.set(&symbol_short!("NONCES"), &Map::<Address, u64>::new(&env));
         }
     }
 
@@ -414,7 +457,7 @@ impl SavingsGoalContract {
         // Authorization logic:
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match current_upgrade_admin.as_ref() {
             None => {
                 // Bootstrap pattern - caller must be setting themselves as admin
                 if caller != new_admin {
@@ -423,7 +466,7 @@ impl SavingsGoalContract {
             }
             Some(current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if current_admin != &caller {
                     panic!("Unauthorized: only current upgrade admin can transfer");
                 }
             }
@@ -436,7 +479,7 @@ impl SavingsGoalContract {
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("adm_xfr")),
-            (current_upgrade_admin, new_admin.clone()),
+            (current_upgrade_admin.clone(), new_admin.clone()),
         );
     }
 
@@ -495,7 +538,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -512,7 +555,7 @@ impl SavingsGoalContract {
 
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         env.events().publish(
@@ -535,7 +578,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -563,7 +606,7 @@ impl SavingsGoalContract {
         goal.tags = new_tags;
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         env.events().publish(
@@ -578,14 +621,14 @@ impl SavingsGoalContract {
     // Core goal operations
     // -----------------------------------------------------------------------
 
-    /// Creates a new savings goal.
-    ///
-    /// - `owner` must authorize the call.
-    /// - `target_amount` must be positive.
-    /// - `target_date` is stored as provided and may be in the past. This
-    ///   supports backfill or migration use cases where historical goals are
-    ///   recorded after the fact. Callers that need strictly future-dated
-    ///   goals should validate this before invoking the contract.
+    /// @notice Create a new savings goal.
+    /// @dev `target_date` must be strictly greater than the current ledger
+    ///      timestamp and no more than 10 years in the future.
+    /// @param owner Address of the goal owner (must authorize).
+    /// @param name Goal name.
+    /// @param target_amount Target amount (must be > 0).
+    /// @param target_date Unix timestamp in seconds.
+    /// @return Goal ID.
     ///
     /// # Events
     /// - Emits `GOAL_CREATED` with goal details.
@@ -605,17 +648,22 @@ impl SavingsGoalContract {
             return Err(SavingsGoalsError::InvalidAmount);
         }
 
+        if let Err(err) = Self::validate_target_date(&env, target_date) {
+            Self::append_audit(&env, symbol_short!("create"), &owner, false);
+            return Err(err);
+        }
+
         Self::extend_instance_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
         let next_id = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32)
             + 1;
@@ -634,12 +682,13 @@ impl SavingsGoalContract {
 
         goals.set(next_id, goal.clone());
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::append_owner_goal_id(&env, &owner, next_id);
+        Self::extend_instance_ttl(&env);
 
         let event = GoalCreatedEvent {
             goal_id: next_id,
@@ -693,7 +742,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -721,8 +770,9 @@ impl SavingsGoalContract {
 
         goals.set(goal_id, goal.clone());
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
+        Self::extend_instance_ttl(&env);
 
         let funds_event = FundsAddedEvent {
             goal_id,
@@ -770,7 +820,7 @@ impl SavingsGoalContract {
         }
         let goals_map: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         for item in contributions.iter() {
@@ -788,7 +838,7 @@ impl SavingsGoalContract {
         Self::extend_instance_ttl(&env);
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let mut count = 0u32;
@@ -839,8 +889,9 @@ impl SavingsGoalContract {
             count += 1;
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
+        Self::extend_instance_ttl(&env);
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("batch_add")),
             (count, caller),
@@ -862,28 +913,9 @@ impl SavingsGoalContract {
     /// * `InvalidAmount` - If amount ≤ 0
     /// * `GoalNotFound` - If goal_id does not exist
     /// * `Unauthorized` - If caller is not the goal owner
-    /// * `GoalLocked` - If goal is locked or time-locked
+    /// * `GoalLocked` - If the goal is locked or time-lock has not expired
     /// * `InsufficientBalance` - If amount > current_amount
     /// * `Overflow` - If subtraction would underflow i128
-    ///
-    /// # Panics
-    /// * If `caller` does not authorize the transaction
-    /// Withdraws funds from an existing savings goal.
-    ///
-    /// # Arguments
-    /// * `caller` - Address of the goal owner (must authorize)
-    /// * `goal_id` - ID of the goal to withdraw from
-    /// * `amount` - Amount to withdraw in stroops (must be > 0)
-    ///
-    /// # Returns
-    /// `Ok(remaining_amount)` - The remaining amount in the goal after withdrawal
-    ///
-    /// # Errors
-    /// * `InvalidAmount` - If amount ≤ 0
-    /// * `GoalNotFound` - If goal_id does not exist
-    /// * `Unauthorized` - If caller is not the goal owner
-    /// * `InsufficientBalance` - If amount > current_amount
-    /// * `GoalLocked` - If the goal is locked or time-lock has not expired
     ///
     /// # Time-lock Behavior
     /// - If `unlock_date` is set, withdrawal will fail if `env.ledger().timestamp() < unlock_date`.
@@ -909,7 +941,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -952,7 +984,7 @@ impl SavingsGoalContract {
 
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         Self::append_audit(&env, symbol_short!("withdraw"), &caller, true);
@@ -979,7 +1011,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -999,7 +1031,7 @@ impl SavingsGoalContract {
         goal.locked = true;
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
@@ -1026,7 +1058,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1046,7 +1078,7 @@ impl SavingsGoalContract {
         goal.locked = false;
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
@@ -1061,7 +1093,7 @@ impl SavingsGoalContract {
     pub fn get_goal(env: Env, goal_id: u32) -> Option<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         goals.get(goal_id)
@@ -1089,13 +1121,13 @@ impl SavingsGoalContract {
         let limit = Self::clamp_limit(limit);
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
         let owner_goal_ids: Map<Address, Vec<u32>> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&Self::STORAGE_OWNER_GOAL_IDS)
             .unwrap_or_else(|| Map::new(&env));
         let ids = owner_goal_ids
@@ -1161,7 +1193,7 @@ impl SavingsGoalContract {
     pub fn get_all_goals(env: Env, owner: Address) -> Vec<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let mut result = Vec::new(&env);
@@ -1174,7 +1206,7 @@ impl SavingsGoalContract {
     }
 
     pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
-        let storage = env.storage().instance();
+        let storage = env.storage().persistent();
         let goals: Map<u32, SavingsGoal> = storage
             .get(&symbol_short!("GOALS"))
             .unwrap_or(Map::new(&env));
@@ -1191,7 +1223,7 @@ impl SavingsGoalContract {
 
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         let nonces: Option<Map<Address, u64>> =
-            env.storage().instance().get(&symbol_short!("NONCES"));
+            env.storage().persistent().get(&symbol_short!("NONCES"));
         nonces
             .as_ref()
             .and_then(|m: &Map<Address, u64>| m.get(address))
@@ -1202,12 +1234,12 @@ impl SavingsGoalContract {
         caller.require_auth();
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let next_id = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
         let mut list = Vec::new(&env);
@@ -1267,13 +1299,13 @@ impl SavingsGoalContract {
             owner_goal_ids.set(g.owner.clone(), ids);
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_ID"), &snapshot.next_id);
         env.storage()
-            .instance()
+            .persistent()
             .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
 
         Self::increment_nonce(&env, &caller);
@@ -1314,12 +1346,12 @@ impl SavingsGoalContract {
         };
         let mut nonces: Map<Address, u64> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NONCES"))
             .unwrap_or_else(|| Map::new(env));
         nonces.set(address.clone(), next);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NONCES"), &nonces);
     }
 
@@ -1363,13 +1395,13 @@ impl SavingsGoalContract {
 
     #[allow(dead_code)]
     fn get_owner_goal_ids_map(env: &Env) -> Option<Map<Address, Vec<u32>>> {
-        env.storage().instance().get(&Self::STORAGE_OWNER_GOAL_IDS)
+        env.storage().persistent().get(&Self::STORAGE_OWNER_GOAL_IDS)
     }
 
     fn append_owner_goal_id(env: &Env, owner: &Address, goal_id: u32) {
         let mut owner_goal_ids: Map<Address, Vec<u32>> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&Self::STORAGE_OWNER_GOAL_IDS)
             .unwrap_or_else(|| Map::new(env));
         let mut ids = owner_goal_ids
@@ -1378,15 +1410,35 @@ impl SavingsGoalContract {
         ids.push_back(goal_id);
         owner_goal_ids.set(owner.clone(), ids);
         env.storage()
-            .instance()
+            .persistent()
             .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
     }
 
-    /// Extend the TTL of instance storage
+    /// Extend the TTL of storage
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        
+        let persistent = env.storage().persistent();
+        if persistent.has(&symbol_short!("GOALS")) {
+            persistent.extend_ttl(&symbol_short!("GOALS"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+        if persistent.has(&symbol_short!("NEXT_ID")) {
+            persistent.extend_ttl(&symbol_short!("NEXT_ID"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+        if persistent.has(&symbol_short!("OWN_GOAL")) {
+            persistent.extend_ttl(&symbol_short!("OWN_GOAL"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+        if persistent.has(&symbol_short!("SAV_SCH")) {
+            persistent.extend_ttl(&symbol_short!("SAV_SCH"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+        if persistent.has(&symbol_short!("NEXT_SSCH")) {
+            persistent.extend_ttl(&symbol_short!("NEXT_SSCH"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+        if persistent.has(&symbol_short!("NONCES")) {
+            persistent.extend_ttl(&symbol_short!("NONCES"), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
     }
 
     /// Set time-lock on a goal
@@ -1405,7 +1457,7 @@ impl SavingsGoalContract {
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1431,7 +1483,7 @@ impl SavingsGoalContract {
         goal.unlock_date = Some(unlock_date);
         goals.set(goal_id, goal);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         Self::append_audit(&env, symbol_short!("timelock"), &caller, true);
@@ -1465,7 +1517,7 @@ impl SavingsGoalContract {
 
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1487,13 +1539,13 @@ impl SavingsGoalContract {
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
         let next_schedule_id = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NEXT_SSCH"))
             .unwrap_or(0u32)
             + 1;
@@ -1514,11 +1566,12 @@ impl SavingsGoalContract {
 
         schedules.set(next_schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_SSCH"), &next_schedule_id);
+        Self::extend_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCreated),
@@ -1551,7 +1604,7 @@ impl SavingsGoalContract {
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1568,7 +1621,7 @@ impl SavingsGoalContract {
 
         schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
         env.events().publish(
@@ -1586,7 +1639,7 @@ impl SavingsGoalContract {
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1600,7 +1653,7 @@ impl SavingsGoalContract {
 
         schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
         env.events().publish(
@@ -1639,13 +1692,13 @@ impl SavingsGoalContract {
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1710,10 +1763,10 @@ impl SavingsGoalContract {
         }
 
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("GOALS"), &goals);
 
         executed
@@ -1722,7 +1775,7 @@ impl SavingsGoalContract {
     pub fn get_savings_schedules(env: Env, owner: Address) -> Vec<SavingsSchedule> {
         let schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1738,7 +1791,7 @@ impl SavingsGoalContract {
     pub fn get_savings_schedule(env: Env, schedule_id: u32) -> Option<SavingsSchedule> {
         let schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
         schedules.get(schedule_id)

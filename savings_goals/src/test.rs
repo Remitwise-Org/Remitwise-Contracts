@@ -7,7 +7,9 @@ use soroban_sdk::{
     Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
-use testutils::{set_ledger_time, setup_test_env};
+use testutils::set_ledger_time;
+
+const MAX_TARGET_DATE_OFFSET_SECONDS: u64 = 315_360_000; // 10 years
 
 // Removed local set_time in favor of testutils::set_ledger_time
 
@@ -23,35 +25,95 @@ fn test_create_goal_unique_ids_succeeds() {
     let name1 = String::from_str(&env, "Goal 1");
     let name2 = String::from_str(&env, "Goal 2");
 
-    let id1 = client.create_goal(&user, &name1, &1000, &1735689600);
-    let id2 = client.create_goal(&user, &name2, &2000, &1735689600);
+    let id1 = client.create_goal(&user, &name1, &1000, &5000);
+    let id2 = client.create_goal(&user, &name2, &2000, &5000);
 
     assert_ne!(id1, id2);
 }
 
-/// Documented behavior: past target dates are allowed (e.g. for backfill or
-/// data migration). This test locks in that create_goal accepts a target_date
-/// earlier than the current ledger timestamp and persists it as provided.
+/// Target dates must be strictly in the future.
 #[test]
-fn test_create_goal_allows_past_target_date() {
+fn test_create_goal_rejects_past_target_date() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
     client.init();
+    set_ledger_time(&env, 1, 1_000);
     env.mock_all_auths();
-
-    // Move ledger time forward so our target_date is clearly in the past.
-    set_ledger_time(&env, 1, 2_000_000_000);
-    let past_target_date = 1_000_000_000u64;
-
+    let past_target_date = 999u64;
     let name = String::from_str(&env, "Backfill Goal");
-    let id = client.create_goal(&user, &name, &1000, &past_target_date);
+    let res = client.try_create_goal(&user, &name, &1000, &past_target_date);
 
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_create_goal_rejects_now_and_far_future_target_dates() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    set_ledger_time(&env, 1, 1_000);
+    env.mock_all_auths();
+    let now = env.ledger().timestamp();
+
+    let res_now = client.try_create_goal(&user, &String::from_str(&env, "Now"), &1000, &now);
+    assert!(res_now.is_err());
+
+    let far_future = now + MAX_TARGET_DATE_OFFSET_SECONDS + 1;
+    let res_far = client.try_create_goal(
+        &user,
+        &String::from_str(&env, "Far"),
+        &1000,
+        &far_future,
+    );
+    assert!(res_far.is_err());
+}
+
+#[test]
+fn test_create_goal_allows_max_target_date_boundary() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    set_ledger_time(&env, 1, 1_000);
+    env.mock_all_auths();
+    let now = env.ledger().timestamp();
+    let max_allowed = now + MAX_TARGET_DATE_OFFSET_SECONDS;
+
+    let id = client.create_goal(
+        &user,
+        &String::from_str(&env, "Max"),
+        &1000,
+        &max_allowed,
+    );
     assert_eq!(id, 1);
-    let goal = client.get_goal(&id).unwrap();
-    assert_eq!(goal.target_date, past_target_date);
+}
+
+#[test]
+fn test_create_goal_rejects_overflowing_max_target_date() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    set_ledger_time(&env, 1, u64::MAX - 1);
+    env.mock_all_auths();
+    let res = client.try_create_goal(
+        &user,
+        &String::from_str(&env, "Overflow"),
+        &1000,
+        &u64::MAX,
+    );
+
+    assert!(res.is_err());
 }
 
 // ============================================================================
@@ -81,7 +143,7 @@ fn test_init_idempotent_does_not_wipe_goals() {
 
     let name1 = String::from_str(&env, "First Goal");
     let target1 = 5000i128;
-    let target_date1 = 2000000000u64;
+    let target_date1 = 5000u64;
 
     let goal_id_1 = client.create_goal(&owner_a, &name1, &target1, &target_date1);
     assert_eq!(goal_id_1, 1, "first goal must receive goal_id == 1");
@@ -128,19 +190,19 @@ fn test_next_id_increments_sequentially() {
             &owner,
             &String::from_str(&env, "G1"),
             &1000i128,
-            &2000000000u64,
+            &5000u64,
         ),
         client.create_goal(
             &owner,
             &String::from_str(&env, "G2"),
             &2000i128,
-            &2000000000u64,
+            &5000u64,
         ),
         client.create_goal(
             &owner,
             &String::from_str(&env, "G3"),
             &3000i128,
-            &2000000000u64,
+            &5000u64,
         ),
     ];
 
@@ -167,7 +229,7 @@ fn test_add_to_goal_increments() {
     client.init();
 
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Save"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Save"), &1000, &5000);
 
     let new_balance = client.add_to_goal(&user, &id, &500);
     assert_eq!(new_balance, 500);
@@ -196,7 +258,7 @@ fn test_get_goal_retrieval() {
     client.init();
     env.mock_all_auths();
     let name = String::from_str(&env, "Car");
-    let id = client.create_goal(&user, &name, &5000, &2000000000);
+    let id = client.create_goal(&user, &name, &5000, &5000);
 
     let goal = client.get_goal(&id).unwrap();
     assert_eq!(goal.name, name);
@@ -211,8 +273,8 @@ fn test_get_all_goals() {
 
     client.init();
     env.mock_all_auths();
-    client.create_goal(&user, &String::from_str(&env, "A"), &100, &2000000000);
-    client.create_goal(&user, &String::from_str(&env, "B"), &200, &2000000000);
+    client.create_goal(&user, &String::from_str(&env, "A"), &100, &5000);
+    client.create_goal(&user, &String::from_str(&env, "B"), &200, &5000);
 
     let all_goals = client.get_all_goals(&user);
     assert_eq!(all_goals.len(), 2);
@@ -231,7 +293,7 @@ fn test_is_goal_completed() {
     // 1. Create a goal with a target of 1000
     let target = 1000;
     let name = String::from_str(&env, "Trip");
-    let id = client.create_goal(&user, &name, &target, &2000000000);
+    let id = client.create_goal(&user, &name, &target, &5000);
 
     // 2. It should NOT be completed initially (balance is 0)
     assert!(
@@ -276,7 +338,7 @@ fn test_edge_cases_large_amounts() {
         &user,
         &String::from_str(&env, "Max"),
         &i128::MAX,
-        &2000000000,
+        &5000,
     );
 
     client.add_to_goal(&user, &id, &(i128::MAX - 100));
@@ -293,7 +355,7 @@ fn test_zero_amount_fails() {
 
     client.init();
     env.mock_all_auths();
-    let res = client.try_create_goal(&user, &String::from_str(&env, "Fail"), &0, &2000000000);
+    let res = client.try_create_goal(&user, &String::from_str(&env, "Fail"), &0, &5000);
     assert!(res.is_err());
 }
 
@@ -306,8 +368,8 @@ fn test_multiple_goals_management() {
 
     client.init();
     env.mock_all_auths();
-    let id1 = client.create_goal(&user, &String::from_str(&env, "G1"), &1000, &2000000000);
-    let id2 = client.create_goal(&user, &String::from_str(&env, "G2"), &2000, &2000000000);
+    let id1 = client.create_goal(&user, &String::from_str(&env, "G1"), &1000, &5000);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "G2"), &2000, &5000);
 
     client.add_to_goal(&user, &id1, &500);
     client.add_to_goal(&user, &id2, &1500);
@@ -332,7 +394,7 @@ fn test_withdraw_from_goal_success() {
         &user,
         &String::from_str(&env, "Success"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -358,7 +420,7 @@ fn test_withdraw_from_goal_insufficient_balance() {
         &user,
         &String::from_str(&env, "Insufficient"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -377,7 +439,7 @@ fn test_withdraw_from_goal_locked() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Locked"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Locked"), &1000, &5000);
 
     client.add_to_goal(&user, &id, &500);
     let res = client.try_withdraw_from_goal(&user, &id, &100);
@@ -398,7 +460,7 @@ fn test_withdraw_from_goal_unauthorized() {
         &user,
         &String::from_str(&env, "Unauthorized"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -417,7 +479,7 @@ fn test_withdraw_from_goal_zero_amount_panics() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Zero"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Zero"), &1000, &5000);
 
     client.unlock_goal(&user, &id);
     client.add_to_goal(&user, &id, &500);
@@ -447,7 +509,7 @@ fn test_lock_unlock_goal() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Lock"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Lock"), &1000, &5000);
 
     let goal = client.get_goal(&id).unwrap();
     assert!(goal.locked);
@@ -470,7 +532,7 @@ fn test_withdraw_full_balance() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Full"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Full"), &1000, &5000);
 
     client.unlock_goal(&user, &id);
     client.add_to_goal(&user, &id, &500);
@@ -492,7 +554,7 @@ fn test_exact_goal_completion() {
 
     client.init();
     env.mock_all_auths();
-    let id = client.create_goal(&user, &String::from_str(&env, "Exact"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Exact"), &1000, &5000);
 
     // Add 500 twice
     client.add_to_goal(&user, &id, &500);
@@ -733,7 +795,7 @@ fn test_lock_goal_success() {
         &user,
         &String::from_str(&env, "Lock Test"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -756,7 +818,7 @@ fn test_unlock_goal_success() {
         &user,
         &String::from_str(&env, "Unlock Test"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     assert!(client.get_goal(&id).unwrap().locked);
@@ -779,7 +841,7 @@ fn test_lock_goal_unauthorized_panics() {
         &user,
         &String::from_str(&env, "Auth Test"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -802,7 +864,7 @@ fn test_unlock_goal_unauthorized_panics() {
         &user,
         &String::from_str(&env, "Auth Test"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     let res = client.try_unlock_goal(&other, &id);
@@ -822,7 +884,7 @@ fn test_withdraw_after_lock_fails() {
         &user,
         &String::from_str(&env, "Withdraw Fail"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -846,7 +908,7 @@ fn test_withdraw_after_unlock_succeeds() {
         &user,
         &String::from_str(&env, "Withdraw Success"),
         &1000,
-        &2000000000,
+        &5000,
     );
 
     client.unlock_goal(&user, &id);
@@ -888,7 +950,7 @@ fn test_create_goal_emits_event() {
         &user,
         &String::from_str(&env, "Education"),
         &10000,
-        &1735689600, // Future date
+        &5000, // Future date
     );
     assert_eq!(goal_id, 1);
 
@@ -941,7 +1003,7 @@ fn test_add_to_goal_emits_event() {
         &user,
         &String::from_str(&env, "Medical"),
         &5000,
-        &1735689600,
+        &5000,
     );
 
     // Add funds
@@ -995,7 +1057,7 @@ fn test_goal_completed_emits_event() {
         &user,
         &String::from_str(&env, "Emergency Fund"),
         &1000,
-        &1735689600,
+        &5000,
     );
 
     // Add funds to complete the goal
@@ -1050,7 +1112,7 @@ fn test_withdraw_from_goal_emits_event() {
         &user,
         &String::from_str(&env, "Withdraw Event"),
         &5000,
-        &1735689600,
+        &5000,
     );
     client.unlock_goal(&user, &goal_id);
     client.add_to_goal(&user, &goal_id, &1500);
@@ -1091,7 +1153,7 @@ fn test_lock_goal_emits_event() {
         &user,
         &String::from_str(&env, "Lock Event"),
         &5000,
-        &1735689600,
+        &5000,
     );
     client.unlock_goal(&user, &goal_id);
     client.lock_goal(&user, &goal_id);
@@ -1131,7 +1193,7 @@ fn test_unlock_goal_emits_event() {
         &user,
         &String::from_str(&env, "Unlock Event"),
         &5000,
-        &1735689600,
+        &5000,
     );
     client.unlock_goal(&user, &goal_id);
 
@@ -1167,9 +1229,9 @@ fn test_multiple_goals_emit_separate_events() {
     env.mock_all_auths();
 
     // Create multiple goals
-    client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &1735689600);
-    client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
-    client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
+    client.create_goal(&user, &String::from_str(&env, "Goal 1"), &1000, &5000);
+    client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &5000);
+    client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &5000);
 
     // Should have 3 * 2 events = 6 events
     let events = env.events().all();
@@ -1221,7 +1283,7 @@ fn test_instance_ttl_extended_on_create_goal() {
         &user,
         &String::from_str(&env, "Emergency Fund"),
         &10000,
-        &1735689600,
+        &5000,
     );
     assert!(goal_id > 0);
 
@@ -1264,7 +1326,7 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
         &user,
         &String::from_str(&env, "Vacation"),
         &5000,
-        &2000000000,
+        &5000,
     );
 
     // Advance ledger so TTL drops below threshold (17,280)
@@ -1321,9 +1383,9 @@ fn test_savings_data_persists_across_ledger_advancements() {
         &user,
         &String::from_str(&env, "Education"),
         &10000,
-        &2000000000,
+        &5000,
     );
-    let id2 = client.create_goal(&user, &String::from_str(&env, "House"), &50000, &2000000000);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "House"), &50000, &5000);
 
     // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
     env.ledger().set(LedgerInfo {
@@ -1402,7 +1464,7 @@ fn test_instance_ttl_extended_on_lock_goal() {
         &user,
         &String::from_str(&env, "Retirement"),
         &100000,
-        &2000000000,
+        &5000,
     );
 
     // Advance ledger past threshold
@@ -1665,14 +1727,14 @@ fn test_add_to_goal_non_owner_auth_failure() {
                 &user,
                 String::from_str(&env, "Auth"),
                 1000i128,
-                2000000000u64,
+                5000u64,
             )
                 .into_val(&env),
             sub_invokes: &[],
         },
     }]);
 
-    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &5000);
     client.add_to_goal(&other, &id, &500);
 }
 
@@ -1695,14 +1757,14 @@ fn test_withdraw_from_goal_non_owner_auth_failure() {
                 &user,
                 String::from_str(&env, "Auth"),
                 1000i128,
-                2000000000u64,
+                5000u64,
             )
                 .into_val(&env),
             sub_invokes: &[],
         },
     }]);
 
-    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &5000);
     client.withdraw_from_goal(&other, &id, &100);
 }
 
@@ -1725,14 +1787,14 @@ fn test_lock_goal_non_owner_auth_failure() {
                 &user,
                 String::from_str(&env, "Auth"),
                 1000i128,
-                2000000000u64,
+                5000u64,
             )
                 .into_val(&env),
             sub_invokes: &[],
         },
     }]);
 
-    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &5000);
     client.lock_goal(&other, &id);
 }
 
@@ -1755,14 +1817,14 @@ fn test_unlock_goal_non_owner_auth_failure() {
                 &user,
                 String::from_str(&env, "Auth"),
                 1000i128,
-                2000000000u64,
+                5000u64,
             )
                 .into_val(&env),
             sub_invokes: &[],
         },
     }]);
 
-    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+    let id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &5000);
     client.unlock_goal(&other, &id);
 }
 
@@ -1784,19 +1846,19 @@ fn test_get_all_goals_filters_by_owner() {
         &owner_a,
         &String::from_str(&env, "Goal A1"),
         &1000,
-        &1735689600,
+        &5000,
     );
     let goal_a2 = client.create_goal(
         &owner_a,
         &String::from_str(&env, "Goal A2"),
         &2000,
-        &1735689600,
+        &5000,
     );
     let goal_a3 = client.create_goal(
         &owner_a,
         &String::from_str(&env, "Goal A3"),
         &3000,
-        &1735689600,
+        &5000,
     );
 
     // Create goals for owner_b
@@ -1804,13 +1866,13 @@ fn test_get_all_goals_filters_by_owner() {
         &owner_b,
         &String::from_str(&env, "Goal B1"),
         &5000,
-        &1735689600,
+        &5000,
     );
     let goal_b2 = client.create_goal(
         &owner_b,
         &String::from_str(&env, "Goal B2"),
         &6000,
-        &1735689600,
+        &5000,
     );
 
     // Get all goals for owner_a
@@ -1879,7 +1941,7 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let owner = Address::generate(&env);
 
     client.init();
-    let _id = client.create_goal(&owner, &String::from_str(&env, "House"), &10000, &2000000000);
+    let _id = client.create_goal(&owner, &String::from_str(&env, "House"), &10000, &5000);
 
     let snapshot = client.export_snapshot(&owner);
     assert_eq!(
@@ -1898,7 +1960,7 @@ fn test_import_snapshot_current_schema_version_succeeds() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Car"), &5000, &2000000000);
+    client.create_goal(&owner, &String::from_str(&env, "Car"), &5000, &5000);
 
     let snapshot = client.export_snapshot(&owner);
     assert_eq!(snapshot.schema_version, 1);
@@ -1918,7 +1980,7 @@ fn test_import_snapshot_future_schema_version_rejected() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Trip"), &3000, &2000000000);
+    client.create_goal(&owner, &String::from_str(&env, "Trip"), &3000, &5000);
 
     let mut snapshot = client.export_snapshot(&owner);
     // Simulate a snapshot produced by a newer contract version.
@@ -1943,7 +2005,7 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Education"), &8000, &2000000000);
+    client.create_goal(&owner, &String::from_str(&env, "Education"), &8000, &5000);
 
     let mut snapshot = client.export_snapshot(&owner);
     // Simulate a snapshot too old to be safely imported.
@@ -1968,7 +2030,7 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Savings"), &2000, &2000000000);
+    client.create_goal(&owner, &String::from_str(&env, "Savings"), &2000, &5000);
 
     let mut snapshot = client.export_snapshot(&owner);
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1991,8 +2053,8 @@ fn test_snapshot_export_import_roundtrip_restores_goals() {
     let owner = Address::generate(&env);
 
     client.init();
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Fund A"), &5000, &2000000000);
-    let id2 = client.create_goal(&owner, &String::from_str(&env, "Fund B"), &8000, &2000000000);
+    let id1 = client.create_goal(&owner, &String::from_str(&env, "Fund A"), &5000, &5000);
+    let id2 = client.create_goal(&owner, &String::from_str(&env, "Fund B"), &8000, &5000);
     client.add_to_goal(&owner, &id1, &1500);
 
     let snapshot = client.export_snapshot(&owner);
@@ -2021,7 +2083,7 @@ fn test_import_snapshot_min_supported_version_accepted() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Min Version"), &1000, &2000000000);
+    client.create_goal(&owner, &String::from_str(&env, "Min Version"), &1000, &5000);
 
     let snapshot = client.export_snapshot(&owner);
     // schema_version is already 1 == MIN_SUPPORTED_SCHEMA_VERSION.

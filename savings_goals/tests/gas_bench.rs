@@ -42,10 +42,11 @@ fn bench_get_all_goals_worst_case() {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    let target_date = env.ledger().timestamp() + 1_800_000u64;
 
     let name = String::from_str(&env, "BenchGoal");
     for _ in 0..100 {
-        client.create_goal(&owner, &name, &1_000i128, &1_800_000u64);
+        client.create_goal(&owner, &name, &1_000i128, &target_date);
     }
 
     let (cpu, mem, goals) = measure(&env, || client.get_all_goals(&owner));
@@ -63,13 +64,14 @@ fn bench_batch_add_to_goals_max() {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    let target_date = env.ledger().timestamp() + 1_800_000u64;
 
     let name = String::from_str(&env, "BatchGoal");
     let mut contributions = Vec::new(&env);
     
     // Create 50 goals and prepare contributions
     for _ in 0..50 {
-        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &target_date);
         contributions.push_back(ContributionItem {
             goal_id,
             amount: 100,
@@ -93,7 +95,8 @@ fn bench_execute_due_savings_schedules() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64);
+    let target_date = env.ledger().timestamp() + 1_800_000u64;
+    let goal_id = client.create_goal(&owner, &name, &100_000i128, &target_date);
     
     // Create 50 schedules
     let current_time = 1_700_000_000;
@@ -131,7 +134,8 @@ fn bench_create_savings_schedule() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+    let target_date = env.ledger().timestamp() + 1_800_000u64;
+    let goal_id = client.create_goal(&owner, &name, &10_000i128, &target_date);
     
     let current_time = 1_700_000_000;
     let next_due = current_time + 10;

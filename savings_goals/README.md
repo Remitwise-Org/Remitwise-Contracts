@@ -38,6 +38,7 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Pagination validates index-to-storage consistency and owner binding.
 - Any detected index/storage mismatch fails fast instead of returning ambiguous data.
 - This reduces the risk of inconsistent client state caused by malformed or stale cursors.
+- Goal creation enforces a future `target_date` within a 10-year window to avoid stale or overflow-prone timelines.
 
 ## Quickstart
 
@@ -46,6 +47,7 @@ This section provides a minimal example of how to interact with the Savings Goal
 **Gotchas:**
 - Amounts are specified in the lowest denomination (e.g., stroops for XLM).
 - If a goal is `locked = true`, you cannot withdraw from it until it is unlocked.
+- `target_date` must be strictly greater than the current ledger timestamp and no more than 10 years in the future.
 - By default, the contract uses paginated reads for scalability, so ensure you handle cursors when querying user goals.
 
 ### Write Example: Creating a Goal
@@ -109,7 +111,7 @@ Creates a new savings goal.
 - `owner`: Address of the goal owner (must authorize)
 - `name`: Goal name (e.g., "Education", "Medical")
 - `target_amount`: Target amount (must be positive)
-- `target_date`: Target date as Unix timestamp
+- `target_date`: Target date as Unix timestamp (must be > current ledger time and <= 10 years ahead)
 
 **Returns:** Goal ID
 
