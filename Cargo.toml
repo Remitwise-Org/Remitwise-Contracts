@@ -27,7 +27,6 @@ default-members = [
     "bill_payments",
     "insurance",
     "family_wallet",
-    "data_migration",
     "reporting",
     "orchestrator",
 

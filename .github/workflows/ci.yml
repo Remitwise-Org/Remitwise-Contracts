@@ -74,7 +74,7 @@ jobs:
 
       - name: Build workspace (WASM)
         run: |
-          cargo build --release --target wasm32-unknown-unknown --workspace --exclude data_migration --verbose
+          cargo build --release --target wasm32-unknown-unknown --verbose
         continue-on-error: false
 
       - name: Build Soroban contracts
