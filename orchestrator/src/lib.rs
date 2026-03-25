@@ -208,6 +208,10 @@ pub enum OrchestratorError {
     /// execution is already in progress. This prevents nested execution attacks
     /// and partial-state corruption.
     ReentrancyDetected = 10,
+    /// One of the supplied contract addresses points back to the orchestrator.
+    SelfReferenceNotAllowed = 11,
+    /// Two or more supplied contract addresses are the same.
+    DuplicateContractAddress = 12,
 }
 
 /// Execution state tracking for reentrancy protection.
@@ -224,7 +228,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -648,7 +652,60 @@ impl Orchestrator {
         // Call pay_premium on the insurance contract
         // This will panic if the policy doesn't exist or is inactive
         // The panic will cause the entire transaction to revert (atomicity)
-        insurance_client.pay_premium(caller, &policy_id);
+        let paid = insurance_client.pay_premium(caller, &policy_id);
+        if !paid {
+            return Err(OrchestratorError::InsurancePaymentFailed);
+        }
+
+        Ok(())
+    }
+
+    fn validate_contract_pair(
+        env: &Env,
+        first: &Address,
+        second: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let self_addr = env.current_contract_address();
+        if first == &self_addr || second == &self_addr {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if first == second {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
+    fn validate_remittance_flow_addresses(
+        env: &Env,
+        family_wallet_addr: &Address,
+        remittance_split_addr: &Address,
+        savings_addr: &Address,
+        bills_addr: &Address,
+        insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let self_addr = env.current_contract_address();
+        if family_wallet_addr == &self_addr
+            || remittance_split_addr == &self_addr
+            || savings_addr == &self_addr
+            || bills_addr == &self_addr
+            || insurance_addr == &self_addr
+        {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+
+        if family_wallet_addr == remittance_split_addr
+            || family_wallet_addr == savings_addr
+            || family_wallet_addr == bills_addr
+            || family_wallet_addr == insurance_addr
+            || remittance_split_addr == savings_addr
+            || remittance_split_addr == bills_addr
+            || remittance_split_addr == insurance_addr
+            || savings_addr == bills_addr
+            || savings_addr == insurance_addr
+            || bills_addr == insurance_addr
+        {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
 
         Ok(())
     }
@@ -764,6 +821,19 @@ impl Orchestrator {
 
         // Step 1: Check family wallet permission
         let result = (|| {
+            Self::validate_contract_pair(&env, &family_wallet_addr, &savings_addr).map_err(
+                |e| {
+                    Self::emit_error_event(
+                        &env,
+                        &caller,
+                        symbol_short!("addr_val"),
+                        e as u32,
+                        timestamp,
+                    );
+                    e
+                },
+            )?;
+
             Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
                 .map_err(|e| {
                     Self::emit_error_event(
@@ -862,6 +932,17 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         let result = (|| {
+            Self::validate_contract_pair(&env, &family_wallet_addr, &bills_addr).map_err(|e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("addr_val"),
+                    e as u32,
+                    timestamp,
+                );
+                e
+            })?;
+
             // Step 1: Check family wallet permission
             Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
                 .map_err(|e| {
@@ -961,6 +1042,19 @@ impl Orchestrator {
         let timestamp = env.ledger().timestamp();
 
         let result = (|| {
+            Self::validate_contract_pair(&env, &family_wallet_addr, &insurance_addr).map_err(
+                |e| {
+                    Self::emit_error_event(
+                        &env,
+                        &caller,
+                        symbol_short!("addr_val"),
+                        e as u32,
+                        timestamp,
+                    );
+                    e
+                },
+            )?;
+
             // Step 1: Check family wallet permission
             Self::check_family_wallet_permission(&env, &family_wallet_addr, &caller, amount)
                 .map_err(|e| {
