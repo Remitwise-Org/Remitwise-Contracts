@@ -129,7 +129,10 @@ Updates split percentages. Owner-only, nonce-protected.
 #### `calculate_split(env, total_amount) -> Vec<i128>`
 
 Pure calculation — returns `[spending, savings, bills, insurance]` amounts.
-Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
+Uses a deterministic largest-remainder policy:
+- Each category receives `floor(total_amount * percent / 100)`
+- Remaining units are distributed to the largest fractional remainders
+- Ties are broken by fixed order: spending, savings, bills, insurance
 
 #### `get_config(env) -> Option<SplitConfig>`
 

@@ -85,17 +85,48 @@
         }
       ]
     ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "create_remittance_schedule",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000
+                  }
+                },
+                {
+                  "u64": 3000
+                },
+                {
+                  "u64": 86400
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
     []
   ],
   "ledger": {
-    "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 0,
+    "protocol_version": 20,
+    "sequence_number": 100,
+    "timestamp": 1000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 100000,
     "ledger_entries": [
       [
         {
@@ -218,7 +249,7 @@
                                     "symbol": "timestamp"
                                   },
                                   "val": {
-                                    "u64": 0
+                                    "u64": 1000
                                   }
                                 }
                               ]
@@ -285,7 +316,7 @@
                                 "symbol": "timestamp"
                               },
                               "val": {
-                                "u64": 0
+                                "u64": 1000
                               }
                             },
                             {
@@ -301,6 +332,14 @@
                       },
                       {
                         "key": {
+                          "symbol": "NEXT_RSCH"
+                        },
+                        "val": {
+                          "u32": 1
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "NONCES"
                         },
                         "val": {
@@ -311,6 +350,105 @@
                               },
                               "val": {
                                 "u64": 1
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "REM_SCH"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "u32": 1
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "active"
+                                    },
+                                    "val": {
+                                      "bool": true
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "amount"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 10000
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "created_at"
+                                    },
+                                    "val": {
+                                      "u64": 1000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "id"
+                                    },
+                                    "val": {
+                                      "u32": 1
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "interval"
+                                    },
+                                    "val": {
+                                      "u64": 86400
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "last_executed"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "missed_count"
+                                    },
+                                    "val": {
+                                      "u32": 0
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "next_due"
+                                    },
+                                    "val": {
+                                      "u64": 3000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "owner"
+                                    },
+                                    "val": {
+                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "recurring"
+                                    },
+                                    "val": {
+                                      "bool": true
+                                    }
+                                  }
+                                ]
                               }
                             }
                           ]
@@ -344,7 +482,7 @@
             },
             "ext": "v0"
           },
-          518400
+          100099
         ]
       ],
       [
@@ -377,7 +515,40 @@
             },
             "ext": "v0"
           },
-          6311999
+          100099
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 4837995959683129791
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 4837995959683129791
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          100099
         ]
       ],
       [
@@ -616,7 +787,7 @@
             },
             "ext": "v0"
           },
-          518400
+          100099
         ]
       ]
     ]
@@ -944,96 +1115,25 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "calculate_split"
+                "symbol": "create_remittance_schedule"
               }
             ],
             "data": {
-              "i128": {
-                "hi": 0,
-                "lo": 101
-              }
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "calc"
-              }
-            ],
-            "data": {
-              "map": [
+              "vec": [
                 {
-                  "key": {
-                    "symbol": "bills_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 15
-                    }
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000
                   }
                 },
                 {
-                  "key": {
-                    "symbol": "insurance_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 5
-                    }
-                  }
+                  "u64": 3000
                 },
                 {
-                  "key": {
-                    "symbol": "savings_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 30
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "spending_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 51
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "total_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 101
-                    }
-                  }
+                  "u64": 86400
                 }
               ]
             }
@@ -1051,21 +1151,25 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "schedule"
               },
               {
                 "vec": [
                   {
-                    "symbol": "Calculated"
+                    "symbol": "Created"
                   }
                 ]
               }
             ],
             "data": {
-              "i128": {
-                "hi": 0,
-                "lo": 101
-              }
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
             }
           }
         }
@@ -1084,33 +1188,139 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "calculate_split"
+                "symbol": "create_remittance_schedule"
               }
             ],
             "data": {
-              "vec": [
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "get_remittance_schedule"
+              }
+            ],
+            "data": {
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_remittance_schedule"
+              }
+            ],
+            "data": {
+              "map": [
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 51
+                  "key": {
+                    "symbol": "active"
+                  },
+                  "val": {
+                    "bool": true
                   }
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 30
+                  "key": {
+                    "symbol": "amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 10000
+                    }
                   }
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 15
+                  "key": {
+                    "symbol": "created_at"
+                  },
+                  "val": {
+                    "u64": 1000
                   }
                 },
                 {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 5
+                  "key": {
+                    "symbol": "id"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "interval"
+                  },
+                  "val": {
+                    "u64": 86400
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "last_executed"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "missed_count"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_due"
+                  },
+                  "val": {
+                    "u64": 3000
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "owner"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "recurring"
+                  },
+                  "val": {
+                    "bool": true
                   }
                 }
               ]
