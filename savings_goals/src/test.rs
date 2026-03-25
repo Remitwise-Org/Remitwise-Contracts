@@ -1,19 +1,31 @@
-#![cfg(test)]
+// #![cfg(test)] removed to avoid duplication with lib.rs mod test guard
+extern crate std;
+use std::format;
 
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
+use soroban_sdk::IntoVal;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
     Address, Env, String, Symbol, TryFromVal,
 };
 
 use testutils::{set_ledger_time, setup_test_env};
+fn set_time(env: &Env, timestamp: u64) {
+    set_ledger_time(env, 1u32, timestamp);
+}
 
 // Removed local set_time in favor of testutils::set_ledger_time
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, user);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
     client.init();
 
     let name1 = String::from_str(&env, "Goal 1");
@@ -39,7 +51,7 @@ fn test_create_goal_allows_past_target_date() {
     env.mock_all_auths();
 
     // Move ledger time forward so our target_date is clearly in the past.
-    set_time(&env, 2_000_000_000);
+    set_ledger_time(&env, 1, 2_000_000_000);
     let past_target_date = 1_000_000_000u64;
 
     let name = String::from_str(&env, "Backfill Goal");
@@ -95,7 +107,11 @@ fn test_init_idempotent_does_not_wipe_goals() {
     assert_eq!(goal_after_second_init.current_amount, 0);
 
     let all_goals = client.get_all_goals(&owner_a);
-    assert_eq!(all_goals.len(), 1, "get_all_goals must still return the one goal");
+    assert_eq!(
+        all_goals.len(),
+        1,
+        "get_all_goals must still return the one goal"
+    );
 
     // Verify NEXT_ID was not reset: next created goal must get goal_id == 2, not 1
     let name2 = String::from_str(&env, "Second Goal");
@@ -404,33 +420,37 @@ fn test_withdraw_from_goal_unauthorized() {
 }
 
 #[test]
-#[should_panic(expected = "Amount must be positive")]
-fn test_withdraw_from_goal_zero_amount_panics() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
+fn test_withdraw_from_goal_zero_amount_fails() {
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
 
     client.init();
-    env.mock_all_auths();
     let id = client.create_goal(&user, &String::from_str(&env, "Zero"), &1000, &2000000000);
 
     client.unlock_goal(&user, &id);
     client.add_to_goal(&user, &id, &500);
-    client.withdraw_from_goal(&user, &id, &0);
+    let res = client.try_withdraw_from_goal(&user, &id, &0);
+    assert!(res.is_err());
 }
 
 #[test]
-#[should_panic(expected = "Goal not found")]
-fn test_withdraw_from_goal_nonexistent_goal_panics() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
+fn test_withdraw_from_goal_nonexistent_goal_fails() {
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        user,
+        SavingsGoalContractClient
+    );
 
     client.init();
-    env.mock_all_auths();
-    client.withdraw_from_goal(&user, &999, &100);
+    let res = client.try_withdraw_from_goal(&user, &999, &100);
+    assert!(res.is_err());
 }
 
 #[test]
@@ -502,7 +522,13 @@ fn test_exact_goal_completion() {
 
 #[test]
 fn test_set_time_lock_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, owner);
+    setup_test_env!(
+        env,
+        SavingsGoalContract,
+        client,
+        owner,
+        SavingsGoalContractClient
+    );
     client.init();
     set_ledger_time(&env, 1, 1000);
 
@@ -522,6 +548,7 @@ fn test_withdraw_time_locked_goal_before_unlock() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -542,6 +569,7 @@ fn test_withdraw_time_locked_goal_after_unlock() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -563,6 +591,7 @@ fn test_create_savings_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -570,9 +599,9 @@ fn test_create_savings_schedule() {
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &3000, &86400);
     assert_eq!(schedule_id, 1);
 
-    let schedule = client.get_savings_schedule(&schedule_id);
-    assert!(schedule.is_some());
-    let schedule = schedule.unwrap();
+    let schedule_opt = client.get_savings_schedule(&schedule_id);
+    assert!(schedule_opt.is_some());
+    let schedule = schedule_opt.unwrap();
     assert_eq!(schedule.amount, 500);
     assert_eq!(schedule.next_due, 3000);
     assert!(schedule.active);
@@ -586,6 +615,7 @@ fn test_modify_savings_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -607,6 +637,7 @@ fn test_cancel_savings_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -626,6 +657,7 @@ fn test_execute_due_savings_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -650,6 +682,7 @@ fn test_execute_recurring_savings_schedule() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -675,6 +708,7 @@ fn test_execute_missed_savings_schedules() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &10000, &5000);
@@ -697,6 +731,7 @@ fn test_savings_schedule_goal_completion() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    client.init();
     set_ledger_time(&env, 1, 1000);
 
     let goal_id = client.create_goal(&owner, &String::from_str(&env, "Education"), &1000, &5000);
@@ -884,37 +919,25 @@ fn test_create_goal_emits_event() {
     assert_eq!(goal_id, 1);
 
     let events = env.events().all();
-    let mut found_created_struct = false;
-    let mut found_created_enum = false;
+    let mut found_created = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_CREATED {
-            let event_data: GoalCreatedEvent =
-                GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            found_created_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCreated) {
-                found_created_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("goal") {
+                // data is (next_id, owner)
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_created = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_created_struct,
-        "GoalCreated struct event was not emitted"
-    );
-    assert!(
-        found_created_enum,
-        "SavingsEvent::GoalCreated was not emitted"
-    );
+    assert!(found_created, "RemitwiseEvents::emit was not called for goal creation");
 }
 
 #[test]
@@ -940,35 +963,24 @@ fn test_add_to_goal_emits_event() {
     assert_eq!(new_amount, 1000);
 
     let events = env.events().all();
-    let mut found_added_struct = false;
-    let mut found_added_enum = false;
+    let mut found_added = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == FUNDS_ADDED {
-            let event_data: FundsAddedEvent =
-                FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.amount, 1000);
-            found_added_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsAdded) {
-                found_added_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("added") {
+                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id && data.2 == 1000 {
+                    found_added = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_added_struct,
-        "FundsAdded struct event was not emitted"
-    );
-    assert!(found_added_enum, "SavingsEvent::FundsAdded was not emitted");
+    assert!(found_added, "RemitwiseEvents::emit was not called for FundsAdded");
 }
 
 #[test]
@@ -993,38 +1005,24 @@ fn test_goal_completed_emits_event() {
     client.add_to_goal(&user, &goal_id, &1000);
 
     let events = env.events().all();
-    let mut found_completed_struct = false;
-    let mut found_completed_enum = false;
+    let mut found_completed = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_COMPLETED {
-            let event_data: GoalCompletedEvent =
-                GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.final_amount, 1000);
-            found_completed_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCompleted) {
-                found_completed_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("compl") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_completed = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_completed_struct,
-        "GoalCompleted struct event was not emitted"
-    );
-    assert!(
-        found_completed_enum,
-        "SavingsEvent::GoalCompleted was not emitted"
-    );
+    assert!(found_completed, "RemitwiseEvents::emit was not called for GoalCompleted");
 }
 
 #[test]
@@ -1048,24 +1046,24 @@ fn test_withdraw_from_goal_emits_event() {
     client.withdraw_from_goal(&user, &goal_id, &600);
 
     let events = env.events().all();
-    let mut found_withdrawn_enum = false;
+    let mut found_withdrawn = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsWithdrawn) {
-                found_withdrawn_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("withdr") {
+                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id && data.2 == 600 {
+                    found_withdrawn = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_withdrawn_enum,
-        "SavingsEvent::FundsWithdrawn was not emitted"
-    );
+    assert!(found_withdrawn, "RemitwiseEvents::emit was not called for FundsWithdrawn");
 }
 
 #[test]
@@ -1088,24 +1086,24 @@ fn test_lock_goal_emits_event() {
     client.lock_goal(&user, &goal_id);
 
     let events = env.events().all();
-    let mut found_locked_enum = false;
+    let mut found_locked = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalLocked) {
-                found_locked_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("lock") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_locked = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_locked_enum,
-        "SavingsEvent::GoalLocked was not emitted"
-    );
+    assert!(found_locked, "RemitwiseEvents::emit was not called for GoalLocked");
 }
 
 #[test]
@@ -1127,24 +1125,24 @@ fn test_unlock_goal_emits_event() {
     client.unlock_goal(&user, &goal_id);
 
     let events = env.events().all();
-    let mut found_unlocked_enum = false;
+    let mut found_unlocked = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalUnlocked) {
-                found_unlocked_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("unlock") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_unlocked = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_unlocked_enum,
-        "SavingsEvent::GoalUnlocked was not emitted"
-    );
+    assert!(found_unlocked, "RemitwiseEvents::emit was not called for GoalUnlocked");
 }
 
 #[test]
@@ -1162,9 +1160,9 @@ fn test_multiple_goals_emit_separate_events() {
     client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
     client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
 
-    // Should have 3 * 2 events = 6 events
+    // Should have 3 events
     let events = env.events().all();
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.len(), 3);
 }
 
 // ============================================================================
@@ -1346,16 +1344,19 @@ fn test_savings_data_persists_across_ledger_advancements() {
     client.add_to_goal(&user, &id2, &10000);
 
     // All goals should be accessible with correct data
-    let goal1 = client.get_goal(&id1);
+    let goal1_opt = client.get_goal(&id1);
+    let goal2_opt = client.get_goal(&id2);
+
     assert!(
-        goal1.is_some(),
+        goal1_opt.is_some(),
         "First goal must persist across ledger advancements"
     );
-    assert_eq!(goal1.unwrap().current_amount, 3000);
+    let goal1 = goal1_opt.unwrap();
+    assert_eq!(goal1.current_amount, 3000);
 
-    let goal2 = client.get_goal(&id2);
-    assert!(goal2.is_some(), "Second goal must persist");
-    assert_eq!(goal2.unwrap().current_amount, 10000);
+    assert!(goal2_opt.is_some(), "Second goal must persist");
+    let goal2 = goal2_opt.unwrap();
+    assert_eq!(goal2.current_amount, 10000);
 
     // TTL should be fully refreshed
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -1428,6 +1429,14 @@ fn setup_goals(env: &Env, client: &SavingsGoalContractClient, owner: &Address, c
             &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
         );
     }
+}
+
+fn page_goal_ids(env: &Env, page: &GoalPage) -> soroban_sdk::Vec<u32> {
+    let mut ids = soroban_sdk::Vec::new(env);
+    for goal in page.items.iter() {
+        ids.push_back(goal.id);
+    }
+    ids
 }
 
 #[test]
@@ -1531,6 +1540,74 @@ fn test_get_goals_cursor_is_exclusive() {
     for g in second.items.iter() {
         assert!(g.id > last_id, "cursor should be exclusive");
     }
+}
+
+#[test]
+fn test_get_goals_rejects_invalid_cursor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 4);
+
+    let res = client.try_get_goals(&owner, &999_999, &2);
+    assert!(res.is_err(), "non-zero cursor must exist for this owner");
+}
+
+#[test]
+fn test_get_goals_rejects_cursor_from_another_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner_a, 3);
+    setup_goals(&env, &client, &owner_b, 2);
+
+    let owner_b_first_page = client.get_goals(&owner_b, &0, &1);
+    let foreign_cursor = owner_b_first_page.items.get(0).unwrap().id;
+    let res = client.try_get_goals(&owner_a, &foreign_cursor, &2);
+    assert!(res.is_err(), "cursor must be bound to the requested owner");
+}
+
+#[test]
+fn test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 6);
+
+    let page1 = client.get_goals(&owner, &0, &3);
+    let page1_ids = page_goal_ids(&env, &page1);
+    assert_eq!(page1_ids.get(0), Some(1));
+    assert_eq!(page1_ids.get(1), Some(2));
+    assert_eq!(page1_ids.get(2), Some(3));
+
+    // Simulate concurrent writes between paged reads.
+    setup_goals(&env, &client, &owner, 2);
+
+    let page2 = client.get_goals(&owner, &page1.next_cursor, &3);
+    let page2_ids = page_goal_ids(&env, &page2);
+    assert_eq!(page2_ids.get(0), Some(4));
+    assert_eq!(page2_ids.get(1), Some(5));
+    assert_eq!(page2_ids.get(2), Some(6));
+
+    let page3 = client.get_goals(&owner, &page2.next_cursor, &3);
+    let page3_ids = page_goal_ids(&env, &page3);
+    assert_eq!(page3_ids.get(0), Some(7));
+    assert_eq!(page3_ids.get(1), Some(8));
+    assert_eq!(page3.count, 2);
+    assert_eq!(page3.next_cursor, 0);
 }
 
 #[test]
@@ -1742,10 +1819,22 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
-    let goal_a_ids: Vec<u32> = goals_a.iter().map(|g| g.id).collect();
-    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
-    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
-    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
+    let mut goal_a_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+    for g in goals_a.iter() {
+        goal_a_ids.push_back(g.id);
+    }
+    assert!(
+        goal_a_ids.contains(goal_a1),
+        "Goals for A should contain goal_a1"
+    );
+    assert!(
+        goal_a_ids.contains(goal_a2),
+        "Goals for A should contain goal_a2"
+    );
+    assert!(
+        goal_a_ids.contains(goal_a3),
+        "Goals for A should contain goal_a3"
+    );
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1761,9 +1850,18 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
-    let goal_b_ids: Vec<u32> = goals_b.iter().map(|g| g.id).collect();
-    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
-    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
+    let mut goal_b_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+    for g in goals_b.iter() {
+        goal_b_ids.push_back(g.id);
+    }
+    assert!(
+        goal_b_ids.contains(goal_b1),
+        "Goals for B should contain goal_b1"
+    );
+    assert!(
+        goal_b_ids.contains(goal_b2),
+        "Goals for B should contain goal_b2"
+    );
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
     for goal_a_id in &goal_a_ids {

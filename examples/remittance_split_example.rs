@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -10,34 +10,38 @@ fn main() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
-    // 3. Generate a mock owner address
+    // 3. Generate mock addresses
     let owner = Address::generate(&env);
+    let usdc_mock = Address::generate(&env);
 
     println!("--- Remitwise: Remittance Split Example ---");
 
     // 4. [Write] Initialize the split configuration
     // Percentages: 50% Spending, 30% Savings, 15% Bills, 5% Insurance
     println!("Initializing split configuration for owner: {:?}", owner);
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_mock, &50, &30, &15, &5);
 
     // 5. [Read] Verify the configuration
-    let config = client.get_config().unwrap();
+    let config = client.get_config().expect("Config not found");
     println!("Configuration verified:");
-    println!("  Spending: {}%", config.spending_percent);
-    println!("  Savings: {}%", config.savings_percent);
-    println!("  Bills: {}%", config.bills_percent);
-    println!("  Insurance: {}%", config.insurance_percent);
+    println!("  Spending: {:?}%", config.spending_percent);
+    println!("  Savings: {:?}%", config.savings_percent);
+    println!("  Bills: {:?}%", config.bills_percent);
+    println!("  Insurance: {:?}%", config.insurance_percent);
 
     // 6. [Write] Simulate a remittance distribution
     let total_amount = 1000i128;
-    println!("\nCalculating allocation for total amount: {}", total_amount);
+    println!(
+        "\nCalculating allocation for total amount: {:?}",
+        total_amount
+    );
     let allocations = client.calculate_split(&total_amount);
 
     println!("Allocations:");
-    println!("  Spending: {}", allocations.get(0).unwrap());
-    println!("  Savings: {}", allocations.get(1).unwrap());
-    println!("  Bills: {}", allocations.get(2).unwrap());
-    println!("  Insurance: {}", allocations.get(3).unwrap());
+    println!("  Spending: {:?}", allocations.get(0));
+    println!("  Savings: {:?}", allocations.get(1));
+    println!("  Bills: {:?}", allocations.get(2));
+    println!("  Insurance: {:?}", allocations.get(3));
 
     println!("\nExample completed successfully!");
 }
