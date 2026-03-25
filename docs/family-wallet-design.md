@@ -227,3 +227,19 @@ These are important as-implemented behaviors:
 - `archive_old_transactions` archives all `EXEC_TXS` entries currently present; `before_timestamp` is written into archived metadata but not used as a filter.
 - `SplitConfigChange` and `PolicyCancellation` transaction execution paths currently complete without cross-contract side effects.
 - Token-transfer execution from `sign_transaction` path calls `proposer.require_auth()` for transfer types, so proposer authorization is required at execution time.
+
+## Admin and Pause Control Guardrails
+
+To prevent accidental privilege escalation, the `family_wallet` enforces strict role boundaries:
+
+- **Pause Control**:
+  - The wallet owner is the default pause admin unless explicitly overridden.
+  - While paused, mutation blocks (e.g. `add_family_member`, `propose_transaction`, `cleanup_expired_pending`) will revert with `"Contract is paused"`.
+  - Non-pause-admins (including other regular Admins) attempting to pause or unpause will be rejected.
+  - Only the Owner can set a new pause admin to prevent unauthorized lockdown.
+
+- **Upgrade Admin**:
+  - The wallet owner is the default upgrade admin.
+  - Only the Owner can transfer the upgrade admin role via `set_upgrade_admin`.
+  - Only the current upgrade admin can mutate the contract version via `set_version`.
+  - Unauthorized attempts by regular admins to transfer the upgrade role will fail with `"Insufficient role"` to prevent accidental privilege escalation.
