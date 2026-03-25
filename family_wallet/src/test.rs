@@ -1206,3 +1206,127 @@ fn test_emergency_proposal_role_misuse() {
     
     client.propose_emergency_transfer(&viewer, &token_contract.address(), &recipient, &1000_0000000);
 }
+
+// ============================================
+// Pause Control Regression Tests
+// ============================================
+
+#[test]
+#[should_panic(expected = "Only pause admin can pause")]
+fn test_pause_unauthorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &member, &FamilyRole::Admin);
+    
+    // member is an admin, but not the pause admin
+    client.pause(&member);
+}
+
+#[test]
+fn test_pause_and_unpause_authorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let new_pause_admin = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &new_pause_admin, &FamilyRole::Admin);
+    
+    assert!(!client.is_paused());
+    client.pause(&owner);
+    assert!(client.is_paused());
+    
+    client.set_pause_admin(&owner, &new_pause_admin);
+    
+    client.unpause(&new_pause_admin);
+    assert!(!client.is_paused());
+}
+
+#[test]
+#[should_panic(expected = "Insufficient role")]
+fn test_set_pause_admin_unauthorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &admin, &FamilyRole::Admin);
+    
+    client.set_pause_admin(&admin, &new_admin);
+}
+
+#[test]
+#[should_panic(expected = "Contract is paused")]
+fn test_paused_mutation_blocks_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    
+    client.pause(&owner);
+    client.add_family_member(&owner, &member, &FamilyRole::Member);
+}
+
+// ============================================
+// Upgrade Admin Control Regression Tests
+// ============================================
+
+#[test]
+#[should_panic(expected = "Insufficient role")]
+fn test_set_upgrade_admin_unauthorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &admin, &FamilyRole::Admin);
+    
+    client.set_upgrade_admin(&admin, &new_admin);
+}
+
+#[test]
+fn test_set_upgrade_admin_authorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let new_upgrade_admin = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    
+    client.set_upgrade_admin(&owner, &new_upgrade_admin);
+    assert_eq!(client.get_upgrade_admin_public(), Some(new_upgrade_admin.clone()));
+    
+    client.set_version(&new_upgrade_admin, &2);
+    assert_eq!(client.get_version(), 2);
+}
+
+#[test]
+#[should_panic(expected = "Only upgrade admin can set version")]
+fn test_set_version_unauthorized_regression() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let new_upgrade_admin = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    
+    client.set_upgrade_admin(&owner, &new_upgrade_admin);
+    client.set_version(&owner, &2);
+}
