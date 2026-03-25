@@ -1,0 +1,622 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace > 
+test_errors_now2.txt 
+2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: constant 
+`GOAL_CREATED` is never 
+used
+  --> savings_goals\src\
+lib.rs:14:7
+   |
+14 | const 
+GOAL_CREATED: Sy...
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`FUNDS_ADDED` is never 
+used
+  --> savings_goals\src\
+lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: 
+Sym...
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is 
+never used
+  --> savings_goals\src\
+lib.rs:16:7
+   |
+16 | const 
+GOAL_COMPLETED: S...
+   |       
+^^^^^^^^^^^^^^
+
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 | ... let event = 
+Split...
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: S...
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: S...
+   |       
+^^^^^^^^^^^^^^^^
+
+warning: 
+`savings_goals` (lib) 
+generated 3 warnings
+warning: 
+`remittance_split` 
+(lib) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split` to 
+apply 1 suggestion)
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+   Compiling 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+warning: unused import: 
+`IntoVal`
+   --> integration_tests
+\tests\multi_contract_in
+tegration.rs:275:42
+    |
+275 | ...Vec, IntoVal};
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`integration_tests` 
+(test "multi_contract_in
+tegration") generated 1 
+warning (run `cargo fix 
+--test "multi_contract_i
+ntegration" -p 
+integration_tests` to 
+apply 1 suggestion)
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+warning: unused 
+imports: `String` and 
+`TokenClient`
+ --> family_wallet\tests
+\gas_bench.rs:3:43
+  |
+3 | ...c, String, 
+token::{TokenClient, 
+S...
+  |       ^^^^^^        
+  ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: hiding a 
+lifetime that's elided 
+elsewhere is confusing
+  --> family_wallet\test
+s\gas_bench.rs:40:22
+   |
+40 | ...v: &Env) -> 
+(FamilyWalletClient, 
+A...
+   |       ^^^^      
+^^^^^^^^^^^^^^^^^^ the 
+same lifetime is hidden 
+here
+   |       |
+   |       the lifetime 
+is elided here
+   |
+   = help: the same 
+lifetime is referred to 
+in inconsistent ways, 
+making the signature 
+confusing
+   = note: `#[warn(misma
+tched_lifetime_syntaxes)
+]` on by default
+help: use `'_` for type 
+paths
+   |
+40 | fn 
+setup_wallet(env: &Env) 
+-> (FamilyWalletClient<'
+_>, Address, 
+Vec<Address>) {
+   |                    
+                        
+      ++++
+
+warning: 
+`family_wallet` (test 
+"gas_bench") generated 
+2 warnings (run `cargo 
+fix --test "gas_bench" 
+-p family_wallet` to 
+apply 2 suggestions)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+warning: 
+`remittance_split` (lib 
+test) generated 3 
+warnings (3 duplicates)
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+warning: function 
+`set_time` is never used
+  --> savings_goals\src\
+test.rs:14:4
+   |
+14 | fn set_time(env: 
+&Env,...
+   |    ^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`savings_goals` (lib 
+test) generated 1 
+warning
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+1m 13s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\bill_payments-96f6
+40df76a42137.exe)
+
+running 35 tests
+test test::test_get_overdue_bills_not_overdue ... ok
+test test::test_create_bill_invalid_due_date ... ok
+test test::test_get_unpaid_bills_empty ... ok
+test test::test_get_archived_bills_pagination ... ok
+test test::test_get_unpaid_bills_excludes_other_owner ... ok
+test test::test_get_unpaid_bills_excludes_paid ... ok
+test test::test_get_overdue_bills_pagination ... ok
+test test::test_get_all_bills_for_owner_includes_paid ... ok
+test test::test_get_unpaid_bills_owner_isolation_all_paid_other_owner_unpaid ... ok
+test test::test_get_unpaid_bills_owner_isolation_bidirectional ... ok
+test test::test_get_unpaid_bills_single_page ... ok
+test test::test_get_unpaid_bills_owner_isolation_after_one_pays ... ok
+test test::test_get_unpaid_bills_owner_isolation_one_owner_no_bills ... ok
+test test::test_get_unpaid_bills_owner_isolation_pagination_does_not_leak ... ok
+test test::test_recurring_date_math_early_payment_does_not_affect_schedule ... ok
+test test::test_limit_zero_uses_default ... ok
+test test::test_recurring_date_math_exact_calculation_verification ... ok
+test test::test_get_unpaid_bills_multiple_pages ... ok
+test test::test_recurring_date_math_frequency_365_days ... ok
+test test::test_recurring_date_math_frequency_1_day ... ok
+test test::test_recurring_date_math_amount_preserved_across_cycles ... ok
+test test::test_recurring_date_math_frequency_30_days ... ok
+test test::test_recurring_date_math_multiple_pay_cycles_2nd_bill ... ok
+test test::test_recurring_date_math_paid_at_does_not_affect_next_due ... ok
+test test::test_recurring_date_math_preserves_frequency_across_cycles ... ok
+test test::test_time_drift_bill_not_overdue_at_exact_due_date ... ok
+test test::test_recurring_date_math_owner_preserved_across_cycles ... ok
+test test::test_time_drift_overdue_full_day_boundary ... ok
+test test::test_time_drift_overdue_boundary_mixed_bills ... ok
+test test::test_recurring_date_math_multiple_pay_cycles_3rd_bill ... ok
+test test::test_time_drift_bill_overdue_one_second_after_due_date ... ok
+test test::test_limit_clamped_to_max ... ok
+test test::prop_future_bills_not_in_overdue_set has been running for over 60 seconds
+test test::prop_overdue_bills_all_have_due_before_now has been running for over 60 seconds
+test test::prop_recurring_next_bill_due_date_follows_original has been running for over 60 seconds
+test test::prop_recurring_next_bill_due_date_follows_original ... ok
+test test::prop_future_bills_not_in_overdue_set ... ok
+test test::prop_overdue_bills_all_have_due_before_now ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 199.84s
+
+     Running 
+tests\gas_bench.rs (targ
+et\debug\deps\gas_bench-
+b37975a698c76acb.exe)
+
+running 1 test
+test bench_get_total_unpaid_worst_case ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.01s
+
+     Running tests\stres
+s_test_large_amounts.rs 
+(target\debug\deps\stres
+s_test_large_amounts-fba
+34432d2581945.exe)
+
+running 10 tests
+test test_create_bill_near_max_i128 ... ok
+test test_multiple_large_bills_different_owners ... ok
+test test_get_total_unpaid_with_two_large_bills ... ok
+test test_archive_large_amount_bill ... ok
+test test_edge_case_i128_max_minus_one ... ok
+test test_recurring_bill_with_large_amount ... ok
+test test_batch_pay_large_bills ... ok
+test test_pay_bill_with_large_amount ... ok
+test test_pagination_with_large_amounts ... ok
+test test_get_total_unpaid_overflow_panics - should panic ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.89s
+
+     Running 
+tests\stress_tests.rs (t
+arget\debug\deps\stress_
+tests-5144746700a37c08.e
+xe)
+
+running 11 tests
+test stress_archive_across_5_users ... ok
+test bench_get_unpaid_bills_first_page_of_200 ... ok
+test bench_get_unpaid_bills_last_page_of_200 ... ok
+test stress_ttl_re_bumped_by_pay_bill_after_ledger_advancement ... ok
+test stress_ttl_re_bumped_after_ledger_advancement ... ok
+test stress_bills_across_10_users ... ok
+test stress_archive_100_paid_bills ... ok
+test bench_archive_paid_bills_100 ... ok
+test bench_get_total_unpaid_200_bills ... ok
+test stress_200_bills_single_user ... ok
+test stress_instance_ttl_valid_after_200_bills ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.72s
+
+     Running tests\test_
+notifications.rs (target
+\debug\deps\test_notific
+ations-95638038af66ba20.
+exe)
+
+running 1 test
+test test_notification_flow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\data_migration-a98
+699a9382dccef.exe)
+
+running 7 tests
+test tests::test_check_version_compatibility_succeeds ... ok
+test tests::test_csv_export_import_goals_succeeds ... ok
+test tests::test_snapshot_checksum_roundtrip_succeeds ... ok
+test tests::test_migration_event_serialization_succeeds ... ok
+test tests::test_export_import_binary_succeeds ... ok
+test tests::test_checksum_mismatch_import_fails ... ok
+test tests::test_export_import_json_succeeds ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\family_wallet-10dd
+c2a7732cea2a.exe)
+
+running 27 tests
+test test::test_archive_ttl_extended_on_archive_transactions ... ok
+test test::test_archive_old_transactions ... ok
+test test::test_configure_multisig ... ok
+test test::test_add_and_remove_family_member ... ok
+test test::test_different_thresholds_for_different_transaction_types ... ok
+test test::test_data_persists_across_repeated_operations ... ok
+test test::test_cleanup_unauthorized - should panic ... ok
+test test::test_add_member_unauthorized - should panic ... ok
+test test::test_duplicate_signature_prevention - should panic ... ok
+test test::test_configure_multisig_unauthorized - should panic ... ok
+test test::test_archive_unauthorized - should panic ... ok
+test test::test_emergency_transfer_exceeds_limit - should panic ... ok
+test test::test_emergency_mode_direct_transfer_within_limits ... ok
+test test::test_emergency_transfer_min_balance_enforced - should panic ... ok
+test test::test_cleanup_expired_pending ... ok
+test test::test_instance_ttl_refreshed_on_add_member ... ok
+test test::test_instance_ttl_extended_on_init ... ok
+test test::test_initialize_wallet_succeeds ... ok
+test test::test_propose_split_config_change ... ok
+test test::test_storage_stats ... ok
+test test::test_multisig_threshold_validation ... ok
+test test::test_emergency_transfer_cooldown_enforced - should panic ... ok
+test test::test_propose_role_change ... ok
+test test::test_propose_emergency_transfer ... ok
+test test::test_unauthorized_signer - should panic ... ok
+test test::test_withdraw_below_threshold_no_multisig ... ok
+test test::test_withdraw_above_threshold_requires_multisig ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.23s
+
+     Running 
+tests\gas_bench.rs (targ
+et\debug\deps\gas_bench-
+e7e0e12c96a1621f.exe)
+
+running 8 tests
+test bench_propose_transaction ... ok
+test bench_batch_add_family_members ... ok
+test bench_sign_transaction_executing ... ok
+test bench_init ... ok
+test bench_emergency_transfer_direct ... ok
+test bench_sign_transaction_non_executing ... ok
+test bench_cleanup_expired_pending ... ok
+test bench_archive_transactions ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\insurance-d3360b39
+b39a7011.exe)
+
+running 45 tests
+test test::test_create_policy_invalid_premium ... ok
+test test::test_create_policy_invalid_coverage ... ok
+test test::test_create_policy_emits_event ... ok
+test test::test_cancel_premium_schedule ... ok
+test test::test_create_policy_succeeds ... ok
+test test::test_create_premium_schedule_succeeds ... ok
+test test::test_create_policy_success ... ok
+test test::test_deactivate_policy ... ok
+test test::test_deactivate_policy_emits_event ... ok
+test test::test_execute_due_premium_schedules ... ok
+test test::test_execute_missed_premium_schedules ... ok
+test test::test_execute_recurring_premium_schedule ... ok
+test test::test_get_active_policies_excludes_deactivated ... ok
+test test::test_get_active_policies ... ok
+test test::test_get_active_policies_filters_by_owner_and_active ... ok
+test test::test_get_policy_nonexistent ... ok
+test test::test_get_all_policies_for_owner_pagination ... ok
+test test::test_get_premium_schedules ... ok
+test test::test_get_total_monthly_premium ... ok
+test test::test_get_total_monthly_premium_deactivated_policy_excluded ... ok
+test test::test_get_total_monthly_premium_comprehensive ... ok
+test test::test_get_total_monthly_premium_different_owner_isolation ... ok
+test test::test_get_total_monthly_premium_one_policy ... ok
+test test::test_get_total_monthly_premium_multiple_active_policies ... ok
+test test::test_get_total_monthly_premium_zero_policies ... ok
+test test::test_modify_premium_schedule ... ok
+test test::test_create_policy_requires_auth ... ok
+test test::test_create_policy_non_owner_auth_failure - should panic ... ok
+test test::test_create_policy_negative_premium_panics ... ok
+test test::test_create_policy_negative_coverage_panics ... ok
+test test::test_deactivate_policy_owner_only ... ok
+test test::test_pay_premium_emits_event ... ok
+test test::test_pay_premium ... ok
+test test::test_deactivate_policy_non_owner_auth_failure - should panic ... ok
+test test::test_multiple_policies_same_owner ... ok
+test test::test_pay_premium_success ... ok
+test test::test_pay_premium_inactive_policy_panics ... ok
+test test::test_pay_premium_unauthorized ... ok
+test test::test_multiple_premium_payments ... ok
+test test::test_time_drift_no_double_execution_after_schedule_advances ... ok
+test test::test_pay_premium_non_owner_auth_failure - should panic ... ok
+test test::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test::test_pay_premium_unauthorized_panics ... ok
+test test::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+test test::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.66s
+
+     Running 
+tests\gas_bench.rs (targ
+et\debug\deps\gas_bench-
+7718464cdd6cf1d4.exe)
+
+running 1 test
+test bench_get_total_monthly_premium_worst_case ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.66s
+
+     Running 
+tests\stress_tests.rs (t
+arget\debug\deps\stress_
+tests-1ac26ea384923a18.e
+xe)
+
+running 10 tests
+test bench_batch_pay_premiums_50_policies ... ok
+test stress_batch_pay_premiums_at_max_batch_size ... ok
+test stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement ... ok
+test stress_ttl_re_bumped_after_ledger_advancement ... ok
+test stress_instance_ttl_valid_after_200_policies ... ok
+test bench_get_active_policies_first_page_of_200 ... ok
+test bench_get_total_monthly_premium_200_policies ... ok
+test stress_200_policies_single_user ... ok
+test stress_deactivate_half_of_200_policies ... ok
+test stress_policies_across_10_users ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.16s
+
+     Running tests\multi
+_contract_integration.rs
+ (target\debug\deps\mult
+i_contract_integration-5
+8cd6141ec5cd76e.exe)
+
+running 4 tests
+test test_split_with_rounding ... ok
+test test_multiple_entities_creation ... ok
+test test_event_topic_compliance_across_contracts ... ok
+test test_multi_contract_user_flow ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\orchestrator-c192f
+99b6aa58235.exe)
+
+running 13 tests
+test test::tests::test_execute_insurance_payment_succeeds ... ok
+test test::tests::test_execute_bill_payment_succeeds ... ok
+test test::tests::test_execute_remittance_flow_invalid_amount_fails ... ok
+test test::tests::test_execute_remittance_flow_spending_limit_exceeded_fails ... ok
+test test::tests::test_execute_remittance_flow_succeeds ... ok
+test test::tests::test_execute_savings_deposit_succeeds ... ok
+test test::tests::test_get_audit_log_succeeds ... ok
+test test::tests::test_get_execution_stats_succeeds ... ok
+test test::tests::test_execute_savings_deposit_spending_limit_exceeded_fails ... ok
+test test::tests::test_execute_remittance_flow_savings_failure_rolls_back ... ok
+test test::tests::test_execute_bill_payment_invalid_bill_fails ... ok
+test test::tests::test_execute_remittance_flow_bill_failure_rolls_back ... ok
+test test::tests::test_execute_savings_deposit_invalid_goal_fails ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\remittance_split-0
+32957bc39457e7d.exe)
+
+running 19 tests
+test test::test_get_config_returns_none_before_init ... ok
+test test::test_get_split_returns_default_before_init ... ok
+test test::test_get_config_returns_some_after_init ... ok
+test test::test_calculate_split_positive_amount ... ok
+test test::test_event_emitted_on_initialize_and_update ... FAILED
+test test::test_calculate_split_emits_event ... FAILED
+test test::test_calculate_split_rounding ... ok
+test test::test_calculate_split_zero_or_negative_panics ... ok
+test test::test_initialize_split_emits_event ... ok
+test test::test_instance_ttl_extended_on_initialize_split ... ok
+test test::test_initialize_split_percentages_must_sum_to_100 ... ok
+test test::test_instance_ttl_refreshed_on_update_split ... ok
+test test::test_initialize_split_already_initialized_panics ... ok
+test test::test_initialize_split_success ... ok
+test test::test_split_data_persists_across_ledger_advancements ... ok
+test test::test_multiple_operations_emit_multiple_events ... FAILED
+test test::test_update_split_owner_only ... ok
+test test::test_update_split_percentages_must_sum_to_100 ... ok
+test test::test_initialize_split_requires_auth - should panic ... ok
+
+failures:
+
+---- test::test_event_emitted_on_initialize_and_update stdout ----
+
+thread 'test::test_event_emitted_on_initialize_and_update' (24468) panicked at remittance_split\src\lib.rs:1630:75:
+called `Result::unwrap()` on an `Err` value: ConversionError
+Writing test snapshot file for test "test::test_event_emitted_on_initialize_and_update" to "test_snapshots\\test\\test_event_emitted_on_initialize_and_update.1.json".
+
+---- test::test_calculate_split_emits_event stdout ----
+
+thread 'test::test_calculate_split_emits_event' (8288) panicked at remittance_split\src\lib.rs:1136:9:
+assertion `left == right` failed
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test::test_calculate_split_emits_event" to "test_snapshots\\test\\test_calculate_split_emits_event.1.json".
+
+---- test::test_multiple_operations_emit_multiple_events stdout ----
+
+thread 'test::test_multiple_operations_emit_multiple_events' (19824) panicked at remittance_split\src\lib.rs:1156:9:
+assertion `left == right` failed
+  left: 3
+ right: 5
+Writing test snapshot file for test "test::test_multiple_operations_emit_multiple_events" to "test_snapshots\\test\\test_multiple_operations_emit_multiple_events.1.json".
+
+
+failures:
+    test::test_calculate_split_emits_event
+    test::test_event_emitted_on_initialize_and_update
+    test::test_multiple_operations_emit_multiple_events
+
+test result: FAILED. 16 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.16s
+
+error: test failed, to 
+rerun pass `-p 
+remittance_split --lib`

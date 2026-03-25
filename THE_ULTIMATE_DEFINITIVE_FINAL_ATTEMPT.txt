@@ -1,0 +1,567 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"THE_ULTIMATE_DEFINI ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Blocking waiting 
+for file lock on 
+package cache
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+error: unexpected 
+closing delimiter: `}`
+   --> insurance\tests\s
+tress_tests.rs:115:1
+    |
+ 78 |     for _ in 
+0..200 {
+    |                   
+  - the nearest open 
+delimiter
+ 79 |         client.cre
+ate_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+ 80 |     );
+    |     - missing 
+open `(` for this 
+delimiter
+...
+115 | }
+    | ^ unexpected 
+closing delimiter
+
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\src\test
+.rs:38:1
+   |
+16 | fn test_create_poli
+cy_succeeds() {
+   |                    
+              - the 
+nearest open delimiter
+...
+29 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+38 | }
+   | ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(test "stress_tests") 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\tests\ga
+s_bench.rs:62:1
+   |
+49 |     for _ in 
+0..100 {
+   |                    
+ - the nearest open 
+delimiter
+50 |         client.crea
+te_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+51 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+62 | }
+   | ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(lib test) due to 1 
+previous error
+error: could not 
+compile `insurance` 
+(test "gas_bench") due 
+to 1 previous error
+error[E0601]: `main` 
+function not found in 
+crate 
+`orchestrator_example`
+  --> examples\orchestra
+tor_example.rs:61:4
+   |
+61 | // 
+   |    ^ consider 
+adding a `main` 
+function to `examples\or
+chestrator_example.rs`
+
+For more information 
+about this error, try 
+`rustc --explain E0601`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example 
+"orchestrator_example") 
+due to 1 previous error
+error[E0603]: enum 
+`Category` is private
+ --> examples\reporting_
+example.rs:2:42
+  |
+2 | use reporting::{Repo
+rtingContractClient, 
+Category};
+  |                     
+                     
+^^^^^^^^ private enum
+  |
+note: the enum 
+`Category` is defined 
+here
+ --> C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\reporting\sr
+c\lib.rs:7:5
+  |
+7 | use remitwise_common
+::Category;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^
+help: import `Category` 
+directly
+  |
+2 | use reporting::{Repo
+rtingContractClient, rem
+itwise_common::Category}
+;
+  |                     
+                     
+++++++++++++++++++
+
+error[E0277]: 
+`soroban_sdk::String` 
+doesn't implement 
+`std::fmt::Display`
+  --> examples\bill_paym
+ents_example.rs:24:47
+   |
+24 |     
+println!("Creating 
+bill: '{}' for {} {}", 
+bill_name, amount, 
+currency);
+   |                    
+           --           
+   ^^^^^^^^^ 
+`soroban_sdk::String` 
+cannot be formatted 
+with the default 
+formatter
+   |                    
+           |
+   |                    
+           required by 
+this formatting 
+parameter
+   |
+   = help: the trait 
+`std::fmt::Display` is 
+not implemented for 
+`soroban_sdk::String`
+   = note: in format 
+strings you may be able 
+to use `{:?}` (or {:#?} 
+for pretty-print) 
+instead
+   = note: this error 
+originates in the macro 
+`$crate::format_args_nl`
+ which comes from the 
+expansion of the macro 
+`println` (in Nightly 
+builds, run with -Z 
+macro-backtrace for 
+more info)
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> examples\bill_pay
+ments_example.rs:25:26
+    |
+ 25 |     let bill_id = 
+client.create_bill(&owne
+r, &bill_name, &amount, 
+&due_date, &false, &0, 
+&currency).unwrap();
+    |                   
+       ^^^^^^^^^^^      
+                        
+                       
+--------- argument #7 
+of type `&std::option::O
+ption<soroban_sdk::Strin
+g>` is missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 25 |     let bill_id = 
+client.create_bill(&owne
+r, &bill_name, &amount, 
+&due_date, &false, &0, 
+/* &std::option::Option<
+soroban_sdk::String> 
+*/, &currency).unwrap();
+    |                   
+                        
+                        
+                       +
+++++++++++++++++++++++++
++++++++++++++++++++++++
+
+error[E0599]: no method 
+named `unwrap` found 
+for unit type `()` in 
+the current scope
+  --> examples\reporting
+_example.rs:32:25
+   |
+32 |     client.init(&ad
+min).unwrap();
+   |                    
+     ^^^^^^ method not 
+found in `()`
+
+error[E0599]: no method 
+named `unwrap` found 
+for type `u32` in the 
+current scope
+  --> examples\bill_paym
+ents_example.rs:25:101
+   |
+25 |     let bill_id = c
+lient.create_bill(&owner
+, &bill_name, &amount, 
+&due_date, &false, &0, 
+&currency).unwrap();
+   |                    
+                        
+                        
+                        
+         ^^^^^^ method 
+not found in `u32`
+
+error[E0277]: 
+`soroban_sdk::String` 
+doesn't implement 
+`std::fmt::Display`
+  --> examples\bill_paym
+ents_example.rs:32:64
+   |
+32 |         println!(" 
+ ID: {}, Name: {}, 
+Amount: {} {}", 
+bill.id, bill.name, 
+bill.amount, 
+bill.currency);
+   |                    
+               --       
+                    
+^^^^^^^^^ 
+`soroban_sdk::String` 
+cannot be formatted 
+with the default 
+formatter
+   |                    
+               |
+   |                    
+               required 
+by this formatting 
+parameter
+   |
+   = help: the trait 
+`std::fmt::Display` is 
+not implemented for 
+`soroban_sdk::String`
+   = note: in format 
+strings you may be able 
+to use `{:?}` (or {:#?} 
+for pretty-print) 
+instead
+   = note: this error 
+originates in the macro 
+`$crate::format_args_nl`
+ which comes from the 
+expansion of the macro 
+`println` (in Nightly 
+builds, run with -Z 
+macro-backtrace for 
+more info)
+
+error[E0599]: no method 
+named `unwrap` found 
+for unit type `()` in 
+the current scope
+  --> examples\reporting
+_example.rs:43:7
+   |
+36 | /     client.config
+ure_addresses(
+37 | |         &admin,
+38 | |         
+&split_addr,
+39 | |         
+&savings_addr,
+...  |
+42 | |         
+&family_addr
+43 | |     ).unwrap();
+   | |      -^^^^^^ 
+method not found in `()`
+   | |______|
+   |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> scenarios\tests\f
+low.rs:73:18
+    |
+ 73 |     bills_client.c
+reate_bill(
+    |                  
+^^^^^^^^^^^
+...
+ 80 |         
+&String::from_str(&env, 
+"USDC"),
+    |         ----------
+--------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 73 |     bills_client.c
+reate_bill(
+...
+ 79 |         &30,
+ 80 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+ 81 ~         
+&String::from_str(&env, 
+"USDC"),
+    |
+
+Some errors have 
+detailed explanations: 
+E0599, E0603.
+For more information 
+about an error, try 
+`rustc --explain E0599`.
+error[E0599]: no method 
+named `unwrap` found 
+for unit type `()` in 
+the current scope
+  --> examples\bill_paym
+ents_example.rs:37:39
+   |
+37 |     
+client.pay_bill(&owner, 
+&bill_id).unwrap();
+   |                    
+                   
+^^^^^^ method not found 
+in `()`
+
+error: could not 
+compile 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+due to 3 previous errors
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+Some errors have 
+detailed explanations: 
+E0061, E0277, E0599.
+For more information 
+about an error, try 
+`rustc --explain E0061`.
+error: could not 
+compile `scenarios` 
+(test "flow") due to 1 
+previous error
+error: could not 
+compile 
+`remitwise-contracts` 
+(example "bill_payments_
+example") due to 5 
+previous errors

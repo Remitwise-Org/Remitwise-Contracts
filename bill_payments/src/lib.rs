@@ -3,8 +3,8 @@
 
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
 };
 
 use soroban_sdk::{
@@ -12,8 +12,6 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-#[derive(Clone, Debug)]
-#[contracttype]
 #[derive(Clone, Debug)]
 #[contracttype]
 pub struct Bill {
@@ -34,7 +32,6 @@ pub struct Bill {
     /// Defaults to "XLM" for entries created before this field was introduced.
     pub currency: String,
 }
-
 
 /// Paginated result for bill queries
 #[contracttype]
@@ -57,8 +54,6 @@ pub mod pause_functions {
     pub const RESTORE: soroban_sdk::Symbol = symbol_short!("restore");
 }
 
-const CONTRACT_VERSION: u32 = 1;
-const MAX_BATCH_SIZE: u32 = 50;
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
 
 #[contracterror]
@@ -77,12 +72,10 @@ pub enum Error {
     BatchValidationFailed = 10,
     InvalidLimit = 11,
     InvalidDueDate = 12,
-    InvalidTag = 12,
-    EmptyTags = 13,
+    InvalidTag = 13,
+    EmptyTags = 14,
 }
 
-#[derive(Clone)]
-#[contracttype]
 #[derive(Clone)]
 #[contracttype]
 pub struct ArchivedBill {
@@ -96,7 +89,6 @@ pub struct ArchivedBill {
     /// Intended currency/asset carried over from the originating `Bill`.
     pub currency: String,
 }
-
 
 /// Paginated result for archived bill queries
 #[contracttype]
@@ -116,6 +108,11 @@ pub enum BillEvent {
     ExternalRefUpdated,
 }
 
+<<<<<<< HEAD
+=======
+#[contracttype]
+#[derive(Clone)]
+>>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -146,10 +143,6 @@ impl BillPayments {
     /// # Errors
     /// * `InvalidAmount` - If amount is zero or negative
     /// * `InvalidFrequency` - If recurring is true but frequency_days is 0
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -179,11 +172,6 @@ impl BillPayments {
 
     /// Clamp a caller-supplied limit to [1, MAX_PAGE_LIMIT].
     /// A value of 0 is treated as DEFAULT_PAGE_LIMIT.
-
-    // -----------------------------------------------------------------------
-    // Pause / upgrade
-    // -----------------------------------------------------------------------
-
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
@@ -438,7 +426,8 @@ impl BillPayments {
         };
 
         let bill_owner = bill.owner.clone();
-        let bill_external_ref = bill.external_ref.clone();
+        // let bill_external_ref = bill.external_ref.clone(); (unused)
+
         bills.set(next_id, bill);
         env.storage()
             .instance()
@@ -448,7 +437,11 @@ impl BillPayments {
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
+<<<<<<< HEAD
         // Emit event for audit trail
+=======
+        // Emit event for audit trail using Remitwise compliant schema
+>>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -515,7 +508,8 @@ impl BillPayments {
                 .set(&symbol_short!("NEXT_ID"), &next_id);
         }
 
-        let bill_external_ref = bill.external_ref.clone();
+        // let bill_external_ref = bill.external_ref.clone(); (unused)
+
         let paid_amount = bill.amount;
         let was_recurring = bill.recurring;
         bills.set(bill_id, bill);
@@ -526,7 +520,11 @@ impl BillPayments {
             Self::adjust_unpaid_total(&env, &caller, -paid_amount);
         }
 
+<<<<<<< HEAD
         // Emit event for audit trail
+=======
+        // Emit event for audit trail using Remitwise compliant schema
+>>>>>>> 24636167068c53fe6c423c3452dca0949ff997c0
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -750,8 +748,11 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
-        env.events().publish(
-            (symbol_short!("bill"), BillEvent::ExternalRefUpdated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("ext_ref"),
             (bill_id, caller, external_ref),
         );
 
@@ -762,14 +763,6 @@ impl BillPayments {
     ///
     /// # Returns
     /// Vec of all Bill structs
-    pub fn get_all_bills(env: Env) -> Vec<Bill> {
-    // -----------------------------------------------------------------------
-    // Backward-compat helpers
-    // -----------------------------------------------------------------------
-
-    /// Legacy helper: returns ALL unpaid bills for owner in one Vec.
-    /// Only safe for owners with a small number of bills. Prefer the
-    /// paginated `get_unpaid_bills` for production use.
     pub fn get_all_unpaid_bills_legacy(env: Env, owner: Address) -> Vec<Bill> {
         let bills: Map<u32, Bill> = env
             .storage()
@@ -992,6 +985,7 @@ impl BillPayments {
             schedule_id: None,
             tags: archived_bill.tags.clone(),
             currency: archived_bill.currency.clone(),
+            external_ref: None,
         };
 
         bills.set(bill_id, restored_bill);
@@ -1117,6 +1111,7 @@ impl BillPayments {
                     schedule_id: bill.schedule_id,
                     tags: bill.tags.clone(),
                     currency: bill.currency.clone(),
+                    external_ref: bill.external_ref.clone(),
                 };
                 bills.set(next_id, next_bill);
             } else {
@@ -1207,7 +1202,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -1241,7 +1236,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
+        let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -1356,7 +1351,9 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.checked_add(delta).expect("overflow");
+        let next = current
+            .checked_add(delta)
+            .unwrap_or_else(|| panic!("overflow"));
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
@@ -1371,6 +1368,7 @@ impl BillPayments {
 mod test {
     use super::*;
     use proptest::prelude::*;
+    use remitwise_common::MAX_PAGE_LIMIT;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
         Env, String,
@@ -1397,6 +1395,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
@@ -1631,6 +1630,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
             client.create_bill(
@@ -1640,6 +1640,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -1713,6 +1714,7 @@ mod test {
                 &due_date, // 20000
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -1829,6 +1831,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &1,    // frequency_days = 1
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1863,6 +1866,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1900,6 +1904,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &365,  // frequency_days = 365
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1941,6 +1946,7 @@ mod test {
             &base_due_date,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -1972,6 +1978,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2021,6 +2028,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2067,6 +2075,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2105,6 +2114,7 @@ mod test {
             &1_000_000,
             &true,
             &frequency,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2141,6 +2151,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2176,6 +2187,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2216,6 +2228,7 @@ mod test {
             &base_due,
             &true,
             &freq,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2241,11 +2254,13 @@ mod test {
             n_future in 0usize..6usize,
         ) {
             let env = make_env();
-            env.ledger().set_timestamp(now);
             env.mock_all_auths();
             let cid = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &cid);
             let owner = Address::generate(&env);
+
+            // 1. Set timestamp to 0 so all creations succeed
+            env.ledger().set_timestamp(0);
 
             // Create bills with due_date < now (overdue)
             for i in 0..n_overdue {
@@ -2255,8 +2270,7 @@ mod test {
                     &100,
                     &(now - 1 - i as u64),
                     &false,
-                    &0,
-                    &String::from_str(&env, "XLM"),
+                    &0, &None, &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2268,8 +2282,22 @@ mod test {
                     &100,
                     &(now + 1 + i as u64),
                     &false,
-                    &0,
-                    &String::from_str(&env, "XLM"),
+                    &0, &None, &String::from_str(&env, "XLM"),
+                );
+            }
+
+            // 2. Warp to target 'now'
+            env.ledger().set_timestamp(now);
+
+            // Create bills with due_date >= now (not overdue)
+            for i in 0..n_future {
+                client.create_bill(
+                    &owner,
+                    &String::from_str(&env, "Future"),
+                    &100,
+                    &(now + 1 + i as u64),
+                    &false,
+                    &0, &None, &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2289,11 +2317,13 @@ mod test {
             n in 1usize..6usize,
         ) {
             let env = make_env();
-            env.ledger().set_timestamp(now);
             env.mock_all_auths();
             let cid = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &cid);
             let owner = Address::generate(&env);
+
+            // 1. Creation window
+            env.ledger().set_timestamp(0);
 
             for i in 0..n {
                 client.create_bill(
@@ -2302,10 +2332,12 @@ mod test {
                     &100,
                     &(now + i as u64), // due_date >= now — strict less-than is required to be overdue
                     &false,
-                    &0,
-                    &String::from_str(&env, "XLM"),
+                    &0, &None, &String::from_str(&env, "XLM"),
                 );
             }
+
+            // 2. Warp to now
+            env.ledger().set_timestamp(now);
 
             let page = client.get_overdue_bills(&0, &50);
             prop_assert_eq!(
@@ -2328,11 +2360,13 @@ mod test {
         ) {
             let env = make_env();
             let pay_time = base_due + pay_offset;
-            env.ledger().set_timestamp(pay_time);
             env.mock_all_auths();
             let cid = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &cid);
             let owner = Address::generate(&env);
+
+            // 1. Environment during creation (must be <= base_due)
+            env.ledger().set_timestamp(base_due);
 
             let bill_id = client.create_bill(
                 &owner,
@@ -2340,9 +2374,11 @@ mod test {
                 &200,
                 &base_due,
                 &true,
-                &freq_days,
-                &String::from_str(&env, "XLM"),
+                &freq_days, &None, &String::from_str(&env, "XLM"),
             );
+
+            // 2. Environment at payment
+            env.ledger().set_timestamp(pay_time);
 
             client.pay_bill(&owner, &bill_id);
 
@@ -2385,11 +2421,27 @@ mod test {
 
         // 3. Execution: Attempt to create bills with invalid dates
         // Added '&currency' as the final argument to both calls
-        let result_past =
-            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &currency);
+        let result_past = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &past_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
-        let result_zero =
-            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &currency);
+        let result_zero = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &zero_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
         // 4. Assertions
         assert!(
@@ -2441,6 +2493,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2470,6 +2523,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2505,6 +2559,7 @@ mod test {
             &overdue_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2517,6 +2572,7 @@ mod test {
             &due_now_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2551,6 +2607,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 

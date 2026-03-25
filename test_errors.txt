@@ -1,0 +1,261 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\Cargo.toml
+   Compiling insurance v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance)
+error: mismatched closing delimiter: `}`
+  --> insurance\src\test.rs:49:25
+   |
+41 | fn test_create_policy_invalid_premium() {
+   |                                         - closing delimiter possibly meant for this
+...
+49 |     client.create_policy(
+   |                         ^ unclosed delimiter
+...
+57 | }
+   | ^ mismatched closing delimiter
+
+error: unexpected closing delimiter: `}`
+  --> insurance\src\test.rs:62:1
+   |
+41 | fn test_create_policy_invalid_premium() {
+   |                                         - this opening brace...
+...
+57 | }
+   | - ...matches this closing brace
+...
+62 | }
+   | ^ unexpected closing delimiter
+
+error: could not compile `insurance` (lib test) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:79:16
+    |
+ 79 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+ 79 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                  +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:129:16
+    |
+129 |         client.create_policy(&owner, &name, &coverage_type, &50i128, &5_000i128);
+    |                ^^^^^^^^^^^^^---------------------------------------------------- argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+129 |         client.create_policy(&owner, &name, &coverage_type, &50i128, &5_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\gas_bench.rs:50:16
+    |
+ 50 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                ^^^^^^^^^^^^^------------------------------------------------------
+    |                             |               |
+    |                             |               expected `&String`, found `&CoverageType`
+    |                             argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+    = note: expected reference `&soroban_sdk::String`
+               found reference `&CoverageType`
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+ 50 -         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+ 50 +         client.create_policy(&owner, &name, /* &soroban_sdk::String */, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:162:20
+    |
+162 |               client.create_policy(
+    |  ____________________^^^^^^^^^^^^^-
+163 | |                 user,
+164 | |                 &name,
+165 | |                 &coverage_type,
+166 | |                 &PREMIUM_PER_POLICY,
+167 | |                 &50_000i128,
+168 | |             );
+    | |_____________- argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+162 |             client.create_policy(
+...
+167 |                 &50_000i128,
+168 ~                 /* &std::option::Option<soroban_sdk::String> */,
+169 ~             );
+    |
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:221:16
+    |
+221 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+221 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                  +++++++++++++++++++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0061`.
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:252:12
+    |
+252 |     client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |            ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+252 |     client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                              +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error: could not compile `insurance` (test "gas_bench") due to 1 previous error
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:270:28
+    |
+270 |       let policy_id = client.create_policy(
+    |  ____________________________^^^^^^^^^^^^^-
+271 | |         &owner,
+272 | |         &String::from_str(&env, "PayTTL"),
+273 | |         &String::from_str(&env, "health"),
+274 | |         &200i128,
+275 | |         &20_000i128,
+276 | |     );
+    | |_____- argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+270 |     let policy_id = client.create_policy(
+...
+275 |         &20_000i128,
+276 ~         /* &std::option::Option<soroban_sdk::String> */,
+277 ~     );
+    |
+
+error[E0600]: cannot apply unary operator `!` to type `()`
+   --> insurance\tests\stress_tests.rs:292:5
+    |
+292 |     assert!(paid, "pay_premium must succeed");
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot apply unary operator `!`
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:321:25
+    |
+321 |         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                         ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+321 |         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                           +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:371:16
+    |
+371 |         client.create_policy(&owner, &name, &coverage_type, &80i128, &8_000i128);
+    |                ^^^^^^^^^^^^^---------------------------------------------------- argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+371 |         client.create_policy(&owner, &name, &coverage_type, &80i128, &8_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:421:16
+    |
+421 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+421 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                  +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:445:16
+    |
+445 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+445 |         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                  +++++++++++++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this method takes 6 arguments but 5 arguments were supplied
+   --> insurance\tests\stress_tests.rs:471:25
+    |
+471 |         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+    |                         ^^^^^^^^^^^^^------------------------------------------------------ argument #6 of type `&std::option::Option<soroban_sdk::String>` is missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\insurance\src\lib.rs:475:12
+    |
+475 |     pub fn create_policy(
+    |            ^^^^^^^^^^^^^
+help: provide the argument
+    |
+471 |         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, /* &std::option::Option<soroban_sdk::String> */);
+    |                                                                                           +++++++++++++++++++++++++++++++++++++++++++++++++
+
+Some errors have detailed explanations: E0061, E0600.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `insurance` (test "stress_tests") due to 12 previous errors

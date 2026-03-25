@@ -1,0 +1,807 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"THE_REAL_ULTIMATE_F ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+   Compiling 
+remitwise-common v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remitwise-common
+)
+   Compiling testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+   Compiling 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+   Compiling 
+orchestrator v0.1.0 (C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\orchestrator)
+   Compiling 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:35:9
+   |
+35 |     let amounts = c
+lient.calculate_split(&l
+arge_amount);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:59:9
+   |
+59 |     let amounts = c
+lient.calculate_split(&m
+ax_safe);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant `INSTA
+NCE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:11:7
+   |
+11 | const INSTANCE_LIFE
+TIME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant `ARCHI
+VE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:15:7
+   |
+15 | const ARCHIVE_LIFET
+IME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^
+
+warning: 
+`remittance_split` 
+(test "stress_test_large
+_amounts") generated 2 
+warnings (run `cargo 
+fix --test "stress_test_
+large_amounts" -p 
+remittance_split` to 
+apply 2 suggestions)
+warning: unused import: 
+`remitwise_common::Cover
+ageType`
+ --> insurance\tests\gas
+_bench.rs:2:5
+  |
+2 | use remitwise_common
+::CoverageType;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`PolicyPage`
+   --> reporting\src\tes
+ts.rs:161:50
+    |
+161 |     use crate::{In
+surancePolicy, 
+InsuranceTrait, 
+PolicyPage};
+    |                   
+                        
+       ^^^^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`LedgerInfo`
+  --> insurance\src\test
+.rs:12:50
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                        
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unuse
+d_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+  --> insurance\src\test
+.rs:15:5
+   |
+15 | use 
+proptest::prelude::*;
+   |     
+^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`Ledger`
+  --> insurance\src\test
+.rs:12:42
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                      
+^^^^^^
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:450:9
+    |
+450 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:886:9
+    |
+886 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:907:9
+    |
+907 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:939:9
+    |
+939 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: `insurance` 
+(test "gas_bench") 
+generated 1 warning 
+(run `cargo fix --test 
+"gas_bench" -p 
+insurance` to apply 1 
+suggestion)
+warning: `reporting` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p reporting 
+--tests` to apply 1 
+suggestion)
+warning: `insurance` 
+(lib test) generated 7 
+warnings (run `cargo 
+fix --lib -p insurance 
+--tests` to apply 6 
+suggestions)
+   Compiling 
+integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+warning: 
+`family_wallet` (lib) 
+generated 2 warnings
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`remitwise_common::Categ
+ory`
+ --> examples\reporting_
+example.rs:3:5
+  |
+3 | use remitwise_common
+::Category;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `user`
+  --> examples\reporting
+_example.rs:20:9
+   |
+20 |     let user = 
+Address::generate(&env);
+   |         ^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_user`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`family_wallet` (lib 
+test) generated 2 
+warnings (2 duplicates)
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+warning: `scenarios` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios 
+--tests` to apply 1 
+suggestion)
+warning: 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+generated 2 warnings 
+(run `cargo fix 
+--example 
+"reporting_example" -p 
+remitwise-contracts` to 
+apply 2 suggestions)
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+3m 06s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\bill_payments-96f6
+40df76a42137.exe)
+
+running 35 tests
+test test::test_create_bill_invalid_due_date ... ok
+test test::test_get_unpaid_bills_empty ... ok
+test test::test_get_overdue_bills_not_overdue ... ok
+test test::test_get_all_bills_for_owner_includes_paid ... ok
+test test::test_get_overdue_bills_pagination ... ok
+test test::test_get_unpaid_bills_excludes_other_owner ... ok
+test test::test_get_unpaid_bills_excludes_paid ... ok
+test test::test_get_archived_bills_pagination ... ok
+test test::test_get_unpaid_bills_multiple_pages ... ok
+test test::test_get_unpaid_bills_owner_isolation_after_one_pays ... ok
+test test::test_get_unpaid_bills_owner_isolation_one_owner_no_bills ... ok
+test test::test_get_unpaid_bills_owner_isolation_all_paid_other_owner_unpaid ... ok
+test test::test_get_unpaid_bills_owner_isolation_bidirectional ... ok
+test test::test_recurring_date_math_amount_preserved_across_cycles ... ok
+test test::test_limit_zero_uses_default ... ok
+test test::test_get_unpaid_bills_single_page ... ok
+test test::test_get_unpaid_bills_owner_isolation_pagination_does_not_leak ... ok
+test test::test_recurring_date_math_frequency_1_day ... ok
+test test::test_recurring_date_math_early_payment_does_not_affect_schedule ... ok
+test test::test_recurring_date_math_frequency_30_days ... ok
+test test::test_recurring_date_math_exact_calculation_verification ... ok
+test test::test_recurring_date_math_multiple_pay_cycles_3rd_bill ... ok
+test test::test_recurring_date_math_frequency_365_days ... ok
+test test::test_recurring_date_math_owner_preserved_across_cycles ... ok
+test test::test_time_drift_bill_not_overdue_at_exact_due_date ... ok
+test test::test_recurring_date_math_multiple_pay_cycles_2nd_bill ... ok
+test test::test_time_drift_bill_overdue_one_second_after_due_date ... ok
+test test::test_recurring_date_math_paid_at_does_not_affect_next_due ... ok
+test test::test_time_drift_overdue_boundary_mixed_bills ... ok
+test test::test_time_drift_overdue_full_day_boundary ... ok
+test test::test_recurring_date_math_preserves_frequency_across_cycles ... ok
+test test::test_limit_clamped_to_max ... ok
+test test::prop_future_bills_not_in_overdue_set has been running for over 60 seconds
+test test::prop_overdue_bills_all_have_due_before_now has been running for over 60 seconds
+test test::prop_recurring_next_bill_due_date_follows_original has been running for over 60 seconds
+test test::prop_recurring_next_bill_due_date_follows_original ... ok
+test test::prop_future_bills_not_in_overdue_set ... ok
+test test::prop_overdue_bills_all_have_due_before_now ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 173.34s
+
+     Running 
+tests\gas_bench.rs (targ
+et\debug\deps\gas_bench-
+b37975a698c76acb.exe)
+
+running 1 test
+test bench_get_total_unpaid_worst_case ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.67s
+
+     Running tests\stres
+s_test_large_amounts.rs 
+(target\debug\deps\stres
+s_test_large_amounts-fba
+34432d2581945.exe)
+
+running 10 tests
+test test_edge_case_i128_max_minus_one ... ok
+test test_create_bill_near_max_i128 ... ok
+test test_get_total_unpaid_with_two_large_bills ... ok
+test test_archive_large_amount_bill ... ok
+test test_multiple_large_bills_different_owners ... ok
+test test_pay_bill_with_large_amount ... ok
+test test_recurring_bill_with_large_amount ... ok
+test test_batch_pay_large_bills ... ok
+test test_pagination_with_large_amounts ... ok
+test test_get_total_unpaid_overflow_panics - should panic ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.48s
+
+     Running 
+tests\stress_tests.rs (t
+arget\debug\deps\stress_
+tests-5144746700a37c08.e
+xe)
+
+running 11 tests
+test stress_archive_across_5_users ... ok
+test stress_archive_100_paid_bills ... ok
+test stress_ttl_re_bumped_after_ledger_advancement ... ok
+test stress_ttl_re_bumped_by_pay_bill_after_ledger_advancement ... ok
+test bench_get_unpaid_bills_first_page_of_200 ... ok
+test bench_get_total_unpaid_200_bills ... ok
+test bench_archive_paid_bills_100 ... ok
+test stress_200_bills_single_user ... ok
+test bench_get_unpaid_bills_last_page_of_200 ... ok
+test stress_bills_across_10_users ... ok
+test stress_instance_ttl_valid_after_200_bills ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.32s
+
+     Running tests\test_
+notifications.rs (target
+\debug\deps\test_notific
+ations-95638038af66ba20.
+exe)
+
+running 1 test
+test test_notification_flow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\data_migration-a98
+699a9382dccef.exe)
+
+running 7 tests
+test tests::test_check_version_compatibility_succeeds ... ok
+test tests::test_checksum_mismatch_import_fails ... ok
+test tests::test_migration_event_serialization_succeeds ... ok
+test tests::test_export_import_binary_succeeds ... ok
+test tests::test_csv_export_import_goals_succeeds ... ok
+test tests::test_export_import_json_succeeds ... ok
+test tests::test_snapshot_checksum_roundtrip_succeeds ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\family_wallet-10dd
+c2a7732cea2a.exe)
+
+running 27 tests
+test test::test_archive_old_transactions ... ok
+test test::test_archive_ttl_extended_on_archive_transactions ... ok
+test test::test_configure_multisig ... ok
+test test::test_add_and_remove_family_member ... ok
+test test::test_cleanup_expired_pending ... ok
+test test::test_data_persists_across_repeated_operations ... ok
+test test::test_different_thresholds_for_different_transaction_types ... ok
+test test::test_add_member_unauthorized - should panic ... ok
+test test::test_archive_unauthorized - should panic ... ok
+test test::test_cleanup_unauthorized - should panic ... ok
+test test::test_configure_multisig_unauthorized - should panic ... ok
+test test::test_instance_ttl_extended_on_init ... ok
+test test::test_emergency_transfer_exceeds_limit - should panic ... ok
+test test::test_emergency_transfer_cooldown_enforced - should panic ... ok
+test test::test_duplicate_signature_prevention - should panic ... ok
+test test::test_initialize_wallet_succeeds ... ok
+test test::test_emergency_mode_direct_transfer_within_limits ... ok
+test test::test_instance_ttl_refreshed_on_add_member ... ok
+test test::test_emergency_transfer_min_balance_enforced - should panic ... ok
+test test::test_storage_stats ... ok
+test test::test_propose_role_change ... ok
+test test::test_propose_split_config_change ... ok
+test test::test_multisig_threshold_validation ... ok
+test test::test_withdraw_below_threshold_no_multisig ... ok
+test test::test_propose_emergency_transfer ... ok
+test test::test_withdraw_above_threshold_requires_multisig ... ok
+test test::test_unauthorized_signer - should panic ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.38s
+
+     Running 
+tests\gas_bench.rs (targ
+et\debug\deps\gas_bench-
+e7e0e12c96a1621f.exe)
+
+running 1 test
+test bench_configure_multisig_worst_case ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests 
+src\lib.rs (target\debug
+\deps\insurance-d3360b39
+b39a7011.exe)
+
+running 45 tests
+test test::test_create_policy_negative_premium_panics ... ok
+test test::test_create_policy_invalid_coverage ... ok
+test test::test_create_policy_invalid_premium ... ok
+test test::test_create_policy_negative_coverage_panics ... ok
+test test::test_create_policy_emits_event ... ok
+test test::test_create_policy_success ... ok
+test test::test_create_policy_succeeds ... ok
+test test::test_cancel_premium_schedule ... ok
+test test::test_deactivate_policy ... ok
+test test::test_create_premium_schedule_succeeds ... ok
+test test::test_deactivate_policy_emits_event ... FAILED
+test test::test_execute_recurring_premium_schedule ... ok
+test test::test_execute_due_premium_schedules ... ok
+test test::test_execute_missed_premium_schedules ... ok
+test test::test_get_active_policies ... ok
+test test::test_get_policy_nonexistent ... ok
+test test::test_get_active_policies_excludes_deactivated ... ok
+test test::test_get_active_policies_filters_by_owner_and_active ... ok
+test test::test_get_all_policies_for_owner_pagination ... ok
+test test::test_get_total_monthly_premium ... ok
+test test::test_get_premium_schedules ... ok
+test test::test_get_total_monthly_premium_deactivated_policy_excluded ... ok
+test test::test_get_total_monthly_premium_comprehensive ... ok
+test test::test_get_total_monthly_premium_zero_policies ... ok
+test test::test_get_total_monthly_premium_different_owner_isolation ... ok
+test test::test_get_total_monthly_premium_one_policy ... ok
+test test::test_get_total_monthly_premium_multiple_active_policies ... ok
+test test::test_multiple_premium_payments ... ok
+test test::test_modify_premium_schedule ... ok
+test test::test_pay_premium ... ok
+test test::test_pay_premium_emits_event ... FAILED
+test test::test_multiple_policies_same_owner ... ok
+test test::test_pay_premium_success ... ok
+test test::test_pay_premium_non_owner_auth_failure - should panic ... ok
+test test::test_pay_premium_unauthorized_panics ... ok
+test test::test_create_policy_non_owner_auth_failure - should panic ... ok
+test test::test_create_policy_requires_auth ... ok
+test test::test_deactivate_policy_non_owner_auth_failure - should panic ... ok
+test test::test_pay_premium_unauthorized - should panic ... FAILED
+test test::test_pay_premium_inactive_policy_panics ... ok
+test test::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+test test::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test::test_deactivate_policy_owner_only ... ok
+test test::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+test test::test_time_drift_no_double_execution_after_schedule_advances ... ok
+
+failures:
+
+---- test::test_deactivate_policy_emits_event stdout ----
+
+thread 'test::test_deactivate_policy_emits_event' (23380) panicked at insurance\src\test.rs:872:5:
+assertion `left == right` failed
+  left: Vec(Ok(Symbol(insure)), Ok(Vec(obj#193)))
+ right: Vec(Ok(Symbol(insuranc)), Ok(Vec(obj#207)))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test::test_deactivate_policy_emits_event" to "test_snapshots\\test\\test_deactivate_policy_emits_event.1.json".
+
+---- test::test_pay_premium_emits_event stdout ----
+
+thread 'test::test_pay_premium_emits_event' (16940) panicked at insurance\src\test.rs:834:5:
+assertion `left == right` failed
+  left: Vec(Ok(Symbol(paid)))
+ right: Vec(Ok(Symbol(insure)), Ok(Vec(obj#183)))
+Writing test snapshot file for test "test::test_pay_premium_emits_event" to "test_snapshots\\test\\test_pay_premium_emits_event.1.json".
+
+---- test::test_pay_premium_unauthorized stdout ----
+
+thread 'test::test_pay_premium_unauthorized' (21704) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Contract, #2)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #2)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #2)], data:["contract call failed", pay_premium, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #2)], data:"escalating Ok(ScErrorType::Contract) frame-exit to Err"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, pay_premium], data:Error(Contract, #2)
+   4: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), pay_premium], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1]
+   5: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_policy], data:1
+   6: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[insure, [PolicyCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{coverage_amount: 10000, coverage_type: "Type", monthly_premium: 100, name: "Policy", policy_id: 1, timestamp: 0}
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_policy], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Policy", "Type", 100, 10000, Void]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<tuple$<> >
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: insurance::InsuranceClient::pay_premium
+             at src\lib.rs:144
+  19: insurance::test::test_pay_premium_unauthorized
+             at src\test.rs:142
+  20: insurance::test::test_pay_premium_unauthorized::closure$0
+             at src\test.rs:123
+  21: core::ops::function::FnOnce::call_once<insurance::test::test_pay_premium_unauthorized::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_pay_premium_unauthorized" to "test_snapshots\\test\\test_pay_premium_unauthorized.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(Contract, #2)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(Contract, #2)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(Contract, #2)], data:[\"contract call failed\", pay_premium, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #2)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, pay_premium], data:Error(Contract, #2)\n   4: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), pay_premium], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1]\n   5: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_policy], data:1\n   6: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[insure, [PolicyCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]\n   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{coverage_amount: 10000, coverage_type: \"Type\", monthly_premium: 100, name: \"Policy\", policy_id: 1, timestamp: 0}\n   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_policy], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, \"Policy\", \"Type\", 100, 10000, Void]\n\nBacktrace (newest first):\n   0: backtrace::backtrace::win64::trace\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\backtrace-0.3.76\\src\\backtrace\\win64.rs:85\n      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\backtrace-0.3.76\\src\\backtrace\\mod.rs:66\n   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\backtrace-0.3.76\\src\\backtrace\\mod.rs:53\n   2: backtrace::capture::Backtrace::create\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\backtrace-0.3.76\\src\\capture.rs:294\n   3: backtrace::capture::Backtrace::new_unresolved\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\backtrace-0.3.76\\src\\capture.rs:289\n   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host\\error.rs:293\n   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\budget.rs:972\n   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host.rs:615\n   7: soroban_env_host::host::Host::maybe_get_debug_info\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host\\error.rs:290\n   8: soroban_env_host::host::error::impl$10::error::closure$0\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host\\error.rs:274\n   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\budget.rs:972\n  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host.rs:615\n  11: soroban_env_host::host::Host::error\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host\\error.rs:261\n  12: soroban_env_host::host::impl$4::escalate_error_to_panic\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-env-host-21.2.1\\src\\host.rs:767\n  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-sdk-21.7.7\\src\\env.rs:52\n  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl\n             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\\library\\core\\src\\result.rs:968\n  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-sdk-21.7.7\\src\\env.rs:52\n  16: soroban_sdk::env::impl$20::call\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-sdk-21.7.7\\src\\env.rs:1667\n  17: soroban_sdk::env::Env::invoke_contract<tuple$<> >\n             at C:\\Users\\ADMIN\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\soroban-sdk-21.7.7\\src\\env.rs:379\n  18: insurance::InsuranceClient::pay_premium\n             at src\\lib.rs:144\n  19: insurance::test::test_pay_premium_unauthorized\n             at src\\test.rs:142\n  20: insurance::test::test_pay_premium_unauthorized::closure$0\n             at src\\test.rs:123\n  21: core::ops::function::FnOnce::call_once<insurance::test::test_pay_premium_unauthorized::closure_env$0,tuple$<> >\n             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\\library\\core\\src\\ops\\function.rs:250\n\n"
+ expected substring: "Only the policy owner can pay premiums"
+
+failures:
+    test::test_deactivate_policy_emits_event
+    test::test_pay_premium_emits_event
+    test::test_pay_premium_unauthorized
+
+test result: FAILED. 42 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.62s
+
+error: test failed, to 
+rerun pass `-p 
+insurance --lib`

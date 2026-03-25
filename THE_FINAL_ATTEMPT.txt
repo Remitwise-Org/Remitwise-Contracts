@@ -1,0 +1,475 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"THE_FINAL_ATTEMPT.t ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+   Compiling scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+   Compiling 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+error: unexpected 
+closing delimiter: `}`
+   --> insurance\tests\s
+tress_tests.rs:115:1
+    |
+ 78 |     for _ in 
+0..200 {
+    |                   
+  - the nearest open 
+delimiter
+ 79 |         client.cre
+ate_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+ 80 |     );
+    |     - missing 
+open `(` for this 
+delimiter
+...
+115 | }
+    | ^ unexpected 
+closing delimiter
+
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\tests\ga
+s_bench.rs:62:1
+   |
+49 |     for _ in 
+0..100 {
+   |                    
+ - the nearest open 
+delimiter
+50 |         client.crea
+te_policy(&owner, 
+&name, &coverage_type, 
+&100i128, &10_000i128, 
+&None)
+51 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+62 | }
+   | ^ unexpected 
+closing delimiter
+
+error: unexpected 
+closing delimiter: `}`
+  --> insurance\src\test
+.rs:38:1
+   |
+16 | fn test_create_poli
+cy_succeeds() {
+   |                    
+              - the 
+nearest open delimiter
+...
+29 |     );
+   |     - missing open 
+`(` for this delimiter
+...
+38 | }
+   | ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(test "stress_tests") 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile `insurance` 
+(test "gas_bench") due 
+to 1 previous error
+error: could not 
+compile `insurance` 
+(lib test) due to 1 
+previous error
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:262:26
+    |
+262 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+269 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+262 |     let bill_id = 
+client.create_bill(
+...
+268 |         &0,
+269 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+270 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0432]: 
+unresolved import `repor
+ting::ReportingClient`
+ --> examples\reporting_
+example.rs:2:17
+  |
+2 | use reporting::{Repo
+rtingClient, Category};
+  |                 
+^^^^^^^^^^^^^^^ no 
+`ReportingClient` in 
+the root
+
+error[E0425]: cannot 
+find value `Reporting` 
+in crate `reporting`
+  --> examples\reporting
+_example.rs:14:62
+   |
+14 |     let 
+contract_id = env.regist
+er_contract(None, 
+reporting::Reporting);
+   |                    
+                        
+                  
+^^^^^^^^^ not found in 
+`reporting`
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:297:30
+    |
+297 |         let 
+bill_id = 
+client.create_bill(
+    |                   
+           ^^^^^^^^^^^
+...
+304 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+297 |         let 
+bill_id = 
+client.create_bill(
+...
+303 |             &0,
+304 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+305 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0603]: enum 
+`Category` is private
+ --> examples\reporting_
+example.rs:2:34
+  |
+2 | use reporting::{Repo
+rtingClient, Category};
+  |                     
+             ^^^^^^^^ 
+private enum
+  |
+note: the enum 
+`Category` is defined 
+here
+ --> C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwis
+e-Contracts\reporting\sr
+c\lib.rs:7:5
+  |
+7 | use remitwise_common
+::Category;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^
+help: import `Category` 
+directly
+  |
+2 | use reporting::{Repo
+rtingClient, remitwise_c
+ommon::Category};
+  |                     
+             
+++++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:391:16
+    |
+391 |         
+client.create_bill(
+    |                
+^^^^^^^^^^^
+...
+398 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+391 |         
+client.create_bill(
+...
+397 |             &0,
+398 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+399 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+Some errors have 
+detailed explanations: 
+E0425, E0432, E0603.
+For more information 
+about an error, try 
+`rustc --explain E0425`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+due to 3 previous errors
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+error: could not 
+compile `bill_payments` 
+(test "stress_test_large
+_amounts") due to 3 
+previous errors
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+warning: `scenarios` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios 
+--tests` to apply 1 
+suggestion)

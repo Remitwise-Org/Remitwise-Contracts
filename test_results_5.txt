@@ -1,0 +1,105 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check -p 
+integration_tests 
+--tests 
+--message-format=short 
+2>&1  ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+    Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+    Checking 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+insurance\src\lib.rs:586
+:31: error[E0425]: 
+cannot find value 
+`MAX_BATCH_SIZE` in 
+this scope: not found 
+in this scope
+bill_payments\src\lib.rs
+:426:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+bill_payments\src\lib.rs
+:503:13: warning: 
+unused variable: 
+`bill_external_ref`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_bill_external_ref`
+warning: 
+`bill_payments` (lib) 
+generated 2 warnings 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 2 suggestions)
+remittance_split\src\lib
+.rs:15:7: warning: 
+constant 
+`SPLIT_INITIALIZED` is 
+never used
+error: could not 
+compile `insurance` 
+(lib) due to 1 previous 
+error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+warning: 
+`remittance_split` 
+(lib) generated 1 
+warning
+savings_goals\src\lib.rs
+:14:7: warning: 
+constant `GOAL_CREATED` 
+is never used
+warning: 
+`savings_goals` (lib) 
+generated 1 warning

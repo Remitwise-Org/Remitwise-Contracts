@@ -1,0 +1,115 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+family_wallet --lib 
+2>&1 | Out-File 
+-FilePath "FAMILY_W ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+   Compiling testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+warning: constant `INSTA
+NCE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:11:7
+   |
+11 | const INSTANCE_LIFE
+TIME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant `ARCHI
+VE_LIFETIME_THRESHOLD` 
+is never used
+  --> family_wallet\src\
+lib.rs:15:7
+   |
+15 | const ARCHIVE_LIFET
+IME_THRESHOLD: u32 = 
+17280;
+   |       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^
+
+warning: 
+`family_wallet` (lib 
+test) generated 2 
+warnings
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+9.07s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\family_wallet-28f9
+be77aa0c9c0a.exe)
+
+running 27 tests
+test test::test_archive_ttl_extended_on_archive_transactions ... ok
+test test::test_archive_old_transactions ... ok
+test test::test_configure_multisig ... ok
+test test::test_add_and_remove_family_member ... ok
+test test::test_data_persists_across_repeated_operations ... ok
+test test::test_different_thresholds_for_different_transaction_types ... ok
+test test::test_cleanup_unauthorized - should panic ... ok
+test test::test_add_member_unauthorized - should panic ... ok
+test test::test_configure_multisig_unauthorized - should panic ... ok
+test test::test_archive_unauthorized - should panic ... ok
+test test::test_emergency_mode_direct_transfer_within_limits ... ok
+test test::test_cleanup_expired_pending ... ok
+test test::test_duplicate_signature_prevention - should panic ... ok
+test test::test_instance_ttl_extended_on_init ... ok
+test test::test_emergency_transfer_cooldown_enforced - should panic ... ok
+test test::test_emergency_transfer_exceeds_limit - should panic ... ok
+test test::test_emergency_transfer_min_balance_enforced - should panic ... ok
+test test::test_initialize_wallet_succeeds ... ok
+test test::test_instance_ttl_refreshed_on_add_member ... ok
+test test::test_storage_stats ... ok
+test test::test_propose_role_change ... ok
+test test::test_propose_split_config_change ... ok
+test test::test_multisig_threshold_validation ... ok
+test test::test_propose_emergency_transfer ... ok
+test test::test_withdraw_below_threshold_no_multisig ... ok
+test test::test_unauthorized_signer - should panic ... ok
+test test::test_withdraw_above_threshold_requires_multisig ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.80s
+

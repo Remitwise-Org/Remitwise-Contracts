@@ -16,6 +16,7 @@ members = [
     "orchestrator",
     "cli",
     "scenarios",
+    "remitwise-common",
 
     "testutils",
 
@@ -30,6 +31,7 @@ default-members = [
     "data_migration",
     "reporting",
     "orchestrator",
+    "remitwise-common",
 
 ]
 resolver = "2"
@@ -43,6 +45,7 @@ insurance = { path = "./insurance" }
 family_wallet = { path = "./family_wallet" }
 reporting = { path = "./reporting" }
 orchestrator = { path = "./orchestrator" }
+"remitwise-common" = { path = "./remitwise-common" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }

@@ -1,0 +1,286 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo clippy 
+--workspace 
+--all-targets 
+--message-format=short 
+-- -D w ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+    Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+    Checking 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+    Checking 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+    Checking reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+remittance_split\tests\s
+tress_test_large_amounts
+.rs:35:9: error: unused 
+variable: `amounts`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+remittance_split\tests\s
+tress_test_large_amounts
+.rs:59:9: error: unused 
+variable: `amounts`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+savings_goals\tests\stre
+ss_tests.rs:110:13: 
+error: manual `RangeIncl
+usive::contains` 
+implementation: help: 
+use: `(4..=5).contains(&
+pages)`
+error: could not 
+compile `savings_goals` 
+(test "stress_tests") 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile 
+`remittance_split` 
+(test "stress_test_large
+_amounts") due to 2 
+previous errors
+insurance\src\test.rs:1:
+8: error: duplicated 
+attribute
+insurance\src\test.rs:12
+:50: error: unused 
+import: `LedgerInfo`
+insurance\src\test.rs:15
+:5: error: unused 
+import: 
+`proptest::prelude::*`
+savings_goals\src\test.r
+s:1:8: error: 
+duplicated attribute
+bill_payments\src\lib.rs
+:1762:32: error[E0425]: 
+cannot find value 
+`MAX_PAGE_LIMIT` in 
+this scope: not found 
+in this scope
+reporting\src\tests.rs:1
+61:50: error: unused 
+import: `PolicyPage`
+insurance\src\test.rs:12
+:42: error: unused 
+import: `Ledger`
+insurance\src\test.rs:44
+8:9: error: unused 
+variable: `policy2`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+insurance\src\test.rs:88
+4:9: error: unused 
+variable: `other`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+insurance\src\test.rs:90
+5:9: error: unused 
+variable: `other`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+insurance\src\test.rs:93
+7:9: error: unused 
+variable: `other`: 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+error: could not 
+compile `bill_payments` 
+(lib test) due to 1 
+previous error
+insurance\src\lib.rs:365
+:16: error: length 
+comparison to zero: 
+help: using `is_empty` 
+is clearer and more 
+explicit: 
+`tag.is_empty()`
+insurance\src\lib.rs:387
+:26: error: used 
+`expect()` on an 
+`Option` value
+insurance\src\lib.rs:424
+:26: error: used 
+`expect()` on an 
+`Option` value
+insurance\src\lib.rs:644
+:30: error: used 
+`unwrap()` on an 
+`Option` value
+insurance\src\lib.rs:850
+:26: error: used 
+`expect()` on an 
+`Option` value
+remittance_split\src\lib
+.rs:1224:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1248:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1263:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1288:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1306:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1328:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1355:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1356:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1372:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1384:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1410:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1435:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1463:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1464:9: error: doc 
+list item without 
+indentation
+remittance_split\src\lib
+.rs:1493:9: error: doc 
+list item without 
+indentation
+error: could not 
+compile `insurance` 
+(lib) due to 5 previous 
+errors
+error: could not 
+compile 
+`remittance_split` (lib 
+test) due to 15 
+previous errors
+error: could not 
+compile `insurance` 
+(lib test) due to 9 
+previous errors
+savings_goals\src\test.r
+s:1760:33: error: the 
+borrowed expression 
+implements the required 
+traits: help: change 
+this to: `goal_a1`
+savings_goals\src\test.r
+s:1761:33: error: the 
+borrowed expression 
+implements the required 
+traits: help: change 
+this to: `goal_a2`
+savings_goals\src\test.r
+s:1762:33: error: the 
+borrowed expression 
+implements the required 
+traits: help: change 
+this to: `goal_a3`
+savings_goals\src\test.r
+s:1782:33: error: the 
+borrowed expression 
+implements the required 
+traits: help: change 
+this to: `goal_b1`
+savings_goals\src\test.r
+s:1783:33: error: the 
+borrowed expression 
+implements the required 
+traits: help: change 
+this to: `goal_b2`
+error: could not 
+compile `savings_goals` 
+(lib test) due to 6 
+previous errors
+error: could not 
+compile `reporting` 
+(lib test) due to 1 
+previous error

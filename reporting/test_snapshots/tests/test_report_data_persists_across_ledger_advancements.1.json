@@ -2530,14 +2530,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "AddressesConfigured"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "addr_ok"
               }
             ],
             "data": {
@@ -2701,6 +2703,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -2769,6 +2779,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -2911,6 +2929,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -2968,6 +2992,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -3016,7 +3048,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }
@@ -3087,6 +3119,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -3133,6 +3171,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -3381,6 +3427,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -3449,6 +3503,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -3591,6 +3653,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -3648,6 +3716,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       },
@@ -3687,6 +3763,12 @@
                             "val": {
                               "u64": 1735689600
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -3749,6 +3831,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -3868,6 +3958,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -3914,6 +4010,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -3996,14 +4100,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportGenerated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "rep_gen"
               }
             ],
             "data": {
@@ -5028,14 +5134,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportStored"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "rep_str"
               }
             ],
             "data": {
@@ -5208,6 +5316,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -5276,6 +5392,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -5351,43 +5475,7 @@
     {
       "event": {
         "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000007"
-              },
-              {
-                "symbol": "get_active_policies"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "u32": 0
-                },
-                {
-                  "u32": 1
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000007",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000006",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -5450,14 +5538,13 @@
                             },
                             "val": {
                               "u64": 1735689600
-                              "symbol": "coverage_amount"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 50000
-                              }
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -5465,10 +5552,6 @@
                             },
                             "val": {
                               "u32": 30
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "string": "health"
                             }
                           },
                           {
@@ -5485,13 +5568,6 @@
                             },
                             "val": {
                               "string": "Electricity"
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 200
-                              }
                             }
                           },
                           {
@@ -5500,10 +5576,6 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Health Insurance"
                             }
                           },
                           {
@@ -5512,10 +5584,6 @@
                             },
                             "val": {
                               "bool": false
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 1735689600
                             }
                           },
                           {
@@ -5530,10 +5598,6 @@
                             },
                             "val": {
                               "bool": true
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
                           },
                           {
@@ -5541,6 +5605,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -5589,7 +5661,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }
@@ -5660,6 +5732,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -5699,6 +5777,20 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           }
                         ]
@@ -5948,6 +6040,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "target_amount"
                       },
                       "val": {
@@ -6016,6 +6116,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -6158,6 +6266,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "frequency_days"
                             },
                             "val": {
@@ -6215,6 +6329,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       },
@@ -6254,6 +6376,12 @@
                             "val": {
                               "u64": 1735689600
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
                           },
                           {
                             "key": {
@@ -6316,6 +6444,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -6435,6 +6571,12 @@
                           },
                           {
                             "key": {
+                              "symbol": "external_ref"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "id"
                             },
                             "val": {
@@ -6481,6 +6623,14 @@
                               "symbol": "schedule_id"
                             },
                             "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
                           }
                         ]
                       }
@@ -6563,14 +6713,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportGenerated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "rep_gen"
               }
             ],
             "data": {
@@ -7595,14 +7747,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportStored"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "rep_str"
               }
             ],
             "data": {

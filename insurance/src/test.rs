@@ -1,12 +1,14 @@
-#![cfg(test)]
+// #![cfg(test)] removed to avoid duplication with lib.rs mod test guard
 
 use super::*;
+fn set_time(env: &Env, timestamp: u64) {
+    use testutils::set_ledger_time;
+    set_ledger_time(env, 1u32, timestamp);
+}
+
 use crate::InsuranceError;
-use soroban_sdk::{
-    testutils::{Address as AddressTrait, Ledger, LedgerInfo},
-    Address, Env, String,
-};
-use proptest::prelude::*;
+use soroban_sdk::IntoVal;
+use soroban_sdk::{testutils::Address as AddressTrait, Address, Env, String};
 
 use testutils::{set_ledger_time, setup_test_env};
 
@@ -14,17 +16,18 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_create_policy_succeeds() {
-    setup_test_env!(env, Insurance, client, owner);
+    setup_test_env!(env, Insurance, client, owner, InsuranceClient);
 
     let name = String::from_str(&env, "Health Policy");
-    let coverage_type = CoverageType::Health;
+    let coverage_type = String::from_str(&env, "health");
 
     let policy_id = client.create_policy(
         &owner,
         &name,
         &coverage_type,
-        &100,   // monthly_premium
+        &100,
         &10000, // coverage_amount
+        &None,
     );
 
     assert_eq!(policy_id, 1);
@@ -37,7 +40,6 @@ fn test_create_policy_succeeds() {
 }
 
 #[test]
-#[should_panic(expected = "Monthly premium must be positive")]
 fn test_create_policy_invalid_premium() {
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -46,19 +48,15 @@ fn test_create_policy_invalid_premium() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
         &String::from_str(&env, "Type"),
         &0,
         &10000,
+        &None,
     );
-}
-
-#[test]
-#[should_panic(expected = "Coverage amount must be positive")]
-    assert_eq!(result, Err(Ok(InsuranceError::InvalidPremium)));
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
 }
 
 #[test]
@@ -70,15 +68,15 @@ fn test_create_policy_invalid_coverage() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
         &String::from_str(&env, "Type"),
         &100,
         &0,
+        &None,
     );
-    assert_eq!(result, Err(Ok(InsuranceError::InvalidCoverage)));
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
 }
 
 #[test]
@@ -96,6 +94,7 @@ fn test_pay_premium() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     // Initial next_payment_date is ~30 days from creation
@@ -116,7 +115,6 @@ fn test_pay_premium() {
 }
 
 #[test]
-#[should_panic(expected = "Only the policy owner can pay premiums")]
 fn test_pay_premium_unauthorized() {
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -132,10 +130,10 @@ fn test_pay_premium_unauthorized() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
-    // unauthorized payer
-    client.pay_premium(&other, &policy_id);
+    // unauthorized payer — use try_ to check for structured error
     let result = client.try_pay_premium(&other, &policy_id);
     assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
 }
@@ -155,6 +153,7 @@ fn test_deactivate_policy() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     let success = client.deactivate_policy(&owner, &policy_id);
@@ -180,6 +179,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     let p2 = client.create_policy(
         &owner,
@@ -187,6 +187,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -194,13 +195,14 @@ fn test_get_active_policies() {
         &String::from_str(&env, "T3"),
         &300,
         &3000,
+        &None,
     );
 
     // Deactivate P2
     client.deactivate_policy(&owner, &p2);
 
-    let active = client.get_active_policies(&owner);
-    assert_eq!(active.len(), 2);
+    let active = client.get_active_policies(&owner, &0, &10);
+    assert_eq!(active.items.len(), 2);
 
     // Check specific IDs if needed, but length 2 confirms one was filtered
 }
@@ -221,6 +223,7 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Type 1"),
         &100,
         &1000,
+        &None,
     );
     let policy_id_2 = client.create_policy(
         &owner,
@@ -228,6 +231,7 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Type 2"),
         &200,
         &2000,
+        &None,
     );
 
     // Deactivate policy 1
@@ -265,6 +269,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     let p2 = client.create_policy(
         &owner,
@@ -272,6 +277,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -279,6 +285,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "T3"),
         &300,
         &3000,
+        &None,
     );
 
     // Create 1 policy for other
@@ -288,6 +295,7 @@ fn test_get_all_policies_for_owner_pagination() {
         &String::from_str(&env, "Type"),
         &500,
         &5000,
+        &None,
     );
 
     // Deactivate P2
@@ -324,6 +332,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "T1"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -331,6 +340,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "T2"),
         &200,
         &2000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -364,9 +374,10 @@ fn test_get_total_monthly_premium_one_policy() {
     client.create_policy(
         &owner,
         &String::from_str(&env, "Single Policy"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &10000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -386,23 +397,26 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 1"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 2"),
-        &CoverageType::Life,
+        &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
     client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 3"),
-        &CoverageType::Auto,
+        &String::from_str(&env, "auto"),
         &300,
         &3000,
+        &None,
     );
 
     let total = client.get_total_monthly_premium(&owner);
@@ -422,16 +436,18 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
     let policy1 = client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 1"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
-    let policy2 = client.create_policy(
+    let _policy2 = client.create_policy(
         &owner,
         &String::from_str(&env, "Policy 2"),
-        &CoverageType::Life,
+        &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
 
     // Verify total includes both policies initially
@@ -460,16 +476,18 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
     client.create_policy(
         &owner_a,
         &String::from_str(&env, "Policy A1"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &100,
         &1000,
+        &None,
     );
     client.create_policy(
         &owner_a,
         &String::from_str(&env, "Policy A2"),
-        &CoverageType::Life,
+        &String::from_str(&env, "life"),
         &200,
         &2000,
+        &None,
     );
 
     // Create policies for owner_b
@@ -479,6 +497,7 @@ fn test_get_total_monthly_premium_different_owner_isolation() {
         &String::from_str(&env, "emergency"),
         &300,
         &3000,
+        &None,
     );
 
     // Verify owner_a's total only includes their policies
@@ -510,6 +529,7 @@ fn test_multiple_premium_payments() {
         &String::from_str(&env, "Life"),
         &100,
         &10000,
+        &None,
     );
 
     let p1 = client.get_policy(&policy_id).unwrap();
@@ -538,15 +558,16 @@ fn test_multiple_premium_payments() {
 
 #[test]
 fn test_create_premium_schedule_succeeds() {
-    setup_test_env!(env, Insurance, client, owner);
-    set_ledger_time(&env, 1000);
+    setup_test_env!(env, Insurance, client, owner, InsuranceClient);
+    set_ledger_time(&env, 1u32, 1000u64);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -573,9 +594,10 @@ fn test_modify_premium_schedule() {
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -599,9 +621,10 @@ fn test_cancel_premium_schedule() {
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -624,9 +647,10 @@ fn test_execute_due_premium_schedules() {
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &0);
@@ -657,6 +681,7 @@ fn test_execute_recurring_premium_schedule() {
         &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -682,9 +707,10 @@ fn test_execute_missed_premium_schedules() {
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
@@ -710,9 +736,10 @@ fn test_get_premium_schedules() {
     let policy_id1 = client.create_policy(
         &owner,
         &String::from_str(&env, "Health Insurance"),
-        &CoverageType::Health,
+        &String::from_str(&env, "health"),
         &500,
         &50000,
+        &None,
     );
 
     let policy_id2 = client.create_policy(
@@ -721,6 +748,7 @@ fn test_get_premium_schedules() {
         &String::from_str(&env, "life"),
         &300,
         &100000,
+        &None,
     );
 
     client.create_premium_schedule(&owner, &policy_id1, &3000, &2592000);
@@ -733,6 +761,7 @@ fn test_get_premium_schedules() {
 #[test]
 fn test_create_policy_emits_event() {
     use soroban_sdk::testutils::Events;
+    // IntoVal import handled globally or locally once
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
@@ -743,19 +772,21 @@ fn test_create_policy_emits_event() {
     env.mock_all_auths();
 
     let name = String::from_str(&env, "Health Policy");
-    let coverage_type = CoverageType::Health;
+    let coverage_type = String::from_str(&env, "health");
 
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env),
-        InsuranceEvent::PolicyCreated.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        1u32.into_val(&env), // EventCategory::State
+        1u32.into_val(&env), // EventPriority::Medium
+        symbol_short!("policy").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
@@ -768,6 +799,7 @@ fn test_create_policy_emits_event() {
 #[test]
 fn test_pay_premium_emits_event() {
     use soroban_sdk::testutils::Events;
+    // IntoVal import handled globally or locally once
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
@@ -779,20 +811,22 @@ fn test_pay_premium_emits_event() {
 
     let name = String::from_str(&env, "Health Policy");
     let coverage_type = String::from_str(&env, "Health");
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     env.mock_all_auths();
     client.pay_premium(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env),
-        InsuranceEvent::PremiumPaid.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        0u32.into_val(&env), // EventCategory::Transaction
+        2u32.into_val(&env), // EventPriority::High
+        symbol_short!("paid").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
@@ -805,6 +839,7 @@ fn test_pay_premium_emits_event() {
 #[test]
 fn test_deactivate_policy_emits_event() {
     use soroban_sdk::testutils::Events;
+    // IntoVal import handled globally or locally once
     use soroban_sdk::{symbol_short, vec, IntoVal};
 
     let env = Env::default();
@@ -816,20 +851,22 @@ fn test_deactivate_policy_emits_event() {
 
     let name = String::from_str(&env, "Health Policy");
     let coverage_type = String::from_str(&env, "Health");
-    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000);
+    let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     env.mock_all_auths();
     client.deactivate_policy(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insuranc").into_val(&env), // Note: contract says symbol_short!("insuranc")
-        InsuranceEvent::PolicyDeactivated.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        1u32.into_val(&env), // EventCategory::State
+        1u32.into_val(&env), // EventPriority::Medium
+        symbol_short!("deact").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
@@ -846,7 +883,7 @@ fn test_create_policy_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     // Do not mock auth for other, attempt to create policy for owner as other
     // If owner didn't authorize, it panics.
@@ -856,6 +893,7 @@ fn test_create_policy_non_owner_auth_failure() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 }
 
@@ -866,14 +904,21 @@ fn test_pay_premium_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     client.mock_auths(&[soroban_sdk::testutils::MockAuth {
         address: &owner,
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -884,6 +929,7 @@ fn test_pay_premium_non_owner_auth_failure() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     // other tries to pay the premium for owner
@@ -897,14 +943,21 @@ fn test_deactivate_policy_non_owner_auth_failure() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
-    let other = Address::generate(&env);
+    let _other = Address::generate(&env);
 
     client.mock_auths(&[soroban_sdk::testutils::MockAuth {
         address: &owner,
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -915,6 +968,7 @@ fn test_deactivate_policy_non_owner_auth_failure() {
         &String::from_str(&env, "Type"),
         &100,
         &10000,
+        &None,
     );
 
     // other tries to deactivate the policy for owner
@@ -943,6 +997,7 @@ fn test_create_policy_success() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
+        &None,
     );
 
     // Verify returns id
@@ -972,6 +1027,7 @@ fn test_create_policy_requires_auth() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Should fail due to missing auth
@@ -993,6 +1049,7 @@ fn test_create_policy_negative_premium_panics() {
         &String::from_str(&env, "health"),
         &-1, // negative premium
         &10000,
+        &None,
     );
 
     assert!(result.is_err());
@@ -1013,6 +1070,7 @@ fn test_create_policy_negative_coverage_panics() {
         &String::from_str(&env, "health"),
         &100,
         &-1, // negative coverage
+        &None,
     );
 
     assert!(result.is_err());
@@ -1033,6 +1091,7 @@ fn test_pay_premium_success() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     let initial_policy = client.get_policy(&policy_id).unwrap();
@@ -1068,6 +1127,7 @@ fn test_pay_premium_unauthorized_panics() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Try to pay premium as unauthorized user
@@ -1090,6 +1150,7 @@ fn test_pay_premium_inactive_policy_panics() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Deactivate policy first
@@ -1116,6 +1177,7 @@ fn test_deactivate_policy_owner_only() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
 
     // Owner can deactivate
@@ -1132,6 +1194,7 @@ fn test_deactivate_policy_owner_only() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
 
     // Unauthorized user cannot deactivate
@@ -1167,6 +1230,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     let policy_a2 = client.create_policy(
         &owner_a,
@@ -1174,6 +1238,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
 
     // Create policies for owner_b
@@ -1183,6 +1248,7 @@ fn test_get_active_policies_filters_by_owner_and_active() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Deactivate one of owner_a's policies
@@ -1220,6 +1286,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     client.create_policy(
         &owner,
@@ -1227,6 +1294,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
     let policy3 = client.create_policy(
         &owner,
@@ -1234,6 +1302,7 @@ fn test_get_total_monthly_premium_comprehensive() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Total should be sum of all active policies' monthly_premium
@@ -1264,6 +1333,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "health"),
         &100,
         &10000,
+        &None,
     );
     let policy2 = client.create_policy(
         &owner,
@@ -1271,6 +1341,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "life"),
         &200,
         &20000,
+        &None,
     );
     let policy3 = client.create_policy(
         &owner,
@@ -1278,6 +1349,7 @@ fn test_multiple_policies_same_owner() {
         &String::from_str(&env, "emergency"),
         &300,
         &30000,
+        &None,
     );
 
     // Verify all policies exist and are active
@@ -1349,6 +1421,7 @@ fn test_time_drift_premium_schedule_not_executed_before_next_due() {
         &String::from_str(&env, "life"),
         &200,
         &100000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1379,6 +1452,7 @@ fn test_time_drift_premium_schedule_executes_at_exact_next_due() {
         &String::from_str(&env, "health"),
         &150,
         &75000,
+        &None,
     );
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1419,6 +1493,7 @@ fn test_time_drift_next_payment_date_uses_actual_payment_time() {
         &String::from_str(&env, "property"),
         &300,
         &200000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
 
@@ -1457,6 +1532,7 @@ fn test_time_drift_no_double_execution_after_schedule_advances() {
         &String::from_str(&env, "auto"),
         &100,
         &50000,
+        &None,
     );
     client.create_premium_schedule(&owner, &policy_id, &next_due, &interval);
 

@@ -1,0 +1,294 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+savings_goals 2>&1 | 
+Out-File -FilePath 
+sg_test_err.txt ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: constant 
+`GOAL_CREATED` is never 
+used
+  --> savings_goals\src\
+lib.rs:14:7
+   |
+14 | const 
+GOAL_CREATED: S...
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`FUNDS_ADDED` is never 
+used
+  --> savings_goals\src\
+lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: 
+S...
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is 
+never used
+  --> savings_goals\src\
+lib.rs:16:7
+   |
+16 | const 
+GOAL_COMPLETED: S...
+   |       
+^^^^^^^^^^^^^^
+
+warning: function 
+`set_time` is never used
+  --> savings_goals\src\
+test.rs:14:4
+   |
+14 | fn set_time(env:...
+   |    ^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`savings_goals` (lib) 
+generated 3 warnings
+warning: 
+`savings_goals` (lib 
+test) generated 1 
+warning
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+1.05s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\savings_goals-7ddf
+8603578bfb13.exe)
+
+running 64 tests
+test test::test_create_goal_allows_past_target_date ... ok
+test test::test_create_goal_emits_event ... FAILED
+test test::test_add_to_goal_increments ... ok
+test test::test_create_goal_unique_ids_succeeds ... ok
+test test::test_add_to_goal_emits_event ... FAILED
+test test::test_edge_cases_large_amounts ... ok
+test test::test_cancel_savings_schedule ... ok
+test test::test_create_savings_schedule ... ok
+test test::test_exact_goal_completion ... ok
+test test::test_execute_due_savings_schedules ... ok
+test test::test_execute_missed_savings_schedules ... ok
+test test::test_add_to_non_existent_goal ... ok
+test test::test_get_goals_empty ... ok
+test test::test_execute_recurring_savings_schedule ... ok
+test test::test_get_goal_retrieval ... ok
+test test::test_get_all_goals ... ok
+test test::test_add_to_goal_non_owner_auth_failure - should panic ... ok
+test test::test_get_goals_cursor_is_exclusive ... FAILED
+test test::test_get_all_goals_backward_compat ... ok
+test test::test_get_all_goals_filters_by_owner ... ok
+test test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages ... FAILED
+test test::test_goal_completed_emits_event ... FAILED
+test test::test_get_goals_rejects_invalid_cursor ... FAILED
+test test::test_get_goals_multi_owner_isolation ... FAILED
+test test::test_init_idempotent_does_not_wipe_goals ... ok
+test test::test_get_goals_rejects_cursor_from_another_owner ... FAILED
+test test::test_instance_ttl_extended_on_create_goal ... ok
+test test::test_instance_ttl_extended_on_lock_goal ... ok
+test test::test_get_goals_single_page ... FAILED
+test test::test_get_goals_multiple_pages ... FAILED
+test test::test_instance_ttl_refreshed_on_add_to_goal ... ok
+test test::test_lock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_lock_nonexistent_goal_panics ... ok
+test test::test_is_goal_completed ... ok
+test test::test_lock_goal_emits_event ... FAILED
+test test::test_limit_zero_uses_default ... FAILED
+test test::test_lock_goal_unauthorized_panics ... ok
+test test::test_lock_unlock_goal ... ok
+test test::test_lock_goal_success ... ok
+test test::test_modify_savings_schedule ... ok
+test test::test_next_id_increments_sequentially ... ok
+test test::test_unlock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_multiple_goals_emit_separate_events ... FAILED
+test test::test_set_time_lock_succeeds ... ok
+test test::test_unlock_goal_emits_event ... FAILED
+test test::test_savings_data_persists_across_ledger_advancements ... ok
+test test::test_savings_schedule_goal_completion ... ok
+test test::test_multiple_goals_management ... ok
+test test::test_unlock_goal_success ... ok
+test test::test_unlock_goal_unauthorized_panics ... ok
+test test::test_withdraw_from_goal_non_owner_auth_failure - should panic ... ok
+test test::test_withdraw_from_goal_nonexistent_goal_fails ... ok
+test test::test_withdraw_from_goal_insufficient_balance ... ok
+test test::test_withdraw_from_goal_locked ... ok
+test test::test_withdraw_from_goal_emits_event ... FAILED
+test test::test_withdraw_after_lock_fails ... ok
+test test::test_withdraw_after_unlock_succeeds ... ok
+test test::test_zero_amount_fails ... ok
+test test::test_withdraw_from_goal_success ... ok
+test test::test_withdraw_from_goal_zero_amount_fails ... ok
+test test::test_withdraw_from_goal_unauthorized ... ok
+test test::test_withdraw_full_balance ... ok
+test test::test_withdraw_time_locked_goal_after_unlock ... ok
+test test::test_withdraw_time_locked_goal_before_unlock ... ok
+
+failures:
+
+---- test::test_create_goal_emits_event stdout ----
+
+thread 'test::test_create_goal_emits_event' (5408) panicked at savings_goals\src\test.rs:945:5:
+GoalCreated struct event was not emitted
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test::test_create_goal_emits_event" to "test_snapshots\\test\\test_create_goal_emits_event.1.json".
+
+---- test::test_add_to_goal_emits_event stdout ----
+
+thread 'test::test_add_to_goal_emits_event' (4340) panicked at savings_goals\src\test.rs:1002:5:
+FundsAdded struct event was not emitted
+Writing test snapshot file for test "test::test_add_to_goal_emits_event" to "test_snapshots\\test\\test_add_to_goal_emits_event.1.json".
+
+---- test::test_get_goals_cursor_is_exclusive stdout ----
+
+thread 'test::test_get_goals_cursor_is_exclusive' (11612) panicked at savings_goals\src\test.rs:1572:5:
+assertion `left == right` failed
+  left: 0
+ right: 2
+Writing test snapshot file for test "test::test_get_goals_cursor_is_exclusive" to "test_snapshots\\test\\test_get_goals_cursor_is_exclusive.1.json".
+
+---- test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages stdout ----
+
+thread 'test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages' (21072) panicked at savings_goals\src\test.rs:1629:5:
+assertion `left == right` failed
+  left: None
+ right: Some(1)
+Writing test snapshot file for test "test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages" to "test_snapshots\\test\\test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages.1.json".
+
+---- test::test_goal_completed_emits_event stdout ----
+
+thread 'test::test_goal_completed_emits_event' (5672) panicked at savings_goals\src\test.rs:1055:5:
+GoalCompleted struct event was not emitted
+Writing test snapshot file for test "test::test_goal_completed_emits_event" to "test_snapshots\\test\\test_goal_completed_emits_event.1.json".
+
+---- test::test_get_goals_rejects_invalid_cursor stdout ----
+
+thread 'test::test_get_goals_rejects_invalid_cursor' (3304) panicked at savings_goals\src\test.rs:1594:5:
+non-zero cursor must exist for this owner
+Writing test snapshot file for test "test::test_get_goals_rejects_invalid_cursor" to "test_snapshots\\test\\test_get_goals_rejects_invalid_cursor.1.json".
+
+---- test::test_get_goals_multi_owner_isolation stdout ----
+
+thread 'test::test_get_goals_multi_owner_isolation' (18932) panicked at savings_goals\src\test.rs:1551:5:
+assertion `left == right` failed
+  left: 0
+ right: 3
+Writing test snapshot file for test "test::test_get_goals_multi_owner_isolation" to "test_snapshots\\test\\test_get_goals_multi_owner_isolation.1.json".
+
+---- test::test_get_goals_rejects_cursor_from_another_owner stdout ----
+
+thread 'test::test_get_goals_rejects_cursor_from_another_owner' (12504) panicked at savings_goals\src\test.rs:1611:58:
+called `Option::unwrap()` on a `None` value
+Writing test snapshot file for test "test::test_get_goals_rejects_cursor_from_another_owner" to "test_snapshots\\test\\test_get_goals_rejects_cursor_from_another_owner.1.json".
+
+---- test::test_get_goals_single_page stdout ----
+
+thread 'test::test_get_goals_single_page' (10308) panicked at savings_goals\src\test.rs:1506:5:
+assertion `left == right` failed
+  left: 0
+ right: 5
+Writing test snapshot file for test "test::test_get_goals_single_page" to "test_snapshots\\test\\test_get_goals_single_page.1.json".
+
+---- test::test_get_goals_multiple_pages stdout ----
+
+thread 'test::test_get_goals_multiple_pages' (15368) panicked at savings_goals\src\test.rs:1523:5:
+assertion `left == right` failed
+  left: 0
+ right: 4
+Writing test snapshot file for test "test::test_get_goals_multiple_pages" to "test_snapshots\\test\\test_get_goals_multiple_pages.1.json".
+
+---- test::test_lock_goal_emits_event stdout ----
+
+thread 'test::test_lock_goal_emits_event' (11300) panicked at savings_goals\src\test.rs:1140:5:
+SavingsEvent::GoalLocked was not emitted
+Writing test snapshot file for test "test::test_lock_goal_emits_event" to "test_snapshots\\test\\test_lock_goal_emits_event.1.json".
+
+---- test::test_limit_zero_uses_default stdout ----
+
+thread 'test::test_limit_zero_uses_default' (6688) panicked at savings_goals\src\test.rs:1661:5:
+assertion `left == right` failed
+  left: 0
+ right: 3
+Writing test snapshot file for test "test::test_limit_zero_uses_default" to "test_snapshots\\test\\test_limit_zero_uses_default.1.json".
+
+---- test::test_multiple_goals_emit_separate_events stdout ----
+
+thread 'test::test_multiple_goals_emit_separate_events' (20272) panicked at savings_goals\src\test.rs:1202:5:
+assertion `left == right` failed
+  left: 3
+ right: 6
+Writing test snapshot file for test "test::test_multiple_goals_emit_separate_events" to "test_snapshots\\test\\test_multiple_goals_emit_separate_events.1.json".
+
+---- test::test_unlock_goal_emits_event stdout ----
+
+thread 'test::test_unlock_goal_emits_event' (2356) panicked at savings_goals\src\test.rs:1179:5:
+SavingsEvent::GoalUnlocked was not emitted
+Writing test snapshot file for test "test::test_unlock_goal_emits_event" to "test_snapshots\\test\\test_unlock_goal_emits_event.1.json".
+
+---- test::test_withdraw_from_goal_emits_event stdout ----
+
+thread 'test::test_withdraw_from_goal_emits_event' (3596) panicked at savings_goals\src\test.rs:1100:5:
+SavingsEvent::FundsWithdrawn was not emitted
+Writing test snapshot file for test "test::test_withdraw_from_goal_emits_event" to "test_snapshots\\test\\test_withdraw_from_goal_emits_event.1.json".
+
+
+failures:
+    test::test_add_to_goal_emits_event
+    test::test_create_goal_emits_event
+    test::test_get_goals_cursor_is_exclusive
+    test::test_get_goals_multi_owner_isolation
+    test::test_get_goals_multiple_pages
+    test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages
+    test::test_get_goals_rejects_cursor_from_another_owner
+    test::test_get_goals_rejects_invalid_cursor
+    test::test_get_goals_single_page
+    test::test_goal_completed_emits_event
+    test::test_limit_zero_uses_default
+    test::test_lock_goal_emits_event
+    test::test_multiple_goals_emit_separate_events
+    test::test_unlock_goal_emits_event
+    test::test_withdraw_from_goal_emits_event
+
+test result: FAILED. 49 passed; 15 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.15s
+
+error: test failed, to 
+rerun pass `-p 
+savings_goals --lib`

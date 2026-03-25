@@ -60,6 +60,7 @@ use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
     Env, Symbol, Vec,
 };
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 #[cfg(test)]
 mod test;
@@ -584,7 +585,13 @@ impl Orchestrator {
             timestamp,
         };
 
-        env.events().publish((symbol_short!("flow_ok"),), event);
+        RemitwiseEvents::emit(
+            env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("flow_ok"),
+            event,
+        );
     }
 
     /// Emit error event for a failed remittance flow
@@ -612,7 +619,13 @@ impl Orchestrator {
             timestamp,
         };
 
-        env.events().publish((symbol_short!("flow_err"),), event);
+        RemitwiseEvents::emit(
+            env,
+            EventCategory::Alert,
+            EventPriority::High,
+            symbol_short!("flow_err"),
+            event,
+        );
     }
 
     // ============================================================================

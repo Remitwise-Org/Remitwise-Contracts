@@ -1,0 +1,1207 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+reporting 2>&1 | 
+Out-File -Encoding utf8 
+final_test_res ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+warning: unused import: 
+`PolicyPage`
+   --> reporting\src\tes
+ts.rs:159:50
+    |
+159 |     use crate::{In
+surancePolicy, 
+InsuranceTrait, 
+PolicyPage};
+    |                   
+                        
+       ^^^^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+error[E0061]: this 
+method takes 2 
+arguments but 0 
+arguments were supplied
+   --> reporting\src\tes
+ts.rs:743:33
+    |
+743 |     let 
+archived_count = client.
+archive_old_reports();
+    |                   
+              
+^^^^^^^^^^^^^^^^^^^-- 
+two arguments of type 
+`&soroban_sdk::Address` 
+and `&u64` are missing
+    |
+note: method defined 
+here
+   --> reporting\src\lib
+.rs:801:12
+    |
+801 |     pub fn 
+archive_old_reports(
+    |            
+^^^^^^^^^^^^^^^^^^^
+802 |         env: Env,
+803 |         caller: 
+Address,
+    |         
+---------------
+804 |         
+before_timestamp: u64,
+    |         
+---------------------
+help: provide the 
+arguments
+    |
+743 |     let 
+archived_count = client.
+archive_old_reports(/* 
+&soroban_sdk::Address 
+*/, /* &u64 */);
+    |                   
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
++
+
+error[E0061]: this 
+method takes 2 
+arguments but 0 
+arguments were supplied
+   --> reporting\src\tes
+ts.rs:767:33
+    |
+767 |     let 
+archived_count = client.
+archive_old_reports();
+    |                   
+              
+^^^^^^^^^^^^^^^^^^^-- 
+two arguments of type 
+`&soroban_sdk::Address` 
+and `&u64` are missing
+    |
+note: method defined 
+here
+   --> reporting\src\lib
+.rs:801:12
+    |
+801 |     pub fn 
+archive_old_reports(
+    |            
+^^^^^^^^^^^^^^^^^^^
+802 |         env: Env,
+803 |         caller: 
+Address,
+    |         
+---------------
+804 |         
+before_timestamp: u64,
+    |         
+---------------------
+help: provide the 
+arguments
+    |
+767 |     let 
+archived_count = client.
+archive_old_reports(/* 
+&soroban_sdk::Address 
+*/, /* &u64 */);
+    |                   
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
++
+
+error[E0061]: this 
+method takes 2 
+arguments but 0 
+arguments were supplied
+   --> reporting\src\tes
+ts.rs:863:12
+    |
+863 |     client.archive
+_old_reports();
+    |            
+^^^^^^^^^^^^^^^^^^^-- 
+two arguments of type 
+`&soroban_sdk::Address` 
+and `&u64` are missing
+    |
+note: method defined 
+here
+   --> reporting\src\lib
+.rs:801:12
+    |
+801 |     pub fn 
+archive_old_reports(
+    |            
+^^^^^^^^^^^^^^^^^^^
+802 |         env: Env,
+803 |         caller: 
+Address,
+    |         
+---------------
+804 |         
+before_timestamp: u64,
+    |         
+---------------------
+help: provide the 
+arguments
+    |
+863 |     client.archive
+_old_reports(/* 
+&soroban_sdk::Address 
+*/, /* &u64 */);
+    |                   
+             +++++++++++
+++++++++++++++++++++++++
+++++
+
+error[E0277]: 
+`ReportingError` 
+doesn't implement 
+`Debug`
+   --> reporting\src\tes
+ts.rs:942:9
+    |
+941 |         
+"archive_old_reports at 
+exact 30-day boundary 
+should succeed, got: 
+{:?}",
+    |                   
+                        
+                        
+         ---- required 
+by this formatting 
+parameter
+942 |         result
+    |         ^^^^^^ 
+`ReportingError` cannot 
+be formatted using 
+`{:?}` because it 
+doesn't implement 
+`Debug`
+    |
+    = help: the trait 
+`Debug` is not 
+implemented for 
+`ReportingError`
+    = note: add 
+`#[derive(Debug)]` to 
+`ReportingError` or 
+manually `impl Debug 
+for ReportingError`
+help: the trait `Debug` 
+is implemented for `core
+::result::Result<T, E>`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:552:16
+    = note: required 
+for `core::result::Resul
+t<ReportingError, 
+InvokeError>` to 
+implement `Debug`
+    = note: 1 redundant 
+requirement hidden
+    = note: required 
+for `Result<Result<u32, 
+ConversionError>, 
+Result<ReportingError, 
+...>>` to implement 
+`Debug`
+    = note: the full 
+name for the type has 
+been written to 'C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\debug\deps\report
+ing-a31578d9bb612dc2.lon
+g-type-13495965223084811
+550.txt'
+    = note: consider 
+using `--verbose` to 
+print the full type 
+name to the console
+help: consider 
+annotating 
+`ReportingError` with 
+`#[derive(Debug)]`
+   --> reporting\src\lib
+.rs:142:1
+    |
+142 + #[derive(Debug)]
+143 | pub enum 
+ReportingError {
+    |
+
+error[E0277]: 
+`ReportingError` 
+doesn't implement 
+`Debug`
+   --> reporting\src\tes
+ts.rs:944:23
+    |
+944 |     assert_eq!(res
+ult.unwrap(), 0);
+    |                   
+    ^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`ReportingError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`ReportingError` or 
+manually `impl Debug 
+for ReportingError`
+help: the trait `Debug` 
+is implemented for `core
+::result::Result<T, E>`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:552:16
+    = note: required 
+for `core::result::Resul
+t<ReportingError, 
+InvokeError>` to 
+implement `Debug`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`ReportingError` with 
+`#[derive(Debug)]`
+   --> reporting\src\lib
+.rs:142:1
+    |
+142 + #[derive(Debug)]
+143 | pub enum 
+ReportingError {
+    |
+
+error[E0308]: 
+mismatched types
+   --> reporting\src\tes
+ts.rs:944:33
+    |
+944 |     assert_eq!(res
+ult.unwrap(), 0);
+    |                   
+              ^ 
+expected `Result<u32, 
+ConversionError>`, 
+found integer
+    |
+    = note: expected 
+enum `core::result::Resu
+lt<u32, soroban_sdk::Con
+versionError>`
+               found 
+type `{integer}`
+help: try wrapping the 
+expression in 
+`core::prelude::v1::Ok`
+    |
+944 |     assert_eq!(res
+ult.unwrap(), core::prel
+ude::v1::Ok(0));
+    |                   
+              
+++++++++++++++++++++++ +
+
+error[E0277]: 
+`ReportingError` 
+doesn't implement 
+`Debug`
+   --> reporting\src\tes
+ts.rs:984:9
+    |
+983 |         
+"cleanup_old_reports at 
+exact 90-day boundary 
+should succeed, got: 
+{:?}",
+    |                   
+                        
+                        
+         ---- required 
+by this formatting 
+parameter
+984 |         result
+    |         ^^^^^^ 
+`ReportingError` cannot 
+be formatted using 
+`{:?}` because it 
+doesn't implement 
+`Debug`
+    |
+    = help: the trait 
+`Debug` is not 
+implemented for 
+`ReportingError`
+    = note: add 
+`#[derive(Debug)]` to 
+`ReportingError` or 
+manually `impl Debug 
+for ReportingError`
+help: the trait `Debug` 
+is implemented for `core
+::result::Result<T, E>`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:552:16
+    = note: required 
+for `core::result::Resul
+t<ReportingError, 
+InvokeError>` to 
+implement `Debug`
+    = note: 1 redundant 
+requirement hidden
+    = note: required 
+for `Result<Result<u32, 
+ConversionError>, 
+Result<ReportingError, 
+...>>` to implement 
+`Debug`
+    = note: the full 
+name for the type has 
+been written to 'C:\User
+s\ADMIN\Desktop\remmy-dr
+ips\Remitwise-Contracts\
+target\debug\deps\report
+ing-a31578d9bb612dc2.lon
+g-type-13495965223084811
+550.txt'
+    = note: consider 
+using `--verbose` to 
+print the full type 
+name to the console
+help: consider 
+annotating 
+`ReportingError` with 
+`#[derive(Debug)]`
+   --> reporting\src\lib
+.rs:142:1
+    |
+142 + #[derive(Debug)]
+143 | pub enum 
+ReportingError {
+    |
+
+error[E0277]: 
+`ReportingError` 
+doesn't implement 
+`Debug`
+   --> reporting\src\tes
+ts.rs:986:23
+    |
+986 |     assert_eq!(res
+ult.unwrap(), 0);
+    |                   
+    ^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`ReportingError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`ReportingError` or 
+manually `impl Debug 
+for ReportingError`
+help: the trait `Debug` 
+is implemented for `core
+::result::Result<T, E>`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:552:16
+    = note: required 
+for `core::result::Resul
+t<ReportingError, 
+InvokeError>` to 
+implement `Debug`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`ReportingError` with 
+`#[derive(Debug)]`
+   --> reporting\src\lib
+.rs:142:1
+    |
+142 + #[derive(Debug)]
+143 | pub enum 
+ReportingError {
+    |
+
+error[E0308]: 
+mismatched types
+   --> reporting\src\tes
+ts.rs:986:33
+    |
+986 |     assert_eq!(res
+ult.unwrap(), 0);
+    |                   
+              ^ 
+expected `Result<u32, 
+ConversionError>`, 
+found integer
+    |
+    = note: expected 
+enum `core::result::Resu
+lt<u32, soroban_sdk::Con
+versionError>`
+               found 
+type `{integer}`
+help: try wrapping the 
+expression in 
+`core::prelude::v1::Ok`
+    |
+986 |     assert_eq!(res
+ult.unwrap(), core::prel
+ude::v1::Ok(0));
+    |                   
+              
+++++++++++++++++++++++ +
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1013:18
+     |
+1013 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `get_ttl` found 
+for struct `soroban_sdk:
+:storage::Instance` in 
+the current scope
+    --> reporting\src\te
+sts.rs:1039:73
+     |
+1039 |     let ttl = env
+.as_contract(&contract_i
+d, || env.storage().inst
+ance().get_ttl());
+     |                  
+                        
+                        
+       ^^^^^^^ method 
+not found in `soroban_sd
+k::storage::Instance`
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils\storage.rs:
+40:8
+     |
+  40 |     fn 
+get_ttl(&self) -> u32;
+     |        ------- 
+the method is available 
+for `soroban_sdk::storag
+e::Instance` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: trait `Instance` 
+which provides 
+`get_ttl` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::storage::Inst
+ance;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1060:18
+     |
+1060 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `get_ttl` found 
+for struct `soroban_sdk:
+:storage::Instance` in 
+the current scope
+    --> reporting\src\te
+sts.rs:1088:73
+     |
+1088 |     let ttl = env
+.as_contract(&contract_i
+d, || env.storage().inst
+ance().get_ttl());
+     |                  
+                        
+                        
+       ^^^^^^^ method 
+not found in `soroban_sd
+k::storage::Instance`
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils\storage.rs:
+40:8
+     |
+  40 |     fn 
+get_ttl(&self) -> u32;
+     |        ------- 
+the method is available 
+for `soroban_sdk::storag
+e::Instance` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: trait `Instance` 
+which provides 
+`get_ttl` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::storage::Inst
+ance;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1129:18
+     |
+1129 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `get_ttl` found 
+for struct `soroban_sdk:
+:storage::Instance` in 
+the current scope
+    --> reporting\src\te
+sts.rs:1144:73
+     |
+1144 |     let ttl = env
+.as_contract(&contract_i
+d, || env.storage().inst
+ance().get_ttl());
+     |                  
+                        
+                        
+       ^^^^^^^ method 
+not found in `soroban_sd
+k::storage::Instance`
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils\storage.rs:
+40:8
+     |
+  40 |     fn 
+get_ttl(&self) -> u32;
+     |        ------- 
+the method is available 
+for `soroban_sdk::storag
+e::Instance` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: trait `Instance` 
+which provides 
+`get_ttl` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::storage::Inst
+ance;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1160:18
+     |
+1160 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1199:18
+     |
+1199 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1215:18
+     |
+1215 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0599]: no method 
+named `get_ttl` found 
+for struct `soroban_sdk:
+:storage::Instance` in 
+the current scope
+    --> reporting\src\te
+sts.rs:1242:73
+     |
+1242 |     let ttl = env
+.as_contract(&contract_i
+d, || env.storage().inst
+ance().get_ttl());
+     |                  
+                        
+                        
+       ^^^^^^^ method 
+not found in `soroban_sd
+k::storage::Instance`
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils\storage.rs:
+40:8
+     |
+  40 |     fn 
+get_ttl(&self) -> u32;
+     |        ------- 
+the method is available 
+for `soroban_sdk::storag
+e::Instance` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: trait `Instance` 
+which provides 
+`get_ttl` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::storage::Inst
+ance;
+     |
+
+error[E0599]: no method 
+named `set` found for 
+struct `soroban_sdk::led
+ger::Ledger` in the 
+current scope
+    --> reporting\src\te
+sts.rs:1283:18
+     |
+1283 |     env.ledger().
+set(LedgerInfo {
+     |     
+-------------^^^
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:222:8
+     |
+ 222 |     fn 
+set(&self, l: 
+LedgerInfo);
+     |        --- the 
+method is available for 
+`soroban_sdk::ledger::Le
+dger` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: there is a method 
+`get` with a similar 
+name, but with 
+different arguments
+    --> C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils.rs:249:5
+     |
+ 249 |     fn 
+get(&self) -> 
+LedgerInfo;
+     |     ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+help: trait `Ledger` 
+which provides `set` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::Ledger;
+     |
+
+error[E0061]: this 
+method takes 2 
+arguments but 0 
+arguments were supplied
+    --> reporting\src\te
+sts.rs:1297:28
+     |
+1297 |     let 
+_archived = client.archi
+ve_old_reports();
+     |                  
+          
+^^^^^^^^^^^^^^^^^^^-- 
+two arguments of type 
+`&soroban_sdk::Address` 
+and `&u64` are missing
+     |
+note: method defined 
+here
+    --> reporting\src\li
+b.rs:801:12
+     |
+ 801 |     pub fn 
+archive_old_reports(
+     |            
+^^^^^^^^^^^^^^^^^^^
+ 802 |         env: Env,
+ 803 |         caller: 
+Address,
+     |         
+---------------
+ 804 |         
+before_timestamp: u64,
+     |         
+---------------------
+help: provide the 
+arguments
+     |
+1297 |     let 
+_archived = client.archi
+ve_old_reports(/* 
+&soroban_sdk::Address 
+*/, /* &u64 */);
+     |                  
+                        
+      ++++++++++++++++++
++++++++++++++++++++++
+
+error[E0599]: no method 
+named `get_ttl` found 
+for struct `soroban_sdk:
+:storage::Instance` in 
+the current scope
+    --> reporting\src\te
+sts.rs:1299:73
+     |
+1299 |     let ttl = env
+.as_contract(&contract_i
+d, || env.storage().inst
+ance().get_ttl());
+     |                  
+                        
+                        
+       ^^^^^^^ method 
+not found in `soroban_sd
+k::storage::Instance`
+     |
+    ::: C:\Users\ADMIN\.
+cargo\registry\src\index
+.crates.io-1949cf8c6b5b5
+57f\soroban-sdk-21.7.7\s
+rc\testutils\storage.rs:
+40:8
+     |
+  40 |     fn 
+get_ttl(&self) -> u32;
+     |        ------- 
+the method is available 
+for `soroban_sdk::storag
+e::Instance` here
+     |
+     = help: items from 
+traits can only be used 
+if the trait is in scope
+help: trait `Instance` 
+which provides 
+`get_ttl` is 
+implemented but not in 
+scope; perhaps you want 
+to import it
+     |
+   1 + use soroban_sdk::
+testutils::storage::Inst
+ance;
+     |
+
+Some errors have 
+detailed explanations: 
+E0061, E0277, E0308, 
+E0599.
+For more information 
+about an error, try 
+`rustc --explain E0061`.
+warning: `reporting` 
+(lib test) generated 1 
+warning
+error: could not 
+compile `reporting` 
+(lib test) due to 22 
+previous errors; 1 
+warning emitted

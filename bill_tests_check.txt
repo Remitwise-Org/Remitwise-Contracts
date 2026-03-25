@@ -1,0 +1,1946 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check -p 
+bill_payments --tests 
+2>&1 | Out-File 
+-FilePath "bill_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking arbitrary 
+v1.3.2
+    Checking backtrace 
+v0.3.76
+   Compiling 
+soroban-sdk-macros 
+v21.7.7
+    Checking 
+windows-sys v0.61.2
+    Checking fastrand 
+v2.3.0
+    Checking bit-vec 
+v0.8.0
+    Checking fnv v1.0.7
+    Checking 
+wait-timeout v0.2.1
+    Checking 
+quick-error v1.2.3
+    Checking 
+rand_chacha v0.9.0
+    Checking rand v0.9.2
+    Checking 
+rand_xorshift v0.4.0
+    Checking bit-set 
+v0.8.0
+    Checking bitflags 
+v2.11.0
+    Checking 
+regex-syntax v0.8.10
+    Checking unarray 
+v0.1.4
+    Checking 
+stellar-xdr v21.2.0
+    Checking tempfile 
+v3.27.0
+    Checking rusty-fork 
+v0.3.1
+    Checking proptest 
+v1.10.0
+    Checking 
+soroban-env-common 
+v21.2.1
+    Checking 
+soroban-env-host v21.2.1
+    Checking 
+soroban-ledger-snapshot 
+v21.7.7
+    Checking 
+soroban-sdk v21.7.7
+    Checking 
+remitwise-common v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remitwise-common
+)
+    Checking testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+    Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:1826:30
+     |
+1826 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+1833 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1826 ~         let 
+bill_id = 
+client.create_bill(
+1827 +             
+&owner,
+1828 +             
+&String::from_str(&env, 
+"Daily Bill"),
+1829 +             &100,
+1830 +             
+&base_due_date,
+1831 +             
+&true,
+1832 +             &1,
+1833 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1834 +             
+&String::from_str(&env, 
+"XLM"),
+1835 ~         );
+     |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:1860:30
+     |
+1860 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+1867 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1860 ~         let 
+bill_id = 
+client.create_bill(
+1861 +             
+&owner,
+1862 +             
+&String::from_str(&env, 
+"Monthly Bill"),
+1863 +             &500,
+1864 +             
+&base_due_date,
+1865 +             
+&true,
+1866 +             &30,
+1867 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1868 +             
+&String::from_str(&env, 
+"XLM"),
+1869 ~         );
+     |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:1897:30
+     |
+1897 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+1904 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1897 ~         let 
+bill_id = 
+client.create_bill(
+1898 +             
+&owner,
+1899 +             
+&String::from_str(&env, 
+"Annual Bill"),
+1900 +             
+&1200,
+1901 +             
+&base_due_date,
+1902 +             
+&true,
+1903 +             &365,
+1904 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1905 +             
+&String::from_str(&env, 
+"XLM"),
+1906 ~         );
+     |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:1968:30
+     |
+1968 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+1975 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+1968 ~         let 
+bill_id = 
+client.create_bill(
+1969 +             
+&owner,
+1970 +             
+&String::from_str(&env, 
+"Multi-Cycle Bill"),
+1971 +             &250,
+1972 +             
+&base_due_date,
+1973 +             
+&true,
+1974 +             &30,
+1975 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+1976 +             
+&String::from_str(&env, 
+"XLM"),
+1977 ~         );
+     |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:2017:30
+     |
+2017 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+2024 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+2017 ~         let 
+bill_id = 
+client.create_bill(
+2018 +             
+&owner,
+2019 +             
+&String::from_str(&env, 
+"Three-Cycle Bill"),
+2020 +             &150,
+2021 +             
+&base_due_date,
+2022 +             
+&true,
+2023 +             &30,
+2024 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+2025 +             
+&String::from_str(&env, 
+"XLM"),
+2026 ~         );
+     |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+    --> bill_payments\sr
+c\lib.rs:2063:30
+     |
+2063 |         let 
+bill_id = 
+client.create_bill(
+     |                  
+            ^^^^^^^^^^^
+...
+2070 |             
+&String::from_str(&env, 
+"XLM"),
+     |             -----
+------------------------
+- argument #7 of type `&
+core::option::Option<sor
+oban_sdk::String>` is 
+missing
+     |
+note: method defined 
+here
+    --> bill_payments\sr
+c\lib.rs:371:12
+     |
+ 371 |     pub fn 
+create_bill(
+     |            
+^^^^^^^^^^^
+...
+ 379 |         
+external_ref: 
+Option<String>,
+     |         ---------
+-------------------
+help: provide the 
+argument
+     |
+2063 ~         let 
+bill_id = 
+client.create_bill(
+2064 +             
+&owner,
+2065 +             
+&String::from_str(&env, 
+"Early Payment Test"),
+2066 +             &200,
+2067 +             
+&base_due_date,
+2068 +             
+&true,
+2069 +             &30,
+2070 +             /* &c
+ore::option::Option<soro
+ban_sdk::String> */,
+2071 +             
+&String::from_str(&env, 
+"XLM"),
+2072 ~         );
+     |
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\gas_bench.rs:51:16
+    |
+ 51 |         
+client.create_bill(
+    |                
+^^^^^^^^^^^
+...
+ 58 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 51 ~         
+client.create_bill(
+ 52 +             
+&owner,
+ 53 +             &name,
+ 54 +             
+&100i128,
+ 55 +             
+&1_000_000u64,
+ 56 +             
+&false,
+ 57 +             &0u32,
+ 58 +             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+ 59 +             
+&String::from_str(&env, 
+"XLM"),
+ 60 ~         );
+    |
+
+For more information 
+about this error, try 
+`rustc --explain E0061`.
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\test_notifications.rs
+:22:26
+    |
+ 22 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+ 29 |         &soroban_s
+dk::String::from_str(&e,
+ "XLM"),
+    |         ----------
+------------------------
+------- argument #7 of 
+type `&std::option::Opti
+on<soroban_sdk::String>`
+ is missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 22 |     let bill_id = 
+client.create_bill(
+...
+ 28 |         &0,
+ 29 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+ 30 ~         &soroban_s
+dk::String::from_str(&e,
+ "XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:45:26
+    |
+ 45 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+ 52 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 45 |     let bill_id = 
+client.create_bill(
+...
+ 51 |         &0,
+ 52 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+ 53 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:82:16
+    |
+ 82 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+ 82 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error: could not 
+compile `bill_payments` 
+(test "gas_bench") due 
+to 1 previous error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:71:26
+    |
+ 71 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+ 78 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+ 71 |     let bill_id = 
+client.create_bill(
+...
+ 77 |         &0,
+ 78 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+ 79 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:100:26
+    |
+100 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+107 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+100 |     let bill_id = 
+client.create_bill(
+...
+106 |         &30,
+107 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+108 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:125:1
+6
+    |
+125 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+125 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:136:12
+    |
+136 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+143 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+136 |     
+client.create_bill(
+...
+142 |         &0,
+143 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+144 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error: could not 
+compile `bill_payments` 
+(test 
+"test_notifications") 
+due to 1 previous error
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:158:2
+0
+    |
+158 |             client
+.create_bill(user, 
+&name, 
+&AMOUNT_PER_BILL, 
+&due_date, &false, 
+&0u32);
+    |                   
+ ^^^^^^^^^^^------------
+------------------------
+--------------------- 
+two arguments of type `&
+std::option::Option<soro
+ban_sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+158 |             client
+.create_bill(user, 
+&name, 
+&AMOUNT_PER_BILL, 
+&due_date, &false, 
+&0u32, /* &std::option::
+Option<soroban_sdk::Stri
+ng> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+                    ++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:147:12
+    |
+147 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+154 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+147 |     
+client.create_bill(
+...
+153 |         &0,
+154 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+155 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:211:1
+6
+    |
+211 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+211 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:174:12
+    |
+174 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+181 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+174 |     
+client.create_bill(
+...
+180 |         &0,
+181 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+182 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:242:1
+2
+    |
+242 |     client.create_
+bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |            ^^^^^^^
+^^^^--------------------
+------------------------
+------- two arguments 
+of type `&std::option::O
+ption<soroban_sdk::Strin
+g>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+242 |     client.create_
+bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+      ++++++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:185:12
+    |
+185 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+192 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+185 |     
+client.create_bill(
+...
+191 |         &0,
+192 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+193 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:264:2
+6
+    |
+264 |     let bill_id = 
+client.create_bill(&owne
+r, &name, &500i128, 
+&due_date, &false, 
+&0u32);
+    |                   
+       ^^^^^^^^^^^------
+------------------------
+--------------------- 
+two arguments of type `&
+std::option::Option<soro
+ban_sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+264 |     let bill_id = 
+client.create_bill(&owne
+r, &name, &500i128, 
+&due_date, &false, 
+&0u32, /* &std::option::
+Option<soroban_sdk::Stri
+ng> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+                    ++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:212:12
+    |
+212 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+219 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+212 |     
+client.create_bill(
+...
+218 |         &0,
+219 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+220 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:310:1
+6
+    |
+310 |         client.cre
+ate_bill(&owner, &name, 
+&200i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+310 |         client.cre
+ate_bill(&owner, &name, 
+&200i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:223:12
+    |
+223 |     
+client.create_bill(
+    |            
+^^^^^^^^^^^
+...
+230 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+223 |     
+client.create_bill(
+...
+229 |         &0,
+230 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+231 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:384:2
+0
+    |
+384 |             client
+.create_bill(user, 
+&name, &100i128, 
+&due_date, &false, 
+&0u32);
+    |                   
+ ^^^^^^^^^^^------------
+------------------------
+------------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+384 |             client
+.create_bill(user, 
+&name, &100i128, 
+&due_date, &false, 
+&0u32, /* &std::option::
+Option<soroban_sdk::Stri
+ng> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+            ++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:253:26
+    |
+253 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+260 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+253 |     let bill_id = 
+client.create_bill(
+...
+259 |         &0,
+260 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+261 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:428:1
+6
+    |
+428 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+428 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:288:30
+    |
+288 |         let 
+bill_id = 
+client.create_bill(
+    |                   
+           ^^^^^^^^^^^
+...
+295 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+288 |         let 
+bill_id = 
+client.create_bill(
+...
+294 |             &0,
+295 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+296 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning
+error: could not 
+compile `bill_payments` 
+(lib test) due to 6 
+previous errors; 1 
+warning emitted
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:453:1
+6
+    |
+453 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+453 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:354:26
+    |
+354 |     let bill_id = 
+client.create_bill(
+    |                   
+       ^^^^^^^^^^^
+...
+361 |         
+&String::from_str(&env, 
+"XLM"),
+    |         ----------
+-------------------- 
+argument #7 of type `&st
+d::option::Option<soroba
+n_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+354 |     let bill_id = 
+client.create_bill(
+...
+360 |         &0,
+361 ~         /* &std::o
+ption::Option<soroban_sd
+k::String> */,
+362 ~         
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:484:1
+6
+    |
+484 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+484 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error[E0061]: this 
+method takes 8 
+arguments but 7 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_test_large_amo
+unts.rs:381:16
+    |
+381 |         
+client.create_bill(
+    |                
+^^^^^^^^^^^
+...
+388 |             
+&String::from_str(&env, 
+"XLM"),
+    |             ------
+------------------------
+ argument #7 of type `&s
+td::option::Option<sorob
+an_sdk::String>` is 
+missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+argument
+    |
+381 |         
+client.create_bill(
+...
+387 |             &0,
+388 ~             /* &st
+d::option::Option<soroba
+n_sdk::String> */,
+389 ~             
+&String::from_str(&env, 
+"XLM"),
+    |
+
+error[E0061]: this 
+method takes 8 
+arguments but 6 
+arguments were supplied
+   --> bill_payments\tes
+ts\stress_tests.rs:512:1
+6
+    |
+512 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32);
+    |                ^^^
+^^^^^^^^----------------
+------------------------
+----------- two 
+arguments of type `&std:
+:option::Option<soroban_
+sdk::String>` and 
+`&soroban_sdk::String` 
+are missing
+    |
+note: method defined 
+here
+   --> C:\Users\ADMIN\De
+sktop\remmy-drips\Remitw
+ise-Contracts\bill_payme
+nts\src\lib.rs:371:12
+    |
+371 |     pub fn 
+create_bill(
+    |            
+^^^^^^^^^^^
+help: provide the 
+arguments
+    |
+512 |         client.cre
+ate_bill(&owner, &name, 
+&100i128, &due_date, 
+&false, &0u32, /* &std::
+option::Option<soroban_s
+dk::String> */, /* 
+&soroban_sdk::String 
+*/);
+    |                   
+                        
+                        
+          ++++++++++++++
+++++++++++++++++++++++++
+++++++++++++++++++++++++
++++++++++++++++
+
+error: could not 
+compile `bill_payments` 
+(test "stress_test_large
+_amounts") due to 13 
+previous errors
+error: could not 
+compile `bill_payments` 
+(test "stress_tests") 
+due to 12 previous 
+errors

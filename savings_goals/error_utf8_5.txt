@@ -1,0 +1,223 @@
+cargo : warning: profiles for 
+the non root package will be 
+ignored, specify profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test --no-run --package 
+savings_goals 2> error.txt; 
+python -c " ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : No 
+   tSpecified: (warning: profil  
+  ...workspace root::String) [   
+ ], RemoteException
+    + FullyQualifiedErrorId : Na 
+   tiveCommandError
+ 
+package:   C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contracts\
+orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contracts\
+Cargo.toml
+    Blocking waiting for file 
+lock on package cache
+    Blocking waiting for file 
+lock on package cache
+    Blocking waiting for file 
+lock on package cache
+    Blocking waiting for file 
+lock on shared package cache
+   Compiling savings_goals 
+v0.1.0 (C:\Users\ADMIN\Desktop\re
+mmy-drips\Remitwise-Contracts\sav
+ings_goals)
+error[E0599]: no method named 
+`is_some` found for struct 
+`SavingsSchedule` in the current 
+scope
+   --> 
+savings_goals\src\test.rs:573:22
+    |
+573 |     
+assert!(schedule.is_some());
+    |                      
+^^^^^^^ method not found in 
+`SavingsSchedule`
+    |
+   ::: 
+savings_goals\src\lib.rs:68:1
+    |
+ 68 | pub struct SavingsSchedule 
+{
+    | -------------------------- 
+method `is_some` not found for 
+this struct
+    |
+help: one of the expressions' 
+fields has a method of the same 
+name
+    |
+573 |     assert!(schedule.last_e
+xecuted.is_some());
+    |                      
+++++++++++++++
+
+error[E0599]: no method named 
+`unwrap` found for struct 
+`SavingsSchedule` in the current 
+scope
+   --> 
+savings_goals\src\test.rs:574:29
+    |
+574 |     let schedule = 
+schedule.unwrap();
+    |                            
+ ^^^^^^ method not found in 
+`SavingsSchedule`
+    |
+   ::: 
+savings_goals\src\lib.rs:68:1
+    |
+ 68 | pub struct SavingsSchedule 
+{
+    | -------------------------- 
+method `unwrap` not found for 
+this struct
+    |
+help: one of the expressions' 
+fields has a method of the same 
+name
+    |
+574 |     let schedule = 
+schedule.last_executed.unwrap();
+    |                            
+ ++++++++++++++
+
+error[E0599]: no method named 
+`is_some` found for struct 
+`SavingsGoal` in the current 
+scope
+    --> 
+savings_goals\src\test.rs:1350:15
+     |
+1350 |         goal1.is_some(),
+     |               ^^^^^^^ 
+method not found in `SavingsGoal`
+     |
+    ::: 
+savings_goals\src\lib.rs:46:1
+     |
+  46 | pub struct SavingsGoal {
+     | ---------------------- 
+method `is_some` not found for 
+this struct
+     |
+help: one of the expressions' 
+fields has a method of the same 
+name
+     |
+1350 |         
+goal1.unlock_date.is_some(),
+     |               ++++++++++++
+
+error[E0599]: no method named 
+`unwrap` found for struct 
+`SavingsGoal` in the current 
+scope
+    --> 
+savings_goals\src\test.rs:1353:22
+     |
+1353 |     assert_eq!(goal1.unwra
+p().current_amount, 3000);
+     |                      
+^^^^^^ method not found in 
+`SavingsGoal`
+     |
+    ::: 
+savings_goals\src\lib.rs:46:1
+     |
+  46 | pub struct SavingsGoal {
+     | ---------------------- 
+method `unwrap` not found for 
+this struct
+     |
+help: one of the expressions' 
+fields has a method of the same 
+name
+     |
+1353 |     assert_eq!(goal1.unloc
+k_date.unwrap().current_amount, 
+3000);
+     |                      
+++++++++++++
+
+error[E0599]: no method named 
+`is_some` found for struct 
+`SavingsGoal` in the current 
+scope
+    --> 
+savings_goals\src\test.rs:1356:19
+     |
+1356 |     
+assert!(goal2.is_some(), "Second 
+goal must persist");
+     |                   ^^^^^^^ 
+method not found in `SavingsGoal`
+     |
+    ::: 
+savings_goals\src\lib.rs:46:1
+     |
+  46 | pub struct SavingsGoal {
+     | ---------------------- 
+method `is_some` not found for 
+this struct
+     |
+help: one of the expressions' 
+fields has a method of the same 
+name
+     |
+1356 |     assert!(goal2.unlock_d
+ate.is_some(), "Second goal must 
+persist");
+     |                   
+++++++++++++
+
+error[E0599]: no method named 
+`unwrap` found for struct 
+`SavingsGoal` in the current 
+scope
+    --> 
+savings_goals\src\test.rs:1357:22
+     |
+1357 |     assert_eq!(goal2.unwra
+p().current_amount, 10000);
+     |                      
+^^^^^^ method not found in 
+`SavingsGoal`
+     |
+    ::: 
+savings_goals\src\lib.rs:46:1
+     |
+  46 | pub struct SavingsGoal {
+     | ---------------------- 
+method `unwrap` not found for 
+this struct
+     |
+help: one of the expressions' 
+fields has a method of the same 
+name
+     |
+1357 |     assert_eq!(goal2.unloc
+k_date.unwrap().current_amount, 
+10000);
+     |                      
+++++++++++++
+
+For more information about this 
+error, try `rustc --explain 
+E0599`.
+error: could not compile 
+`savings_goals` (lib test) due 
+to 6 previous errors

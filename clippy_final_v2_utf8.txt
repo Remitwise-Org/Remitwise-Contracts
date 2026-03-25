@@ -1,0 +1,122 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo clippy 
+--workspace 
+--all-targets -- -D 
+warnings > 
+clippy_final_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+error[E0425]: cannot 
+find value 
+`MAX_PAGE_LIMIT` in 
+this scope
+    --> bill_payments\sr
+c\lib.rs:1762:32
+     |
+1762 |         
+assert_eq!(page.count, 
+MAX_PAGE_LIMIT);
+     |                  
+              
+^^^^^^^^^^^^^^ not 
+found in this scope
+     |
+help: consider 
+importing this constant
+     |
+1361 +     use remitwise
+_common::MAX_PAGE_LIMIT;
+     |
+
+    Checking scenarios 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\scenarios
+)
+    Checking 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+    Checking 
+integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)
+error: unused import: `t
+estutils::set_ledger_tim
+e`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `-D 
+unused-imports` implied 
+by `-D warnings`
+  = help: to override 
+`-D warnings` add `#[all
+ow(unused_imports)]`
+
+error: could not 
+compile `scenarios` 
+(lib) due to 1 previous 
+error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+For more information 
+about this error, try 
+`rustc --explain E0425`.
+error: could not 
+compile `bill_payments` 
+(lib test) due to 1 
+previous error

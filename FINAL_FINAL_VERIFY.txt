@@ -1,0 +1,46 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"FINAL_FINAL_VERIFY. ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+error: no matching 
+package found
+searched package name: 
+`remitwise_common`
+perhaps you meant:      
+remitwise-common
+location searched: C:\Us
+ers\ADMIN\Desktop\remmy-
+drips\Remitwise-Contract
+s\remitwise-common
+required by package 
+`remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)`

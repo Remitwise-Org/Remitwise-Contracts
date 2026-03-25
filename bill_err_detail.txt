@@ -1,0 +1,42 @@
+﻿
+      Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+  error: mismatched 
+closing delimiter: `}`
+>    --> bill_payments\s
+rc\lib.rs:532:29
+      |
+  465 |     pub fn 
+pay_bill(env: Env, 
+caller: Address, 
+bill_id: u32) -> 
+Result<(), Error> {
+      |                 
+                        
+                        
+                  - 
+closing delimiter 
+possibly meant for this
+  ...
+  532 |         
+env.events().publish(
+  System.Management.Auto
+mation.RemoteException
+  error: this file 
+contains an unclosed 
+delimiter
+>     --> bill_payments\
+src\lib.rs:2572:3
+       |
+   113 | pub enum 
+BillEvent {
+       |                
+    - unclosed delimiter
+  ...
+   129 | impl 
+BillPayments {
+
+

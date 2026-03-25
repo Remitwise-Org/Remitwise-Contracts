@@ -1,0 +1,160 @@
+﻿cargo : warning: profiles for 
+the non root package will be 
+ignored, specify profiles at 
+the workspace root:
+At line:1 char:1
++ cargo test --workspace > 
+test_errors_now.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo            
+  : NotSpecified    : 
+(warning: profil.    
+..workspace root::S    tring) 
+[], RemoteEx    ception
+    + FullyQualifiedErr    
+orId : NativeComman    dError
+ 
+package:   C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desk
+top\remmy-drips\Remitwise-Cont
+racts\Cargo.toml
+warning: constant 
+`GOAL_CREATED` is never used
+  --> 
+savings_goals\src\lib.rs:14:7
+   |
+14 | const GOAL_CREATED: Sy...
+   |       ^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` (part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: constant 
+`FUNDS_ADDED` is never used
+  --> 
+savings_goals\src\lib.rs:15:7
+   |
+15 | const FUNDS_ADDED: Sym...
+   |       ^^^^^^^^^^^
+
+warning: constant 
+`GOAL_COMPLETED` is never used
+  --> 
+savings_goals\src\lib.rs:16:7
+   |
+16 | const GOAL_COMPLETED: 
+S...
+   |       ^^^^^^^^^^^^^^
+
+warning: unused variable: 
+`event`
+   --> remittance_split\src\li
+b.rs:875:17
+    |
+875 | ... let event = Split...
+    |         ^^^^^ help: if 
+this is intentional, prefix 
+it with an underscore: 
+`_event`
+    |
+    = note: 
+`#[warn(unused_variables)]` 
+(part of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is never 
+used
+  --> remittance_split\src\lib
+.rs:15:7
+   |
+15 | const SPLIT_INITIALIZED: 
+S...
+   |       ^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` (part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: constant 
+`SPLIT_CALCULATED` is never 
+used
+  --> remittance_split\src\lib
+.rs:16:7
+   |
+16 | const SPLIT_CALCULATED: 
+S...
+   |       ^^^^^^^^^^^^^^^^
+
+warning: `savings_goals` 
+(lib) generated 3 warnings
+warning: `remittance_split` 
+(lib) generated 3 warnings 
+(run `cargo fix --lib -p 
+remittance_split` to apply 1 
+suggestion)
+   Compiling bill_payments 
+v0.1.0 (C:\Users\ADMIN\Desktop
+\remmy-drips\Remitwise-Contrac
+ts\bill_payments)
+   Compiling insurance v0.1.0 
+(C:\Users\ADMIN\Desktop\remmy-
+drips\Remitwise-Contracts\insu
+rance)
+   Compiling 
+remitwise-contracts v0.1.0 (C:
+\Users\ADMIN\Desktop\remmy-dri
+ps\Remitwise-Contracts)
+error[E0061]: this method 
+takes 7 arguments but 6 
+arguments were supplied
+   --> examples\remittance_spl
+it_example.rs:21:12
+    |
+ 21 |     client.initialize_sp
+lit(&owner, &0, &50, &30, 
+&15, &5);
+    |            
+^^^^^^^^^^^^^^^^             
+--- argument #3 of type 
+`&soroban_sdk::Address` is 
+missing
+    |
+note: method defined here
+   --> C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Contract
+s\remittance_split\src\lib.rs:
+323:12
+    |
+323 |     pub fn 
+initialize_split(
+    |            
+^^^^^^^^^^^^^^^^
+help: provide the argument
+    |
+ 21 -     client.initialize_sp
+lit(&owner, &0, &50, &30, 
+&15, &5);
+ 21 +     client.initialize_sp
+lit(&owner, &0, /* 
+&soroban_sdk::Address */, 
+&30, &15, &5, &50);
+    |
+
+For more information about 
+this error, try `rustc 
+--explain E0061`.
+error: could not compile 
+`remitwise-contracts` 
+(example 
+"remittance_split_example") 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs to 
+finish...

@@ -5,6 +5,11 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD,
+};
+
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const FUNDS_ADDED: Symbol = symbol_short!("added");
@@ -38,12 +43,7 @@ pub struct GoalCompletedEvent {
     pub timestamp: u64,
 }
 
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
-const INSTANCE_BUMP_AMOUNT: u32 = 518400;
-
-/// Pagination constants
-pub const DEFAULT_PAGE_LIMIT: u32 = 20;
-pub const MAX_PAGE_LIMIT: u32 = 50;
+// Storage TTL constants moved to remitwise-common
 
 #[contracttype]
 #[derive(Clone)]
@@ -59,15 +59,11 @@ pub struct SavingsGoal {
     pub tags: Vec<String>,
 }
 
-/// Paginated result for savings goal queries
 #[contracttype]
 #[derive(Clone)]
 pub struct GoalPage {
-    /// Goals for this page
     pub items: Vec<SavingsGoal>,
-    /// Pass as `cursor` for the next page. 0 = no more pages.
     pub next_cursor: u32,
-    /// Number of items returned
     pub count: u32,
 }
 
@@ -177,7 +173,6 @@ pub struct AuditEntry {
 
 const SNAPSHOT_VERSION: u32 = 1;
 const MAX_AUDIT_ENTRIES: u32 = 100;
-const CONTRACT_VERSION: u32 = 1;
 const MAX_BATCH_SIZE: u32 = 50;
 
 pub mod pause_functions {
@@ -189,23 +184,8 @@ pub mod pause_functions {
     pub const UNLOCK: Symbol = symbol_short!("unlock");
 }
 
-#[contracttype]
-#[derive(Clone)]
-pub struct ContributionItem {
-    pub goal_id: u32,
-    pub amount: i128,
-}
-
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum SavingsGoalError {
-    GoalNotFound = 1,
-    InsufficientBalance = 2,
-    GoalLocked = 3,
-    Unauthorized = 4,
-    TargetAmountMustBePositive = 5,
-}
+const DEFAULT_PAGE_LIMIT: u32 = 20;
+const MAX_PAGE_LIMIT: u32 = 50;
 #[contract]
 pub struct SavingsGoalContract;
 
@@ -230,17 +210,17 @@ impl SavingsGoalContract {
     }
 
     fn get_pause_admin(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
+        env.storage().persistent().get(&symbol_short!("PAUSE_ADM"))
     }
     fn get_global_paused(env: &Env) -> bool {
         env.storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("PAUSED"))
             .unwrap_or(false)
     }
     fn is_function_paused(env: &Env, func: Symbol) -> bool {
         env.storage()
-            .instance()
+            .persistent()
             .get::<_, Map<Symbol, bool>>(&symbol_short!("PAUSED_FN"))
             .unwrap_or_else(|| Map::new(env))
             .get(func)
@@ -267,7 +247,7 @@ impl SavingsGoalContract {
     pub fn init(env: Env) {
         let storage = env.storage().persistent();
         if storage.get::<_, u32>(&Self::STORAGE_NEXT_ID).is_none() {
-            storage.set(&Self::STORAGE_NEXT_ID, &1u32);
+            storage.set(&Self::STORAGE_NEXT_ID, &0u32);
         }
         if storage
             .get::<_, Map<u32, SavingsGoal>>(&Self::STORAGE_GOALS)
@@ -275,6 +255,7 @@ impl SavingsGoalContract {
         {
             storage.set(&Self::STORAGE_GOALS, &Map::<u32, SavingsGoal>::new(&env));
         }
+        Self::extend_storage_ttl(&env);
     }
 
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) {
@@ -290,74 +271,84 @@ impl SavingsGoalContract {
             _ => {}
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
     }
 
     pub fn pause(env: Env, caller: Address) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("Unauthorized"));
         if admin != caller {
             panic!("Unauthorized");
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("paused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("paused"),
+            (),
+        );
     }
 
     pub fn unpause(env: Env, caller: Address) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("Unauthorized"));
         if admin != caller {
             panic!("Unauthorized");
         }
-        let unpause_at: Option<u64> = env.storage().instance().get(&symbol_short!("UNP_AT"));
+        let unpause_at: Option<u64> = env.storage().persistent().get(&symbol_short!("UNP_AT"));
         if let Some(at) = unpause_at {
             if env.ledger().timestamp() < at {
                 panic!("Time-locked unpause not yet reached");
             }
-            env.storage().instance().remove(&symbol_short!("UNP_AT"));
+            env.storage().persistent().remove(&symbol_short!("UNP_AT"));
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unpaused"),
+            (),
+        );
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("Unauthorized"));
         if admin != caller {
             panic!("Unauthorized");
         }
         let mut m: Map<Symbol, bool> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("PAUSED_FN"))
             .unwrap_or_else(|| Map::new(&env));
         m.set(func, true);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("PAUSED_FN"), &m);
     }
 
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(SavingsGoalsError::Unauthorized).unwrap();
+        let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("Unauthorized"));
         if admin != caller {
             panic!("Unauthorized");
         }
         let mut m: Map<Symbol, bool> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("PAUSED_FN"))
             .unwrap_or_else(|| Map::new(&env));
         m.set(func, false);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("PAUSED_FN"), &m);
     }
 
@@ -367,13 +358,13 @@ impl SavingsGoalContract {
 
     pub fn get_version(env: Env) -> u32 {
         env.storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("VERSION"))
             .unwrap_or(CONTRACT_VERSION)
     }
 
     fn get_upgrade_admin(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&symbol_short!("UPG_ADM"))
+        env.storage().persistent().get(&symbol_short!("UPG_ADM"))
     }
 
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) {
@@ -389,7 +380,7 @@ impl SavingsGoalContract {
             _ => {}
         }
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
     }
 
@@ -404,10 +395,13 @@ impl SavingsGoalContract {
         }
         let prev = Self::get_version(env.clone());
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("VERSION"), &new_version);
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("upgraded")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("upgrd"),
             (prev, new_version),
         );
     }
@@ -421,29 +415,26 @@ impl SavingsGoalContract {
             panic!("Tags cannot be empty");
         }
         for tag in tags.iter() {
-            if tag.len() == 0 || tag.len() > 32 {
+            if tag.is_empty() || tag.len() > 32 {
                 panic!("Tag must be between 1 and 32 characters");
             }
         }
     }
 
-    pub fn add_tags_to_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = goals
+            .get(goal_id)
+            .unwrap_or_else(|| panic!("Goal not found"));
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
@@ -455,35 +446,33 @@ impl SavingsGoalContract {
         }
 
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("tags_add")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_add"),
             (goal_id, caller.clone(), tags.clone()),
         );
 
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
     }
 
-    pub fn remove_tags_from_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = goals
+            .get(goal_id)
+            .unwrap_or_else(|| panic!("Goal not found"));
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
@@ -506,12 +495,13 @@ impl SavingsGoalContract {
 
         goal.tags = new_tags;
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("tags_rem")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("tags_rem"),
             (goal_id, caller.clone(), tags.clone()),
         );
 
@@ -536,27 +526,27 @@ impl SavingsGoalContract {
         name: String,
         target_amount: i128,
         target_date: u64,
-    ) -> Result<u32, SavingsGoalsError> {
+    ) -> Result<u32, SavingsGoalError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
 
         if target_amount <= 0 {
             Self::append_audit(&env, symbol_short!("create"), &owner, false);
-            return Err(SavingsGoalsError::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
+            .persistent()
+            .get(&Self::STORAGE_GOALS)
             .unwrap_or_else(|| Map::new(&env));
 
         let next_id = env
             .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
+            .persistent()
+            .get::<_, u32>(&Self::STORAGE_NEXT_ID)
             .unwrap_or(0u32)
             + 1;
 
@@ -573,24 +563,19 @@ impl SavingsGoalContract {
         };
 
         goals.set(next_id, goal.clone());
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
         env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
-        env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_ID"), &next_id);
         Self::append_owner_goal_id(&env, &owner, next_id);
+        Self::extend_storage_ttl(&env);
 
-        let event = GoalCreatedEvent {
-            goal_id: next_id,
-            name: goal.name.clone(),
-            target_amount,
-            target_date,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((GOAL_CREATED,), event);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalCreated),
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("goal"),
             (next_id, owner),
         );
 
@@ -620,28 +605,28 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, SavingsGoalsError> {
+    ) -> Result<i128, SavingsGoalError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
         if amount <= 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
-            return Err(SavingsGoalsError::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
+            .persistent()
+            .get(&Self::STORAGE_GOALS)
             .unwrap_or_else(|| Map::new(&env));
 
         let mut goal = match goals.get(goal_id) {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("add"), &caller, false);
-                return Err(SavingsGoalsError::GoalNotFound);
+                return Err(SavingsGoalError::GoalNotFound);
             }
         };
 
@@ -654,43 +639,35 @@ impl SavingsGoalContract {
         goal.current_amount = goal
             .current_amount
             .checked_add(amount)
-            .ok_or(SavingsGoalsError::Overflow)?;
+            .ok_or(SavingsGoalError::Overflow)?;
         let new_total = goal.current_amount;
         let was_completed = new_total >= goal.target_amount;
         let previously_completed = (new_total - amount) >= goal.target_amount;
 
         goals.set(goal_id, goal.clone());
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
-
-        let funds_event = FundsAddedEvent {
-            goal_id,
-            amount,
-            new_total,
-            timestamp: env.ledger().timestamp(),
-        };
-        env.events().publish((FUNDS_ADDED,), funds_event);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         if was_completed && !previously_completed {
-            let completed_event = GoalCompletedEvent {
-                goal_id,
-                name: goal.name.clone(),
-                final_amount: new_total,
-                timestamp: env.ledger().timestamp(),
-            };
-            env.events().publish((GOAL_COMPLETED,), completed_event);
+            // goal completed logic handled by RemitwiseEvents::emit below
         }
 
         Self::append_audit(&env, symbol_short!("add"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::FundsAdded),
+        
+        // Emit compliant events
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("added"),
             (goal_id, caller.clone(), amount),
         );
 
         if was_completed && !previously_completed {
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::High,
+                symbol_short!("compl"),
                 (goal_id, caller),
             );
         }
@@ -710,8 +687,8 @@ impl SavingsGoalContract {
         }
         let goals_map: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
+            .persistent()
+            .get(&Self::STORAGE_GOALS)
             .unwrap_or_else(|| Map::new(&env));
         for item in contributions.iter() {
             if item.amount <= 0 {
@@ -725,10 +702,10 @@ impl SavingsGoalContract {
                 panic!("Not owner of all goals");
             }
         }
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let mut count = 0u32;
@@ -740,49 +717,38 @@ impl SavingsGoalContract {
             if goal.owner != caller {
                 panic!("Batch validation failed");
             }
-            goal.current_amount = match goal
-                .current_amount
-                .checked_add(item.amount) {
-                    Some(v) => v,
-                    None => panic!("overflow"),
-                };
+            goal.current_amount = match goal.current_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => panic!("overflow"),
+            };
             let new_total = goal.current_amount;
             let was_completed = new_total >= goal.target_amount;
             let previously_completed = (new_total - item.amount) >= goal.target_amount;
             goals.set(item.goal_id, goal.clone());
-            let funds_event = FundsAddedEvent {
-                goal_id: item.goal_id,
-                amount: item.amount,
-                new_total,
-                timestamp: env.ledger().timestamp(),
-            };
-            env.events().publish((FUNDS_ADDED,), funds_event);
-            if was_completed && !previously_completed {
-                let completed_event = GoalCompletedEvent {
-                    goal_id: item.goal_id,
-                    name: goal.name.clone(),
-                    final_amount: new_total,
-                    timestamp: env.ledger().timestamp(),
-                };
-                env.events().publish((GOAL_COMPLETED,), completed_event);
-            }
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::FundsAdded),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::High,
+                symbol_short!("added"),
                 (item.goal_id, caller.clone(), item.amount),
             );
             if was_completed && !previously_completed {
-                env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::State,
+                    EventPriority::High,
+                    symbol_short!("compl"),
                     (item.goal_id, caller.clone()),
                 );
             }
             count += 1;
         }
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("batch_add")),
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("batch"),
             (count, caller),
         );
         count
@@ -813,68 +779,69 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, SavingsGoalsError> {
+    ) -> Result<i128, SavingsGoalError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalsError::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
+            .persistent()
+            .get(&Self::STORAGE_GOALS)
             .unwrap_or_else(|| Map::new(&env));
 
         let mut goal = match goals.get(goal_id) {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-                return Err(SavingsGoalsError::GoalNotFound);
+                return Err(SavingsGoalError::GoalNotFound);
             }
         };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalsError::Unauthorized);
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         if goal.locked {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalsError::GoalLocked);
+            return Err(SavingsGoalError::GoalLocked);
         }
 
         if let Some(unlock_date) = goal.unlock_date {
             let current_time = env.ledger().timestamp();
             if current_time < unlock_date {
                 Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-                return Err(SavingsGoalsError::GoalLocked);
+                return Err(SavingsGoalError::GoalLocked);
             }
         }
 
         if amount > goal.current_amount {
             Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalsError::InsufficientBalance);
+            return Err(SavingsGoalError::InsufficientBalance);
         }
 
         goal.current_amount = goal
             .current_amount
             .checked_sub(amount)
-            .ok_or(SavingsGoalsError::Overflow)?;
+            .ok_or(SavingsGoalError::Overflow)?;
         let new_amount = goal.current_amount;
 
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("withdraw"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::FundsWithdrawn),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("withdr"),
             (goal_id, caller, amount),
         );
 
@@ -884,11 +851,11 @@ impl SavingsGoalContract {
     pub fn lock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::LOCK);
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -907,13 +874,14 @@ impl SavingsGoalContract {
 
         goal.locked = true;
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalLocked),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("lock"),
             (goal_id, caller),
         );
 
@@ -923,11 +891,11 @@ impl SavingsGoalContract {
     pub fn unlock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::UNLOCK);
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -946,13 +914,14 @@ impl SavingsGoalContract {
 
         goal.locked = false;
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::GoalUnlocked),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("unlock"),
             (goal_id, caller),
         );
 
@@ -962,7 +931,7 @@ impl SavingsGoalContract {
     pub fn get_goal(env: Env, goal_id: u32) -> Option<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         goals.get(goal_id)
@@ -972,12 +941,16 @@ impl SavingsGoalContract {
     // PAGINATED LIST QUERIES
     // -----------------------------------------------------------------------
 
-    /// Get a page of savings goals for `owner`.
+    /// @notice Returns a deterministic page of goals for one owner.
+    /// @dev Paging order is anchored to the owner-goal ID index (append-only,
+    ///      ascending by creation ID), not map iteration order.
+    /// @dev `cursor` is exclusive and must match an existing goal ID in the
+    ///      owner's index when non-zero; invalid cursors are rejected.
     ///
     /// # Arguments
-    /// * `owner`  – whose goals to return
-    /// * `cursor` – start after this goal ID (pass 0 for the first page)
-    /// * `limit`  – max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    /// * `owner`  - whose goals to return
+    /// * `cursor` - start after this goal ID (pass 0 for the first page)
+    /// * `limit`  - max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
     ///
     /// # Returns
     /// `GoalPage { items, next_cursor, count }`.
@@ -986,39 +959,70 @@ impl SavingsGoalContract {
         let limit = Self::clamp_limit(limit);
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
+        let owner_goal_ids: Map<Address, Vec<u32>> = env
+            .storage()
+            .persistent()
+            .get(&Self::STORAGE_OWNER_GOAL_IDS)
+            .unwrap_or_else(|| Map::new(&env));
+        let ids = owner_goal_ids
+            .get(owner.clone())
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if ids.is_empty() {
+            return GoalPage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        }
+
+        let mut start_index: u32 = 0;
+        if cursor != 0 {
+            let mut found = false;
+            for i in 0..ids.len() {
+                if ids.get(i) == Some(cursor) {
+                    start_index = i + 1;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                panic!("Invalid cursor");
+            }
+        }
+
+        let mut end_index = start_index + limit;
+        if end_index > ids.len() {
+            end_index = ids.len();
+        }
+
         let mut result = Vec::new(&env);
-        let mut next_cursor: u32 = 0;
-        let mut collected: u32 = 0;
-
-        for (id, goal) in goals.iter() {
-            if id <= cursor {
-                continue;
-            }
+        for i in start_index..end_index {
+            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Pagination index out of sync"));
+            let goal = goals
+                .get(goal_id)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
             if goal.owner != owner {
-                continue;
+                panic!("Pagination index owner mismatch");
             }
-            if collected < limit {
-                result.push_back(goal);
-                collected += 1;
-                next_cursor = id; // track last returned ID
-            } else {
-                break;
-            }
+            result.push_back(goal);
         }
 
-        // If we didn't fill the page, there are no more items
-        if collected < limit {
-            next_cursor = 0;
-        }
+        let next_cursor = if end_index < ids.len() {
+            ids.get(end_index - 1)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"))
+        } else {
+            0
+        };
 
         GoalPage {
             items: result,
             next_cursor,
-            count: collected,
+            count: end_index - start_index,
         }
     }
 
@@ -1027,7 +1031,7 @@ impl SavingsGoalContract {
     pub fn get_all_goals(env: Env, owner: Address) -> Vec<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let mut result = Vec::new(&env);
@@ -1040,7 +1044,7 @@ impl SavingsGoalContract {
     }
 
     pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
-        let storage = env.storage().instance();
+        let storage = env.storage().persistent();
         let goals: Map<u32, SavingsGoal> = storage
             .get(&symbol_short!("GOALS"))
             .unwrap_or(Map::new(&env));
@@ -1057,7 +1061,7 @@ impl SavingsGoalContract {
 
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         let nonces: Option<Map<Address, u64>> =
-            env.storage().instance().get(&symbol_short!("NONCES"));
+            env.storage().persistent().get(&symbol_short!("NONCES"));
         nonces
             .as_ref()
             .and_then(|m: &Map<Address, u64>| m.get(address))
@@ -1068,12 +1072,12 @@ impl SavingsGoalContract {
         caller.require_auth();
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
         let next_id = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
         let mut list = Vec::new(&env);
@@ -1111,7 +1115,7 @@ impl SavingsGoalContract {
             panic!("Snapshot checksum mismatch");
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
         let mut goals: Map<u32, SavingsGoal> = Map::new(&env);
         let mut owner_goal_ids: Map<Address, Vec<u32>> = Map::new(&env);
         for g in snapshot.goals.iter() {
@@ -1122,14 +1126,12 @@ impl SavingsGoalContract {
             ids.push_back(g.id);
             owner_goal_ids.set(g.owner.clone(), ids);
         }
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
         env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
-        env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_ID"), &snapshot.next_id);
         env.storage()
-            .instance()
+            .persistent()
             .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
 
         Self::increment_nonce(&env, &caller);
@@ -1138,7 +1140,7 @@ impl SavingsGoalContract {
     }
 
     pub fn get_audit_log(env: Env, from_index: u32, limit: u32) -> Vec<AuditEntry> {
-        let log: Option<Vec<AuditEntry>> = env.storage().instance().get(&symbol_short!("AUDIT"));
+        let log: Option<Vec<AuditEntry>> = env.storage().persistent().get(&symbol_short!("AUDIT"));
         let log = log.unwrap_or_else(|| Vec::new(&env));
         let len = log.len();
         let cap = MAX_AUDIT_ENTRIES.min(limit);
@@ -1170,12 +1172,12 @@ impl SavingsGoalContract {
         };
         let mut nonces: Map<Address, u64> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NONCES"))
             .unwrap_or_else(|| Map::new(env));
         nonces.set(address.clone(), next);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NONCES"), &nonces);
     }
 
@@ -1196,7 +1198,7 @@ impl SavingsGoalContract {
         let timestamp = env.ledger().timestamp();
         let mut log: Vec<AuditEntry> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("AUDIT"))
             .unwrap_or_else(|| Vec::new(env));
         if log.len() >= MAX_AUDIT_ENTRIES {
@@ -1214,18 +1216,23 @@ impl SavingsGoalContract {
             timestamp,
             success,
         });
-        env.storage().instance().set(&symbol_short!("AUDIT"), &log);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("AUDIT"), &log);
+        Self::extend_storage_ttl(env);
     }
 
     #[allow(dead_code)]
     fn get_owner_goal_ids_map(env: &Env) -> Option<Map<Address, Vec<u32>>> {
-        env.storage().instance().get(&Self::STORAGE_OWNER_GOAL_IDS)
+        env.storage()
+            .persistent()
+            .get(&Self::STORAGE_OWNER_GOAL_IDS)
     }
 
     fn append_owner_goal_id(env: &Env, owner: &Address, goal_id: u32) {
         let mut owner_goal_ids: Map<Address, Vec<u32>> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&Self::STORAGE_OWNER_GOAL_IDS)
             .unwrap_or_else(|| Map::new(env));
         let mut ids = owner_goal_ids
@@ -1234,25 +1241,44 @@ impl SavingsGoalContract {
         ids.push_back(goal_id);
         owner_goal_ids.set(owner.clone(), ids);
         env.storage()
-            .instance()
+            .persistent()
             .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
+        Self::extend_storage_ttl(env);
     }
 
-    /// Extend the TTL of instance storage
-    fn extend_instance_ttl(env: &Env) {
+    fn extend_storage_ttl(env: &Env) {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        let keys = [
+            Self::STORAGE_GOALS,
+            Self::STORAGE_NEXT_ID,
+            Self::STORAGE_OWNER_GOAL_IDS,
+            symbol_short!("SAV_SCH"),
+            symbol_short!("AUDIT"),
+            symbol_short!("PAUSED"),
+        ];
+
+        for key in keys.iter() {
+            if env.storage().persistent().has(key) {
+                env.storage().persistent().extend_ttl(
+                    key,
+                    INSTANCE_LIFETIME_THRESHOLD,
+                    INSTANCE_BUMP_AMOUNT,
+                );
+            }
+        }
     }
 
     /// Set time-lock on a goal
     pub fn set_time_lock(env: Env, caller: Address, goal_id: u32, unlock_date: u64) -> bool {
         caller.require_auth();
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1277,9 +1303,7 @@ impl SavingsGoalContract {
 
         goal.unlock_date = Some(unlock_date);
         goals.set(goal_id, goal);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         Self::append_audit(&env, symbol_short!("timelock"), &caller, true);
         true
@@ -1301,7 +1325,7 @@ impl SavingsGoalContract {
 
         let goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1319,17 +1343,17 @@ impl SavingsGoalContract {
             panic!("Next due date must be in the future");
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
         let next_schedule_id = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("NEXT_SSCH"))
             .unwrap_or(0u32)
             + 1;
@@ -1350,14 +1374,18 @@ impl SavingsGoalContract {
 
         schedules.set(next_schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("NEXT_SSCH"), &next_schedule_id);
+        Self::extend_storage_ttl(&env);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleCreated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_crt"),
             (next_schedule_id, owner),
         );
 
@@ -1383,15 +1411,17 @@ impl SavingsGoalContract {
             panic!("Next due date must be in the future");
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = schedules
+            .get(schedule_id)
+            .unwrap_or_else(|| panic!("Schedule not found"));
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can modify it");
@@ -1404,11 +1434,14 @@ impl SavingsGoalContract {
 
         schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleModified),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_mod"),
             (schedule_id, caller),
         );
 
@@ -1418,15 +1451,17 @@ impl SavingsGoalContract {
     pub fn cancel_savings_schedule(env: Env, caller: Address, schedule_id: u32) -> bool {
         caller.require_auth();
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = schedules
+            .get(schedule_id)
+            .unwrap_or_else(|| panic!("Schedule not found"));
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can cancel it");
@@ -1436,11 +1471,14 @@ impl SavingsGoalContract {
 
         schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
 
-        env.events().publish(
-            (symbol_short!("savings"), SavingsEvent::ScheduleCancelled),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sch_can"),
             (schedule_id, caller),
         );
 
@@ -1448,20 +1486,20 @@ impl SavingsGoalContract {
     }
 
     pub fn execute_due_savings_schedules(env: Env) -> Vec<u32> {
-        Self::extend_instance_ttl(&env);
+        Self::extend_storage_ttl(&env);
 
         let current_time = env.ledger().timestamp();
         let mut executed = Vec::new(&env);
 
         let mut schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
         let mut goals: Map<u32, SavingsGoal> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1471,24 +1509,28 @@ impl SavingsGoalContract {
             }
 
             if let Some(mut goal) = goals.get(schedule.goal_id) {
-                goal.current_amount = match goal
-                    .current_amount
-                    .checked_add(schedule.amount) {
-                        Some(v) => v,
-                        None => panic!("overflow"),
-                    };
+                goal.current_amount = match goal.current_amount.checked_add(schedule.amount) {
+                    Some(v) => v,
+                    None => panic!("overflow"),
+                };
 
                 let is_completed = goal.current_amount >= goal.target_amount;
                 goals.set(schedule.goal_id, goal.clone());
 
-                env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("added"),
                     (schedule.goal_id, goal.owner.clone(), schedule.amount),
                 );
 
                 if is_completed {
-                    env.events().publish(
-                        (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::State,
+                        EventPriority::High,
+                        symbol_short!("compl"),
                         (schedule.goal_id, goal.owner),
                     );
                 }
@@ -1507,8 +1549,11 @@ impl SavingsGoalContract {
                 schedule.next_due = next;
 
                 if missed > 0 {
-                    env.events().publish(
-                        (symbol_short!("savings"), SavingsEvent::ScheduleMissed),
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::State,
+                        EventPriority::Low,
+                        symbol_short!("sch_mis"),
                         (schedule_id, missed),
                     );
                 }
@@ -1519,18 +1564,19 @@ impl SavingsGoalContract {
             schedules.set(schedule_id, schedule);
             executed.push_back(schedule_id);
 
-            env.events().publish(
-                (symbol_short!("savings"), SavingsEvent::ScheduleExecuted),
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Medium,
+                symbol_short!("sch_exe"),
                 schedule_id,
             );
         }
 
         env.storage()
-            .instance()
+            .persistent()
             .set(&symbol_short!("SAV_SCH"), &schedules);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+        env.storage().persistent().set(&Self::STORAGE_GOALS, &goals);
 
         executed
     }
@@ -1538,7 +1584,7 @@ impl SavingsGoalContract {
     pub fn get_savings_schedules(env: Env, owner: Address) -> Vec<SavingsSchedule> {
         let schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
@@ -1554,7 +1600,7 @@ impl SavingsGoalContract {
     pub fn get_savings_schedule(env: Env, schedule_id: u32) -> Option<SavingsSchedule> {
         let schedules: Map<u32, SavingsSchedule> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
         schedules.get(schedule_id)

@@ -1,0 +1,769 @@
+cargo : warning: profiles for the 
+non root package will be ignored, 
+specify profiles at the workspace 
+root:
+At line:1 char:1
++ cargo test --package savings_goals 
+> test_output_3.txt 2>&1; python - 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : No    
+tSpecified: (warning: profil    
+...workspace root::String) [    ], 
+RemoteException
+    + FullyQualifiedErrorId : Na    
+tiveCommandError
+ 
+package:   C:\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contracts\orchestr
+ator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contracts\Cargo.to
+ml
+    Finished `test` profile 
+[unoptimized + debuginfo] target(s) 
+in 1.72s
+     Running unittests src\lib.rs (C:
+\Users\ADMIN\Desktop\remmy-drips\Remi
+twise-Contracts\target\debug\deps\sav
+ings_goals-9f1b9c76b34f5057.exe)
+
+running 61 tests
+test test::test_add_to_goal_emits_event ... ok
+test test::test_create_goal_allows_past_target_date ... ok
+test test::test_create_goal_emits_event ... ok
+test test::test_create_goal_unique_ids_succeeds ... ok
+test test::test_add_to_goal_increments ... ok
+test test::test_edge_cases_large_amounts ... ok
+test test::test_exact_goal_completion ... ok
+test test::test_get_all_goals ... ok
+test test::test_get_all_goals_backward_compat ... ok
+test test::test_get_all_goals_filters_by_owner ... ok
+test test::test_execute_recurring_savings_schedule ... FAILED
+test test::test_get_goal_retrieval ... ok
+test test::test_add_to_goal_non_owner_auth_failure - should panic ... ok
+test test::test_add_to_non_existent_goal ... ok
+test test::test_create_savings_schedule ... FAILED
+test test::test_cancel_savings_schedule ... FAILED
+test test::test_execute_due_savings_schedules ... FAILED
+test test::test_execute_missed_savings_schedules ... FAILED
+test test::test_get_goals_empty ... ok
+test test::test_goal_completed_emits_event ... ok
+test test::test_init_idempotent_does_not_wipe_goals ... ok
+test test::test_instance_ttl_extended_on_create_goal ... ok
+test test::test_get_goals_cursor_is_exclusive ... ok
+test test::test_instance_ttl_refreshed_on_add_to_goal ... ok
+test test::test_lock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_is_goal_completed ... ok
+test test::test_limit_zero_uses_default ... ok
+test test::test_get_goals_single_page ... ok
+test test::test_instance_ttl_extended_on_lock_goal ... ok
+test test::test_lock_goal_emits_event ... ok
+test test::test_get_goals_multi_owner_isolation ... ok
+test test::test_lock_nonexistent_goal_panics ... ok
+test test::test_get_goals_multiple_pages ... ok
+test test::test_lock_goal_success ... ok
+test test::test_lock_goal_unauthorized_panics ... ok
+test test::test_modify_savings_schedule ... FAILED
+test test::test_lock_unlock_goal ... ok
+test test::test_savings_schedule_goal_completion ... FAILED
+test test::test_multiple_goals_emit_separate_events ... ok
+test test::test_set_time_lock_succeeds ... ok
+test test::test_multiple_goals_management ... ok
+test test::test_unlock_goal_unauthorized_panics ... ok
+test test::test_unlock_goal_emits_event ... ok
+test test::test_unlock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_savings_data_persists_across_ledger_advancements ... FAILED
+test test::test_next_id_increments_sequentially ... ok
+test test::test_unlock_goal_success ... ok
+test test::test_withdraw_from_goal_emits_event ... ok
+test test::test_withdraw_from_goal_nonexistent_goal_fails ... ok
+test test::test_withdraw_from_goal_insufficient_balance ... ok
+test test::test_withdraw_from_goal_non_owner_auth_failure - should panic ... ok
+test test::test_withdraw_from_goal_locked ... ok
+test test::test_withdraw_after_lock_fails ... ok
+test test::test_withdraw_after_unlock_succeeds ... ok
+test test::test_withdraw_time_locked_goal_after_unlock ... FAILED
+test test::test_withdraw_from_goal_success ... ok
+test test::test_zero_amount_fails ... ok
+test test::test_withdraw_from_goal_unauthorized ... ok
+test test::test_withdraw_time_locked_goal_before_unlock ... FAILED
+test test::test_withdraw_full_balance ... ok
+test test::test_withdraw_from_goal_zero_amount_fails ... ok
+
+failures:
+
+---- test::test_execute_recurring_savings_schedule stdout ----
+
+thread 'test::test_execute_recurring_savings_schedule' (23260) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_execute_recurring_savings_schedule
+             at src\test.rs:654
+  20: savings_goals::test::test_execute_recurring_savings_schedule::closure$0
+             at src\test.rs:645
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_execute_recurring_savings_schedule::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_execute_recurring_savings_schedule" to "test_snapshots\\test\\test_execute_recurring_savings_schedule.1.json".
+
+---- test::test_create_savings_schedule stdout ----
+
+thread 'test::test_create_savings_schedule' (25148) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_create_savings_schedule
+             at src\test.rs:567
+  20: savings_goals::test::test_create_savings_schedule::closure$0
+             at src\test.rs:558
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_create_savings_schedule::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test::test_create_savings_schedule" to "test_snapshots\\test\\test_create_savings_schedule.1.json".
+
+---- test::test_cancel_savings_schedule stdout ----
+
+thread 'test::test_cancel_savings_schedule' (6484) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_cancel_savings_schedule
+             at src\test.rs:611
+  20: savings_goals::test::test_cancel_savings_schedule::closure$0
+             at src\test.rs:602
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_cancel_savings_schedule::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_cancel_savings_schedule" to "test_snapshots\\test\\test_cancel_savings_schedule.1.json".
+
+---- test::test_execute_due_savings_schedules stdout ----
+
+thread 'test::test_execute_due_savings_schedules' (9788) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_execute_due_savings_schedules
+             at src\test.rs:630
+  20: savings_goals::test::test_execute_due_savings_schedules::closure$0
+             at src\test.rs:621
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_execute_due_savings_schedules::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_execute_due_savings_schedules" to "test_snapshots\\test\\test_execute_due_savings_schedules.1.json".
+
+---- test::test_execute_missed_savings_schedules stdout ----
+
+thread 'test::test_execute_missed_savings_schedules' (23108) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_execute_missed_savings_schedules
+             at src\test.rs:679
+  20: savings_goals::test::test_execute_missed_savings_schedules::closure$0
+             at src\test.rs:670
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_execute_missed_savings_schedules::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_execute_missed_savings_schedules" to "test_snapshots\\test\\test_execute_missed_savings_schedules.1.json".
+
+---- test::test_modify_savings_schedule stdout ----
+
+thread 'test::test_modify_savings_schedule' (20164) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_modify_savings_schedule
+             at src\test.rs:590
+  20: savings_goals::test::test_modify_savings_schedule::closure$0
+             at src\test.rs:581
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_modify_savings_schedule::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_modify_savings_schedule" to "test_snapshots\\test\\test_modify_savings_schedule.1.json".
+
+---- test::test_savings_schedule_goal_completion stdout ----
+
+thread 'test::test_savings_schedule_goal_completion' (3136) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 1000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 1000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_savings_schedule_goal_completion
+             at src\test.rs:701
+  20: savings_goals::test::test_savings_schedule_goal_completion::closure$0
+             at src\test.rs:692
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_savings_schedule_goal_completion::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_savings_schedule_goal_completion" to "test_snapshots\\test\\test_savings_schedule_goal_completion.1.json".
+
+---- test::test_savings_data_persists_across_ledger_advancements stdout ----
+
+thread 'test::test_savings_data_persists_across_ledger_advancements' (23712) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, AUDIT]
+   5: [Failed Contract Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[added], data:{amount: 10000, goal_id: 2, new_total: 10000, timestamp: 1020000}
+   6: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 10000]
+   7: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, add_to_goal], data:3000
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [FundsAdded]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 3000]
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[added], data:{amount: 3000, goal_id: 1, new_total: 3000, timestamp: 510000}
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 3000]
+   11: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "House", target_amount: 50000, target_date: 2000000000, timestamp: 1000}
+   14: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "House", 50000, 2000000000]
+   15: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:1
+   16: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   17: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 1, name: "Education", target_amount: 10000, target_date: 2000000000, timestamp: 1000}
+   18: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 2000000000]
+   19: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   20: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<i128>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_savings_data_persists_across_ledger_advancements
+             at src\test.rs:1345
+  20: savings_goals::test::test_savings_data_persists_across_ledger_advancements::closure$0
+             at src\test.rs:1288
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_savings_data_persists_across_ledger_advancements::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_savings_data_persists_across_ledger_advancements" to "test_snapshots\\test\\test_savings_data_persists_across_ledger_advancements.1.json".
+
+---- test::test_withdraw_time_locked_goal_after_unlock stdout ----
+
+thread 'test::test_withdraw_time_locked_goal_after_unlock' (17624) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_withdraw_time_locked_goal_after_unlock
+             at src\test.rs:546
+  20: savings_goals::test::test_withdraw_time_locked_goal_after_unlock::closure$0
+             at src\test.rs:537
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_withdraw_time_locked_goal_after_unlock::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_withdraw_time_locked_goal_after_unlock" to "test_snapshots\\test\\test_withdraw_time_locked_goal_after_unlock.1.json".
+
+---- test::test_withdraw_time_locked_goal_before_unlock stdout ----
+
+thread 'test::test_withdraw_time_locked_goal_before_unlock' (25172) panicked at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:768:9:
+HostError: Error(Storage, MissingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, MissingValue)], data:["contract call failed", create_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, MissingValue)], data:["trying to get non-existing value for contract data key", GOALS]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 5000]
+
+Backtrace (newest first):
+   0: backtrace::backtrace::win64::trace
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\win64.rs:85
+      backtrace::backtrace::trace_unsynchronized<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:66
+   1: backtrace::backtrace::trace<backtrace::capture::impl$4::create::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\backtrace\mod.rs:53
+   2: backtrace::capture::Backtrace::create
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:294
+   3: backtrace::capture::Backtrace::new_unresolved
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\backtrace-0.3.76\src\capture.rs:289
+   4: soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:293
+   5: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+   6: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::maybe_get_debug_info::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+   7: soroban_env_host::host::Host::maybe_get_debug_info
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:290
+   8: soroban_env_host::host::error::impl$10::error::closure$0
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:274
+   9: soroban_env_host::budget::Budget::with_shadow_mode<tuple$<>,soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\budget.rs:972
+  10: soroban_env_host::host::Host::with_debug_mode<soroban_env_host::host::error::impl$10::error::closure_env$0>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:615
+  11: soroban_env_host::host::Host::error
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host\error.rs:261
+  12: soroban_env_host::host::impl$4::escalate_error_to_panic
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-env-host-21.2.1\src\host.rs:767
+  13: soroban_sdk::env::internal::reject_err::closure$0<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  14: enum2$<core::result::Result<soroban_env_common::val::Val,soroban_env_host::host::error::HostError> >::map_err<soroban_env_common::val::Val,soroban_env_host::host::error::HostError,enum2$<core::convert::Infallible>,soroban_sdk::env::internal::reject_err::cl
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\result.rs:968
+  15: soroban_sdk::env::internal::reject_err<soroban_env_common::val::Val>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:52
+  16: soroban_sdk::env::impl$20::call
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::Env::invoke_contract<u32>
+             at C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\env.rs:379
+  18: savings_goals::SavingsGoalContractClient::create_goal
+             at src\lib.rs:155
+  19: savings_goals::test::test_withdraw_time_locked_goal_before_unlock
+             at src\test.rs:526
+  20: savings_goals::test::test_withdraw_time_locked_goal_before_unlock::closure$0
+             at src\test.rs:517
+  21: core::ops::function::FnOnce::call_once<savings_goals::test::test_withdraw_time_locked_goal_before_unlock::closure_env$0,tuple$<> >
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\ops\function.rs:250
+
+
+Writing test snapshot file for test "test::test_withdraw_time_locked_goal_before_unlock" to "test_snapshots\\test\\test_withdraw_time_locked_goal_before_unlock.1.json".
+
+
+failures:
+    test::test_cancel_savings_schedule
+    test::test_create_savings_schedule
+    test::test_execute_due_savings_schedules
+    test::test_execute_missed_savings_schedules
+    test::test_execute_recurring_savings_schedule
+    test::test_modify_savings_schedule
+    test::test_savings_data_persists_across_ledger_advancements
+    test::test_savings_schedule_goal_completion
+    test::test_withdraw_time_locked_goal_after_unlock
+    test::test_withdraw_time_locked_goal_before_unlock
+
+test result: FAILED. 51 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.94s
+
+error: test failed, to rerun pass 
+`-p savings_goals --lib`

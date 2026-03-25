@@ -1,0 +1,378 @@
+﻿diff --git a/integration_tests/test_snapshots/test_multi_contract_user_flow.1.json b/integration_tests/test_snapshots/test_multi_contract_user_flow.1.json
+index 4dfd656..105beb1 100644
+--- a/integration_tests/test_snapshots/test_multi_contract_user_flow.1.json
++++ b/integration_tests/test_snapshots/test_multi_contract_user_flow.1.json
+@@ -1,6 +1,6 @@
+ {
+   "generators": {
+-    "address": 5,
++    "address": 6,
+     "nonce": 0
+   },
+   "auth": [
+@@ -19,6 +19,9 @@
+                 {
+                   "u64": 0
+                 },
++                {
++                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
++                },
+                 {
+                   "u32": 40
+                 },
+@@ -421,6 +424,14 @@
+                               "val": {
+                                 "u64": 0
+                               }
++                            },
++                            {
++                              "key": {
++                                "symbol": "usdc_contract"
++                              },
++                              "val": {
++                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
++                              }
+                             }
+                           ]
+                         }
+@@ -1104,6 +1115,9 @@
+                 {
+                   "u64": 0
+                 },
++                {
++                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
++                },
+                 {
+                   "u32": 40
+                 },
+diff --git a/integration_tests/test_snapshots/test_split_with_rounding.1.json b/integration_tests/test_snapshots/test_split_with_rounding.1.json
+index 33d6a41..bf87beb 100644
+--- a/integration_tests/test_snapshots/test_split_with_rounding.1.json
++++ b/integration_tests/test_snapshots/test_split_with_rounding.1.json
+@@ -1,6 +1,6 @@
+ {
+   "generators": {
+-    "address": 2,
++    "address": 3,
+     "nonce": 0
+   },
+   "auth": [
+@@ -19,6 +19,9 @@
+                 {
+                   "u64": 0
+                 },
++                {
++                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
++                },
+                 {
+                   "u32": 33
+                 },
+@@ -212,6 +215,14 @@
+                               "val": {
+                                 "u64": 0
+                               }
++                            },
++                            {
++                              "key": {
++                                "symbol": "usdc_contract"
++                              },
++                              "val": {
++                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
++                              }
+                             }
+                           ]
+                         }
+@@ -314,6 +325,9 @@
+                 {
+                   "u64": 0
+                 },
++                {
++                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
++                },
+                 {
+                   "u32": 33
+                 },
+diff --git a/integration_tests/tests/multi_contract_integration.rs b/integration_tests/tests/multi_contract_integration.rs
+index b814043..9724529 100644
+--- a/integration_tests/tests/multi_contract_integration.rs
++++ b/integration_tests/tests/multi_contract_integration.rs
+@@ -1,6 +1,6 @@
+ #![cfg(test)]
+ 
+-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
++use soroban_sdk::{testutils::Address as _, testutils::Events as _, Address, Env, String as SorobanString, TryFromVal};
+ 
+ // Import all contract types and clients
+ use bill_payments::{BillPayments, BillPaymentsClient};
+@@ -39,7 +39,7 @@ fn test_multi_contract_user_flow() {
+     // Spending: 40%, Savings: 30%, Bills: 20%, Insurance: 10%
+     let nonce = 0u64;
+     remittance_client.initialize_split(
+-        &user, &nonce, &40u32, // spending
++        &user, &nonce, &Address::generate(&env), &40u32, // spending
+         &30u32, // savings
+         &20u32, // bills
+         &10u32, // insurance
+@@ -61,14 +61,14 @@ fn test_multi_contract_user_flow() {
+     let frequency_days = 30u32;
+ 
+     let bill_id = bills_client.create_bill(
+-        &user,
+-        &bill_name,
+-        &bill_amount,
+-        &due_date,
++        &user, 
++        &bill_name, 
++        &bill_amount, 
++        &due_date, 
+         &recurring,
+         &frequency_days,
+         &None,
+-        &SorobanString::from_str(&env, "XLM"),
++        &SorobanString::from_str(&env, "XLM")
+     );
+     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
+ 
+@@ -79,12 +79,12 @@ fn test_multi_contract_user_flow() {
+     let coverage_amount = 50_000i128;
+ 
+     let policy_id = insurance_client.create_policy(
+-        &user,
+-        &policy_name,
+-        &coverage_type,
+-        &monthly_premium,
++        &user, 
++        &policy_name, 
++        &coverage_type, 
++        &monthly_premium, 
+         &coverage_amount,
+-        &None,
++        &None
+     );
+     assert_eq!(policy_id, 1u32, "Policy ID should be 1");
+ 
+@@ -147,7 +147,7 @@ fn test_split_with_rounding() {
+ 
+     // Initialize with percentages that might cause rounding issues
+     // Spending: 33%, Savings: 33%, Bills: 17%, Insurance: 17%
+-    remittance_client.initialize_split(&user, &0u64, &33u32, &33u32, &17u32, &17u32);
++    remittance_client.initialize_split(&user, &0u64, &Address::generate(&env), &33u32, &33u32, &17u32, &17u32);
+ 
+     // Calculate split for an amount that will have rounding
+     let total = 1_000i128;
+@@ -293,7 +293,7 @@ fn test_event_topic_compliance_across_contracts() {
+     let insurance_client = InsuranceClient::new(&env, &insurance_id);
+ 
+     // Trigger events in each contract
+-    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
++    remittance_client.initialize_split(&user, &0u64, &Address::generate(&env), &40u32, &30u32, &20u32, &10u32);
+ 
+     let goal_name = SorobanString::from_str(&env, "Compliance Goal");
+     let _ = savings_client.create_goal(&user, &goal_name, &1000i128, &(env.ledger().timestamp() + 86400));
+@@ -306,12 +306,13 @@ fn test_event_topic_compliance_across_contracts() {
+         &(env.ledger().timestamp() + 86400),
+         &true,
+         &30u32,
++        &None,
+         &SorobanString::from_str(&env, "XLM"),
+     );
+ 
+     let policy_name = SorobanString::from_str(&env, "Compliance Policy");
+     let coverage_type = SorobanString::from_str(&env, "health");
+-    let _ = insurance_client.create_policy(&user, &policy_name, &coverage_type, &50i128, &1000i128);
++    let _ = insurance_client.create_policy(&user, &policy_name, &coverage_type, &50i128, &1000i128, &None);
+ 
+     // Collect published events
+     let events = env.events().all();
+@@ -323,7 +324,8 @@ fn test_event_topic_compliance_across_contracts() {
+     for ev in events.iter() {
+         let topics = &ev.1;
+         // Expect topics to be a vector of length 4 starting with symbol_short!("Remitwise")
+-        let ok = topics.len() == 4 && topics.get(0).unwrap() == symbol_short!("Remitwise").into_val(&env);
++        use soroban_sdk::Symbol;
++        let ok = topics.len() == 4 && Symbol::try_from_val(&env, &topics.get(0).unwrap()) == Ok(symbol_short!("Remitwise"));
+         if !ok {
+             non_compliant.push_back(ev.clone());
+         }
+diff --git a/remittance_split/src/lib.rs b/remittance_split/src/lib.rs
+index d3b104e..d38a0fd 100644
+--- a/remittance_split/src/lib.rs
++++ b/remittance_split/src/lib.rs
+@@ -1071,7 +1071,7 @@ mod test {
+         setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
+ 
+         // Initialize split
+-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+         assert!(result);
+ 
+         // Verify event was emitted
+@@ -1088,7 +1088,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // Initialize split first
+-        client.initialize_split(&owner, &0, &40, &30, &20, &10);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &20, &10);
+ 
+         // Get events before calculating
+         let events_before = env.events().all().len();
+@@ -1115,7 +1115,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // Initialize split
+-        client.initialize_split(&owner, &0, &50, &25, &15, &10);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &25, &15, &10);
+ 
+         // Calculate split twice
+         client.calculate_split(&2000);
+@@ -1164,7 +1164,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // initialize_split calls extend_instance_ttl
+-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+         assert!(result);
+ 
+         // Inspect instance TTL ΓÇö must be at least INSTANCE_BUMP_AMOUNT
+@@ -1200,7 +1200,7 @@ mod test {
+         let client = RemittanceSplitClient::new(&env, &contract_id);
+         let owner = Address::generate(&env);
+ 
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // Advance ledger so TTL drops below threshold (17,280)
+         // After init: live_until = 518,500. At seq 510,000: TTL = 8,500
+@@ -1250,7 +1250,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // Phase 1: Initialize at seq 100. live_until = 518,500
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
+         env.ledger().set(LedgerInfo {
+@@ -1315,7 +1315,7 @@ mod test {
+         let client = RemittanceSplitClient::new(&env, &contract_id);
+         let owner = Address::generate(&env);
+ 
+-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+         assert!(result, "initialize_split should return true on success");
+ 
+         let config = client
+@@ -1341,7 +1341,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // Should panic because owner has not authorized
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+     }
+ 
+     /// ### 3. test_initialize_split_percentages_must_sum_to_100
+@@ -1355,14 +1355,14 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // 40 + 30 + 15 + 5 = 90, not 100
+-        let result = client.try_initialize_split(&owner, &0, &40, &30, &15, &5);
++        let result = client.try_initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &15, &5);
+         assert_eq!(
+             result,
+             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+         );
+ 
+         // 50 + 50 + 10 + 0 = 110, not 100
+-        let result2 = client.try_initialize_split(&owner, &0, &50, &50, &10, &0);
++        let result2 = client.try_initialize_split(&owner, &0, &Address::generate(&env), &50, &50, &10, &0);
+         assert_eq!(
+             result2,
+             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+@@ -1380,10 +1380,10 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // First init succeeds
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // Second init must fail with AlreadyInitialized
+-        let result = client.try_initialize_split(&owner, &1, &50, &30, &15, &5);
++        let result = client.try_initialize_split(&owner, &1, &Address::generate(&env), &50, &30, &15, &5);
+         assert_eq!(result, Err(Ok(RemittanceSplitError::AlreadyInitialized)));
+     }
+ 
+@@ -1398,7 +1398,7 @@ mod test {
+         let owner = Address::generate(&env);
+         let other = Address::generate(&env);
+ 
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // other address is not the owner ΓÇö must fail
+         let result = client.try_update_split(&other, &0, &40, &40, &10, &10);
+@@ -1419,7 +1419,7 @@ mod test {
+         let client = RemittanceSplitClient::new(&env, &contract_id);
+         let owner = Address::generate(&env);
+ 
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // 60 + 30 + 15 + 5 = 110 ΓÇö invalid
+         let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
+@@ -1475,7 +1475,7 @@ mod test {
+         let client = RemittanceSplitClient::new(&env, &contract_id);
+         let owner = Address::generate(&env);
+ 
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         let config = client.get_config();
+         assert!(config.is_some(), "get_config should be Some after init");
+@@ -1502,7 +1502,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // 50 / 30 / 15 / 5
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         let amounts = client.calculate_split(&1000);
+         assert_eq!(amounts.len(), 4);
+@@ -1526,7 +1526,7 @@ mod test {
+         let client = RemittanceSplitClient::new(&env, &contract_id);
+         let owner = Address::generate(&env);
+ 
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         // Zero
+         let result_zero = client.try_calculate_split(&0);
+@@ -1556,7 +1556,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // Use percentages that cause integer division remainders: 33/33/33/1
+-        client.initialize_split(&owner, &0, &33, &33, &33, &1);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &33, &33, &33, &1);
+ 
+         // total = 100: 33+33+33 = 99, insurance gets remainder = 1
+         let amounts = client.calculate_split(&100);
+@@ -1585,7 +1585,7 @@ mod test {
+         let owner = Address::generate(&env);
+ 
+         // --- initialize_split event ---
+-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
++        client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+ 
+         let events_after_init = env.events().all();
+         assert!(
+diff --git a/scenarios/tests/flow.rs b/scenarios/tests/flow.rs
+index 07df2e1..f479d87 100644
+--- a/scenarios/tests/flow.rs
++++ b/scenarios/tests/flow.rs
+@@ -58,7 +58,7 @@ fn test_end_to_end_flow() {
+ 
+     // 3. Configure Split
+     let nonce = 0;
+-    split_client.initialize_split(&user, &nonce, &50, &30, &15, &5);
++    split_client.initialize_split(&user, &nonce, &Address::generate(&env), &50, &30, &15, &5);
+ 
+     // Assuming we do an "allocate into goals/bills/insurance"
+     // We create a sample goal

@@ -1,0 +1,102 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo metadata 
+--format-version 1 2>&1 
+| Out-File -Encoding 
+utf8 erro ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Updating crates.io 
+index
+error: failed to select 
+a version for 
+`ed25519-dalek`.
+    ... required by 
+package `soroban-sdk 
+v21.1.1`
+    ... which satisfies 
+dependency `soroban-sdk 
+= "^21.0.0"` of package 
+`remittance_split 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\remittanc
+e_split)`
+    ... which satisfies 
+path dependency 
+`remittance_split` of 
+package 
+`integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)`
+versions that meet the 
+requirements `^2.1.1` 
+are: 2.2.0, 2.1.1
+
+all possible versions 
+conflict with 
+previously selected 
+packages.
+
+  previously selected 
+package `ed25519-dalek 
+v2.0.0`
+    ... which satisfies 
+dependency 
+`ed25519-dalek = 
+">=2.0.0"` of package 
+`soroban-env-host 
+v21.1.2`
+    ... which satisfies 
+dependency 
+`soroban-env-host = 
+"=21.1.2"` of package 
+`soroban-sdk v21.1.1`
+    ... which satisfies 
+dependency `soroban-sdk 
+= "^21.0.0"` of package 
+`remittance_split 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\remittanc
+e_split)`
+    ... which satisfies 
+path dependency 
+`remittance_split` of 
+package 
+`integration_tests 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\integrati
+on_tests)`
+
+failed to select a 
+version for 
+`ed25519-dalek` which 
+could resolve this 
+conflict

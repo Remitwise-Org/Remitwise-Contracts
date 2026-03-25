@@ -1,0 +1,1327 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test -p 
+insurance -- 
+--nocapture 2>&1 | 
+Out-File -FilePath test 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Finished `test` 
+profile [unoptimized + 
+debuginfo] target(s) in 
+0.72s
+     Running unittests 
+src\lib.rs (target\debug
+\deps\insurance-44030312
+625ea3b8.exe)
+
+running 45 tests
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_invalid_
+coverage" to "test_snaps
+hots\\test\\test_create_
+policy_inv
+thread 'test::test_creat
+e_policy_emits_event' 
+(4620) panicked at insur
+ance\src\test.rs:780:5:
+assertion failed: 
+events.len() >= 2
+anote: run with 
+`RUST_BACKTRACE=1` 
+environment variable to 
+display a backtrace
+lid_coverage.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_invalid_
+premium" to "test_snapsh
+ots\\test\\test_create_p
+olicy_invalid_premium.1.
+json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_negative
+_coverage_panics" to "te
+st_snapshots\\test\\test
+_create_policy_negative_
+coverage_panics.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_emits_ev
+ent" to "test_snapshots\
+\test\\test_create_polic
+y_emits_event.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_cancel_premium_schedul
+e" to "test_snapshots\\t
+est\\test_cancel_premium
+_schedule.1.json".
+test test::test_create_policy_invalid_premium ... ok
+test test::test_create_policy_invalid_coverage ... ok
+test test::test_create_policy_negative_coverage_panics ... ok
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_succeeds
+" to "test_snapshots\\te
+st\\test_create_policy_s
+ucceeds.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_success"
+ to "test_snapshots\\tes
+t\\test_create_policy_su
+ccess.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_premium_schedul
+e_succeeds" to "test_sna
+pshots\\test\\test_creat
+e_premium_schedule_succe
+eds.1.json".
+test test::test_create_policy_emits_event ... FAILED
+Writing test snapshot 
+file for test "test::tes
+t_deactivate_policy" to 
+"test_snapshots\\test\\t
+est_deactivate_policy.1.
+json".
+test test::test_create_policy_success ... ok
+test test::test_create_policy_succeeds ... ok
+
+thread 'test::test_deact
+ivate_policy_emits_event
+' (9984) panicked at ins
+urance\src\test.rs:866:5
+:
+assertion `left == 
+right` failed
+  left: Vec(Ok(Symbol(Re
+mitwise)), Ok(U32(1)), 
+Ok(U32(1)), 
+Ok(Symbol(deact)))
+ right: 
+Vec(Ok(Symbol(insure)), 
+Ok(Vec(obj#141)))
+Writing test snapshot 
+file for test "test::tes
+t_deactivate_policy_emit
+s_event" to "test_snapsh
+ots\\test\\test_deactiva
+te_policy_emits_event.1.
+json".
+test test::test_create_premium_schedule_succeeds ... ok
+test test::test_cancel_premium_schedule ... ok
+Writing test snapshot 
+file for test "test::tes
+t_execute_due_premium_sc
+hedules" to "test_snapsh
+ots\\test\\test_execute_
+due_premium_schedules.1.
+json".
+test test::test_deactivate_policy ... ok
+Writing test snapshot 
+file for test "test::tes
+t_execute_missed_premium
+_schedules" to "test_sna
+pshots\\test\\test_execu
+te_missed_premium_schedu
+les.1.json".
+test test::test_deactivate_policy_emits_event ... FAILED
+Writing test snapshot 
+file for test "test::tes
+t_execute_recurring_prem
+ium_schedule" to "test_s
+napshots\\test\\test_exe
+cute_recurring_premium_s
+chedule.1.json".
+test test::test_execute_due_premium_schedules ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_active_policies" 
+to "test_snapshots\\test
+\\test_get_active_polici
+es.1.json".
+test test::test_execute_missed_premium_schedules ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_active_policies_ex
+cludes_deactivated" to "
+test_snapshots\\test\\te
+st_get_active_policies_e
+xcludes_deactivated.1.js
+on".
+test test::test_execute_recurring_premium_schedule ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_active_policies_fi
+lters_by_owner_and_activ
+e" to "test_snapshots\\t
+est\\test_get_active_pol
+icies_filters_by_owner_a
+nd_active.1.json".
+test test::test_get_active_policies ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_all_policies_for_o
+wner_pagination" to "tes
+t_snapshots\\test\\test_
+get_all_policies_for_own
+er_pagination.1.json".
+test test::test_get_active_policies_excludes_deactivated ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_policy_nonexistent
+" to "test_snapshots\\te
+st\\test_get_policy_none
+xistent.1.json".
+test test::test_get_policy_nonexistent ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_premium_schedules"
+ to "test_snapshots\\tes
+t\\test_get_premium_sche
+dules.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_negative
+_premium_panics" to "tes
+t_snapshots\\test\\test_
+create_policy_negative_p
+remium_panics.1.json".
+test test::test_get_active_policies_filters_by_owner_and_active ... ok
+test test::test_create_policy_negative_premium_panics ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium" to "test_snapshots\
+\test\\test_get_total_mo
+nthly_premium.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_comprehensive" to "t
+est_snapshots\\test\\tes
+t_get_total_monthly_prem
+ium_comprehensive.1.json
+".
+Writing test snapshot 
+file for test "test::tes
+t_deactivate_policy_owne
+r_only" to "test_snapsho
+ts\\test\\test_deactivat
+e_policy_owner_only.1.js
+on".
+test test::test_get_all_policies_for_owner_pagination ... ok
+test test::test_get_total_monthly_premium ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_different_owner_isol
+ation" to "test_snapshot
+s\\test\\test_get_total_
+monthly_premium_differen
+t_owner_isolation.1.json
+".
+
+thread 'test::test_creat
+e_policy_non_owner_auth_
+failure' (20644) 
+panicked at C:\Users\ADM
+IN\.cargo\registry\src\i
+ndex.crates.io-1949cf8c6
+b5b557f\soroban-env-host
+-21.2.1\src\host.rs:768:
+9:
+HostError: Error(Auth, 
+InvalidAction)
+
+Event log (newest 
+first):
+   0: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   1: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["contract call 
+failed", create_policy, 
+[CAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]]
+   2: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"caught error from 
+function"
+   3: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   4: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["Unauthorized 
+function call for 
+address", CAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic 
+Event] topics:[fn_call, 
+Bytes(000000000000000000
+000000000000000000000000
+0000000000000000000001),
+ create_policy], data:[C
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]
+
+Backtrace (newest 
+first):
+   0: backtrace::backtra
+ce::win64::trace
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\win64
+.rs:85
+      backtrace::backtra
+ce::trace_unsynchronized
+<backtrace::capture::imp
+l$4::create::closure_env
+$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:66
+   1: backtrace::backtra
+ce::trace<backtrace::cap
+ture::impl$4::create::cl
+osure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:53
+   2: backtrace::capture
+::Backtrace::create
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:294
+   3: backtrace::capture
+::Backtrace::new_unresol
+ved
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:289
+   4: soroban_env_host::
+host::error::impl$10::ma
+ybe_get_debug_info::clos
+ure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:293
+   5: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::maybe_get_debu
+g_info::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+   6: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::mayb
+e_get_debug_info::closur
+e_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+   7: soroban_env_host::
+host::Host::maybe_get_de
+bug_info
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:290
+   8: soroban_env_host::
+host::error::impl$10::er
+ror::closure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:274
+   9: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::error::closure
+_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+  10: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::erro
+r::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+  11: soroban_env_host::
+host::Host::error
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:261
+  12: soroban_env_host::
+host::impl$4::escalate_e
+rror_to_panic
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+767
+  13: soroban_sdk::env::
+internal::reject_err::cl
+osure$0<soroban_env_comm
+on::val::Val>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  14: enum2$<core::resul
+t::Result<soroban_env_co
+mmon::val::Val,soroban_e
+nv_host::host::error::Ho
+stError> >::map_err<soro
+ban_env_common::val::Val
+,soroban_env_host::host:
+:error::HostError,enum2$
+<core::convert::Infallib
+le>,soroban_sdk::env::in
+ternal::reject_err::cl
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\result.rs:968
+  15: soroban_sdk::env::
+internal::reject_err<sor
+oban_env_common::val::Va
+l>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  16: soroban_sdk::env::
+impl$20::call
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::
+Env::invoke_contract<u32
+>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:379
+  18: insurance::Insuran
+ceClient::create_policy
+             at 
+src\lib.rs:139
+  19: insurance::test::t
+est_create_policy_non_ow
+ner_auth_failure
+             at 
+src\test.rs:884
+  20: insurance::test::t
+est_create_policy_non_ow
+ner_auth_failure::closur
+e$0
+             at 
+src\test.rs:875
+  21: core::ops::functio
+n::FnOnce::call_once<ins
+urance::test::test_creat
+e_policy_non_owner_auth_
+failure::closure_env$0,t
+uple$<> >
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\ops\function.rs
+:250
+
+
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_non_owne
+r_auth_failure" to "test
+_snapshots\\test\\test_c
+reate_policy_non_owner_a
+uth_failure.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_deactivated_policy_e
+xcluded" to "test_snapsh
+ots\\test\\test_g
+thread 'test::test_deact
+ivate_policy_non_owner_a
+uth_failure' (13332) 
+panicked at C:\Users\ADM
+IN\.cargo\registry\src\i
+ndex.crates.io-1949cf8c6
+b5b557f\soroban-env-host
+-21.2.1\src\host.rs:768:
+9:
+HostError: Error(Auth, 
+InvalidAction)
+
+Event log (newest 
+first):
+   0: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   1: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["contract call 
+failed", create_policy, 
+[CAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]]
+   2: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"caught error from 
+function"
+   3: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   4: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["Unauthorized 
+function call for 
+address", CAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic 
+Event] topics:[fn_call, 
+Bytes(000000000000000000
+000000000000000000000000
+0000000000000000000001),
+ create_policy], data:[C
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]
+
+Backtrace (newest 
+first):
+   0: backtrace::backtra
+ce::win64::trace
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\win64
+.rs:85
+      backtrace::backtra
+ce::trace_unsynchronized
+<backtrace::capture::imp
+l$4::create::closure_env
+$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:66
+   1: backtrace::backtra
+ce::trace<backtrace::cap
+ture::impl$4::create::cl
+osure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:53
+   2: backtrace::capture
+::Backtrace::create
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:294
+   3: backtrace::capture
+::Backtrace::new_unresol
+ved
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:289
+   4: soroban_env_host::
+host::error::impl$10::ma
+ybe_get_debug_info::clos
+ure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:293
+   5: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::maybe_get_debu
+g_info::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+   6: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::mayb
+e_get_debug_info::closur
+e_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+   7: soroban_env_host::
+host::Host::maybe_get_de
+bug_info
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:290
+   8: soroban_env_host::
+host::error::impl$10::er
+ror::closure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:274
+   9: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::error::closure
+_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+  10: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::erro
+r::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+  11: soroban_env_host::
+host::Host::error
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:261
+  12: soroban_env_host::
+host::impl$4::escalate_e
+rror_to_panic
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+767
+  13: soroban_sdk::env::
+internal::reject_err::cl
+osure$0<soroban_env_comm
+on::val::Val>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  14: enum2$<core::resul
+t::Result<soroban_env_co
+mmon::val::Val,soroban_e
+nv_host::host::error::Ho
+stError> >::map_err<soro
+ban_env_common::val::Val
+,soroban_env_host::host:
+:error::HostError,enum2$
+<core::convert::Infallib
+le>,soroban_sdk::env::in
+ternal::reject_err::cl
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\result.rs:968
+  15: soroban_sdk::env::
+internal::reject_err<sor
+oban_env_common::val::Va
+l>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  16: soroban_sdk::env::
+impl$20::call
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::
+Env::invoke_contract<u32
+>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:379
+  18: insurance::Insuran
+ceClient::create_policy
+             at 
+src\lib.rs:139
+  19: insurance::test::t
+est_deactivate_policy_no
+n_owner_auth_failure
+             at 
+src\test.rs:959
+  20: insurance::test::t
+est_deactivate_policy_no
+n_owner_auth_failure::cl
+osure$0
+             at 
+src\test.rs:935
+  21: core::ops::functio
+n::FnOnce::call_once<ins
+urance::test::test_deact
+ivate_policy_non_owner_a
+uth_failure::closure_env
+$0,tuple$<> >
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\ops\function.rs
+:250
+
+
+test test::test_get_premium_schedules ... ok
+test test::test_create_policy_non_owner_auth_failure - should panic ... ok
+et_total_monthly_premium
+_deactivated_policy_excl
+uded.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_create_policy_requires
+_auth" to "test_snapshot
+s\\test\\test_create_pol
+icy_requires_auth.1.json
+".
+Writing test snapshot 
+file for test "test::tes
+t_deactivate_policy_non_
+owner_auth_failure" to "
+test_snapshots\\test\\te
+st_deactivate_policy_non
+_owner_auth_failure.1.js
+on".
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_multiple_active_poli
+cies" to "test_snapshots
+\\test\\test_get_total_m
+onthly_premium_multiple_
+active_policies.1.json".
+test test::test_create_policy_requires_auth ... ok
+test test::test_get_total_monthly_premium_comprehensive ... ok
+test test::test_deactivate_policy_non_owner_auth_failure - should panic ... ok
+test test::test_deactivate_policy_owner_only ... ok
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_one_policy" to "test
+_snapshots\\test\\test_g
+et_total_monthly_premium
+_one_policy.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_modify_premium_schedul
+e" to "test_snapshots\\t
+est\\test_modify_premium
+_schedule.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_get_total_monthly_prem
+ium_zero_policies" to "t
+est_snapshots\\test\\tes
+t_get_total_monthly_prem
+ium_zero_policies.1.json
+".
+Writing test snapshot 
+file for test "test::tes
+t_multiple_premium_payme
+nts" to "test_snapshots\
+\test\\test_multiple_pre
+mium_payments.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_multiple_policies_same
+_owner" to "test_snapsho
+ts\\test\\test_multiple_
+policies_same_owner.1.js
+on".
+test test::test_get_total_monthly_premium_zero_policies ... ok
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium" to "test_
+snapshots\\test\\test_pa
+y_premium.1.json".
+test test::test_get_total_monthly_premium_one_policy ... ok
+test test::test_get_total_monthly_premium_multiple_active_policies ... ok
+test test::test_get_total_monthly_premium_different_owner_isolation ... ok
+
+thread 'test::test_pay_p
+remium_emits_event' 
+(16460) panicked at insu
+rance\src\test.rs:828:5:
+assertion `left == 
+right` failed
+  left: Vec(Ok(Symbol(Re
+mitwise)), Ok(U32(0)), 
+Ok(U32(2)), 
+Ok(Symbol(paid)))
+ right: 
+Vec(Ok(Symbol(insure)), 
+Ok(Vec(obj#139)))
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_emits_even
+t" to "test_snapshots\\t
+est\\test_pay_premium_em
+its_event.1.json".
+test test::test_get_total_monthly_premium_deactivated_policy_excluded ... ok
+test test::test_modify_premium_schedule ... ok
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_inactive_p
+olicy_panics" to "test_s
+napshots\\test\\test_pay
+_premium_inactive_policy
+_panics.1.json".
+
+thread 'test::test_pay_p
+remium_non_owner_auth_fa
+ilure' (9856) panicked 
+at C:\Users\ADMIN\.cargo
+\registry\src\index.crat
+es.io-1949cf8c6b5b557f\s
+oroban-env-host-21.2.1\s
+rc\host.rs:768:9:
+HostError: Error(Auth, 
+InvalidAction)
+
+Event log (newest 
+first):
+   0: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   1: [Diagnostic 
+Event] topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["contract call 
+failed", create_policy, 
+[CAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]]
+   2: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"caught error from 
+function"
+   3: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:"escalating error 
+to panic"
+   4: [Failed 
+Diagnostic Event (not 
+emitted)] contract:CAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAD
+2KM, topics:[error, 
+Error(Auth, 
+InvalidAction)], 
+data:["Unauthorized 
+function call for 
+address", CAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic 
+Event] topics:[fn_call, 
+Bytes(000000000000000000
+000000000000000000000000
+0000000000000000000001),
+ create_policy], data:[C
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAA
+AAAFCT4, "Policy", 
+"Type", 100, 10000, 
+Void]
+
+Backtrace (newest 
+first):
+   0: backtrace::backtra
+ce::win64::trace
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\win64
+.rs:85
+      backtrace::backtra
+ce::trace_unsynchronized
+<backtrace::capture::imp
+l$4::create::closure_env
+$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:66
+   1: backtrace::backtra
+ce::trace<backtrace::cap
+ture::impl$4::create::cl
+osure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\backtrace\mod.r
+s:53
+   2: backtrace::capture
+::Backtrace::create
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:294
+   3: backtrace::capture
+::Backtrace::new_unresol
+ved
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\backtrace-0.
+3.76\src\capture.rs:289
+   4: soroban_env_host::
+host::error::impl$10::ma
+ybe_get_debug_info::clos
+ure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:293
+   5: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::maybe_get_debu
+g_info::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+   6: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::mayb
+e_get_debug_info::closur
+e_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+   7: soroban_env_host::
+host::Host::maybe_get_de
+bug_info
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:290
+   8: soroban_env_host::
+host::error::impl$10::er
+ror::closure$0
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:274
+   9: soroban_env_host::
+budget::Budget::with_sha
+dow_mode<tuple$<>,soroba
+n_env_host::host::error:
+:impl$10::error::closure
+_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\budget.r
+s:972
+  10: soroban_env_host::
+host::Host::with_debug_m
+ode<soroban_env_host::ho
+st::error::impl$10::erro
+r::closure_env$0>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+615
+  11: soroban_env_host::
+host::Host::error
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host\err
+or.rs:261
+  12: soroban_env_host::
+host::impl$4::escalate_e
+rror_to_panic
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-env-
+host-21.2.1\src\host.rs:
+767
+  13: soroban_sdk::env::
+internal::reject_err::cl
+osure$0<soroban_env_comm
+on::val::Val>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  14: enum2$<core::resul
+t::Result<soroban_env_co
+mmon::val::Val,soroban_e
+nv_host::host::error::Ho
+stError> >::map_err<soro
+ban_env_common::val::Val
+,soroban_env_host::host:
+:error::HostError,enum2$
+<core::convert::Infallib
+le>,soroban_sdk::env::in
+ternal::reject_err::cl
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\result.rs:968
+  15: soroban_sdk::env::
+internal::reject_err<sor
+oban_env_common::val::Va
+l>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:52
+  16: soroban_sdk::env::
+impl$20::call
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:1667
+  17: soroban_sdk::env::
+Env::invoke_contract<u32
+>
+             at C:\Users
+\ADMIN\.cargo\registry\s
+rc\index.crates.io-1949c
+f8c6b5b557f\soroban-sdk-
+21.7.7\src\env.rs:379
+  18: insurance::Insuran
+ceClient::create_policy
+             at 
+src\lib.rs:139
+  19: insurance::test::t
+est_pay_premium_non_owne
+r_auth_failure
+             at 
+src\test.rs:920
+  20: insurance::test::t
+est_pay_premium_non_owne
+r_auth_failure::closure$
+0
+             at 
+src\test.rs:896
+  21: core::ops::functio
+n::FnOnce::call_once<ins
+urance::test::test_pay_p
+remium_non_owner_auth_fa
+ilure::closure_env$0,tup
+le$<> >
+             at /rustc/0
+1f6ddf7588f42ae2d7eb0a2f
+21d44e8e96674cf\library\
+core\src\ops\function.rs
+:250
+
+
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_non_owner_
+auth_failure" to "test_s
+napshots\\test\\test_pay
+_premium_non_owner_auth_
+failure.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_unauthoriz
+ed" to "test_snapshots\\
+test\\test_pay_premium_u
+nauthorized.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_success" 
+to "test_snapshots\\test
+\\test_pay_premium_succe
+ss.1.json".
+test test::test_multiple_premium_payments ... ok
+test test::test_pay_premium_emits_event ... FAILED
+test test::test_pay_premium ... ok
+test test::test_pay_premium_non_owner_auth_failure - should panic ... ok
+Writing test snapshot 
+file for test "test::tes
+t_time_drift_next_paymen
+t_date_uses_actual_payme
+nt_time" to "test_snapsh
+ots\\test\\test_time_dri
+ft_next_payment_date_use
+s_actual_payment_time.1.
+json".
+Writing test snapshot 
+file for test "test::tes
+t_pay_premium_unauthoriz
+ed_panics" to "test_snap
+shots\\test\\test_pay_pr
+emium_unauthorized_panic
+s.1.json".
+Writing test snapshot 
+file for test "test::tes
+t_time_drift_no_double_e
+xecution_after_schedule_
+advances" to "test_snaps
+hots\\test\\test_time_dr
+ift_no_double_execution_
+after_schedule_advances.
+1.json".
+Writing test snapshot 
+file for test "test::tes
+t_time_drift_premium_sch
+edule_executes_at_exact_
+next_due" to "test_snaps
+hots\\test\\test_time_dr
+ift_premium_schedule_exe
+cutes_at_exact_next_due.
+1.json".
+test test::test_pay_premium_unauthorized ... ok
+Writing test snapshot 
+file for test "test::tes
+t_time_drift_premium_sch
+edule_not_executed_befor
+e_next_due" to "test_sna
+pshots\\test\\test_time_
+drift_premium_schedule_n
+ot_executed_before_next_
+due.1.json".
+test test::test_pay_premium_success ... ok
+test test::test_pay_premium_unauthorized_panics ... ok
+test test::test_pay_premium_inactive_policy_panics ... ok
+test test::test_time_drift_next_payment_date_uses_actual_payment_time ... ok
+test test::test_time_drift_no_double_execution_after_schedule_advances ... ok
+test test::test_time_drift_premium_schedule_not_executed_before_next_due ... ok
+test test::test_time_drift_premium_schedule_executes_at_exact_next_due ... ok
+test test::test_multiple_policies_same_owner ... ok
+
+failures:
+
+failures:
+    test::test_create_policy_emits_event
+    test::test_deactivate_policy_emits_event
+    test::test_pay_premium_emits_event
+
+test result: FAILED. 42 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+error: test failed, to 
+rerun pass `-p 
+insurance --lib`

@@ -4,19 +4,23 @@ use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
 };
 
-use remitwise_common::Category;
+use remitwise_common::{
+    Category, EventCategory, EventPriority, RemitwiseEvents,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
+};
 
-// Storage TTL constants for active data
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+// Storage TTL constants are imported from remitwise-common
 
-// Storage TTL constants for archived data (longer retention, less frequent access)
-const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
+// Retention policy: minimum age before a report can be archived (30 days in seconds)
+const REPORT_RETENTION_WINDOW: u64 = 30 * 24 * 60 * 60;
+
+// Retention policy: minimum age before an archived report can be deleted (90 days in seconds)
+const ARCHIVE_RETENTION_WINDOW: u64 = 90 * 24 * 60 * 60;
 
 /// Financial health score (0-100)
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HealthScore {
     pub score: u32,
     pub savings_score: u32,
@@ -26,7 +30,7 @@ pub struct HealthScore {
 
 /// Category breakdown with amount and percentage
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CategoryBreakdown {
     pub category: Category,
     pub amount: i128,
@@ -35,7 +39,7 @@ pub struct CategoryBreakdown {
 
 /// Trend data comparing two periods
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrendData {
     pub current_amount: i128,
     pub previous_amount: i128,
@@ -45,7 +49,7 @@ pub struct TrendData {
 
 /// Remittance summary report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RemittanceSummary {
     pub total_received: i128,
     pub total_allocated: i128,
@@ -56,7 +60,7 @@ pub struct RemittanceSummary {
 
 /// Savings progress report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SavingsReport {
     pub total_goals: u32,
     pub completed_goals: u32,
@@ -69,7 +73,7 @@ pub struct SavingsReport {
 
 /// Bill payment compliance report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BillComplianceReport {
     pub total_bills: u32,
     pub paid_bills: u32,
@@ -85,7 +89,7 @@ pub struct BillComplianceReport {
 
 /// Insurance coverage report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InsuranceReport {
     pub active_policies: u32,
     pub total_coverage: i128,
@@ -98,7 +102,7 @@ pub struct InsuranceReport {
 
 /// Family spending report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FamilySpendingReport {
     pub total_members: u32,
     pub total_spending: i128,
@@ -109,7 +113,7 @@ pub struct FamilySpendingReport {
 
 /// Overall financial health report
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FinancialHealthReport {
     pub health_score: HealthScore,
     pub remittance_summary: RemittanceSummary,
@@ -130,48 +134,58 @@ pub struct ContractAddresses {
     pub family_wallet: Address,
 }
 
-/// Events emitted by the reporting contract
+/// Error types returned by the reporting contract.
 #[contracttype]
-#[derive(Clone, Copy)]
-pub enum ReportingError {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReportingContractError {
+    /// Contract has already been initialized.
     AlreadyInitialized = 1,
+    /// Contract has not been initialized.
     NotInitialized = 2,
+    /// Caller is not authorized to perform this action.
     Unauthorized = 3,
+    /// Contract addresses have not been configured.
     AddressesNotConfigured = 4,
+    /// The supplied timestamp violates the minimum retention window.
+    InvalidRetentionWindow = 5,
 }
 
-impl From<ReportingError> for soroban_sdk::Error {
-    fn from(err: ReportingError) -> Self {
+impl From<ReportingContractError> for soroban_sdk::Error {
+    fn from(err: ReportingContractError) -> Self {
         match err {
-            ReportingError::AlreadyInitialized => soroban_sdk::Error::from((
+            ReportingContractError::AlreadyInitialized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidAction,
             )),
-            ReportingError::NotInitialized => soroban_sdk::Error::from((
+            ReportingContractError::NotInitialized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::MissingValue,
             )),
-            ReportingError::Unauthorized => soroban_sdk::Error::from((
+            ReportingContractError::Unauthorized => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::InvalidAction,
             )),
-            ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
+            ReportingContractError::AddressesNotConfigured => soroban_sdk::Error::from((
                 soroban_sdk::xdr::ScErrorType::Contract,
                 soroban_sdk::xdr::ScErrorCode::MissingValue,
+            )),
+            ReportingContractError::InvalidRetentionWindow => soroban_sdk::Error::from((
+                soroban_sdk::xdr::ScErrorType::Contract,
+                soroban_sdk::xdr::ScErrorCode::InvalidInput,
             )),
         }
     }
 }
 
-impl From<&ReportingError> for soroban_sdk::Error {
-    fn from(err: &ReportingError) -> Self {
+impl From<&ReportingContractError> for soroban_sdk::Error {
+    fn from(err: &ReportingContractError) -> Self {
         (*err).into()
     }
 }
 
-impl From<soroban_sdk::Error> for ReportingError {
+impl From<soroban_sdk::Error> for ReportingContractError {
     fn from(_err: soroban_sdk::Error) -> Self {
-        ReportingError::Unauthorized
+        ReportingContractError::Unauthorized
     }
 }
 
@@ -187,7 +201,7 @@ pub enum ReportEvent {
 
 /// Archived report - compressed summary
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArchivedReport {
     pub user: Address,
     pub period_key: u64,
@@ -198,7 +212,7 @@ pub struct ArchivedReport {
 
 /// Storage statistics for monitoring
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StorageStats {
     pub active_reports: u32,
     pub archived_reports: u32,
@@ -245,6 +259,7 @@ pub struct SavingsGoal {
     pub target_date: u64,
     pub locked: bool,
     pub unlock_date: Option<u64>,
+    pub tags: Vec<soroban_sdk::String>,
 }
 
 #[contracttype]
@@ -253,6 +268,7 @@ pub struct Bill {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
     pub amount: i128,
     pub due_date: u64,
     pub recurring: bool,
@@ -261,6 +277,7 @@ pub struct Bill {
     pub created_at: u64,
     pub paid_at: Option<u64>,
     pub schedule_id: Option<u32>,
+    pub tags: Vec<soroban_sdk::String>,
     pub currency: soroban_sdk::String,
 }
 
@@ -278,20 +295,14 @@ pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
     pub coverage_type: soroban_sdk::String,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
     pub active: bool,
     pub next_payment_date: u64,
     pub schedule_id: Option<u32>,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
-    pub next_cursor: u32,
-    pub count: u32,
+    pub tags: Vec<soroban_sdk::String>,
 }
 
 #[contract]
@@ -312,12 +323,12 @@ impl ReportingContract {
     ///
     /// # Panics
     /// * If `admin` does not authorize the transaction
-    pub fn init(env: Env, admin: Address) -> Result<(), ReportingError> {
+    pub fn init(env: Env, admin: Address) -> Result<(), ReportingContractError> {
         admin.require_auth();
 
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
         if existing.is_some() {
-            return Err(ReportingError::AlreadyInitialized);
+            return Err(ReportingContractError::AlreadyInitialized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -355,17 +366,17 @@ impl ReportingContract {
         bill_payments: Address,
         insurance: Address,
         family_wallet: Address,
-    ) -> Result<(), ReportingError> {
+    ) -> Result<(), ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .ok_or(ReportingError::NotInitialized)?;
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            return Err(ReportingError::Unauthorized);
+            return Err(ReportingContractError::Unauthorized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -382,8 +393,11 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("ADDRS"), &addresses);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::AddressesConfigured),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("addr_ok"),
             caller,
         );
 
@@ -676,8 +690,11 @@ impl ReportingContract {
 
         let generated_at = env.ledger().timestamp();
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportGenerated),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Low,
+            symbol_short!("rep_gen"),
             generated_at,
         );
 
@@ -737,8 +754,11 @@ impl ReportingContract {
             .instance()
             .set(&symbol_short!("REPORTS"), &reports);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportStored),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("rep_str"),
             (user, period_key),
         );
 
@@ -770,25 +790,39 @@ impl ReportingContract {
         env.storage().instance().get(&symbol_short!("ADMIN"))
     }
 
-    /// Archive old reports before the specified timestamp
+    /// Archive active reports whose `generated_at` timestamp is older than `before_timestamp`.
+    /// Move reports older than the retention window to historical storage.
     ///
     /// # Arguments
-    /// * `caller` - Address of the caller (must be admin)
-    /// * `before_timestamp` - Archive reports generated before this timestamp
+    /// * `caller` - Address of the administrator authorizing the archival; must have `ADMIN` role.
+    /// * `before_timestamp` - Reports with `generated_at < before_timestamp` will be archived.
+    ///   Must be at least 30 days old (`current_time - REPORT_RETENTION_WINDOW`).
     ///
-    /// # Returns
-    /// Number of reports archived
-    pub fn archive_old_reports(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+    /// # Errors
+    /// * `Unauthorized`         - If the caller is not the registered admin.
+    /// * `NotInitialized`       - If the contract has not been initialized.
+    /// * `InvalidRetentionWindow` - If `before_timestamp` is within the 30-day retention window.
+    pub fn archive_old_reports(
+        env: Env,
+        caller: Address,
+        before_timestamp: u64,
+    ) -> Result<u32, ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            panic!("Only admin can archive reports");
+            return Err(ReportingContractError::Unauthorized);
+        }
+
+        // Enforce minimum retention window: reports must be at least 30 days old before archival.
+        let current_time = env.ledger().timestamp();
+        if before_timestamp > current_time.saturating_sub(REPORT_RETENTION_WINDOW) {
+            return Err(ReportingContractError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);
@@ -805,7 +839,6 @@ impl ReportingContract {
             .get(&symbol_short!("ARCH_RPT"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let current_time = env.ledger().timestamp();
         let mut archived_count = 0u32;
         let mut to_remove: Vec<(Address, u64)> = Vec::new(&env);
 
@@ -840,12 +873,15 @@ impl ReportingContract {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ReportsArchived),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("arch_ok"),
             (archived_count, caller),
         );
 
-        archived_count
+        Ok(archived_count)
     }
 
     /// Get archived reports for a user
@@ -871,25 +907,38 @@ impl ReportingContract {
         result
     }
 
-    /// Permanently delete old archives before specified timestamp
+    /// Permanently delete archived reports older than the retention window.
     ///
     /// # Arguments
-    /// * `caller` - Address of the caller (must be admin)
-    /// * `before_timestamp` - Delete archives created before this timestamp
+    /// * `caller` - Address of the administrator authorizing the cleanup; must have `ADMIN` role.
+    /// * `before_timestamp` - Archives with `archived_at < before_timestamp` will be deleted.
+    ///   Must be at least 90 days old (`current_time - ARCHIVE_RETENTION_WINDOW`).
     ///
-    /// # Returns
-    /// Number of archives deleted
-    pub fn cleanup_old_reports(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+    /// # Errors
+    /// * `Unauthorized`         - If the caller is not the registered admin.
+    /// * `NotInitialized`       - If the contract has not been initialized.
+    /// * `InvalidRetentionWindow` - If `before_timestamp` is within the 90-day retention window.
+    pub fn cleanup_old_reports(
+        env: Env,
+        caller: Address,
+        before_timestamp: u64,
+    ) -> Result<u32, ReportingContractError> {
         caller.require_auth();
 
         let admin: Address = env
             .storage()
             .instance()
             .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
+            .ok_or(ReportingContractError::NotInitialized)?;
 
         if caller != admin {
-            panic!("Only admin can cleanup reports");
+            return Err(ReportingContractError::Unauthorized);
+        }
+
+        // Enforce minimum archive retention: archived records must be at least 90 days old.
+        let current_time = env.ledger().timestamp();
+        if before_timestamp > current_time.saturating_sub(ARCHIVE_RETENTION_WINDOW) {
+            return Err(ReportingContractError::InvalidRetentionWindow);
         }
 
         Self::extend_instance_ttl(&env);
@@ -922,12 +971,15 @@ impl ReportingContract {
 
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("report"), ReportEvent::ArchivesCleaned),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("arch_cln"),
             (deleted_count, caller),
         );
 
-        deleted_count
+        Ok(deleted_count)
     }
 
     /// Get storage usage statistics

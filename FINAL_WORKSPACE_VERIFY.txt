@@ -1,0 +1,697 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo test 
+--workspace 2>&1 | 
+Out-File -FilePath 
+"FINAL_WORKSPACE_VER ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+warning: unused 
+imports: 
+`DEFAULT_PAGE_LIMIT` 
+and `MAX_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+7 |     INSTANCE_LIFETIM
+E_THRESHOLD, 
+MAX_BATCH_SIZE, 
+MAX_PAGE_LIMIT,
+  |                     
+                        
+     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: 
+`bill_payments` (lib) 
+generated 1 warning 
+(run `cargo fix --lib 
+-p bill_payments` to 
+apply 1 suggestion)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+help: if this is a test 
+module, consider adding 
+a `#[cfg(test)]` to the 
+containing module
+ --> 
+scenarios\src\lib.rs:1:1
+  |
+1 | pub mod tests {
+  | ^^^^^^^^^^^^^
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `scenarios` 
+(lib) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios` to 
+apply 1 suggestion)
+warning: unused import: 
+`remitwise_common::Cover
+ageType`
+ --> insurance\tests\gas
+_bench.rs:2:5
+  |
+2 | use remitwise_common
+::CoverageType;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`DEFAULT_PAGE_LIMIT`
+ --> bill_payments\src\l
+ib.rs:6:51
+  |
+6 |     ARCHIVE_LIFETIME
+_THRESHOLD, 
+CONTRACT_VERSION, 
+DEFAULT_PAGE_LIMIT, 
+INSTANCE_BUMP_AMOUNT,
+  |                     
+                        
+      ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`LedgerInfo`
+  --> insurance\src\test
+.rs:12:50
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                        
+      ^^^^^^^^^^
+   |
+   = note: `#[warn(unuse
+d_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused import: 
+`proptest::prelude::*`
+  --> insurance\src\test
+.rs:15:5
+   |
+15 | use 
+proptest::prelude::*;
+   |     
+^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: 
+`Ledger`
+  --> insurance\src\test
+.rs:12:42
+   |
+12 |     
+testutils::{Address as 
+AddressTrait, Ledger, 
+LedgerInfo},
+   |                    
+                      
+^^^^^^
+
+warning: unused 
+variable: `policy2`
+   --> insurance\src\tes
+t.rs:450:9
+    |
+450 |     let policy2 = 
+client.create_policy(
+    |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_policy2`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:886:9
+    |
+886 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:907:9
+    |
+907 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: unused 
+variable: `other`
+   --> insurance\src\tes
+t.rs:939:9
+    |
+939 |     let other = 
+Address::generate(&env);
+    |         ^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_other`
+
+warning: `insurance` 
+(test "gas_bench") 
+generated 1 warning 
+(run `cargo fix --test 
+"gas_bench" -p 
+insurance` to apply 1 
+suggestion)
+warning: 
+`bill_payments` (lib 
+test) generated 1 
+warning (run `cargo fix 
+--lib -p bill_payments 
+--tests` to apply 1 
+suggestion)
+warning: `insurance` 
+(lib test) generated 7 
+warnings (run `cargo 
+fix --lib -p insurance 
+--tests` to apply 6 
+suggestions)
+warning: unused import: 
+`remitwise_common::Categ
+ory`
+ --> examples\reporting_
+example.rs:3:5
+  |
+3 | use remitwise_common
+::Category;
+  |     ^^^^^^^^^^^^^^^^
+^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `user`
+  --> examples\reporting
+_example.rs:20:9
+   |
+20 |     let user = 
+Address::generate(&env);
+   |         ^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_user`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+   Compiling 
+remitwise-contracts 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts)
+warning: 
+`remitwise-contracts` 
+(example 
+"reporting_example") 
+generated 2 warnings 
+(run `cargo fix 
+--example 
+"reporting_example" -p 
+remitwise-contracts` to 
+apply 2 suggestions)
+warning: unused import: 
+`testutils::set_ledger_t
+ime`
+ --> 
+scenarios\src\lib.rs:3:9
+  |
+3 |     use testutils::s
+et_ledger_time;
+  |         ^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `scenarios` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p scenarios 
+--tests` to apply 1 
+suggestion)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+warning: unused import: 
+`PolicyPage`
+   --> reporting\src\tes
+ts.rs:161:50
+    |
+161 |     use crate::{In
+surancePolicy, 
+InsuranceTrait, 
+PolicyPage};
+    |                   
+                        
+       ^^^^^^^^^^
+    |
+    = note: `#[warn(unus
+ed_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: `reporting` 
+(lib test) generated 1 
+warning (run `cargo fix 
+--lib -p reporting 
+--tests` to apply 1 
+suggestion)
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:35:9
+   |
+35 |     let amounts = c
+lient.calculate_split(&l
+arge_amount);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+   |
+   = note: `#[warn(unuse
+d_variables)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: unused 
+variable: `amounts`
+  --> remittance_split\t
+ests\stress_test_large_a
+mounts.rs:59:9
+   |
+59 |     let amounts = c
+lient.calculate_split(&m
+ax_safe);
+   |         ^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_amounts`
+
+warning: 
+`remittance_split` 
+(test "stress_test_large
+_amounts") generated 2 
+warnings (run `cargo 
+fix --test "stress_test_
+large_amounts" -p 
+remittance_split` to 
+apply 2 suggestions)
+error: an inner 
+attribute is not 
+permitted in this 
+context
+ --> savings_goals\src\t
+est.rs:2:1
+  |
+2 | #![cfg(test)]
+  | ^^^^^^^^^^^^^
+3 |
+4 | use super::*;
+  | ------------- the 
+inner attribute doesn't 
+annotate this `use` 
+import
+  |
+  = note: inner 
+attributes, like 
+`#![no_std]`, annotate 
+the item enclosing 
+them, and are usually 
+found at the beginning 
+of source files
+help: to annotate the 
+`use` import, change 
+the attribute from 
+inner to outer style
+  |
+2 - #![cfg(test)]
+2 + #[cfg(test)]
+  |
+
+error[E0609]: no field 
+`role` on type `std::opt
+ion::Option<FamilyMember
+>`
+  --> examples\family_wa
+llet_example.rs:32:49
+   |
+32 |     
+println!("\nOwner Role: 
+{:?}", 
+owner_member.role);
+   |                    
+                        
+     ^^^^ unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+32 |     
+println!("\nOwner Role: 
+{:?}", owner_member.unwr
+ap().role);
+   |                    
+                        
+     +++++++++
+
+error[E0609]: no field 
+`role` on type `std::opt
+ion::Option<FamilyMember
+>`
+  --> examples\family_wa
+llet_example.rs:35:47
+   |
+35 |     
+println!("Member 1 
+Role: {:?}", 
+m1_member.role);
+   |                    
+                        
+   ^^^^ unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+35 |     
+println!("Member 1 
+Role: {:?}", m1_member.u
+nwrap().role);
+   |                    
+                        
+   +++++++++
+
+error[E0609]: no field 
+`role` on type `std::opt
+ion::Option<FamilyMember
+>`
+  --> examples\family_wa
+llet_example.rs:46:40
+   |
+46 |     println!("  
+Role: {:?}", 
+m2_member.role);
+   |                    
+                    
+^^^^ unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+46 |     println!("  
+Role: {:?}", m2_member.u
+nwrap().role);
+   |                    
+                    
++++++++++
+
+error[E0609]: no field 
+`spending_limit` on 
+type `std::option::Optio
+n<FamilyMember>`
+  --> examples\family_wa
+llet_example.rs:47:50
+   |
+47 |     println!("  
+Spending Limit: {:?}", m
+2_member.spending_limit)
+;
+   |                    
+                        
+      ^^^^^^^^^^^^^^ 
+unknown field
+   |
+help: one of the 
+expressions' fields has 
+a field of the same name
+   |
+47 |     println!("  
+Spending Limit: {:?}", m
+2_member.unwrap().spendi
+ng_limit);
+   |                    
+                        
+      +++++++++
+
+For more information 
+about this error, try 
+`rustc --explain E0609`.
+error: could not 
+compile 
+`remitwise-contracts` 
+(example "family_wallet_
+example") due to 4 
+previous errors
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: cannot find 
+macro `format` in this 
+scope
+   --> savings_goals\src
+\test.rs:156:53
+    |
+156 |         let 
+expected_name = 
+String::from_str(&env, 
+&format!("G{}", i + 1));
+    |                   
+                        
+          ^^^^^^
+
+error[E0277]: a value 
+of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from an 
+iterator over elements 
+of type `u32`
+    --> savings_goals\sr
+c\test.rs:1751:61
+     |
+1751 |     let 
+goal_a_ids: Vec<u32> = 
+goals_a.iter().map(|g| 
+g.id).collect();
+     |                  
+                        
+                   
+^^^^^^^ value of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from `st
+d::iter::Iterator<Item=u
+32>`
+     |
+     = help: the trait 
+`FromIterator<u32>` is 
+not implemented for 
+`soroban_sdk::Vec<u32>`
+note: the method call 
+chain might not have 
+had the expected 
+associated types
+    --> savings_goals\sr
+c\test.rs:1751:47
+     |
+1694 |     let client = 
+SavingsGoalContractClien
+t::new(&env, 
+&contract_id);
+     |                  
+------------------------
+------------------------
+-- this expression has 
+type `SavingsGoalContrac
+tClient<'_>`
+...
+1751 |     let 
+goal_a_ids: Vec<u32> = 
+goals_a.iter().map(|g| 
+g.id).collect();
+     |                  
+                      
+------ ^^^^^^^^^^^^^ 
+`Iterator::Item` 
+changed to `u32` here
+     |                  
+                      |
+     |                  
+                      
+`Iterator::Item` is 
+`SavingsGoal` here
+note: required by a 
+bound in `collect`
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\iter\traits\iterator.rs
+:2015:5
+
+error[E0277]: a value 
+of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from an 
+iterator over elements 
+of type `u32`
+    --> savings_goals\sr
+c\test.rs:1770:61
+     |
+1770 |     let 
+goal_b_ids: Vec<u32> = 
+goals_b.iter().map(|g| 
+g.id).collect();
+     |                  
+                        
+                   
+^^^^^^^ value of type 
+`soroban_sdk::Vec<u32>` 
+cannot be built from `st
+d::iter::Iterator<Item=u
+32>`
+     |
+     = help: the trait 
+`FromIterator<u32>` is 
+not implemented for 
+`soroban_sdk::Vec<u32>`
+note: the method call 
+chain might not have 
+had the expected 
+associated types
+    --> savings_goals\sr
+c\test.rs:1770:47
+     |
+1694 |     let client = 
+SavingsGoalContractClien
+t::new(&env, 
+&contract_id);
+     |                  
+------------------------
+------------------------
+-- this expression has 
+type `SavingsGoalContrac
+tClient<'_>`
+...
+1770 |     let 
+goal_b_ids: Vec<u32> = 
+goals_b.iter().map(|g| 
+g.id).collect();
+     |                  
+                      
+------ ^^^^^^^^^^^^^ 
+`Iterator::Item` 
+changed to `u32` here
+     |                  
+                      |
+     |                  
+                      
+`Iterator::Item` is 
+`SavingsGoal` here
+note: required by a 
+bound in `collect`
+    --> /rustc/01f6ddf75
+88f42ae2d7eb0a2f21d44e8e
+96674cf\library\core\src
+\iter\traits\iterator.rs
+:2015:5
+
+For more information 
+about this error, try 
+`rustc --explain E0277`.
+error: could not 
+compile `savings_goals` 
+(lib test) due to 4 
+previous errors

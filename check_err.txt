@@ -1,0 +1,273 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check 
+--all-targets 2>&1 | 
+Out-File -FilePath 
+check_err.txt -En ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 | ...et event = S...
+    |       ^^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: S...
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: S...
+   |       
+^^^^^^^^^^^^^^^^
+
+warning: 
+`remittance_split` 
+(lib) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split` to 
+apply 1 suggestion)
+warning: unused 
+imports: `String` and 
+`TokenClient`
+ --> family_wallet\tests
+\gas_bench.rs:3:43
+  |
+3 | ...c, String, 
+token::{TokenClient, 
+S...
+  |       ^^^^^^        
+  ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused
+_imports)]` (part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: hiding a 
+lifetime that's elided 
+elsewhere is confusing
+  --> family_wallet\test
+s\gas_bench.rs:40:22
+   |
+40 | ...v: &Env) -> 
+(FamilyWalletClient, 
+A...
+   |       ^^^^      
+^^^^^^^^^^^^^^^^^^ the 
+same lifetime is hidden 
+here
+   |       |
+   |       the lifetime 
+is elided here
+   |
+   = help: the same 
+lifetime is referred to 
+in inconsistent ways, 
+making the signature 
+confusing
+   = note: `#[warn(misma
+tched_lifetime_syntaxes)
+]` on by default
+help: use `'_` for type 
+paths
+   |
+40 | fn 
+setup_wallet(env: &Env) 
+-> (FamilyWalletClient<'
+_>, Address, 
+Vec<Address>) {
+   |                    
+                        
+      ++++
+
+warning: 
+`family_wallet` (test 
+"gas_bench") generated 
+2 warnings (run `cargo 
+fix --test "gas_bench" 
+-p family_wallet` to 
+apply 2 suggestions)
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 |             let 
+event = 
+SplitCalculatedEvent {
+    |                 
+^^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: 
+Symbol = 
+symbol_short!("init");
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: 
+Symbol = 
+symbol_short!("calc");
+   |       
+^^^^^^^^^^^^^^^^
+
+warning: 
+`remittance_split` (lib 
+test) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split 
+--tests` to apply 1 
+suggestion)
+error[E0599]: no 
+variant or associated 
+item named `Goal` found 
+for enum 
+`EventCategory` in the 
+current scope
+   --> savings_goals\src
+\lib.rs:634:32
+    |
+634 |                 
+EventCategory::Goal,
+    |                   
+             ^^^^ 
+variant or associated 
+item not found in 
+`EventCategory`
+
+error[E0599]: no 
+variant or associated 
+item named `Goal` found 
+for enum 
+`EventCategory` in the 
+current scope
+   --> savings_goals\src
+\lib.rs:704:36
+    |
+704 |                   
+  EventCategory::Goal,
+    |                   
+                 ^^^^ 
+variant or associated 
+item not found in 
+`EventCategory`
+
+error[E0599]: no 
+variant or associated 
+item named `Goal` found 
+for enum 
+`EventCategory` in the 
+current scope
+    --> savings_goals\sr
+c\lib.rs:1497:40
+     |
+1497 |                  
+       
+EventCategory::Goal,
+     |                  
+                      
+^^^^ variant or 
+associated item not 
+found in `EventCategory`
+
+For more information 
+about this error, try 
+`rustc --explain E0599`.
+error: could not 
+compile `savings_goals` 
+(lib) due to 3 previous 
+errors
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile `savings_goals` 
+(lib test) due to 3 
+previous errors

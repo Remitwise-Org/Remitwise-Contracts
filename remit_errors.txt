@@ -1,0 +1,73 @@
+﻿cargo : warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+At line:1 char:1
++ cargo check -p remittance_split --target wasm32-unknown-unknown 2>&1  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo              : NotSpecified    : (warning: profil.    ..workspace root::S    tring) [], RemoteEx    ception
+    + FullyQualifiedErr    orId : NativeComman    dError
+ 
+package:   C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\orchestrator\Cargo.toml
+workspace: C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\Cargo.toml
+    Checking remittance_split v0.1.0 (C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\remittance_split)
+error[E0433]: failed to resolve: could not find `testutils` in `soroban_sdk`
+   --> remittance_split\src\lib.rs:972:22
+    |
+972 |     use soroban_sdk::testutils::storage::Instance as _;
+    |                      ^^^^^^^^^ could not find `testutils` in `soroban_sdk`
+    |
+note: found an item that was configured out
+   --> C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\lib.rs:818:9
+    |
+818 | pub mod testutils;
+    |         ^^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\testutils.rs:1:11
+    |
+  1 | #![cfg(any(test, feature = "testutils"))]
+    |           ----------------------------- the item is gated here
+
+error[E0432]: unresolved import `soroban_sdk::testutils`
+   --> remittance_split\src\lib.rs:973:22
+    |
+973 |     use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
+    |                      ^^^^^^^^^ could not find `testutils` in `soroban_sdk`
+    |
+note: found an item that was configured out
+   --> C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\lib.rs:818:9
+    |
+818 | pub mod testutils;
+    |         ^^^^^^^^^
+    |
+   ::: C:\Users\ADMIN\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\soroban-sdk-21.7.7\src\testutils.rs:1:11
+    |
+  1 | #![cfg(any(test, feature = "testutils"))]
+    |           ----------------------------- the item is gated here
+
+warning: unused import: `super::*`
+   --> remittance_split\src\lib.rs:971:9
+    |
+971 |     use super::*;
+    |         ^^^^^^^^
+    |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+   --> remittance_split\src\lib.rs:970:1
+    |
+970 | mod test {
+    | ^^^^^^^^
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `soroban_sdk::TryFromVal`
+   --> remittance_split\src\lib.rs:974:9
+    |
+974 |     use soroban_sdk::TryFromVal;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+   --> remittance_split\src\lib.rs:970:1
+    |
+970 | mod test {
+    | ^^^^^^^^
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+warning: `remittance_split` (lib) generated 2 warnings
+error: could not compile `remittance_split` (lib) due to 2 previous errors; 2 warnings emitted
