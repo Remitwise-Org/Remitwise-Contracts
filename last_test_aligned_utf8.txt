@@ -1,0 +1,999 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:14
++ ... argo fetch; cargo 
+test --workspace > 
+last_test_aligned.txt 
+2>&1; Get- ...
++                 ~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+   Compiling testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+   Compiling 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+   Compiling 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+   Compiling 
+orchestrator v0.1.0 (C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\orchestrator)
+   Compiling 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+   Compiling insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+   Compiling 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+   Compiling reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+error: unexpected 
+closing delimiter: `}`
+    --> insurance\src\li
+b.rs:1220:5
+     |
+ 709 |     ) -> u32 {
+     |              - 
+the nearest open 
+delimiter
+ 710 |     ) -> 
+Result<u32, 
+InsuranceError> {
+     |     - missing 
+open `(` for this 
+delimiter
+...
+1220 |     }
+     |     ^ unexpected 
+closing delimiter
+
+error: mismatched 
+closing delimiter: `}`
+   --> bill_payments\src
+\lib.rs:450:29
+    |
+383 |     ) -> 
+Result<u32, Error> {
+    |                   
+          - closing 
+delimiter possibly 
+meant for this
+...
+450 |         
+env.events().publish(
+    |                   
+          ^ unclosed 
+delimiter
+...
+462 |     }
+    |     ^ mismatched 
+closing delimiter
+
+error: mismatched 
+closing delimiter: `}`
+   --> bill_payments\src
+\lib.rs:531:29
+    |
+464 |     pub fn 
+pay_bill(env: Env, 
+caller: Address, 
+bill_id: u32) -> 
+Result<(), Error> {
+    |                   
+                        
+                        
+                - 
+closing delimiter 
+possibly meant for this
+...
+531 |         
+env.events().publish(
+    |                   
+          ^ unclosed 
+delimiter
+...
+543 |     }
+    |     ^ mismatched 
+closing delimiter
+
+error: this file 
+contains an unclosed 
+delimiter
+    --> bill_payments\sr
+c\lib.rs:2571:3
+     |
+ 113 | pub enum 
+BillEvent {
+     |                  
+  - unclosed delimiter
+...
+ 129 | impl 
+BillPayments {
+     |                  
+ - unclosed delimiter
+...
+ 769 |     pub fn 
+get_all_bills(env: Env) 
+-> Vec<Bill> {
+     |                  
+                        
+       - this delimiter 
+might not be properly 
+closed...
+...
+1369 | }
+     | - ...as it 
+matches this but it has 
+different indentation
+...
+2571 | }
+     |  ^
+
+error: could not 
+compile `insurance` 
+(lib) due to 1 previous 
+error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile `bill_payments` 
+(lib) due to 3 previous 
+errors
+error[E0428]: the name `
+__SPEC_XDR_TYPE_POLICYPA
+GE` is defined multiple 
+times
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+previous definition of 
+the value `__SPEC_XDR_TY
+PE_POLICYPAGE` here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ `_
+_SPEC_XDR_TYPE_POLICYPAG
+E` redefined here
+    |
+    = note: `__SPEC_XDR_
+TYPE_POLICYPAGE` must 
+be defined only once in 
+the value namespace of 
+this module
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0428]: the name 
+`PolicyPage` is defined 
+multiple times
+   --> reporting\src\lib
+.rs:299:1
+    |
+291 | pub struct 
+PolicyPage {
+    | 
+--------------------- 
+previous definition of 
+the type `PolicyPage` 
+here
+...
+299 | pub struct 
+PolicyPage {
+    | 
+^^^^^^^^^^^^^^^^^^^^^ 
+`PolicyPage` redefined 
+here
+    |
+    = note: 
+`PolicyPage` must be 
+defined only once in 
+the type namespace of 
+this module
+
+error[E0432]: 
+unresolved import 
+`remitwise_common`
+ --> remittance_split\sr
+c\lib.rs:9:5
+  |
+9 | use 
+remitwise_common::{
+  |     
+^^^^^^^^^^^^^^^^ use of 
+unresolved module or 
+unlinked crate 
+`remitwise_common`
+  |
+  = help: if you wanted 
+to use a crate named 
+`remitwise_common`, use 
+`cargo add 
+remitwise_common` to 
+add it to your 
+`Cargo.toml`
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait `Clone` for type 
+`PolicyPage`
+   --> reporting\src\lib
+.rs:298:10
+    |
+290 | #[derive(Clone)]
+    |          ----- 
+first implementation 
+here
+...
+298 | #[derive(Clone)]
+    |          ^^^^^ 
+conflicting 
+implementation for 
+`PolicyPage`
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait `TryFromVal<Env, 
+soroban_sdk::Val>` for 
+type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for 
+`PolicyPage`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait `TryFromVal<Env, 
+PolicyPage>` for type 
+`soroban_sdk::Val`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for 
+`soroban_sdk::Val`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait `TryFromVal<Env, s
+oroban_sdk::xdr::ScMap>`
+ for type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for 
+`PolicyPage`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait `TryFromVal<Env, s
+oroban_sdk::xdr::ScVal>`
+ for type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for 
+`PolicyPage`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait 
+`TryFrom<&PolicyPage>` 
+for type `soroban_sdk::x
+dr::ScMap`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for `soro
+ban_sdk::xdr::ScMap`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait 
+`TryFrom<PolicyPage>` 
+for type `soroban_sdk::x
+dr::ScMap`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for `soro
+ban_sdk::xdr::ScMap`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait 
+`TryFrom<&PolicyPage>` 
+for type `soroban_sdk::x
+dr::ScVal`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for `soro
+ban_sdk::xdr::ScVal`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait 
+`TryFrom<PolicyPage>` 
+for type `soroban_sdk::x
+dr::ScVal`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for `soro
+ban_sdk::xdr::ScVal`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0119]: 
+conflicting 
+implementations of 
+trait 
+`SorobanArbitrary` for 
+type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+289 | #[contracttype]
+    | --------------- 
+first implementation 
+here
+...
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+conflicting 
+implementation for 
+`PolicyPage`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0592]: duplicate 
+definitions with name 
+`spec_xdr`
+   --> reporting\src\lib
+.rs:289:1
+    |
+289 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+duplicate definitions 
+for `spec_xdr`
+...
+297 | #[contracttype]
+    | --------------- 
+other definition for 
+`spec_xdr`
+    |
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:299:88
+    |
+299 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+299 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+299 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:312:88
+    |
+312 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+312 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+312 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:332:88
+    |
+332 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+332 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+332 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0277]: 
+`SavingsGoalsError` 
+doesn't implement 
+`Debug`
+   --> savings_goals\src
+\lib.rs:349:88
+    |
+349 |         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+    |                   
+                        
+                        
+                     
+^^^^^^ the trait 
+`Debug` is not 
+implemented for 
+`SavingsGoalsError`
+    |
+    = note: add 
+`#[derive(Debug)]` to 
+`SavingsGoalsError` or 
+manually `impl Debug 
+for SavingsGoalsError`
+note: required by a 
+bound in `core::result::
+Result::<T, E>::unwrap`
+   --> /rustc/01f6ddf758
+8f42ae2d7eb0a2f21d44e8e9
+6674cf\library\core\src\
+result.rs:1227:5
+help: consider 
+annotating 
+`SavingsGoalsError` 
+with `#[derive(Debug)]`
+    |
+ 92 + #[derive(Debug)]
+ 93 | pub enum 
+SavingsGoalsError {
+    |
+help: consider removing 
+this method call, as 
+the receiver has type `c
+ore::option::Option<soro
+ban_sdk::Address>` and `
+core::option::Option<sor
+oban_sdk::Address>: 
+Debug` trivially holds
+    |
+349 -         let admin 
+= Self::get_pause_admin(
+&env).ok_or(SavingsGoals
+Error::Unauthorized).unw
+rap();
+349 +         let admin 
+= Self::get_pause_admin(
+&env).unwrap();
+    |
+
+error[E0034]: multiple 
+applicable items in 
+scope
+   --> reporting\src\lib
+.rs:289:1
+    |
+289 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+multiple `spec_xdr` 
+found
+    |
+note: candidate #1 is 
+defined in an impl for 
+the type `PolicyPage`
+   --> reporting\src\lib
+.rs:289:1
+    |
+289 | #[contracttype]
+    | ^^^^^^^^^^^^^^^
+note: candidate #2 is 
+defined in an impl for 
+the type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0283]: type 
+annotations needed
+   --> reporting\src\lib
+.rs:289:15
+    |
+289 | #[contracttype]
+    |               ^ 
+cannot infer type
+    |
+    = note: multiple 
+`impl`s satisfying `soro
+ban_sdk::xdr::Error: 
+From<_>` found in the 
+following crates: 
+`soroban_env_common`, 
+`stellar_xdr`:
+            - impl 
+From<FromUtf8Error> for 
+soroban_sdk::xdr::Error;
+            - impl 
+From<TryFromSliceError> 
+for 
+soroban_sdk::xdr::Error;
+            - impl From<
+__reportingcontract_fn_s
+et_registry::std::io::Er
+ror> for 
+soroban_sdk::xdr::Error;
+            - impl From<
+core::str::Utf8Error> 
+for 
+soroban_sdk::xdr::Error;
+            - impl From<
+soroban_sdk::Error> for 
+soroban_sdk::xdr::Error;
+            - impl From<
+stellar_strkey::error::D
+ecodeError> for 
+soroban_sdk::xdr::Error;
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0034]: multiple 
+applicable items in 
+scope
+   --> reporting\src\lib
+.rs:297:1
+    |
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^ 
+multiple `spec_xdr` 
+found
+    |
+note: candidate #1 is 
+defined in an impl for 
+the type `PolicyPage`
+   --> reporting\src\lib
+.rs:289:1
+    |
+289 | #[contracttype]
+    | ^^^^^^^^^^^^^^^
+note: candidate #2 is 
+defined in an impl for 
+the type `PolicyPage`
+   --> reporting\src\lib
+.rs:297:1
+    |
+297 | #[contracttype]
+    | ^^^^^^^^^^^^^^^
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+error[E0283]: type 
+annotations needed
+   --> reporting\src\lib
+.rs:297:15
+    |
+297 | #[contracttype]
+    |               ^ 
+cannot infer type
+    |
+    = note: multiple 
+`impl`s satisfying `soro
+ban_sdk::xdr::Error: 
+From<_>` found in the 
+following crates: 
+`soroban_env_common`, 
+`stellar_xdr`:
+            - impl 
+From<FromUtf8Error> for 
+soroban_sdk::xdr::Error;
+            - impl 
+From<TryFromSliceError> 
+for 
+soroban_sdk::xdr::Error;
+            - impl From<
+__reportingcontract_fn_s
+et_registry::std::io::Er
+ror> for 
+soroban_sdk::xdr::Error;
+            - impl From<
+core::str::Utf8Error> 
+for 
+soroban_sdk::xdr::Error;
+            - impl From<
+soroban_sdk::Error> for 
+soroban_sdk::xdr::Error;
+            - impl From<
+stellar_strkey::error::D
+ecodeError> for 
+soroban_sdk::xdr::Error;
+    = note: this error 
+originates in the 
+attribute macro 
+`contracttype` (in 
+Nightly builds, run 
+with -Z macro-backtrace 
+for more info)
+
+For more information 
+about this error, try 
+`rustc --explain E0432`.
+error: could not 
+compile 
+`remittance_split` 
+(lib) due to 1 previous 
+error
+For more information 
+about this error, try 
+`rustc --explain E0277`.
+error: could not 
+compile `savings_goals` 
+(lib) due to 4 previous 
+errors
+Some errors have 
+detailed explanations: 
+E0034, E0119, E0283, 
+E0428, E0592.
+For more information 
+about an error, try 
+`rustc --explain E0034`.
+error: could not 
+compile `reporting` 
+(lib) due to 17 
+previous errors

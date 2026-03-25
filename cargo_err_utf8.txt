@@ -1,0 +1,47 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:40
++ ... ph --oneline 
+--all -n 10; cargo test 
+--workspace > 
+cargo_err.txt 2>&1
++                       
+        ~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+error: failed to 
+resolve patches for `htt
+ps://github.com/rust-lan
+g/crates.io-index`
+
+Caused by:
+  patch for 
+`ed25519-dalek` in `http
+s://github.com/rust-lang
+/crates.io-index` 
+points to the same 
+source, but patches 
+must point to different 
+sources

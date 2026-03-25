@@ -1,0 +1,190 @@
+﻿cargo : warning: 
+profiles for the non 
+root package will be 
+ignored, specify 
+profiles at the 
+workspace root:
+At line:1 char:1
++ cargo check 
+--workspace > 
+check_final.txt 2>&1; 
+Get-Content check_fin 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified  
+  : (warning: profil.   
+ ..workspace root::S    
+tring) [], RemoteEx    
+ception
+    + FullyQualifiedErr 
+   orId : NativeComman  
+  dError
+ 
+package:   C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\orches
+trator\Cargo.toml
+workspace: C:\Users\ADMI
+N\Desktop\remmy-drips\Re
+mitwise-Contracts\Cargo.
+toml
+    Checking 
+savings_goals v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\savings_goals)
+    Checking insurance 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\insurance
+)
+    Checking 
+remittance_split v0.1.0 
+(C:\Users\ADMIN\Desktop\
+remmy-drips\Remitwise-Co
+ntracts\remittance_split
+)
+    Checking 
+family_wallet v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\family_wallet)
+    Checking reporting 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\reporting
+)
+    Checking 
+bill_payments v0.1.0 (C:
+\Users\ADMIN\Desktop\rem
+my-drips\Remitwise-Contr
+acts\bill_payments)
+    Checking testutils 
+v0.1.0 (C:\Users\ADMIN\D
+esktop\remmy-drips\Remit
+wise-Contracts\testutils
+)
+    Checking 
+orchestrator v0.1.0 (C:\
+Users\ADMIN\Desktop\remm
+y-drips\Remitwise-Contra
+cts\orchestrator)
+error: this file 
+contains an unclosed 
+delimiter
+    --> bill_payments\sr
+c\lib.rs:2567:3
+     |
+ 131 | impl 
+BillPayments {
+     |                  
+ - unclosed delimiter
+...
+ 765 |     pub fn 
+get_all_bills(env: Env) 
+-> Vec<Bill> {
+     |                  
+                        
+       - this delimiter 
+might not be properly 
+closed...
+...
+1365 | }
+     | - ...as it 
+matches this but it has 
+different indentation
+...
+2567 | }
+     |  ^
+
+error: unexpected 
+closing delimiter: `}`
+    --> insurance\src\li
+b.rs:1238:5
+     |
+ 709 |     ) -> u32 {
+     |              - 
+the nearest open 
+delimiter
+ 710 |     ) -> 
+Result<u32, 
+InsuranceError> {
+     |     - missing 
+open `(` for this 
+delimiter
+...
+1238 |     }
+     |     ^ unexpected 
+closing delimiter
+
+error: could not 
+compile `insurance` 
+(lib) due to 1 previous 
+error
+warning: build failed, 
+waiting for other jobs 
+to finish...
+error: could not 
+compile `bill_payments` 
+(lib) due to 1 previous 
+error
+warning: unused 
+variable: `event`
+   --> remittance_split\
+src\lib.rs:875:17
+    |
+875 |             let 
+event = 
+SplitCalculatedEvent {
+    |                 
+^^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_event`
+    |
+    = note: `#[warn(unus
+ed_variables)]` (part 
+of `#[warn(unused)]`) 
+on by default
+
+warning: constant 
+`SPLIT_INITIALIZED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:15:7
+   |
+15 | const 
+SPLIT_INITIALIZED: 
+Symbol = 
+symbol_short!("init");
+   |       
+^^^^^^^^^^^^^^^^^
+   |
+   = note: 
+`#[warn(dead_code)]` 
+(part of 
+`#[warn(unused)]`) on 
+by default
+
+warning: constant 
+`SPLIT_CALCULATED` is 
+never used
+  --> remittance_split\s
+rc\lib.rs:16:7
+   |
+16 | const 
+SPLIT_CALCULATED: 
+Symbol = 
+symbol_short!("calc");
+   |       
+^^^^^^^^^^^^^^^^
+
+warning: 
+`remittance_split` 
+(lib) generated 3 
+warnings (run `cargo 
+fix --lib -p 
+remittance_split` to 
+apply 1 suggestion)
