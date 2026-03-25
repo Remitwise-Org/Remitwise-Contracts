@@ -7,8 +7,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "21.1.1"
+soroban-sdk = "=21.7.7"
 
 [dev-dependencies]
-soroban-sdk = { version = "21.1.1", features = ["testutils"] }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 testutils = { path = "../testutils" }

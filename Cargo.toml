@@ -18,8 +18,9 @@ members = [
     "scenarios",
 
     "testutils",
-
     "integration_tests",
+
+   
 ]
 default-members = [
     "remittance_split",
@@ -45,9 +46,7 @@ reporting = { path = "./reporting" }
 orchestrator = { path = "./orchestrator" }
 
 [dev-dependencies]
-soroban-sdk = { version = "21.1.1", features = ["testutils"] }
-
-[patch.crates-io]
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

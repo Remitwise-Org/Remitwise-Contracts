@@ -219,6 +219,14 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "tags"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "target_amount"
                                 },
                                 "val": {
@@ -291,6 +299,14 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "tags"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "target_amount"
                                 },
                                 "val": {
@@ -329,7 +345,7 @@
                     },
                     {
                       "key": {
-                        "symbol": "version"
+                        "symbol": "schema_version"
                       },
                       "val": {
                         "u32": 1
@@ -552,6 +568,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -625,6 +649,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -1623,6 +1655,29 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "goals"
+              },
+              {
+                "symbol": "snap_exp"
+              }
+            ],
+            "data": {
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -1693,6 +1748,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {
@@ -1769,6 +1832,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "target_amount"
                             },
                             "val": {
@@ -1807,7 +1878,7 @@
                 },
                 {
                   "key": {
-                    "symbol": "version"
+                    "symbol": "schema_version"
                   },
                   "val": {
                     "u32": 1
@@ -1909,6 +1980,14 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "tags"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "target_amount"
                                 },
                                 "val": {
@@ -1981,6 +2060,14 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "tags"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "target_amount"
                                 },
                                 "val": {
@@ -2019,7 +2106,7 @@
                     },
                     {
                       "key": {
-                        "symbol": "version"
+                        "symbol": "schema_version"
                       },
                       "val": {
                         "u32": 1

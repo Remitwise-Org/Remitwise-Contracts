@@ -100,11 +100,21 @@ pub enum SplitEvent {
     DistributionCompleted,
 }
 
-/// Snapshot for data export/import (migration). Checksum is a simple numeric digest for on-chain verification.
+/// Snapshot for data export/import (migration).
+///
+/// # Schema Version Tag
+/// `schema_version` carries the explicit snapshot format version.
+/// Importers **must** validate this field against the supported range
+/// (`MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION`) before applying the
+/// snapshot. Snapshots with an unknown future version must be rejected to
+/// guarantee forward/backward compatibility.
+/// `checksum` is a simple numeric digest for on-chain integrity verification.
 #[contracttype]
 #[derive(Clone)]
 pub struct ExportSnapshot {
-    pub version: u32,
+    /// Explicit schema version tag for this snapshot format.
+    /// Supported range: MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION.
+    pub schema_version: u32,
     pub checksum: u64,
     pub config: SplitConfig,
 }
@@ -146,7 +156,10 @@ pub enum ScheduleEvent {
     Cancelled,
 }
 
-const SNAPSHOT_VERSION: u32 = 1;
+/// Current snapshot schema version. Bump this when the ExportSnapshot format changes.
+const SCHEMA_VERSION: u32 = 1;
+/// Oldest snapshot schema version this contract can import. Enables backward compat.
+const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
 const MAX_AUDIT_ENTRIES: u32 = 100;
 const CONTRACT_VERSION: u32 = 1;
 
@@ -239,24 +252,74 @@ impl RemittanceSplit {
     fn get_upgrade_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
+    /// Set or transfer the upgrade admin role.
+    /// 
+    /// # Security Requirements
+    /// - If no upgrade admin exists, only the contract owner can set the initial admin
+    /// - If upgrade admin exists, only the current upgrade admin can transfer to a new admin
+    /// - Caller must be authenticated via require_auth()
+    /// 
+    /// # Parameters
+    /// - `caller`: The address attempting to set the upgrade admin
+    /// - `new_admin`: The address to become the new upgrade admin
+    /// 
+    /// # Returns
+    /// - `Ok(())` on successful admin transfer
+    /// - `Err(RemittanceSplitError::Unauthorized)` if caller lacks permission
+    /// - `Err(RemittanceSplitError::NotInitialized)` if contract not initialized
     pub fn set_upgrade_admin(
         env: Env,
         caller: Address,
         new_admin: Address,
     ) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
+        
         let config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        if config.owner != caller {
-            return Err(RemittanceSplitError::Unauthorized);
+        
+        let current_upgrade_admin = Self::get_upgrade_admin(&env);
+        
+        // Authorization logic:
+        // 1. If no upgrade admin exists, only contract owner can set initial admin
+        // 2. If upgrade admin exists, only current upgrade admin can transfer
+        match current_upgrade_admin {
+            None => {
+                // Initial admin setup - only owner can set
+                if config.owner != caller {
+                    return Err(RemittanceSplitError::Unauthorized);
+                }
+            }
+            Some(current_admin) => {
+                // Admin transfer - only current admin can transfer
+                if current_admin != caller {
+                    return Err(RemittanceSplitError::Unauthorized);
+                }
+            }
         }
+        
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
+        
+        // Emit admin transfer event for audit trail
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("adm_xfr")),
+            (current_upgrade_admin, new_admin.clone()),
+        );
+        
         Ok(())
+    }
+
+    /// Get the current upgrade admin address.
+    /// 
+    /// # Returns
+    /// - `Some(Address)` if upgrade admin is set
+    /// - `None` if no upgrade admin has been configured
+    pub fn get_upgrade_admin_public(env: Env) -> Option<Address> {
+        Self::get_upgrade_admin(&env)
     }
     pub fn set_version(
         env: Env,
@@ -651,9 +714,13 @@ impl RemittanceSplit {
         if config.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
         }
-        let checksum = Self::compute_checksum(SNAPSHOT_VERSION, &config);
+        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("snap_exp")),
+            SCHEMA_VERSION,
+        );
         Ok(Some(ExportSnapshot {
-            version: SNAPSHOT_VERSION,
+            schema_version: SCHEMA_VERSION,
             checksum,
             config,
         }))
@@ -668,11 +735,14 @@ impl RemittanceSplit {
         caller.require_auth();
         Self::require_nonce(&env, &caller, nonce)?;
 
-        if snapshot.version != SNAPSHOT_VERSION {
+        // Accept any schema_version within the supported range for backward/forward compat.
+        if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
+            || snapshot.schema_version > SCHEMA_VERSION
+        {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
-        let expected = Self::compute_checksum(snapshot.version, &snapshot.config);
+        let expected = Self::compute_checksum(snapshot.schema_version, &snapshot.config);
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ChecksumMismatch);

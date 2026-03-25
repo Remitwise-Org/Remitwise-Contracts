@@ -1,224 +1,367 @@
 # Insurance Contract
 
-A Soroban smart contract for managing insurance policies with premium tracking, payment management, and access control.
+> **RemitWise Soroban Smart Contract — Micro-Insurance Policy Management**
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Coverage Types & Constraints](#coverage-types--constraints)
+3. [Validation Rules](#validation-rules)
+4. [Security Model](#security-model)
+5. [Contract Functions](#contract-functions)
+6. [Events](#events)
+7. [Error Codes](#error-codes)
+8. [Storage Layout](#storage-layout)
+9. [Running Tests](#running-tests)
+10. [Integration Guide](#integration-guide)
+11. [Security Notes](#security-notes)
+
+---
 
 ## Overview
 
-The Insurance contract enables users to create and manage insurance policies, track premium payments, and maintain policy status. It supports monthly premium payments and policy deactivation.
+The `insurance` contract manages micro-insurance policies for RemitWise users.  
+It enforces **strict validation** on every policy creation call, rejecting:
 
-## Features
+- Unsupported coverage-type / amount combinations
+- Monthly premiums outside the per-type allowed range
+- Coverage amounts outside the per-type allowed range
+- Economically implausible coverage-to-premium ratios
+- Empty or oversized string fields
+- Negative or zero numeric values
 
-- Create insurance policies with monthly premiums
-- Track premium payment schedules
-- Automatic next payment date calculation
-- Policy activation/deactivation
-- Access control for policy owners
-- Event emission for audit trails
-- Storage TTL management
+All state-mutating functions require explicit caller authorization (`require_auth()`).  
+Administrative actions (deactivate, set_external_ref) are restricted to the contract owner.
 
-## Quickstart
+---
 
-This section provides a minimal example of how to interact with the Insurance contract.
+## Coverage Types & Constraints
 
-**Gotchas:**
-- Amounts are specified in the lowest denomination (e.g., stroops for XLM).
-- The `pay_premium` function assumes authorization succeeds and sets `next_payment_date`. Ensure you handle asset transfers depending on your implementation.
-- `deactivate_policy` stops future premium calculations but cannot be reversed in the current implementation.
+All monetary values are in **stroops** (1 XLM = 10,000,000 stroops).
 
-### Write Example: Creating a Policy
-*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
-```rust
+| Coverage Type | Min Premium | Max Premium   | Min Coverage | Max Coverage      |
+|---------------|-------------|---------------|--------------|-------------------|
+| `Health`      | 1,000,000   | 500,000,000   | 10,000,000   | 100,000,000,000   |
+| `Life`        | 500,000     | 1,000,000,000 | 50,000,000   | 500,000,000,000   |
+| `Property`    | 2,000,000   | 2,000,000,000 | 100,000,000  | 1,000,000,000,000 |
+| `Auto`        | 1,500,000   | 750,000,000   | 20,000,000   | 200,000,000,000   |
+| `Liability`   | 800,000     | 400,000,000   | 5,000,000    | 50,000,000,000    |
 
-let policy_id = client.create_policy(
-    &owner_address,
-    &String::from_str(&env, "Life Insurance"),
-    &String::from_str(&env, "Life"),
-    &100_0000000,                            
-    &10000_0000000,                         
-    &String::from_str(&env, "XLM")          
-);
+### Ratio Guard
+
+In addition to range checks, every policy creation enforces:
 
 ```
-
-### Read Example: Fetching Active Policies
-```rust
-
-let limit = 10;
-let cursor = 0;
-let page = client.get_active_policies(&owner_address, &cursor, &limit);
-
+coverage_amount <= monthly_premium × 12 × 500
 ```
 
-## API Reference
+This limits leverage to **500× annual premium**, blocking economically nonsensical
+inputs (e.g. a $0.10/month premium insuring $1 billion in coverage) while remaining
+generous enough not to interfere with real-world micro-insurance products.
 
-### Data Structures
+---
 
-#### InsurancePolicy
+## Validation Rules
 
-```rust
-pub struct InsurancePolicy {
-    pub id: u32,
-    pub owner: Address,
-    pub name: String,
-    pub coverage_type: String,
-    pub monthly_premium: i128,
-    pub coverage_amount: i128,
-    pub active: bool,
-    pub next_payment_date: u64,
-}
-```
+Policy creation (`create_policy`) validates inputs in this order:
 
-### Functions
+1. **Contract initialized** — panics if `init` was never called
+2. **Caller auth** — `caller.require_auth()` must succeed
+3. **Name non-empty** — `name.len() > 0`
+4. **Name length** — `name.len() <= 64` bytes
+5. **Premium positive** — `monthly_premium > 0`
+6. **Coverage positive** — `coverage_amount > 0`
+7. **Premium in range** — within per-type `[min_premium, max_premium]`
+8. **Coverage in range** — within per-type `[min_coverage, max_coverage]`
+9. **Ratio guard** — `coverage_amount <= monthly_premium * 12 * 500`
+10. **External ref length** — `external_ref.len() <= 128` (if provided, also must be > 0)
+11. **Capacity** — active policy count < 1,000
 
-#### `create_policy(env, owner, name, coverage_type, monthly_premium, coverage_amount) -> u32`
+All overflow arithmetic uses `checked_mul` / `checked_add` / `saturating_add`
+to prevent silent numeric wrap-around.
 
-Creates a new insurance policy.
+---
 
-**Parameters:**
+## Security Model
 
-- `owner`: Address of the policy owner (must authorize)
-- `name`: Policy name
-- `coverage_type`: Type of coverage (e.g., "health", "emergency")
-- `monthly_premium`: Monthly premium amount (must be positive)
-- `coverage_amount`: Total coverage amount (must be positive)
+### Authorization
 
-**Returns:** Policy ID
+| Function            | Who can call?       |
+|---------------------|---------------------|
+| `init`              | Owner (once)        |
+| `create_policy`     | Any authenticated caller |
+| `pay_premium`       | Any authenticated caller |
+| `set_external_ref`  | Owner only          |
+| `deactivate_policy` | Owner only          |
+| `get_*` (queries)   | Anyone (read-only)  |
 
-**Panics:** If inputs are invalid or owner doesn't authorize
+### Invariants
 
-#### `pay_premium(env, caller, policy_id) -> bool`
+- Policy IDs are monotonically increasing `u32` values starting at 1.
+  The counter is stored persistently and uses `checked_add` to detect overflow.
+- An inactive policy can never receive premium payments.
+- An already-inactive policy cannot be deactivated again.
+- The owner address is set exactly once and cannot be changed after `init`.
 
-Pays monthly premium for a policy.
+### Known Limitations (pre-mainnet)
 
-**Parameters:**
+- **No reentrancy guard**: Soroban's single-threaded execution model prevents
+  classical reentrancy, but cross-contract call chains should be reviewed before
+  any orchestrator integration.
+- **No rate limiting**: Premium payments are not throttled per ledger.
+  Rate limiting should be enforced at the application layer.
+- **Owner key management**: Loss of the owner key permanently prevents
+  administrative operations. A multisig owner address is strongly recommended
+  for production deployments.
 
-- `caller`: Address of the caller (must be policy owner)
-- `policy_id`: ID of the policy
+---
 
-**Returns:** True on success
+## Contract Functions
 
-**Panics:** If caller is not owner, policy not found, or policy inactive
+### `init(owner: Address)`
 
-#### `get_policy(env, policy_id) -> Option<InsurancePolicy>`
+Initializes the contract. Must be called exactly once.
 
-Retrieves a policy by ID.
+- Sets the contract owner.
+- Resets the policy counter to 0.
+- Initializes the active-policy list to empty.
+- Panics with `"already initialized"` on a second call.
 
-**Parameters:**
+---
 
-- `policy_id`: ID of the policy
+### `create_policy(caller, name, coverage_type, monthly_premium, coverage_amount, external_ref) → u32`
 
-**Returns:** InsurancePolicy struct or None
+Creates a new insurance policy after full validation (see [Validation Rules](#validation-rules)).
 
-#### `get_active_policies(env, owner) -> Vec<InsurancePolicy>`
+Returns the new policy's `u32` ID.
 
-Gets all active policies for an owner.
+**Parameters**
 
-**Parameters:**
+| Parameter         | Type              | Description                                      |
+|-------------------|-------------------|--------------------------------------------------|
+| `caller`          | `Address`         | Policyholder address (must sign)                 |
+| `name`            | `String`          | Human-readable label (1–64 bytes)                |
+| `coverage_type`   | `CoverageType`    | One of: Health, Life, Property, Auto, Liability  |
+| `monthly_premium` | `i128`            | Monthly cost in stroops (> 0, in-range)          |
+| `coverage_amount` | `i128`            | Insured value in stroops (> 0, in-range)         |
+| `external_ref`    | `Option<String>`  | Optional off-chain reference (1–128 bytes)       |
 
-- `owner`: Address of the policy owner
-- `env`: Environment
+**Emits**: `PolicyCreatedEvent`
 
-**Returns:** Vector of active InsurancePolicy structs
+---
 
-#### `get_all_policies_for_owner(env, owner, cursor, limit) -> PolicyPage`
+### `pay_premium(caller, policy_id, amount) → bool`
 
-Gets a paginated list of all policies (including inactive) for an owner.
+Records a premium payment. `amount` must equal the policy's `monthly_premium` exactly.
 
-**Parameters:**
+Updates `last_payment_at` and advances `next_payment_due` by 30 days.
 
-- `owner`: Address of the policy owner
-- `cursor`: Starting ID (0 for first page)
-- `limit`: Maximum items per page
-- `env`: Environment
+**Emits**: `PremiumPaidEvent`
 
-**Returns:** `PolicyPage` struct with items, next_cursor, and count
+---
 
-#### `get_total_monthly_premium(env, owner) -> i128`
+### `set_external_ref(owner, policy_id, ext_ref) → bool`
 
-Calculates total monthly premium for all active policies of an owner.
+Owner-only. Updates or clears the `external_ref` field of a policy.
 
-**Parameters:**
+---
 
-- `owner`: Address of the policy owner
+### `deactivate_policy(owner, policy_id) → bool`
 
-**Returns:** Total monthly premium amount
+Owner-only. Marks a policy as inactive and removes it from the active-policy list.
 
-#### `deactivate_policy(env, caller, policy_id) -> bool`
+**Emits**: `PolicyDeactivatedEvent`
 
-Deactivates a policy.
+---
 
-**Parameters:**
+### `get_active_policies() → Vec<u32>`
 
-- `caller`: Address of the caller (must be policy owner)
-- `policy_id`: ID of the policy
+Returns the list of all active policy IDs.
 
-**Returns:** True on success
+---
 
-**Panics:** If caller is not owner or policy not found
+### `get_policy(policy_id) → Policy`
 
-## Usage Examples
+Returns the full `Policy` record. Panics if the policy does not exist.
 
-### Creating a Policy
+---
 
-```rust
-// Create a health insurance policy
-let policy_id = insurance::create_policy(
-    env,
-    user_address,
-    "Health Insurance".into(),
-    "health".into(),
-    100_0000000, // 100 XLM monthly
-    10000_0000000, // 10,000 XLM coverage
-);
-```
+### `get_total_monthly_premium() → i128`
 
-### Paying Premium
+Returns the sum of `monthly_premium` across all active policies.
+Uses `saturating_add` to prevent overflow on extremely large portfolios.
 
-```rust
-// Pay monthly premium
-let success = insurance::pay_premium(env, user_address, policy_id);
-```
-
-### Querying Policies
-
-```rust
-// Get all active policies
-let active_policies = insurance::get_active_policies(env, user_address);
-
-// Get total monthly premium
-let total_premium = insurance::get_total_monthly_premium(env, user_address);
-
-// Get all policies (history, paginated)
-let all_policies_page = insurance::get_all_policies_for_owner(env, user_address, 0, 10);
-let all_policies = all_policies_page.items;
-```
+---
 
 ## Events
 
-- `InsuranceEvent::PolicyCreated`: When a policy is created
-- `InsuranceEvent::PremiumPaid`: When a premium is paid
-- `InsuranceEvent::PolicyDeactivated`: When a policy is deactivated
+All events are published via `env.events().publish(topic, data)` and can be
+indexed off-chain using the RemitWise event indexer.
 
-## Integration Patterns
+### `PolicyCreatedEvent`
 
-### With Remittance Split
+Published on successful `create_policy`.
 
-Insurance premiums can be automatically allocated from remittance splits:
+| Field             | Type           |
+|-------------------|----------------|
+| `policy_id`       | `u32`          |
+| `name`            | `String`       |
+| `coverage_type`   | `CoverageType` |
+| `monthly_premium` | `i128`         |
+| `coverage_amount` | `i128`         |
+| `timestamp`       | `u64`          |
 
-```rust
-let split_amounts = remittance_split::calculate_split(env, total_remittance);
-let insurance_allocation = split_amounts.get(3).unwrap(); // insurance percentage
+Topic: `("created", "policy")`
 
-// Use allocation for premium payments
+### `PremiumPaidEvent`
+
+Published on successful `pay_premium`.
+
+| Field               | Type     |
+|---------------------|----------|
+| `policy_id`         | `u32`    |
+| `name`              | `String` |
+| `amount`            | `i128`   |
+| `next_payment_date` | `u64`    |
+| `timestamp`         | `u64`    |
+
+Topic: `("paid", "premium")`
+
+### `PolicyDeactivatedEvent`
+
+Published on successful `deactivate_policy`.
+
+| Field       | Type     |
+|-------------|----------|
+| `policy_id` | `u32`    |
+| `name`      | `String` |
+| `timestamp` | `u64`    |
+
+Topic: `("deactive", "policy")`
+
+---
+
+## Error Codes
+
+Errors are surfaced as Rust panics with descriptive string messages.
+The `InsuranceError` enum documents the full set of error conditions:
+
+| Code | Variant               | Message (approximate)                                            |
+|------|-----------------------|------------------------------------------------------------------|
+| 1    | `Unauthorized`        | `"unauthorized"`                                                 |
+| 2    | `AlreadyInitialized`  | `"already initialized"`                                          |
+| 3    | `NotInitialized`      | `"not initialized"`                                              |
+| 4    | `PolicyNotFound`      | `"policy not found"`                                             |
+| 5    | `PolicyInactive`      | `"policy inactive"` / `"policy already inactive"`                |
+| 6    | `InvalidName`         | `"name cannot be empty"` / `"name too long"`                     |
+| 7    | `InvalidPremium`      | `"monthly_premium must be positive"` / `"…out of range…"`        |
+| 8    | `InvalidCoverageAmount` | `"coverage_amount must be positive"` / `"…out of range…"`      |
+| 9    | `UnsupportedCombination` | `"unsupported combination: coverage_amount too high…"`        |
+| 10   | `InvalidExternalRef`  | `"external_ref length out of range"`                             |
+| 11   | `MaxPoliciesReached`  | `"max policies reached"`                                         |
+
+---
+
+## Storage Layout
+
+All data is stored in the **instance** storage bucket (persists for the contract
+lifetime when TTL is regularly bumped by users).
+
+| Key                   | Type        | Description                          |
+|-----------------------|-------------|--------------------------------------|
+| `DataKey::Owner`      | `Address`   | Contract owner                       |
+| `DataKey::PolicyCount`| `u32`       | Monotonic ID counter                 |
+| `DataKey::Policy(id)` | `Policy`    | Full policy record                   |
+| `DataKey::ActivePolicies` | `Vec<u32>` | List of active policy IDs        |
+
+---
+
+## Running Tests
+
+```bash
+# Run all tests for this contract
+cargo test -p insurance
+
+# Run with output (see panic messages)
+cargo test -p insurance -- --nocapture
+
+# Run a single test
+cargo test -p insurance test_create_health_policy_success -- --nocapture
+
+# Run gas benchmarks (if configured)
+RUST_TEST_THREADS=1 cargo test -p insurance --test gas_bench -- --nocapture
 ```
 
-### With Bill Payments
+### Expected output (all tests passing)
 
-Insurance policies can generate corresponding bill entries for premium tracking.
+```
+running 57 tests
+test tests::test_init_success ... ok
+test tests::test_create_health_policy_success ... ok
+...
+test result: ok. 57 passed; 0 failed; 0 ignored
+```
 
-## Security Considerations
+---
 
-- Owner authorization required for all operations
-- Input validation for positive amounts
-- Policy state validation before operations
-- Access control prevents unauthorized modifications
+## Integration Guide
+
+### Typical policyholder flow
+
+```rust
+// 1. Initialize (deploy once)
+client.init(&owner_address);
+
+// 2. Create a health policy
+let policy_id = client.create_policy(
+    &user_address,
+    &String::from_str(&env, "Family Health Plan"),
+    &CoverageType::Health,
+    &10_000_000i128,   // 1 XLM / month
+    &100_000_000i128,  // 10 XLM coverage
+    &Some(String::from_str(&env, "PROVIDER-ABC-123")),
+);
+
+// 3. Pay monthly premium
+client.pay_premium(&user_address, &policy_id, &10_000_000i128);
+
+// 4. Query total cost
+let total = client.get_total_monthly_premium(); // sums all active policies
+```
+
+### Checking constraints before calling
+
+To avoid a failed transaction, verify on the client side that:
+
+```
+min_premium[type] <= monthly_premium <= max_premium[type]
+min_coverage[type] <= coverage_amount <= max_coverage[type]
+coverage_amount <= monthly_premium * 12 * 500
+name.len() in 1..=64
+external_ref.len() in 1..=128  (if supplied)
+```
+
+---
+
+## Security Notes
+
+1. **Always use `require_auth`** — every state-changing function in this contract
+   calls `require_auth` on the relevant address before performing any writes.
+
+2. **Checked arithmetic** — all multiplication operations used in validation use
+   `checked_mul` to surface overflows rather than silently wrapping.
+
+3. **Monotonic IDs** — policy IDs increment by exactly 1 per creation with
+   `checked_add`, so an overflow (at `u32::MAX` ≈ 4 billion policies) panics
+   rather than resetting to 0 and colliding with existing policies.
+
+4. **No self-referential calls** — this contract does not call back into itself
+   or other contracts, eliminating classical reentrancy vectors.
+
+5. **Pre-mainnet gaps** (inherited from project-level THREAT_MODEL.md):
+   - `[SECURITY-003]` Rate limiting for emergency transfers is not yet implemented.
+   - `[SECURITY-005]` MAX_POLICIES (1,000) provides a soft cap but no per-user limit.
+
+For security disclosures, email **security@remitwise.com**.
