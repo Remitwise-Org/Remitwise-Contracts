@@ -1131,9 +1131,9 @@ mod test {
         assert_eq!(result.get(2).unwrap(), 200); // 20% of 1000
         assert_eq!(result.get(3).unwrap(), 100); // 10% of 1000
 
-        // Verify 2 new events were emitted (SplitCalculated + audit event)
+        // Verify 1 new event was emitted (SplitCalculated)
         let events_after = env.events().all().len();
-        assert_eq!(events_after - events_before, 2);
+        assert_eq!(events_after - events_before, 1);
     }
 
     #[test]
@@ -1151,9 +1151,9 @@ mod test {
         client.calculate_split(&2000);
         client.calculate_split(&3000);
 
-        // Should have 5 events total (1 init + 2*2 calc)
+        // Should have 3 events total (1 init + 2 calc)
         let events = env.events().all();
-        assert_eq!(events.len(), 5);
+        assert_eq!(events.len(), 3);
     }
 
     // ====================================================================
@@ -1623,24 +1623,31 @@ mod test {
             "at least one event should be emitted on initialize_split"
         );
 
-        // The last event topic should be (symbol_short!("split"), SplitEvent::Initialized)
+        // The last event topic should be the new deterministic tuple format
         let init_event = events_after_init.last().unwrap();
         let topic0: Symbol = Symbol::try_from_val(&env, &init_event.1.get(0).unwrap()).unwrap();
-        let topic1: SplitEvent =
-            SplitEvent::try_from_val(&env, &init_event.1.get(1).unwrap()).unwrap();
-        assert_eq!(topic0, symbol_short!("split"));
-        assert_eq!(topic1, SplitEvent::Initialized);
+        let topic1: u32 = u32::try_from_val(&env, &init_event.1.get(1).unwrap()).unwrap();
+        let topic2: u32 = u32::try_from_val(&env, &init_event.1.get(2).unwrap()).unwrap();
+        let topic3: Symbol = Symbol::try_from_val(&env, &init_event.1.get(3).unwrap()).unwrap();
+
+        assert_eq!(topic0, symbol_short!("Remitwise"));
+        assert_eq!(topic1, 1); // EventCategory::State
+        assert_eq!(topic2, 1); // EventPriority::Medium
+        assert_eq!(topic3, symbol_short!("init"));
 
         // --- update_split event ---
         client.update_split(&owner, &1, &40, &40, &10, &10);
 
         let events_after_update = env.events().all();
         let update_event = events_after_update.last().unwrap();
-        let upd_topic0: Symbol =
-            Symbol::try_from_val(&env, &update_event.1.get(0).unwrap()).unwrap();
-        let upd_topic1: SplitEvent =
-            SplitEvent::try_from_val(&env, &update_event.1.get(1).unwrap()).unwrap();
-        assert_eq!(upd_topic0, symbol_short!("split"));
-        assert_eq!(upd_topic1, SplitEvent::Updated);
+        let upd_topic0: Symbol = Symbol::try_from_val(&env, &update_event.1.get(0).unwrap()).unwrap();
+        let upd_topic1: u32 = u32::try_from_val(&env, &update_event.1.get(1).unwrap()).unwrap();
+        let upd_topic2: u32 = u32::try_from_val(&env, &update_event.1.get(2).unwrap()).unwrap();
+        let upd_topic3: Symbol = Symbol::try_from_val(&env, &update_event.1.get(3).unwrap()).unwrap();
+
+        assert_eq!(upd_topic0, symbol_short!("Remitwise"));
+        assert_eq!(upd_topic1, 1); // EventCategory::State
+        assert_eq!(upd_topic2, 1); // EventPriority::Medium
+        assert_eq!(upd_topic3, symbol_short!("update"));
     }
 }

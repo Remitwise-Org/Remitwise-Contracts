@@ -1172,14 +1172,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "AddressesConfigured"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "addr_ok"
               }
             ],
             "data": {
@@ -2812,14 +2814,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportGenerated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "rep_gen"
               }
             ],
             "data": {
@@ -3844,14 +3848,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportStored"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "rep_str"
               }
             ],
             "data": {
@@ -3934,14 +3940,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportsArchived"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "arch_ok"
               }
             ],
             "data": {

@@ -1,78 +1,96 @@
-import os
 import re
+import os
 
-def fix_insurance_tests():
-    path = 'insurance/src/test.rs'
-    if not os.path.exists(path): return
-    with open(path, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
+path = r'C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\bill_payments\src\test.rs'
 
-    # 1. Fix get_active_policies calls
-    content = content.replace('client.get_active_policies(&owner)', 'client.get_active_policies(&owner, &0, &10)')
-    content = content.replace('active.len()', 'active.items.len()')
+import os
 
-    # 2. Fix set_ledger_time calls
-    content = content.replace('set_ledger_time(&env, 1000)', 'set_ledger_time(&env, 1u32, 1000u64)')
+path = r'C:\Users\ADMIN\Desktop\remmy-drips\Remitwise-Contracts\bill_payments\src\test.rs'
 
-    # 3. Fix create_policy calls (missing &None)
-    # This was partially fixed but some patterns might remain
-    # Pattern: 5 arguments, needs 6
-    # Let's use a regex to find multiline calls that have 5 args
-    def repl_policy(m):
-        args = [a.strip() for a in m.group(1).split(',')]
-        if len([a for a in args if a]) == 5:
-            return f'client.create_policy({m.group(1)}, &None)'
-        return m.group(0)
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
 
-    # Simplified replacement for the multiline ones I saw in the view_file
-    content = content.replace(
-        'let policy_id = client.create_policy(\n        &owner,\n        &String::from_str(&env, "Policy"),\n        &String::from_str(&env, "Type"),\n        &100,\n        &10000,\n    );',
-        'let policy_id = client.create_policy(\n        &owner,\n        &String::from_str(&env, "Policy"),\n        &String::from_str(&env, "Type"),\n        &100,\n        &10000,\n        &None,\n    );'
-    )
+def fix_args(args_str):
+    # Split args by comma, but respect nested parentheses/brackets
+    args = []
+    bracket_level = 0
+    current_arg = ""
+    for char in args_str:
+        if char == ',' and bracket_level == 0:
+            args.append(current_arg.strip())
+            current_arg = ""
+        else:
+            if char in '([{': bracket_level += 1
+            if char in ')]}': bracket_level -= 1
+            current_arg += char
+    if current_arg:
+        args.append(current_arg.strip())
+    
+    new_args = args[:]
+    
+    # Standardize to 8 arguments
+    if len(new_args) == 7:
+        if "XLM" in new_args[-1]:
+            new_args.insert(6, "&None")
+        else:
+            new_args.append('&String::from_str(&env, "XLM")')
+    elif len(new_args) == 6:
+        new_args.append("&None")
+        new_args.append('&String::from_str(&env, "XLM")')
+    elif len(new_args) == 9:
+        if "XLM" in new_args[6] and "XLM" in new_args[8]:
+             new_args.pop(6)
+        elif "XLM" in new_args[6] and "None" in new_args[7] and "XLM" in new_args[8]:
+             new_args.pop(6)
 
-    # General multiline fix for create_policy with 5 args ending with &50000
-    content = re.sub(
-        r'client\.create_policy\(\s*&owner,\s*&String::from_str\(&env, "Health Insurance"\),\s*&String::from_str\(&env, "health"\),\s*&500,\s*&50000,\s*\)',
-        r'client.create_policy(\n        &owner,\n        &String::from_str(&env, "Health Insurance"),\n        &String::from_str(&env, "health"),\n        &500,\n        &50000,\n        &None,\n    )',
-        content
-    )
+    # Force to 8
+    if len(new_args) > 8:
+        new_args = new_args[:8]
+    elif len(new_args) < 8:
+        while len(new_args) < 8:
+            new_args.append("&None")
 
-    # Fix syntax error from previous bad replacement: , &None);
-    content = content.replace('\n    , &None);', '\n        &None\n    );')
+    # Swap if needed
+    if len(new_args) == 8:
+        if "XLM" in new_args[6] and "None" in new_args[7]:
+             new_args[6], new_args[7] = new_args[7], new_args[6]
 
-    with open(path, 'w', encoding='utf-8') as f: f.write(content)
+    return ", ".join(new_args)
 
-def fix_examples():
-    # insurance_example.rs
-    path = 'examples/insurance_example.rs'
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: c = f.read()
-        c = c.replace('policy.next_payment_date', 'policy.unwrap().next_payment_date')
-        with open(path, 'w', encoding='utf-8') as f: f.write(c)
+# Manual scan instead of re.sub to handle nested parens perfectly
+new_content = ""
+pos = 0
+while pos < len(content):
+    # Look for the next call
+    match_cb = content.find("client.create_bill(", pos)
+    match_tcb = content.find("client.try_create_bill(", pos)
+    
+    if match_cb == -1 and match_tcb == -1:
+        new_content += content[pos:]
+        break
+        
+    start_idx = match_cb if (match_tcb == -1 or (match_cb != -1 and match_cb < match_tcb)) else match_tcb
+    call_str = "client.create_bill(" if start_idx == match_cb else "client.try_create_bill("
+    
+    new_content += content[pos:start_idx]
+    new_content += call_str
+    
+    # Find the matching closing paren
+    paren_pos = start_idx + len(call_str)
+    bracket_level = 1
+    args_start = paren_pos
+    while bracket_level > 0 and paren_pos < len(content):
+        if content[paren_pos] == '(': bracket_level += 1
+        elif content[paren_pos] == ')': bracket_level -= 1
+        paren_pos += 1
+    
+    args_str = content[args_start:paren_pos-1]
+    new_content += fix_args(args_str)
+    new_content += ")"
+    
+    pos = paren_pos
 
-    # family_wallet_example.rs
-    path = 'examples/family_wallet_example.rs'
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: c = f.read()
-        c = c.replace('use family_wallet::{FamilyWallet, FamilyWalletClient, FamilyRole};', 'use family_wallet::{FamilyWallet, FamilyWalletClient};\nuse remitwise_common::FamilyRole;')
-        c = c.replace('spending_limit).unwrap();', 'spending_limit);')
-        with open(path, 'w', encoding='utf-8') as f: f.write(c)
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(new_content)
 
-    # savings_goals_example.rs
-    path = 'examples/savings_goals_example.rs'
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: c = f.read()
-        c = c.replace('target_date).unwrap();', 'target_date);')
-        c = c.replace('println!("Creating savings goal: \'{}\'', 'println!("Creating savings goal: \'{:?}\'')
-        c = c.replace('println!("  Name: {}", goal.name)', 'println!("  Name: {:?}", goal.name)')
-        with open(path, 'w', encoding='utf-8') as f: f.write(c)
-
-    # bill_payments_example.rs
-    path = 'examples/bill_payments_example.rs'
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: c = f.read()
-        c = c.replace('println!("Creating bill: \'{}\'', 'println!("Creating bill: \'{:?}\'')
-        c = c.replace('println!("  ID: {}, Name: {}, Amount: {} {}",', 'println!("  ID: {:?}, Name: {:?}, Amount: {} {:?}",')
-        with open(path, 'w', encoding='utf-8') as f: f.write(c)
-
-fix_insurance_tests()
-fix_examples()
+print("Done fixing bill_payments/src/test.rs")

@@ -631,7 +631,7 @@ impl SavingsGoalContract {
         if was_completed && !previously_completed {
             RemitwiseEvents::emit(
                 &env,
-                EventCategory::Goal,
+                EventCategory::State,
                 EventPriority::High,
                 symbol_short!("compl"),
                 (goal_id, caller),
@@ -701,7 +701,7 @@ impl SavingsGoalContract {
             if was_completed && !previously_completed {
                 RemitwiseEvents::emit(
                     &env,
-                    EventCategory::Goal,
+                    EventCategory::State,
                     EventPriority::High,
                     symbol_short!("compl"),
                     (item.goal_id, caller.clone()),
@@ -931,7 +931,7 @@ impl SavingsGoalContract {
 
         let owner_goal_ids: Map<Address, Vec<u32>> = env
             .storage()
-            .instance()
+            .persistent()
             .get(&Self::STORAGE_OWNER_GOAL_IDS)
             .unwrap_or_else(|| Map::new(&env));
         let ids = owner_goal_ids
@@ -1494,7 +1494,7 @@ impl SavingsGoalContract {
                 if is_completed {
                     RemitwiseEvents::emit(
                         &env,
-                        EventCategory::Goal,
+                        EventCategory::State,
                         EventPriority::High,
                         symbol_short!("compl"),
                         (schedule.goal_id, goal.owner),

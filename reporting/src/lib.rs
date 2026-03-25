@@ -5,17 +5,12 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    Category, EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD,
+    Category, EventCategory, EventPriority, RemitwiseEvents,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
 };
 
-// Storage TTL constants for active data
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-
-// Storage TTL constants for archived data (longer retention, less frequent access)
-const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
+// Storage TTL constants are imported from remitwise-common
 
 // Retention policy: minimum age before a report can be archived (30 days in seconds)
 const REPORT_RETENTION_WINDOW: u64 = 30 * 24 * 60 * 60;

@@ -23,9 +23,8 @@ pub enum InsuranceError {
 }
 
 // Event topics
-const POLICY_CREATED: Symbol = symbol_short!("created");
-const PREMIUM_PAID: Symbol = symbol_short!("paid");
-const POLICY_DEACTIVATED: Symbol = symbol_short!("deactive");
+// Unused legacy event constants removed
+
 
 // Event data structures
 #[derive(Clone)]

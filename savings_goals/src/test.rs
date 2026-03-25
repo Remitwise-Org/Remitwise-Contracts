@@ -919,37 +919,25 @@ fn test_create_goal_emits_event() {
     assert_eq!(goal_id, 1);
 
     let events = env.events().all();
-    let mut found_created_struct = false;
-    let mut found_created_enum = false;
+    let mut found_created = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_CREATED {
-            let event_data: GoalCreatedEvent =
-                GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            found_created_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCreated) {
-                found_created_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("goal") {
+                // data is (next_id, owner)
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_created = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_created_struct,
-        "GoalCreated struct event was not emitted"
-    );
-    assert!(
-        found_created_enum,
-        "SavingsEvent::GoalCreated was not emitted"
-    );
+    assert!(found_created, "RemitwiseEvents::emit was not called for goal creation");
 }
 
 #[test]
@@ -975,35 +963,24 @@ fn test_add_to_goal_emits_event() {
     assert_eq!(new_amount, 1000);
 
     let events = env.events().all();
-    let mut found_added_struct = false;
-    let mut found_added_enum = false;
+    let mut found_added = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == FUNDS_ADDED {
-            let event_data: FundsAddedEvent =
-                FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.amount, 1000);
-            found_added_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsAdded) {
-                found_added_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("added") {
+                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id && data.2 == 1000 {
+                    found_added = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_added_struct,
-        "FundsAdded struct event was not emitted"
-    );
-    assert!(found_added_enum, "SavingsEvent::FundsAdded was not emitted");
+    assert!(found_added, "RemitwiseEvents::emit was not called for FundsAdded");
 }
 
 #[test]
@@ -1028,38 +1005,24 @@ fn test_goal_completed_emits_event() {
     client.add_to_goal(&user, &goal_id, &1000);
 
     let events = env.events().all();
-    let mut found_completed_struct = false;
-    let mut found_completed_enum = false;
+    let mut found_completed = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_COMPLETED {
-            let event_data: GoalCompletedEvent =
-                GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.final_amount, 1000);
-            found_completed_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCompleted) {
-                found_completed_enum = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("compl") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_completed = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_completed_struct,
-        "GoalCompleted struct event was not emitted"
-    );
-    assert!(
-        found_completed_enum,
-        "SavingsEvent::GoalCompleted was not emitted"
-    );
+    assert!(found_completed, "RemitwiseEvents::emit was not called for GoalCompleted");
 }
 
 #[test]
@@ -1083,24 +1046,24 @@ fn test_withdraw_from_goal_emits_event() {
     client.withdraw_from_goal(&user, &goal_id, &600);
 
     let events = env.events().all();
-    let mut found_withdrawn_enum = false;
+    let mut found_withdrawn = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsWithdrawn) {
-                found_withdrawn_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("withdr") {
+                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id && data.2 == 600 {
+                    found_withdrawn = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_withdrawn_enum,
-        "SavingsEvent::FundsWithdrawn was not emitted"
-    );
+    assert!(found_withdrawn, "RemitwiseEvents::emit was not called for FundsWithdrawn");
 }
 
 #[test]
@@ -1123,24 +1086,24 @@ fn test_lock_goal_emits_event() {
     client.lock_goal(&user, &goal_id);
 
     let events = env.events().all();
-    let mut found_locked_enum = false;
+    let mut found_locked = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalLocked) {
-                found_locked_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("lock") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_locked = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_locked_enum,
-        "SavingsEvent::GoalLocked was not emitted"
-    );
+    assert!(found_locked, "RemitwiseEvents::emit was not called for GoalLocked");
 }
 
 #[test]
@@ -1162,24 +1125,24 @@ fn test_unlock_goal_emits_event() {
     client.unlock_goal(&user, &goal_id);
 
     let events = env.events().all();
-    let mut found_unlocked_enum = false;
+    let mut found_unlocked = false;
 
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalUnlocked) {
-                found_unlocked_enum = true;
+
+        if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
+            let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if topic3 == symbol_short!("unlock") {
+                let data: (u32, Address) = <(u32, Address)>::try_from_val(&env, &event.2).unwrap();
+                if data.0 == goal_id {
+                    found_unlocked = true;
+                }
             }
         }
     }
 
-    assert!(
-        found_unlocked_enum,
-        "SavingsEvent::GoalUnlocked was not emitted"
-    );
+    assert!(found_unlocked, "RemitwiseEvents::emit was not called for GoalUnlocked");
 }
 
 #[test]
@@ -1197,9 +1160,9 @@ fn test_multiple_goals_emit_separate_events() {
     client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
     client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
 
-    // Should have 3 * 2 events = 6 events
+    // Should have 3 events
     let events = env.events().all();
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.len(), 3);
 }
 
 // ============================================================================

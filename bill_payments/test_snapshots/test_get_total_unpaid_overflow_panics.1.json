@@ -363,41 +363,6 @@
           "v0": {
             "topics": [
               {
-                "symbol": "bill"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "Created"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                "void"
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
                 "symbol": "Remitwise"
               },
               {
@@ -524,7 +489,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'overflow' from contract function 'Symbol(obj#67)'"
+                  "string": "caught panic 'overflow' from contract function 'Symbol(obj#59)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

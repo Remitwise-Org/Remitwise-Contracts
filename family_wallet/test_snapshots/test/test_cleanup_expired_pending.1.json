@@ -1687,14 +1687,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "wallet"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ExpiredCleaned"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "arch_cln"
               }
             ],
             "data": {

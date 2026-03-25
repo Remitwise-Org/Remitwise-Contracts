@@ -1429,18 +1429,27 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ModeOn"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_mode"
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              "vec": [
+                {
+                  "bool": true
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
             }
           }
         }
@@ -1573,14 +1582,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "TransferInit"
-                  }
-                ]
+                "u32": 2
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_init"
               }
             ],
             "data": {
@@ -1705,14 +1716,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "TransferExec"
-                  }
-                ]
+                "u32": 2
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_exec"
               }
             ],
             "data": {
@@ -1816,7 +1829,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#491)'"
+                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#483)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

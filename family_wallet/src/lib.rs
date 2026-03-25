@@ -80,7 +80,43 @@ pub struct EmergencyConfig {
 
 #[contracttype]
 #[derive(Clone)]
-// Event types moved to remitwise-common or handled by standardized schema
+pub struct ArchivedTransaction {
+    pub tx_id: u64,
+    pub tx_type: TransactionType,
+    pub proposer: Address,
+    pub executed_at: u64,
+    pub archived_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct StorageStats {
+    pub pending_transactions: u32,
+    pub archived_transactions: u32,
+    pub total_members: u32,
+    pub last_updated: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AccessAuditEntry {
+    pub operation: Symbol,
+    pub caller: Address,
+    pub target: Option<Address>,
+    pub timestamp: u64,
+    pub success: bool,
+}
+
+const CONTRACT_VERSION: u32 = 1;
+const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
+const MAX_BATCH_MEMBERS: u32 = 30;
+
+#[contracttype]
+#[derive(Clone)]
+pub struct BatchMemberItem {
+    pub address: Address,
+    pub role: FamilyRole,
+}
 
 
 #[contract]
@@ -310,7 +346,8 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
 
-        let now = env.ledger().timestamp();
+        // let now = env.ledger().timestamp(); (unused)
+
         RemitwiseEvents::emit(
             &env,
             EventCategory::Access,

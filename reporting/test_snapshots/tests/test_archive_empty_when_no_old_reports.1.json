@@ -325,14 +325,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "report"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ReportsArchived"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "arch_ok"
               }
             ],
             "data": {

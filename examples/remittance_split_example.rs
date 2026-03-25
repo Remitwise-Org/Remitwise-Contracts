@@ -10,15 +10,16 @@ fn main() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
-    // 3. Generate a mock owner address
+    // 3. Generate mock addresses
     let owner = Address::generate(&env);
+    let usdc_mock = Address::generate(&env);
 
     println!("--- Remitwise: Remittance Split Example ---");
 
     // 4. [Write] Initialize the split configuration
     // Percentages: 50% Spending, 30% Savings, 15% Bills, 5% Insurance
     println!("Initializing split configuration for owner: {:?}", owner);
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_mock, &50, &30, &15, &5);
 
     // 5. [Read] Verify the configuration
     let config = client.get_config().expect("Config not found");

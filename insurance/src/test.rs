@@ -777,14 +777,16 @@ fn test_create_policy_emits_event() {
     let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env),
-        InsuranceEvent::PolicyCreated.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        1u32.into_val(&env), // EventCategory::State
+        1u32.into_val(&env), // EventPriority::Medium
+        symbol_short!("policy").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
@@ -815,14 +817,16 @@ fn test_pay_premium_emits_event() {
     client.pay_premium(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env),
-        InsuranceEvent::PremiumPaid.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        0u32.into_val(&env), // EventCategory::Transaction
+        2u32.into_val(&env), // EventPriority::High
+        symbol_short!("paid").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
@@ -853,14 +857,16 @@ fn test_deactivate_policy_emits_event() {
     client.deactivate_policy(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 2);
+    assert!(events.len() >= 1);
 
     let audit_event = events.last().unwrap();
 
     let expected_topics = vec![
         &env,
-        symbol_short!("insure").into_val(&env),
-        InsuranceEvent::PolicyDeactivated.into_val(&env),
+        symbol_short!("Remitwise").into_val(&env),
+        1u32.into_val(&env), // EventCategory::State
+        1u32.into_val(&env), // EventPriority::Medium
+        symbol_short!("deact").into_val(&env),
     ];
 
     assert_eq!(audit_event.1, expected_topics);
