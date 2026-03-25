@@ -11,10 +11,8 @@ default = []
 testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "=21.7.7"
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 testutils = { path = "../testutils" }
-
-

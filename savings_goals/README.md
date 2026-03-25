@@ -16,6 +16,28 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Access control for goal management
 - Event emission for audit trails
 - Storage TTL management
+- Deterministic cursor pagination with owner-bound consistency checks
+
+## Pagination Stability
+
+`get_goals(owner, cursor, limit)` now uses the owner goal-ID index as the canonical ordering source.
+
+- Ordering is deterministic: ascending goal creation ID for that owner.
+- Cursor is exclusive: page N+1 starts strictly after the cursor ID.
+- Cursor is owner-bound: a non-zero cursor must exist in that owner's index.
+- Invalid/stale non-zero cursors are rejected to prevent silent duplicate/skip behavior.
+
+### Cursor Semantics
+
+- `cursor = 0` starts from the first goal.
+- `next_cursor = 0` means there are no more pages.
+- If writes happen between reads, new goals are appended and will appear in later pages without duplicating already-read items.
+
+### Security Notes
+
+- Pagination validates index-to-storage consistency and owner binding.
+- Any detected index/storage mismatch fails fast instead of returning ambiguous data.
+- This reduces the risk of inconsistent client state caused by malformed or stale cursors.
 
 ## Quickstart
 
@@ -167,6 +189,24 @@ Gets all goals for an owner.
 
 **Returns:** Vector of SavingsGoal structs
 
+#### `get_goals(env, owner, cursor, limit) -> GoalPage`
+
+Returns a deterministic page of goals for an owner.
+
+**Parameters:**
+
+- `owner`: Address of the goal owner
+- `cursor`: Exclusive cursor (`0` for first page)
+- `limit`: Max records to return (`0` uses default, capped by max)
+
+**Returns:** `GoalPage { items, next_cursor, count }`
+
+**Cursor guarantees:**
+
+- `next_cursor` is the last returned goal ID when more pages exist
+- `next_cursor = 0` means end of list
+- Non-zero invalid cursors are rejected
+
 #### `is_goal_completed(env, goal_id) -> bool`
 
 Checks if a goal is completed.
@@ -176,6 +216,21 @@ Checks if a goal is completed.
 - `goal_id`: ID of the goal
 
 **Returns:** True if current_amount >= target_amount
+
+## Time-lock & Schedules
+
+### Time-lock Boundary Behavior
+
+The contract enforces strict timestamp-based access control for withdrawals:
+- **Before `unlock_date`**: Withdrawal attempts return `GoalLocked` error.
+- **At/After `unlock_date`**: Withdrawal is permitted (assuming the goal is also manually unlocked).
+
+### Schedule Drift Handling
+
+Recurring savings schedules are designed to maintain their cadence even if execution is delayed:
+- **Catching Up**: If a schedule is executed after its `next_due`, the contract calculates how many whole `interval` periods have passed since `next_due`. 
+- **Missed Count**: Each passed interval that wasn't executed is recorded in `missed_count`.
+- **Deterministic Next Due**: The `next_due` for the next execution is set to the next future interval anchor, ensuring no drift accumulates over time.
 
 ## Usage Examples
 
@@ -268,7 +323,8 @@ let vacation_id = savings_goals::create_goal(env, user, "Vacation", 2000_0000000
 ## Security Considerations
 
 - Owner authorization required for all operations
-- Goal locking prevents unauthorized withdrawals
+- Goal locking and **time-lock boundaries** prevent unauthorized or premature withdrawals
+- Support for **deterministic schedule execution** with drift compensation
 - Input validation for amounts and ownership
 - Balance checks prevent overdrafts
 - Access control ensures user data isolation

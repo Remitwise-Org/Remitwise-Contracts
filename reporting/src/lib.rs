@@ -715,6 +715,51 @@ impl ReportingContract {
         }
     }
 
+    /// Compute trend analysis over a window of historical data points.
+    ///
+    /// Aggregates a Vec of (period_key, amount) pairs ordered by period_key and
+    /// returns one `TrendData` per adjacent pair, producing deterministic output
+    /// for identical inputs regardless of call order or ledger state.
+    ///
+    /// # Arguments
+    /// * `_env`      - Contract environment
+    /// * `_user`     - Address of the user (reserved for future auth scoping)
+    /// * `history`   - Vec of `(period_key: u64, amount: i128)` tuples, at least 2 elements
+    ///
+    /// # Returns
+    /// `Vec<TrendData>` with `history.len() - 1` elements.  Empty when fewer than
+    /// two data points are supplied.
+    pub fn get_trend_analysis_multi(
+        env: Env,
+        _user: Address,
+        history: Vec<(u64, i128)>,
+    ) -> Vec<TrendData> {
+        let mut result = Vec::new(&env);
+        let len = history.len();
+        if len < 2 {
+            return result;
+        }
+        for i in 1..len {
+            let (_, prev_amount) = history.get(i - 1).unwrap_or((0, 0));
+            let (_, curr_amount) = history.get(i).unwrap_or((0, 0));
+            let change_amount = curr_amount - prev_amount;
+            let change_percentage = if prev_amount > 0 {
+                ((change_amount * 100) / prev_amount) as i32
+            } else if curr_amount > 0 {
+                100
+            } else {
+                0
+            };
+            result.push_back(TrendData {
+                current_amount: curr_amount,
+                previous_amount: prev_amount,
+                change_amount,
+                change_percentage,
+            });
+        }
+        result
+    }
+
     /// Store a financial health report for a user
     pub fn store_report(
         env: Env,
@@ -741,6 +786,8 @@ impl ReportingContract {
             (symbol_short!("report"), ReportEvent::ReportStored),
             (user, period_key),
         );
+
+        Self::update_storage_stats(&env);
 
         true
     }
@@ -930,10 +977,15 @@ impl ReportingContract {
         deleted_count
     }
 
-    /// Get storage usage statistics
+    /// Returns aggregate counts of active and archived reports for observability.
+    ///
+    /// This is intentionally callable without authentication: it exposes only
+    /// non-sensitive counters (not report contents or user-identifying detail).
+    /// Callers must not treat these values as authorization signals.
     ///
     /// # Returns
-    /// StorageStats struct with current storage metrics
+    /// [`StorageStats`] with `active_reports`, `archived_reports`, and `last_updated`
+    /// (ledger timestamp when stats were last recomputed).
     pub fn get_storage_stats(env: Env) -> StorageStats {
         env.storage()
             .instance()

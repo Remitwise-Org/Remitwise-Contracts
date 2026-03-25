@@ -59,7 +59,7 @@ mod testsuit {
 
     #[test]
     fn test_create_bill_succeeds() {
-        setup_test_env!(env, BillPayments, client, owner);
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
         let bill_id = client.create_bill(
             &owner,
@@ -85,7 +85,7 @@ mod testsuit {
 
     #[test]
     fn test_create_bill_invalid_amount_fails() {
-        setup_test_env!(env, BillPayments, client, owner);
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
         let result = client.try_create_bill(
             &owner,
             &String::from_str(&env, "Invalid"),
