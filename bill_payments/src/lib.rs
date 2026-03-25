@@ -165,42 +165,52 @@ impl BillPayments {
     /// - "" → "XLM"
     /// - "UsDc" → "USDC"
     fn normalize_currency(env: &Env, currency: &String) -> String {
-        let trimmed = currency.trim();
-        if trimmed.is_empty() {
-            String::from_str(env, "XLM")
-        } else {
-            String::from_str(env, &trimmed.to_uppercase())
+        // Convert to bytes, trim whitespace, uppercase
+        let len = currency.len();
+        if len == 0 {
+            return String::from_str(env, "XLM");
         }
+        let mut buf = [0u8; 32];
+        let copy_len = (len as usize).min(buf.len());
+        currency.copy_into_slice(&mut buf[..copy_len]);
+        let s = &buf[..copy_len];
+        // Trim leading/trailing ASCII spaces
+        let start = s.iter().position(|&b| b != b' ').unwrap_or(copy_len);
+        let end = s.iter().rposition(|&b| b != b' ').map(|i| i + 1).unwrap_or(0);
+        if start >= end {
+            return String::from_str(env, "XLM");
+        }
+        let trimmed = &s[start..end];
+        // Uppercase
+        let mut upper = [0u8; 32];
+        for (i, &b) in trimmed.iter().enumerate() {
+            upper[i] = b.to_ascii_uppercase();
+        }
+        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        String::from_str(env, upper_str)
     }
 
-    /// Validate a currency string according to contract requirements.
-    ///
-    /// # Arguments
-    /// * `currency` - Currency code string to validate
-    ///
-    /// # Returns
-    /// * `Ok(())` if the currency is valid
-    /// * `Err(Error::InvalidCurrency)` if invalid
-    ///
-    /// # Validation Rules
-    /// 1. Length must be 1-12 characters (after trimming)
-    /// 2. Must contain only alphanumeric characters (A-Z, a-z, 0-9)
-    /// 3. Empty strings are allowed (will be normalized to "XLM")
-    ///
-    /// # Examples
-    /// - Valid: "XLM", "USDC", "NGN", "EUR123"
-    /// - Invalid: "USD$", "BTC-ETH", "XLM/USD", "ABCDEFGHIJKLM" (too long)
     fn validate_currency(currency: &String) -> Result<(), Error> {
-        let s = currency.trim();
-        if s.is_empty() {
+        let len = currency.len() as usize;
+        if len == 0 {
             return Ok(()); // Will be normalized to "XLM"
         }
-        if s.len() > 12 {
+        let mut buf = [0u8; 64];
+        let copy_len = len.min(buf.len());
+        currency.copy_into_slice(&mut buf[..copy_len]);
+        let s = &buf[..copy_len];
+        // Trim spaces
+        let start = s.iter().position(|&b| b != b' ').unwrap_or(copy_len);
+        let end = s.iter().rposition(|&b| b != b' ').map(|i| i + 1).unwrap_or(0);
+        if start >= end {
+            return Ok(()); // empty after trim → will default to XLM
+        }
+        let trimmed = &s[start..end];
+        if trimmed.len() > 12 {
             return Err(Error::InvalidCurrency);
         }
-        // Check if all characters are alphanumeric (A-Z, a-z, 0-9)
-        for ch in s.chars() {
-            if !ch.is_ascii_alphanumeric() {
+        for &b in trimmed {
+            if !b.is_ascii_alphanumeric() {
                 return Err(Error::InvalidCurrency);
             }
         }
@@ -416,9 +426,9 @@ impl BillPayments {
                     return Err(Error::Unauthorized);
                 }
             }
-            Some(current_admin) => {
+            Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if *current_admin != caller {
                     return Err(Error::Unauthorized);
                 }
             }
@@ -1361,6 +1371,7 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+        let normalized_currency = Self::normalize_currency(&env, &currency);
         for (id, bill) in bills.iter() {
             if id <= cursor {
                 continue;
@@ -1413,6 +1424,7 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(&env));
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+        let normalized_currency = Self::normalize_currency(&env, &currency);
         for (id, bill) in bills.iter() {
             if id <= cursor {
                 continue;
@@ -2955,7 +2967,6 @@ mod test {
         client.bulk_cleanup_bills(&admin, &1000000);
     }
 }
-}
 
 fn extend_instance_ttl(env: &Env) {
     // Extend the contract instance itself
@@ -2963,13 +2974,4 @@ fn extend_instance_ttl(env: &Env) {
         INSTANCE_LIFETIME_THRESHOLD, 
         INSTANCE_BUMP_AMOUNT
     );
-}
-}
-
-pub fn create_bill(env: Env, ...) {
-    extend_instance_ttl(&env); // Keep contract alive
-    // ... logic to create bill ...
-    let key = DataKey::Bill(bill_id);
-    env.storage().persistent().set(&key, &bill);
-    extend_ttl(&env, &key); // Keep this specific bill alive
 }

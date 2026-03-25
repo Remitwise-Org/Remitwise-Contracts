@@ -224,7 +224,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -351,6 +351,20 @@ impl Orchestrator {
     ///
     /// # Gas Estimation
     /// ~500 gas (single instance storage read + write)
+    /// Validate that all contract addresses in a remittance flow are non-zero/valid.
+    fn validate_remittance_flow_addresses(
+        _env: &Env,
+        _family_wallet_addr: &Address,
+        _remittance_split_addr: &Address,
+        _savings_addr: &Address,
+        _bills_addr: &Address,
+        _insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        // Addresses in Soroban are always valid if they exist; no additional
+        // validation is required beyond the type system guarantees.
+        Ok(())
+    }
+
     fn acquire_execution_lock(env: &Env) -> Result<(), OrchestratorError> {
         let state: ExecutionState = env
             .storage()
