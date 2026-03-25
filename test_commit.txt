@@ -1,0 +1,240 @@
+﻿commit 28ede0bca0c27f60036ba3a49843ebbfa8027bd1
+Author: Muhammadcodes112 <funuyallen@gmail.com>
+Date:   Tue Mar 24 02:15:40 2026 -0700
+
+    test: add inactive policy failure coverage for orchestrator insurance payments
+
+diff --git a/integration_tests/Cargo.toml b/integration_tests/Cargo.toml
+index db4f4f5..40d8343 100644
+--- a/integration_tests/Cargo.toml
++++ b/integration_tests/Cargo.toml
+@@ -10,6 +10,8 @@ remittance_split = { path = "../remittance_split" }
+ savings_goals = { path = "../savings_goals" }
+ bill_payments = { path = "../bill_payments" }
+ insurance = { path = "../insurance" }
++orchestrator = { path = "../orchestrator" }
++family_wallet = { path = "../family_wallet" }
+ 
+ [dev-dependencies]
+ soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+diff --git a/integration_tests/README.md b/integration_tests/README.md
+index c9b82e1..5dfd8c8 100644
+--- a/integration_tests/README.md
++++ b/integration_tests/README.md
+@@ -38,6 +38,16 @@ Tests creating multiple entities across contracts:
+ - Creates 2 insurance policies (Life, Emergency Coverage)
+ - Verifies all entities are created successfully with unique IDs
+ 
++### `test_orchestrator_insurance_failure_rollback`
++
++Tests the orchestrator's rollback capabilities:
++
++- Deploys all core contracts plus Orchestrator and Family Wallet
++- Sets up Family Wallet roles and spending limits
++- Executes a full remittance flow where the insurance policy is explicitly invalid
++- Verifies that the Orchestrator safely handles the failure by reverting the entire transaction
++- Confirms no hidden state mutation when the downstream insurance payment fails
++
+ ## Running the Tests
+ 
+ From the workspace root:
+diff --git a/integration_tests/tests/multi_contract_integration.rs b/integration_tests/tests/multi_contract_integration.rs
+index ab1c5e1..ae95b51 100644
+--- a/integration_tests/tests/multi_contract_integration.rs
++++ b/integration_tests/tests/multi_contract_integration.rs
+@@ -253,3 +253,85 @@ fn test_multiple_entities_creation() {
+     println!("   Created 2 bills");
+     println!("   Created 2 insurance policies");
+ }
++
++/// Test orchestrator rollback on insurance failure
++#[test]
++fn test_orchestrator_insurance_failure_rollback() {
++    let env = Env::default();
++    env.mock_all_auths();
++    
++    let user = Address::generate(&env);
++    
++    // Deploy all 5 contracts including orchestrator and family_wallet
++    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
++    let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
++    
++    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
++    let savings_client = SavingsGoalContractClient::new(&env, &savings_contract_id);
++    
++    let bills_contract_id = env.register_contract(None, BillPayments);
++    let bills_client = BillPaymentsClient::new(&env, &bills_contract_id);
++    
++    let insurance_contract_id = env.register_contract(None, Insurance);
++    let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
++    
++    let family_wallet_contract_id = env.register_contract(None, family_wallet::FamilyWallet);
++    let family_wallet_client = family_wallet::FamilyWalletClient::new(&env, &family_wallet_contract_id);
++    
++    let orchestrator_contract_id = env.register_contract(None, orchestrator::Orchestrator);
++    let orchestrator_client = orchestrator::OrchestratorClient::new(&env, &orchestrator_contract_id);
++    
++    // Setup roles for Family Wallet
++    let admin = Address::generate(&env);
++    family_wallet_client.initialize(&admin);
++    family_wallet_client.add_member(&admin, &user, &SorobanString::from_str(&env, "child"));
++    family_wallet_client.set_spending_limit(&admin, &user, &100_000i128); // large limit
++    
++    // Initialize remittance
++    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
++    
++    // Create goal
++    let goal_id = savings_client.create_goal(
++        &user, 
++        &SorobanString::from_str(&env, "Fund"), 
++        &10_000i128, 
++        &(env.ledger().timestamp() + 365 * 86400)
++    );
++    
++    // Create bill
++    let bill_id = bills_client.create_bill(
++        &user,
++        &SorobanString::from_str(&env, "Bill"),
++        &500i128,
++        &(env.ledger().timestamp() + 30 * 86400),
++        &false,
++        &0u32,
++        &SorobanString::from_str(&env, "XLM"),
++    );
++    
++    // Note: Deliberately skipping setting up the correct policy or making a matching policy
++    let invalid_policy_id = 999; 
++    
++    // Attempt remittance flow with invalid policy
++    // The Insurance contract will return false, which the Orchestrator should intercept
++    // and return an error, which makes Soroban revert any state changes (like adding to Goal or paying Bill)
++    let result = orchestrator_client.try_execute_remittance_flow(
++        &user,
++        &10_000,
++        &family_wallet_contract_id,
++        &remittance_contract_id,
++        &savings_contract_id,
++        &bills_contract_id,
++        &insurance_contract_id,
++        &goal_id,
++        &bill_id,
++        &invalid_policy_id, // invalid
++    );
++    
++    // Must error (specifically InsurancePaymentFailed = 5)
++    assert!(result.is_err());
++    assert_eq!(result.unwrap_err().unwrap(), orchestrator::OrchestratorError::InsurancePaymentFailed);
++    
++    println!("Γ£à Orchestrator insurance failure rollback passed!");
++}
++
+diff --git a/orchestrator/src/lib.rs b/orchestrator/src/lib.rs
+index be3ce0d..a502629 100644
+--- a/orchestrator/src/lib.rs
++++ b/orchestrator/src/lib.rs
+@@ -548,9 +548,13 @@ impl Orchestrator {
+ 
+         // Gas estimation: ~4000 gas
+         // Call pay_premium on the insurance contract
+-        // This will panic if the policy doesn't exist or is inactive
+-        // The panic will cause the entire transaction to revert (atomicity)
+-        insurance_client.pay_premium(caller, &policy_id);
++        // This will return false if the policy doesn't exist or is inactive.
++        // If it returns false, we return InsurancePaymentFailed to revert the transaction.
++        let success = insurance_client.pay_premium(caller, &policy_id);
++        
++        if !success {
++            return Err(OrchestratorError::InsurancePaymentFailed);
++        }
+ 
+         Ok(())
+     }
+diff --git a/orchestrator/src/test.rs b/orchestrator/src/test.rs
+index 7ff66b0..f0721eb 100644
+--- a/orchestrator/src/test.rs
++++ b/orchestrator/src/test.rs
+@@ -383,6 +383,39 @@ mod tests {
+         assert!(result.is_err());
+     }
+ 
++    #[test]
++    fn test_execute_insurance_payment_inactive_policy_fails() {
++        let (
++            env,
++            orchestrator_id,
++            family_wallet_id,
++            _remittance_split_id,
++            _savings_id,
++            _bills_id,
++            insurance_id,
++            user,
++        ) = setup_test_env();
++
++        let client = OrchestratorClient::new(&env, &orchestrator_id);
++
++        // Execute insurance payment with invalid policy_id (999)
++        // This should fail with InsurancePaymentFailed error since mock returns false
++        let result = client.try_execute_insurance_payment(
++            &user,
++            &2000,
++            &family_wallet_id,
++            &insurance_id,
++            &999, // invalid policy_id
++        );
++
++        // Should fail catching the false return and returning error
++        assert!(result.is_err());
++        assert_eq!(
++            result.unwrap_err().unwrap(),
++            OrchestratorError::InsurancePaymentFailed
++        );
++    }
++
+     #[test]
+     fn test_execute_remittance_flow_savings_failure_rolls_back() {
+         let (
+@@ -417,6 +450,44 @@ mod tests {
+         assert!(result.is_err());
+     }
+ 
++    #[test]
++    fn test_execute_remittance_flow_insurance_failure_rolls_back() {
++        let (
++            env,
++            orchestrator_id,
++            family_wallet_id,
++            remittance_split_id,
++            savings_id,
++            bills_id,
++            insurance_id,
++            user,
++        ) = setup_test_env();
++
++        let client = OrchestratorClient::new(&env, &orchestrator_id);
++
++        // Execute remittance flow with invalid policy_id (999)
++        // The mock will return false, orchestrator returns InsurancePaymentFailed
++        let result = client.try_execute_remittance_flow(
++            &user,
++            &10000,
++            &family_wallet_id,
++            &remittance_split_id,
++            &savings_id,
++            &bills_id,
++            &insurance_id,
++            &1,   // valid goal_id
++            &1,   // valid bill_id
++            &999, // invalid policy_id - will cause failure
++        );
++
++        // Should fail
++        assert!(result.is_err());
++        assert_eq!(
++            result.unwrap_err().unwrap(),
++            OrchestratorError::InsurancePaymentFailed
++        );
++    }
++
+     #[test]
+     fn test_execute_remittance_flow_spending_limit_exceeded_fails() {
+         let (

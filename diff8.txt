@@ -1,0 +1,59 @@
+﻿commit d551dd9e15b200b536a5199733964ff1724fddc3
+Author: Muhammadcodes112 <funuyallen@gmail.com>
+Date:   Tue Mar 24 03:19:10 2026 -0700
+
+    fix: update soroban-sdk to v21.0.0 in remitwise-common to resolve CI conflict
+
+diff --git a/remitwise-common/Cargo.toml b/remitwise-common/Cargo.toml
+index df1e076..27a93bc 100644
+--- a/remitwise-common/Cargo.toml
++++ b/remitwise-common/Cargo.toml
+@@ -5,7 +5,7 @@ edition = "2021"
+ publish = false
+ 
+ [dependencies]
+-soroban-sdk = "20.0.0"
++soroban-sdk = "21.0.0"
+ 
+ [lib]
+ crate-type = ["cdylib", "rlib"]
+\ No newline at end of file
+
+commit 6caeab377e65553c38dcc0c3c2ca860ca0171781
+Author: Muhammadcodes112 <funuyallen@gmail.com>
+Date:   Tue Mar 24 03:13:29 2026 -0700
+
+    fix: force ed25519-dalek resolution in root
+
+diff --git a/Cargo.toml b/Cargo.toml
+index 05d18ce..9e8b470 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -36,6 +36,8 @@ resolver = "2"
+ 
+ [dependencies]
+ soroban-sdk = "21.0.0"
++ed25519-dalek = "=2.1.1"
++
+ remittance_split = { path = "./remittance_split" }
+ savings_goals = { path = "./savings_goals" }
+ bill_payments = { path = "./bill_payments" }
+
+commit 41790fffa1fe84cb3bde3e3c0ee1d7753829d01d
+Author: Muhammadcodes112 <funuyallen@gmail.com>
+Date:   Tue Mar 24 03:09:31 2026 -0700
+
+    fix: force ed25519-dalek resolution to 2.1.1 to fix CI conflict
+
+diff --git a/orchestrator/Cargo.toml b/orchestrator/Cargo.toml
+index d58d357..480452a 100644
+--- a/orchestrator/Cargo.toml
++++ b/orchestrator/Cargo.toml
+@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
+ 
+ [dependencies]
+ soroban-sdk = "21.0.0"
++ed25519-dalek = "=2.1.1"
+ 
+ [dev-dependencies]
+ soroban-sdk = { version = "21.0.0", features = ["testutils"] }

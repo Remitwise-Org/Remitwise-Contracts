@@ -1,0 +1,61 @@
+﻿cargo.exe :    Compiling 
+proc-macro2 v1.0.106
+At line:1 char:1
++ & "$env:USERPROFILE\.car
+go\bin\cargo" build 
+--workspace --target wasm 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (   
+    Compiling proc-macr   
+ o2 v1.0.106:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+   Compiling quote v1.0.45
+   Compiling zmij v1.0.21
+   Compiling serde 
+v1.0.228
+error: linker `link.exe` 
+not found
+  |
+  = note: program not 
+found
+
+note: the msvc targets 
+depend on the msvc linker 
+but `link.exe` was not 
+found
+
+note: please ensure that 
+Visual Studio 2017 or 
+later, or Build Tools for 
+Visual Studio were 
+installed with the Visual 
+C++ option.
+
+note: VS Code is a 
+different product, and is 
+not sufficient.
+
+error: could not compile 
+`zmij` (build script) due 
+to 1 previous error
+warning: build failed, 
+waiting for other jobs to 
+finish...
+error: could not compile 
+`quote` (build script) 
+due to 1 previous error
+error: could not compile 
+`serde` (build script) 
+due to 1 previous error
+error: could not compile 
+`proc-macro2` (build 
+script) due to 1 previous 
+error

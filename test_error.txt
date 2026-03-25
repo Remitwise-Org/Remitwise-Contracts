@@ -1,0 +1,62 @@
+﻿cargo.exe :    Compiling 
+proc-macro2 v1.0.106
+At line:1 char:137
++ ... oding utf8; & "$env:
+USERPROFILE\.cargo\bin\car
+go" test --workspace 2> 
+...
++                 ~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (   
+    Compiling proc-macr   
+ o2 v1.0.106:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+   Compiling quote v1.0.45
+   Compiling serde 
+v1.0.228
+   Compiling typenum 
+v1.19.0
+error: linker `link.exe` 
+not found
+  |
+  = note: program not 
+found
+
+note: the msvc targets 
+depend on the msvc linker 
+but `link.exe` was not 
+found
+
+note: please ensure that 
+Visual Studio 2017 or 
+later, or Build Tools for 
+Visual Studio were 
+installed with the Visual 
+C++ option.
+
+note: VS Code is a 
+different product, and is 
+not sufficient.
+
+error: could not compile 
+`quote` (build script) 
+due to 1 previous error
+warning: build failed, 
+waiting for other jobs to 
+finish...
+error: could not compile 
+`proc-macro2` (build 
+script) due to 1 previous 
+error
+error: could not compile 
+`serde` (build script) 
+due to 1 previous error
+error: could not compile 
+`typenum` (build script) 
+due to 1 previous error

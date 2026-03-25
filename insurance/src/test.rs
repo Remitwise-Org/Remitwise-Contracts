@@ -2,11 +2,11 @@
 
 use super::*;
 use crate::InsuranceError;
+use proptest::prelude::*;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Ledger, LedgerInfo},
     Address, Env, String,
 };
-use proptest::prelude::*;
 
 use testutils::{set_ledger_time, setup_test_env};
 
@@ -37,7 +37,6 @@ fn test_create_policy_succeeds() {
 }
 
 #[test]
-#[should_panic(expected = "Monthly premium must be positive")]
 fn test_create_policy_invalid_premium() {
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -46,19 +45,15 @@ fn test_create_policy_invalid_premium() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
-        &String::from_str(&env, "Type"),
+        &CoverageType::Health,
         &0,
         &10000,
+        &None,
     );
-}
-
-#[test]
-#[should_panic(expected = "Coverage amount must be positive")]
-    assert_eq!(result, Err(Ok(InsuranceError::InvalidPremium)));
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
 }
 
 #[test]
@@ -70,15 +65,15 @@ fn test_create_policy_invalid_coverage() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
-        &String::from_str(&env, "Type"),
+        &CoverageType::Health,
         &100,
         &0,
+        &None,
     );
-    assert_eq!(result, Err(Ok(InsuranceError::InvalidCoverage)));
+    assert_eq!(result, Err(Ok(InsuranceError::InvalidAmount)));
 }
 
 #[test]
@@ -135,7 +130,6 @@ fn test_pay_premium_unauthorized() {
     );
 
     // unauthorized payer
-    client.pay_premium(&other, &policy_id);
     let result = client.try_pay_premium(&other, &policy_id);
     assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
 }
@@ -873,7 +867,14 @@ fn test_pay_premium_non_owner_auth_failure() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -904,7 +905,14 @@ fn test_deactivate_policy_non_owner_auth_failure() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "create_policy",
-            args: (&owner, String::from_str(&env, "Policy"), String::from_str(&env, "Type"), 100u32, 10000i128).into_val(&env),
+            args: (
+                &owner,
+                String::from_str(&env, "Policy"),
+                String::from_str(&env, "Type"),
+                100u32,
+                10000i128,
+            )
+                .into_val(&env),
             sub_invokes: &[],
         },
     }]);

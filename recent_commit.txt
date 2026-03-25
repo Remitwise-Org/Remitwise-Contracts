@@ -1,0 +1,20 @@
+﻿commit d551dd9e15b200b536a5199733964ff1724fddc3
+Author: Muhammadcodes112 <funuyallen@gmail.com>
+Date:   Tue Mar 24 03:19:10 2026 -0700
+
+    fix: update soroban-sdk to v21.0.0 in remitwise-common to resolve CI conflict
+
+diff --git a/remitwise-common/Cargo.toml b/remitwise-common/Cargo.toml
+index df1e076..27a93bc 100644
+--- a/remitwise-common/Cargo.toml
++++ b/remitwise-common/Cargo.toml
+@@ -5,7 +5,7 @@ edition = "2021"
+ publish = false
+ 
+ [dependencies]
+-soroban-sdk = "20.0.0"
++soroban-sdk = "21.0.0"
+ 
+ [lib]
+ crate-type = ["cdylib", "rlib"]
+\ No newline at end of file
