@@ -3,8 +3,8 @@
 
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
 };
 
 use soroban_sdk::{
@@ -12,8 +12,6 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-#[derive(Clone, Debug)]
-#[contracttype]
 #[derive(Clone, Debug)]
 #[contracttype]
 pub struct Bill {
@@ -57,8 +55,6 @@ pub mod pause_functions {
     pub const RESTORE: soroban_sdk::Symbol = symbol_short!("restore");
 }
 
-const CONTRACT_VERSION: u32 = 1;
-const MAX_BATCH_SIZE: u32 = 50;
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
 
 #[contracterror]
@@ -80,10 +76,6 @@ pub enum Error {
     InvalidTag = 13,
     EmptyTags = 14,
     InvalidCurrency = 15,
-}
-
-#[derive(Clone)]
-#[contracttype]
 #[derive(Clone)]
 #[contracttype]
 pub struct ArchivedBill {
@@ -118,6 +110,7 @@ pub enum BillEvent {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub struct StorageStats {
     pub active_bills: u32,
     pub archived_bills: u32,
@@ -580,12 +573,16 @@ impl BillPayments {
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
         // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Created),
+            (next_id, bill_owner.clone(), bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("created"),
-            (next_id, bill_owner, amount, due_date),
+            (next_id, bill_owner.clone(), amount, due_date),
         );
 
         Ok(next_id)
@@ -658,12 +655,16 @@ impl BillPayments {
         }
 
         // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Paid),
+            (bill_id, caller.clone(), bill_external_ref),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
             EventPriority::High,
             symbol_short!("paid"),
-            (bill_id, caller, paid_amount),
+            (bill_id, caller.clone(), paid_amount),
         );
 
         Ok(())
@@ -889,11 +890,6 @@ impl BillPayments {
         Ok(())
     }
 
-    /// Get all bills (paid and unpaid)
-    ///
-    /// # Returns
-    /// Vec of all Bill structs
-    pub fn get_all_bills(env: Env) -> Vec<Bill> {
     // -----------------------------------------------------------------------
     // Backward-compat helpers
     // -----------------------------------------------------------------------
@@ -1113,6 +1109,7 @@ impl BillPayments {
             id: archived_bill.id,
             owner: archived_bill.owner.clone(),
             name: archived_bill.name.clone(),
+            external_ref: None,
             amount: archived_bill.amount,
             due_date: env.ledger().timestamp() + 2592000,
             recurring: false,
@@ -1238,6 +1235,7 @@ impl BillPayments {
                     id: next_id,
                     owner: bill.owner.clone(),
                     name: bill.name.clone(),
+                    external_ref: None,
                     amount: bill.amount,
                     due_date: next_due_date,
                     recurring: true,
@@ -1349,8 +1347,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
-        let normalized_currency = Self::normalize_currency(&env, &currency);
+        let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -1402,8 +1399,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
-        let normalized_currency = Self::normalize_currency(&env, &currency);
+        let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
