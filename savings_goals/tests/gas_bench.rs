@@ -1,6 +1,6 @@
-use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
+use savings_goals::{ContributionItem, SavingsGoalContract, SavingsGoalContractClient};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{Address, Env, String, Vec};
 
 fn bench_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {
@@ -53,6 +53,93 @@ fn bench_get_all_goals_worst_case() {
 
     println!(
         r#"{{"contract":"savings_goals","method":"get_all_goals","scenario":"100_goals_single_owner","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+#[test]
+fn bench_batch_add_to_goals_max() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    let name = String::from_str(&env, "BatchGoal");
+    let mut contributions = Vec::new(&env);
+    
+    // Create 50 goals and prepare contributions
+    for _ in 0..50 {
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        contributions.push_back(ContributionItem {
+            goal_id,
+            amount: 100,
+        });
+    }
+
+    let (cpu, mem, count) = measure(&env, || client.batch_add_to_goals(&owner, &contributions));
+    assert_eq!(count, 50);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"batch_add_to_goals","scenario":"50_items","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+#[test]
+fn bench_execute_due_savings_schedules() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    let name = String::from_str(&env, "ScheduleGoal");
+    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64);
+    
+    // Create 50 schedules
+    let current_time = 1_700_000_000;
+    let next_due = current_time + 10;
+    for _ in 0..50 {
+        client.create_savings_schedule(&owner, &goal_id, &100i128, &next_due, &86400u64);
+    }
+    
+    // Advance time so schedules are due
+    env.ledger().set(LedgerInfo {
+        protocol_version: env.ledger().protocol_version(),
+        sequence_number: 2,
+        timestamp: current_time + 100,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 100_000,
+    });
+
+    let (cpu, mem, executed) = measure(&env, || client.execute_due_savings_schedules());
+    assert_eq!(executed.len(), 50);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"execute_due_savings_schedules","scenario":"50_schedules","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+#[test]
+fn bench_create_savings_schedule() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    let name = String::from_str(&env, "ScheduleGoal");
+    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+    
+    let current_time = 1_700_000_000;
+    let next_due = current_time + 10;
+    
+    let (cpu, mem, _) = measure(&env, || client.create_savings_schedule(&owner, &goal_id, &100i128, &next_due, &86400u64));
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"create_savings_schedule","scenario":"single_schedule","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }

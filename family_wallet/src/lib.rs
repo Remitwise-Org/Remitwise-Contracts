@@ -410,6 +410,11 @@ impl FamilyWallet {
             None => return false,
         };
 
+        // Expired roles are treated as having no permissions.
+        if Self::role_has_expired(&env, &member.address) {
+            return false;
+        }
+
         // Owner and Admin are never restricted
         if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
             return true;
@@ -440,7 +445,7 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
-        if !Self::is_owner_or_admin_in_members(&members, &caller) {
+        if !Self::is_owner_or_admin_in_members(&env, &members, &caller) {
             panic!("Only Owner or Admin can configure multi-sig");
         }
 
@@ -737,6 +742,28 @@ impl FamilyWallet {
             return Self::execute_emergency_transfer_now(env, proposer, token, recipient, amount);
         }
 
+        let pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut active_proposals = 0;
+        for (_, tx) in pending_txs.iter() {
+            if tx.proposer == proposer && tx.tx_type == TransactionType::EmergencyTransfer {
+                if let TransactionData::EmergencyTransfer(t, r, a) = &tx.data {
+                    if t == &token && r == &recipient && *a == amount {
+                        panic!("Identical emergency transfer proposal already pending");
+                    }
+                }
+                active_proposals += 1;
+            }
+        }
+
+        if active_proposals >= 1 {
+            panic!("Maximum pending emergency proposals reached");
+        }
+
         Self::propose_transaction(
             env,
             proposer,
@@ -860,6 +887,9 @@ impl FamilyWallet {
             .get(&symbol_short!("OWNER"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
+        }
         if caller != owner {
             panic!("Only Owner can remove family members");
         }
@@ -1073,6 +1103,11 @@ impl FamilyWallet {
             })
     }
 
+    /// @notice Set or clear a role-expiry timestamp for an existing family member.
+    /// @dev Expiry is inclusive: at `ledger.timestamp() >= expires_at` the member is treated as expired.
+    /// @param caller Admin/Owner authorizing the change.
+    /// @param member Target family member.
+    /// @param expires_at Unix timestamp in seconds; `None` clears expiry.
     pub fn set_role_expiry(
         env: Env,
         caller: Address,
@@ -1083,6 +1118,16 @@ impl FamilyWallet {
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         Self::require_not_paused(&env);
         Self::extend_instance_ttl(&env);
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        if members.get(member.clone()).is_none() {
+            panic!("Member not found");
+        }
+
         let mut m: Map<Address, u64> = env
             .storage()
             .instance()
@@ -1134,6 +1179,9 @@ impl FamilyWallet {
         if admin != caller {
             panic!("Only pause admin can unpause");
         }
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
+        }
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
@@ -1166,13 +1214,48 @@ impl FamilyWallet {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
 
+    /// Set or transfer the upgrade admin role.
+    /// 
+    /// # Security Requirements
+    /// - Only wallet owners can set or transfer upgrade admin role
+    /// - Caller must be authenticated via require_auth()
+    /// - Caller must have at least Owner role in the family wallet
+    /// 
+    /// # Parameters
+    /// - `caller`: The address attempting to set the upgrade admin
+    /// - `new_admin`: The address to become the new upgrade admin
+    /// 
+    /// # Returns
+    /// - `true` on successful admin transfer
+    /// 
+    /// # Panics
+    /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
+        
+        let current_upgrade_admin = Self::get_upgrade_admin(&env);
+        
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
+        
+        // Emit admin transfer event for audit trail
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("adm_xfr")),
+            (current_upgrade_admin, new_admin.clone()),
+        );
+        
         true
+    }
+
+    /// Get the current upgrade admin address.
+    /// 
+    /// # Returns
+    /// - `Some(Address)` if upgrade admin is set
+    /// - `None` if no upgrade admin has been configured
+    pub fn get_upgrade_admin_public(env: Env) -> Option<Address> {
+        Self::get_upgrade_admin(&env)
     }
 
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> bool {
@@ -1185,6 +1268,9 @@ impl FamilyWallet {
         });
         if admin != caller {
             panic!("Only upgrade admin can set version");
+        }
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
         }
         let prev = Self::get_version(env.clone());
         env.storage()
@@ -1461,15 +1547,20 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| Map::new(env));
 
-        Self::is_owner_or_admin_in_members(&members, address)
+        Self::is_owner_or_admin_in_members(env, &members, address)
     }
 
     fn is_owner_or_admin_in_members(
+        env: &Env,
         members: &Map<Address, FamilyMember>,
         address: &Address,
     ) -> bool {
         if let Some(member) = members.get(address.clone()) {
-            matches!(member.role, FamilyRole::Owner | FamilyRole::Admin)
+            if Self::role_has_expired(env, address) {
+                false
+            } else {
+                matches!(member.role, FamilyRole::Owner | FamilyRole::Admin)
+            }
         } else {
             false
         }

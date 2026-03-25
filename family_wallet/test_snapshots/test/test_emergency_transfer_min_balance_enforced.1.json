@@ -1418,7 +1418,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer would violate minimum balance requirement' from contract function 'Symbol(obj#333)'"
+                  "string": "caught panic 'Emergency transfer would violate minimum balance requirement' from contract function 'Symbol(obj#337)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

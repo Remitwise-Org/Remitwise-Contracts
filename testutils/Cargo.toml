@@ -5,4 +5,4 @@ edition = "2021"
 publish = false
 
 [dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

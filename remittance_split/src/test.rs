@@ -1100,3 +1100,136 @@ fn test_instance_ttl_extended_on_initialize_split() {
         "TTL must be >= INSTANCE_BUMP_AMOUNT after init"
     );
 }
+
+// ============================================================================
+// Snapshot schema version tests
+//
+// These tests verify that:
+//  1. export_snapshot embeds the correct schema_version tag.
+//  2. import_snapshot accepts any version in MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION.
+//  3. import_snapshot rejects a future (too-new) schema version.
+//  4. import_snapshot rejects a past (too-old, below min) schema version.
+//  5. import_snapshot rejects a tampered checksum regardless of version.
+// ============================================================================
+
+/// export_snapshot must embed schema_version == SCHEMA_VERSION (currently 1).
+#[test]
+fn test_export_snapshot_contains_correct_schema_version() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(
+        snapshot.schema_version, 1,
+        "schema_version must equal SCHEMA_VERSION (1)"
+    );
+}
+
+/// import_snapshot with the current schema version (1) must succeed.
+#[test]
+fn test_import_snapshot_current_schema_version_succeeds() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.schema_version, 1);
+
+    let ok = client.import_snapshot(&owner, &1, &snapshot);
+    assert!(ok, "import with current schema version must succeed");
+}
+
+/// import_snapshot with a schema_version higher than SCHEMA_VERSION must
+/// return UnsupportedVersion (forward-compat rejection).
+#[test]
+fn test_import_snapshot_future_schema_version_rejected() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    let mut snapshot = client.export_snapshot(&owner).unwrap();
+    // Simulate a snapshot produced by a newer contract version.
+    snapshot.schema_version = 999;
+
+    let result = client.try_import_snapshot(&owner, &1, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UnsupportedVersion)),
+        "future schema_version must be rejected"
+    );
+}
+
+/// import_snapshot with schema_version = 0 (below MIN_SUPPORTED_SCHEMA_VERSION)
+/// must return UnsupportedVersion (backward-compat rejection).
+#[test]
+fn test_import_snapshot_too_old_schema_version_rejected() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    let mut snapshot = client.export_snapshot(&owner).unwrap();
+    // Simulate a snapshot too old to import.
+    snapshot.schema_version = 0;
+
+    let result = client.try_import_snapshot(&owner, &1, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UnsupportedVersion)),
+        "schema_version below minimum must be rejected"
+    );
+}
+
+/// import_snapshot with a tampered checksum must return ChecksumMismatch
+/// even when the schema_version is valid.
+#[test]
+fn test_import_snapshot_tampered_checksum_rejected() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    let mut snapshot = client.export_snapshot(&owner).unwrap();
+    snapshot.checksum = snapshot.checksum.wrapping_add(1);
+
+    let result = client.try_import_snapshot(&owner, &1, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::ChecksumMismatch)),
+        "tampered checksum must be rejected"
+    );
+}
+
+/// Full export → import round-trip: data restored and nonce incremented.
+#[test]
+fn test_snapshot_export_import_roundtrip_restores_config() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+
+    // Update so there is something interesting to round-trip.
+    client.update_split(&owner, &1, &40, &40, &10, &10);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.schema_version, 1);
+
+    // Nonce is 2 after initialize_split followed by update_split.
+    let ok = client.import_snapshot(&owner, &2, &snapshot);
+    assert!(ok);
+
+    let config = client.get_config().unwrap();
+    assert_eq!(config.spending_percent, 40);
+    assert_eq!(config.savings_percent, 40);
+    assert_eq!(config.bills_percent, 10);
+    assert_eq!(config.insurance_percent, 10);
+}
+
+/// Unauthorized caller must not be able to import a snapshot.
+#[test]
+fn test_import_snapshot_unauthorized_caller_rejected() {
+    let env = Env::default();
+    let (client, owner, _token_id) = setup_initialized_split(&env, 0);
+    let other = Address::generate(&env);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    let result = client.try_import_snapshot(&other, &0, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::Unauthorized)),
+        "non-owner must not import snapshot"
+    );
+}

@@ -478,6 +478,28 @@ See [scripts/README_INVARIANT_TESTS.md](scripts/README_INVARIANT_TESTS.md) for d
 - The suite covers minting the payer account, splitting across spending/savings/bills/insurance, and asserting balances along with the new allocation metadata helper.
 - The same command is intended for CI so it runs without manual setup; re-run locally whenever split logic changes or new USDC paths are added.
 
+### Orchestrator audit log pagination correctness
+
+The orchestrator audit API (`get_audit_log(from_index, limit)`) supports cursor-based pagination for compliance and monitoring clients.
+
+**Pagination guarantees:**
+- Results are ordered from oldest to newest in the current bounded audit window.
+- `from_index` is a stable zero-based cursor within that bounded window.
+- `limit` is clamped to contract maximum capacity (`MAX_AUDIT_ENTRIES`) for predictable gas and memory usage.
+- Page-end calculation uses saturating arithmetic to prevent cursor overflow edge cases.
+- Out-of-range cursors return an empty page (safe default).
+
+**Security assumptions and notes:**
+- Consumers should treat the cursor as a position in the current rotated window, not an immutable global ID.
+- Log rotation drops oldest records at capacity, so clients should read promptly and persist externally if long-term retention is required.
+- Tests assert no duplicate entries across sequential pages under heavy execution history and rotation pressure.
+
+Run orchestrator tests (including pagination correctness coverage):
+
+```bash
+cargo test -p orchestrator
+```
+
 ## Gas Benchmarks
 
 RemitWise includes a comprehensive gas benchmarking harness for tracking and optimizing contract performance.

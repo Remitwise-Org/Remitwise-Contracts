@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, String, Symbol, TryFromVal,
+    Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
 use testutils::{set_ledger_time, setup_test_env};
@@ -13,7 +13,11 @@ use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, user);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
     client.init();
 
     let name1 = String::from_str(&env, "Goal 1");
@@ -144,10 +148,11 @@ fn test_next_id_increments_sequentially() {
     assert_eq!(ids[1], 2, "second goal id must be 2");
     assert_eq!(ids[2], 3, "third goal id must be 3");
 
+    let expected_names = ["G1", "G2", "G3"];
     for (i, &id) in ids.iter().enumerate() {
         let goal = client.get_goal(&id).unwrap();
         assert_eq!(goal.id, id);
-        let expected_name = String::from_str(&env, &format!("G{}", i + 1));
+        let expected_name = String::from_str(&env, expected_names[i]);
         assert_eq!(goal.name, expected_name);
     }
 }
@@ -404,7 +409,6 @@ fn test_withdraw_from_goal_unauthorized() {
 }
 
 #[test]
-#[should_panic(expected = "Amount must be positive")]
 fn test_withdraw_from_goal_zero_amount_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -417,11 +421,11 @@ fn test_withdraw_from_goal_zero_amount_panics() {
 
     client.unlock_goal(&user, &id);
     client.add_to_goal(&user, &id, &500);
-    client.withdraw_from_goal(&user, &id, &0);
+    let result = client.try_withdraw_from_goal(&user, &id, &0);
+    assert!(result.is_err(), "Expected error for zero amount withdrawal");
 }
 
 #[test]
-#[should_panic(expected = "Goal not found")]
 fn test_withdraw_from_goal_nonexistent_goal_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -430,7 +434,8 @@ fn test_withdraw_from_goal_nonexistent_goal_panics() {
 
     client.init();
     env.mock_all_auths();
-    client.withdraw_from_goal(&user, &999, &100);
+    let result = client.try_withdraw_from_goal(&user, &999, &100);
+    assert!(result.is_err(), "Expected error for nonexistent goal withdrawal");
 }
 
 #[test]
@@ -502,7 +507,11 @@ fn test_exact_goal_completion() {
 
 #[test]
 fn test_set_time_lock_succeeds() {
-    setup_test_env!(env, SavingsGoalContract, client, owner);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
     client.init();
     set_ledger_time(&env, 1, 1000);
 
@@ -1818,10 +1827,9 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
-    let goal_a_ids: Vec<u32> = goals_a.iter().map(|g| g.id).collect();
-    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
-    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
-    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
+    assert!(goals_a.iter().any(|g| g.id == goal_a1), "Goals for A should contain goal_a1");
+    assert!(goals_a.iter().any(|g| g.id == goal_a2), "Goals for A should contain goal_a2");
+    assert!(goals_a.iter().any(|g| g.id == goal_a3), "Goals for A should contain goal_a3");
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1837,26 +1845,301 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
-    let goal_b_ids: Vec<u32> = goals_b.iter().map(|g| g.id).collect();
-    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
-    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
+    assert!(goals_b.iter().any(|g| g.id == goal_b1), "Goals for B should contain goal_b1");
+    assert!(goals_b.iter().any(|g| g.id == goal_b2), "Goals for B should contain goal_b2");
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
-    for goal_a_id in &goal_a_ids {
+    for goal_a in goals_a.iter() {
         assert!(
-            !goal_b_ids.contains(goal_a_id),
-            "Goal ID {} from owner A should not appear in owner B's goals",
-            goal_a_id
+            !goals_b.iter().any(|gb| gb.id == goal_a.id),
+            "Goal ID from owner A should not appear in owner B's goals"
         );
     }
+}
 
-    // Verify owner_a's goals do not appear in owner_b's goals and vice versa
-    for goal_a_id in goal_a_ids {
-        for goal in goals_b.iter() {
-            assert_ne!(
-                goal.id, goal_a_id,
-                "Owner B's goal list should not contain owner A's goals"
-            );
-        }
-    }
+// ============================================================================
+// Snapshot schema version tests
+//
+// These tests verify that:
+//  1. export_snapshot embeds the correct schema_version tag.
+//  2. import_snapshot accepts schema_version within the supported range.
+//  3. import_snapshot rejects a future (too-new) schema version.
+//  4. import_snapshot rejects a past (too-old, below minimum) schema version.
+//  5. import_snapshot rejects a tampered checksum regardless of version.
+//  6. Full round-trip: exported data is faithfully restored after import.
+// ============================================================================
+
+/// export_snapshot must embed schema_version == SCHEMA_VERSION (currently 1).
+#[test]
+fn test_export_snapshot_contains_correct_schema_version() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let _id = client.create_goal(&owner, &String::from_str(&env, "House"), &10000, &2000000000);
+
+    let snapshot = client.export_snapshot(&owner);
+    assert_eq!(
+        snapshot.schema_version, 1,
+        "schema_version must equal SCHEMA_VERSION (1)"
+    );
+}
+
+/// import_snapshot with the current schema version (1) must succeed.
+#[test]
+fn test_import_snapshot_current_schema_version_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    client.create_goal(&owner, &String::from_str(&env, "Car"), &5000, &2000000000);
+
+    let snapshot = client.export_snapshot(&owner);
+    assert_eq!(snapshot.schema_version, 1);
+
+    let ok = client.import_snapshot(&owner, &0, &snapshot);
+    assert!(ok, "import with current schema version must succeed");
+}
+
+/// import_snapshot with schema_version higher than SCHEMA_VERSION must return
+/// UnsupportedVersion (forward-compat rejection).
+#[test]
+fn test_import_snapshot_future_schema_version_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    client.create_goal(&owner, &String::from_str(&env, "Trip"), &3000, &2000000000);
+
+    let mut snapshot = client.export_snapshot(&owner);
+    // Simulate a snapshot produced by a newer contract version.
+    snapshot.schema_version = 999;
+
+    let result = client.try_import_snapshot(&owner, &0, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(SavingsGoalError::UnsupportedVersion)),
+        "future schema_version must be rejected"
+    );
+}
+
+/// import_snapshot with schema_version = 0 (below MIN_SUPPORTED_SCHEMA_VERSION)
+/// must return UnsupportedVersion (backward-compat rejection).
+#[test]
+fn test_import_snapshot_too_old_schema_version_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    client.create_goal(&owner, &String::from_str(&env, "Education"), &8000, &2000000000);
+
+    let mut snapshot = client.export_snapshot(&owner);
+    // Simulate a snapshot too old to be safely imported.
+    snapshot.schema_version = 0;
+
+    let result = client.try_import_snapshot(&owner, &0, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(SavingsGoalError::UnsupportedVersion)),
+        "schema_version below minimum must be rejected"
+    );
+}
+
+/// import_snapshot with a tampered checksum must return ChecksumMismatch even
+/// when the schema_version is valid.
+#[test]
+fn test_import_snapshot_tampered_checksum_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    client.create_goal(&owner, &String::from_str(&env, "Savings"), &2000, &2000000000);
+
+    let mut snapshot = client.export_snapshot(&owner);
+    snapshot.checksum = snapshot.checksum.wrapping_add(1);
+
+    let result = client.try_import_snapshot(&owner, &0, &snapshot);
+    assert_eq!(
+        result,
+        Err(Ok(SavingsGoalError::ChecksumMismatch)),
+        "tampered checksum must be rejected"
+    );
+}
+
+/// Full export → import round-trip: goal data is faithfully restored.
+#[test]
+fn test_snapshot_export_import_roundtrip_restores_goals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let id1 = client.create_goal(&owner, &String::from_str(&env, "Fund A"), &5000, &2000000000);
+    let id2 = client.create_goal(&owner, &String::from_str(&env, "Fund B"), &8000, &2000000000);
+    client.add_to_goal(&owner, &id1, &1500);
+
+    let snapshot = client.export_snapshot(&owner);
+    assert_eq!(snapshot.schema_version, 1);
+    assert_eq!(snapshot.goals.len(), 2);
+
+    let ok = client.import_snapshot(&owner, &0, &snapshot);
+    assert!(ok, "round-trip import must succeed");
+
+    let restored1 = client.get_goal(&id1).expect("goal 1 must survive import");
+    assert_eq!(restored1.target_amount, 5000);
+    assert_eq!(restored1.current_amount, 1500);
+
+    let restored2 = client.get_goal(&id2).expect("goal 2 must survive import");
+    assert_eq!(restored2.target_amount, 8000);
+}
+
+/// schema_version boundary: version exactly at MIN_SUPPORTED_SCHEMA_VERSION (1)
+/// must be accepted.
+#[test]
+fn test_import_snapshot_min_supported_version_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    client.create_goal(&owner, &String::from_str(&env, "Min Version"), &1000, &2000000000);
+
+    let snapshot = client.export_snapshot(&owner);
+    // schema_version is already 1 == MIN_SUPPORTED_SCHEMA_VERSION.
+    assert_eq!(snapshot.schema_version, 1);
+
+    let ok = client.import_snapshot(&owner, &0, &snapshot);
+    assert!(ok, "snapshot at MIN_SUPPORTED_SCHEMA_VERSION must be accepted");
+}
+
+#[test]
+fn test_withdraw_time_lock_boundaries() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    
+    let base_time = 1000;
+    set_ledger_time(&env, 1, base_time);
+
+    let unlock_date = 5000;
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Time Lock Boundary"), &10000, &unlock_date);
+
+    client.add_to_goal(&owner, &goal_id, &5000);
+    client.unlock_goal(&owner, &goal_id);
+    client.set_time_lock(&owner, &goal_id, &unlock_date);
+
+    // 1. Test withdrawal at unlock_date - 1 (should fail)
+    set_ledger_time(&env, 1, unlock_date - 1);
+    let result = client.try_withdraw_from_goal(&owner, &goal_id, &1000);
+    assert!(result.is_err(), "Withdrawal should fail before unlock_date");
+
+    // 2. Test withdrawal at unlock_date (should succeed)
+    set_ledger_time(&env, 1, unlock_date);
+    let new_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
+    assert_eq!(new_amount, 4000, "Withdrawal should succeed exactly at unlock_date");
+
+    // 3. Test withdrawal at unlock_date + 1 (should succeed)
+    set_ledger_time(&env, 1, unlock_date + 1);
+    let final_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
+    assert_eq!(final_amount, 3000, "Withdrawal should succeed after unlock_date");
+}
+
+#[test]
+fn test_savings_schedule_drift_and_missed_intervals() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    
+    let base_time = 1000;
+    set_ledger_time(&env, 1, base_time);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Schedule Drift"), &10000, &5000);
+    
+    let amount = 500;
+    let next_due = 3000;
+    let interval = 86400; // 1 day
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &amount, &next_due, &interval);
+
+    // 1. Advance time past next_due + interval * 2 + 100 (simulating significant drift/delay)
+    // 3000 + 172800 + 100 = 175900
+    let current_time = next_due + interval * 2 + 100;
+    set_ledger_time(&env, 1, current_time);
+    
+    let executed_ids = client.execute_due_savings_schedules();
+    assert_eq!(executed_ids.len(), 1);
+    assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
+
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    // It should have executed once (for the first due date) and missed 2 subsequent ones
+    assert_eq!(schedule.missed_count, 2, "Should have marked 2 intervals as missed");
+    
+    // next_due should be set to the next FUTURE interval relative to current_time
+    // Original: 3000
+    // +1: 89400
+    // +2: 175800
+    // +3: 262200 (This is the next future one after 175900)
+    assert_eq!(schedule.next_due, 262200, "next_due should anchor to the next future interval");
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, amount, "Only one execution should have happened");
+}
+
+#[test]
+fn test_savings_schedule_exact_timestamp_execution() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    
+    let base_time = 1000;
+    set_ledger_time(&env, 1, base_time);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Exact Schedule"), &10000, &5000);
+    
+    let next_due = 3000;
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &next_due, &0); // non-recurring
+
+    // 1. Test at next_due - 1 (should NOT execute)
+    set_ledger_time(&env, 1, next_due - 1);
+    let executed_ids = client.execute_due_savings_schedules();
+    assert_eq!(executed_ids.len(), 0, "Schedule should not execute before next_due");
+
+    // 2. Test at next_due (should execute)
+    set_ledger_time(&env, 1, next_due);
+    let executed_ids = client.execute_due_savings_schedules();
+    assert_eq!(executed_ids.len(), 1, "Schedule should execute exactly at next_due");
+    assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 500);
 }
