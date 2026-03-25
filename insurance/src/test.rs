@@ -1676,4 +1676,601 @@ fn test_get_premium_schedules() {
             &None,
         );
     }
+
+    // =======================================================================
+    // 18. Pause-control regression tests — emergency pause-all
+    // =======================================================================
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_create_policy() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        // Enable global pause
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_pay_premium() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.pay_premium(&caller, &id, &5_000_000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_deactivate_policy() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.deactivate_policy(&owner, &id);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_set_external_ref() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+        let new_ref = String::from_str(&env, "REF-001");
+        // Must panic
+        client.set_external_ref(&owner, &id, &Some(new_ref));
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_create_premium_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.create_premium_schedule(&caller, &id, &3000, &2592000);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_modify_premium_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        env.ledger().set_timestamp(1000u64);
+        let pid = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let sid = client.create_premium_schedule(&caller, &pid, &3000, &2592000);
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.modify_premium_schedule(&caller, &sid, &4000, &2678400);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_cancel_premium_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        env.ledger().set_timestamp(1000u64);
+        let pid = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let sid = client.create_premium_schedule(&caller, &pid, &3000, &2592000);
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.cancel_premium_schedule(&caller, &sid);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_pause_all_blocks_batch_pay_premiums() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let mut ids = soroban_sdk::Vec::new(&env);
+        ids.push_back(id);
+        client.set_pause_all(&owner, &true);
+        // Must panic
+        client.batch_pay_premiums(&caller, &ids);
+    }
+
+    // =======================================================================
+    // 19. Pause-control regression tests — granular function pauses
+    // =======================================================================
+
+    #[test]
+    #[should_panic(expected = "create is paused")]
+    fn test_fn_pause_create_blocks_only_create() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        // create_policy must panic
+        client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+    }
+
+    #[test]
+    fn test_fn_pause_create_does_not_block_pay() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        // Pause create only
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        // pay_premium must still work
+        let result = client.pay_premium(&caller, &id, &5_000_000i128);
+        assert!(result);
+    }
+
+    #[test]
+    #[should_panic(expected = "pay is paused")]
+    fn test_fn_pause_pay_blocks_pay_premium() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_fn(&owner, &Symbol::new(&env, "pay"), &true);
+        client.pay_premium(&caller, &id, &5_000_000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "pay is paused")]
+    fn test_fn_pause_pay_blocks_batch_pay() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let mut ids = soroban_sdk::Vec::new(&env);
+        ids.push_back(id);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "pay"), &true);
+        client.batch_pay_premiums(&caller, &ids);
+    }
+
+    #[test]
+    #[should_panic(expected = "deactivate is paused")]
+    fn test_fn_pause_deactivate_blocks_deactivate() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_fn(&owner, &Symbol::new(&env, "deactivate"), &true);
+        client.deactivate_policy(&owner, &id);
+    }
+
+    #[test]
+    fn test_fn_pause_deactivate_does_not_block_create() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        // Pause deactivate only
+        client.set_pause_fn(&owner, &Symbol::new(&env, "deactivate"), &true);
+        // create_policy must still work
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        assert!(id > 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "set_ref is paused")]
+    fn test_fn_pause_set_ref_blocks_set_external_ref() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_fn(&owner, &Symbol::new(&env, "set_ref"), &true);
+        let new_ref = String::from_str(&env, "NEW-REF");
+        client.set_external_ref(&owner, &id, &Some(new_ref));
+    }
+
+    #[test]
+    #[should_panic(expected = "schedule is paused")]
+    fn test_fn_pause_schedule_blocks_create_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        env.ledger().set_timestamp(1000u64);
+        let pid = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_fn(&owner, &Symbol::new(&env, "schedule"), &true);
+        client.create_premium_schedule(&caller, &pid, &3000, &2592000);
+    }
+
+    #[test]
+    #[should_panic(expected = "schedule is paused")]
+    fn test_fn_pause_schedule_blocks_modify_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        env.ledger().set_timestamp(1000u64);
+        let pid = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let sid = client.create_premium_schedule(&caller, &pid, &3000, &2592000);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "schedule"), &true);
+        client.modify_premium_schedule(&caller, &sid, &4000, &2678400);
+    }
+
+    #[test]
+    #[should_panic(expected = "schedule is paused")]
+    fn test_fn_pause_schedule_blocks_cancel_schedule() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        env.ledger().set_timestamp(1000u64);
+        let pid = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        let sid = client.create_premium_schedule(&caller, &pid, &3000, &2592000);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "schedule"), &true);
+        client.cancel_premium_schedule(&caller, &sid);
+    }
+
+    // =======================================================================
+    // 20. Pause-control — authorization and security
+    // =======================================================================
+
+    #[test]
+    #[should_panic(expected = "unauthorized")]
+    fn test_set_pause_all_non_owner_panics() {
+        let (env, client, _owner) = setup();
+        let non_owner = Address::generate(&env);
+        client.set_pause_all(&non_owner, &true);
+    }
+
+    #[test]
+    #[should_panic(expected = "unauthorized")]
+    fn test_set_pause_fn_non_owner_panics() {
+        let (env, client, _owner) = setup();
+        let non_owner = Address::generate(&env);
+        client.set_pause_fn(&non_owner, &Symbol::new(&env, "create"), &true);
+    }
+
+    // =======================================================================
+    // 21. Pause-control — unpause restores normal operation
+    // =======================================================================
+
+    #[test]
+    fn test_unpause_all_restores_create_policy() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        // Pause, then unpause
+        client.set_pause_all(&owner, &true);
+        client.set_pause_all(&owner, &false);
+        // create_policy must succeed
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        assert!(id > 0);
+    }
+
+    #[test]
+    fn test_unpause_all_restores_pay_premium() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+        client.set_pause_all(&owner, &false);
+        let result = client.pay_premium(&caller, &id, &5_000_000i128);
+        assert!(result);
+    }
+
+    #[test]
+    fn test_unpause_fn_restores_specific_function() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        // Pause create, then unpause
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &false);
+        // create_policy must succeed
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        assert!(id > 0);
+    }
+
+    // =======================================================================
+    // 22. Pause-control — query functions (is_paused, is_fn_paused)
+    // =======================================================================
+
+    #[test]
+    fn test_is_paused_default_false() {
+        let (_env, client, _owner) = setup();
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_is_paused_reflects_set_pause_all() {
+        let (_env, client, owner) = setup();
+        client.set_pause_all(&owner, &true);
+        assert!(client.is_paused());
+        client.set_pause_all(&owner, &false);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_is_fn_paused_default_false() {
+        let (env, client, _owner) = setup();
+        assert!(!client.is_fn_paused(&Symbol::new(&env, "create")));
+        assert!(!client.is_fn_paused(&Symbol::new(&env, "pay")));
+    }
+
+    #[test]
+    fn test_is_fn_paused_reflects_set_pause_fn() {
+        let (env, client, owner) = setup();
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        assert!(client.is_fn_paused(&Symbol::new(&env, "create")));
+        assert!(!client.is_fn_paused(&Symbol::new(&env, "pay")));
+    }
+
+    #[test]
+    fn test_is_fn_paused_returns_true_when_global_paused() {
+        let (env, client, owner) = setup();
+        client.set_pause_all(&owner, &true);
+        // Even without per-function flag, is_fn_paused returns true under global pause
+        assert!(client.is_fn_paused(&Symbol::new(&env, "create")));
+        assert!(client.is_fn_paused(&Symbol::new(&env, "pay")));
+    }
+
+    // =======================================================================
+    // 23. Pause-control — multiple functions paused simultaneously
+    // =======================================================================
+
+    #[test]
+    fn test_multiple_fn_pauses_are_independent() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+
+        // Pause create and pay, but NOT deactivate
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        client.set_pause_fn(&owner, &Symbol::new(&env, "pay"), &true);
+
+        // Verify deactivate still works — first we need a policy
+        // Unpause create temporarily to make one
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &false);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+
+        // Deactivate must still work
+        let result = client.deactivate_policy(&owner, &id);
+        assert!(result);
+    }
+
+    // =======================================================================
+    // 24. Pause-control — global pause overrides per-function unpause
+    // =======================================================================
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_global_pause_overrides_fn_unpause() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        // Per-function "create" is explicitly NOT paused
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &false);
+        // But global pause IS set
+        client.set_pause_all(&owner, &true);
+        // Must still panic because global trumps per-function
+        client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+    }
+
+    // =======================================================================
+    // 25. Pause-control — read-only queries work while paused
+    // =======================================================================
+
+    #[test]
+    fn test_queries_work_while_globally_paused() {
+        let (env, client, owner) = setup();
+        let caller = Address::generate(&env);
+        let id = client.create_policy(
+            &caller,
+            &short_name(&env),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        client.set_pause_all(&owner, &true);
+
+        // Read-only queries must NOT be blocked
+        let policy = client.get_policy(&id);
+        assert_eq!(policy.id, id);
+
+        let active = client.get_active_policies();
+        assert_eq!(active.len(), 1);
+
+        let total = client.get_total_monthly_premium();
+        assert_eq!(total, 5_000_000i128);
+    }
+
+    // =======================================================================
+    // 26. Pause-control — owner can toggle pause while already paused
+    // =======================================================================
+
+    #[test]
+    fn test_owner_can_unpause_while_globally_paused() {
+        let (_env, client, owner) = setup();
+        client.set_pause_all(&owner, &true);
+        assert!(client.is_paused());
+        // Owner must be able to unpause even when globally paused
+        client.set_pause_all(&owner, &false);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_owner_can_toggle_fn_pause_while_globally_paused() {
+        let (env, client, owner) = setup();
+        client.set_pause_all(&owner, &true);
+        // Owner can still manage per-function flags
+        client.set_pause_fn(&owner, &Symbol::new(&env, "create"), &true);
+        assert!(client.is_fn_paused(&Symbol::new(&env, "create")));
+    }
+
+    // =======================================================================
+    // 27. Pause-control — idempotent pause toggles
+    // =======================================================================
+
+    #[test]
+    fn test_set_pause_all_idempotent() {
+        let (_env, client, owner) = setup();
+        client.set_pause_all(&owner, &true);
+        client.set_pause_all(&owner, &true); // double-set
+        assert!(client.is_paused());
+        client.set_pause_all(&owner, &false);
+        client.set_pause_all(&owner, &false); // double-clear
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_set_pause_fn_idempotent() {
+        let (env, client, owner) = setup();
+        let sym = Symbol::new(&env, "pay");
+        client.set_pause_fn(&owner, &sym, &true);
+        client.set_pause_fn(&owner, &sym, &true); // double-set
+        assert!(client.is_fn_paused(&sym));
+        client.set_pause_fn(&owner, &sym, &false);
+        client.set_pause_fn(&owner, &sym, &false); // double-clear
+        assert!(!client.is_fn_paused(&sym));
+    }
 }
