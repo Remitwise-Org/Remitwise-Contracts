@@ -33,3 +33,14 @@ macro_rules! setup_test_env {
         let $owner = $crate::generate_test_address(&$env);
     };
 }
+
+#[macro_export]
+macro_rules! setup_test_env_with_client {
+    ($env:ident, $contract:ident, $client:ident, $owner:ident) => {
+        let $env = Env::default();
+        $env.mock_all_auths();
+        let contract_id = $env.register_contract(None, $contract);
+        let $client = $contract::Client::new(&$env, &contract_id);
+        let $owner = $crate::generate_test_address(&$env);
+    };
+}
