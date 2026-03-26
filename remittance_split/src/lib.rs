@@ -292,9 +292,9 @@ impl RemittanceSplit {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
-            Some(current_admin) => {
+            Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if current_admin != &caller {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
