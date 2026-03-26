@@ -37,12 +37,14 @@ fn test_multi_contract_user_flow() {
 
     let insurance_contract_id = env.register(Insurance, ());
     let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
+    let usdc_contract = Address::generate(&env);
 
     // Step 1: Initialize remittance split with percentages
     // Spending: 40%, Savings: 30%, Bills: 20%, Insurance: 10%
     let nonce = 0u64;
     remittance_client.initialize_split(
-        &user, &nonce, &40u32, // spending
+        &user, &nonce, &usdc_contract, // token
+        &40u32, // spending
         &30u32, // savings
         &20u32, // bills
         &10u32, // insurance
@@ -144,6 +146,7 @@ fn test_split_with_rounding() {
     env.mock_all_auths();
 
     let user = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
 
     // Deploy remittance split contract
     let remittance_contract_id = env.register(RemittanceSplit, ());
@@ -151,7 +154,8 @@ fn test_split_with_rounding() {
 
     // Initialize with percentages that might cause rounding issues
     // Spending: 33%, Savings: 33%, Bills: 17%, Insurance: 17%
-    remittance_client.initialize_split(&user, &0u64, &33u32, &33u32, &17u32, &17u32);
+    remittance_client
+        .initialize_split(&user, &0u64, &usdc_contract, &33u32, &33u32, &17u32, &17u32);
 
     // Calculate split for an amount that will have rounding
     let total = 1_000i128;
@@ -277,13 +281,14 @@ fn test_contract_upgrade_compatibility() {
     env.mock_all_auths();
 
     let user = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
 
     // Step 1: Deploy Initial Version (v1)
     let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     // Step 2: Initialize state
-    client.initialize_split(&user, &0u64, &50u32, &25u32, &15u32, &10u32);
+    client.initialize_split(&user, &0u64, &usdc_contract, &50u32, &25u32, &15u32, &10u32);
     assert!(client.get_config().is_some());
     assert_eq!(client.get_version(), 1u32);
 
@@ -343,11 +348,12 @@ fn test_data_migration_logic_consistency() {
     env.mock_all_auths();
 
     let user = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
 
     // Deploy and initialize RemittanceSplit
     let contract_id = env.register(RemittanceSplit, ());
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
+    client.initialize_split(&user, &0u64, &usdc_contract, &40u32, &30u32, &20u32, &10u32);
 
     // 1. Export snapshot from on-chain contract
     let on_chain_snapshot = client
@@ -370,7 +376,7 @@ fn test_data_migration_logic_consistency() {
 
     // 3. Verify version consistency between contract and migration tool
     assert_eq!(
-        on_chain_snapshot.version, migration_snapshot.header.version,
+        on_chain_snapshot.schema_version, migration_snapshot.header.version,
         "Snapshot version mismatch"
     );
 
@@ -406,6 +412,7 @@ fn test_global_contract_version_matrix() {
     let goals_client = SavingsGoalContractClient::new(&env, &goals_id);
     let bills_client = BillPaymentsClient::new(&env, &bills_id);
     let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    let usdc_contract = Address::generate(&env);
 
     // Verify baseline versions are 1
     assert_eq!(split_client.get_version(), 1);
@@ -416,7 +423,7 @@ fn test_global_contract_version_matrix() {
     // 2. Simulate V1 -> V2 Migration for a specific contract (RemittanceSplit)
     // We simulate this by performing a state-modifying action that would normally
     // trigger a version bump in a real scenario.
-    split_client.initialize_split(&user, &0u64, &50, &25, &15, &10);
+    split_client.initialize_split(&user, &0u64, &usdc_contract, &50, &25, &15, &10);
     split_client.set_version(&user, &2u32);
 
     // Verify V2 state

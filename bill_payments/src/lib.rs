@@ -409,12 +409,10 @@ impl BillPayments {
             config.recurring,
             config.frequency_days,
         )?;
-
-        // Resolve default currency: blank input → "XLM"
         let resolved_currency = if config.currency.is_empty() {
             String::from_str(&env, "XLM")
         } else {
-            config.currency
+            config.currency.clone()
         };
 
         Self::extend_instance_ttl(&env);

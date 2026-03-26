@@ -4,10 +4,10 @@ use soroban_sdk::{
     Address, Env,
 };
 
-pub fn set_ledger_time(env: &Env, timestamp: u64) {
+pub fn set_ledger_time(env: &Env, sequence_number: u32, timestamp: u64) {
     env.ledger().set(LedgerInfo {
         protocol_version: 22,
-        sequence_number: 1,
+        sequence_number,
         timestamp,
         network_id: [0; 32],
         base_reserve: 10,

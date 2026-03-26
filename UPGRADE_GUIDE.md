@@ -1,10 +1,11 @@
 # Soroban Version Upgrade Guide
 
-This guide provides detailed instructions for upgrading RemitWise contracts to new Soroban SDK and protocol versions.
+This guide provides detailed instructions for upgrading RemitWise contracts to new Soroban SDK and protocol versions, with special emphasis on admin role transfer security and regression testing.
 
 ## Table of Contents
 
 - [Pre-Upgrade Checklist](#pre-upgrade-checklist)
+- [Admin Role Transfer Security](#admin-role-transfer-security)
 - [Upgrade Process](#upgrade-process)
 - [Version-Specific Migration Guides](#version-specific-migration-guides)
 - [Testing Strategy](#testing-strategy)
@@ -23,6 +24,87 @@ Before upgrading to a new Soroban version:
 - [ ] Review breaking changes and deprecations
 - [ ] Plan testnet validation window
 - [ ] Notify stakeholders of upgrade timeline
+- [ ] **Verify admin role transfer security across all contracts**
+- [ ] **Run comprehensive admin role regression tests**
+
+## Admin Role Transfer Security
+
+### Overview
+
+All RemitWise contracts implement a dual-admin system with strict security controls:
+
+- **PAUSE_ADM**: Controls pause/unpause operations and emergency functions
+- **UPG_ADM**: Controls version upgrades and contract migrations
+
+### Security Requirements
+
+#### Bootstrap Pattern (Bill Payments, Insurance, Savings Goals)
+```rust
+// Initial admin setup - caller must equal new_admin
+if current_admin.is_none() {
+    if caller != new_admin {
+        return Err(Error::Unauthorized);
+    }
+}
+```
+
+#### Owner-Based Pattern (Remittance Split, Family Wallet)
+```rust
+// Initial admin setup - only contract owner can set
+if current_admin.is_none() {
+    if caller != owner {
+        return Err(Error::Unauthorized);
+    }
+}
+```
+
+#### Transfer Pattern (All Contracts)
+```rust
+// Admin transfer - only current admin can transfer
+if let Some(current) = current_admin {
+    if caller != current {
+        return Err(Error::Unauthorized);
+    }
+}
+```
+
+### Critical Security Assumptions
+
+1. **No Unauthorized Bootstrap**: Contracts must prevent unauthorized parties from setting initial admin
+2. **Transfer Isolation**: Only current admin can transfer to new admin
+3. **Cross-Contract Isolation**: Admin of one contract cannot control another
+4. **Pause Resistance**: Admin functions must work even when contract is paused
+5. **Event Auditing**: All admin transfers must emit events for audit trail
+
+### Admin Role Regression Tests
+
+Run comprehensive regression tests before any upgrade:
+
+```bash
+# Run multi-contract admin role tests
+cargo test -p integration_tests test_bootstrap_admin_setup_all_contracts
+cargo test -p integration_tests test_unauthorized_bootstrap_attempts
+cargo test -p integration_tests test_authorized_admin_transfer
+cargo test -p integration_tests test_unauthorized_admin_transfer
+cargo test -p integration_tests test_admin_operations_while_paused
+cargo test -p integration_tests test_version_upgrade_authorization
+cargo test -p integration_tests test_cross_contract_admin_isolation
+cargo test -p integration_tests test_admin_transfer_edge_cases
+cargo test -p integration_tests test_admin_transfer_events
+```
+
+### Locked-State Behavior Testing
+
+Verify admin operations work correctly when contracts are paused:
+
+```bash
+# Test admin functions during pause state
+cargo test -p integration_tests test_admin_operations_while_paused
+
+# Test emergency scenarios
+cargo test -p bill_payments test_emergency_pause_all
+cargo test -p insurance test_emergency_pause_all
+```
 
 ## Upgrade Process
 
@@ -104,6 +186,9 @@ cargo test -p insurance
 cargo test -p family_wallet
 cargo test -p reporting
 cargo test -p orchestrator
+
+# CRITICAL: Run admin role regression tests
+cargo test -p integration_tests multi_contract_integration
 ```
 
 ### Step 6: Gas Benchmark Comparison

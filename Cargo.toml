@@ -12,7 +12,11 @@ members = [
     "insurance",
     "family_wallet",
     "data_migration",
+    "reporting",
     "orchestrator",
+    "cli",
+    "scenarios",
+    "testutils",
     "integration_tests",
 ]
 default-members = [
@@ -22,6 +26,7 @@ default-members = [
     "insurance",
     "family_wallet",
     "data_migration",
+    "reporting",
     "orchestrator",
 ]
 resolver = "2"

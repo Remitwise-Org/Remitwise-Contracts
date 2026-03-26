@@ -28,8 +28,10 @@ Lower numeric value is higher privilege.
 ### Role Expiry
 
 - Optional role expiry per member is stored in `ROLE_EXP`.
+- A role is considered expired when `ledger.timestamp() >= expires_at` (inclusive boundary).
 - Expired roles fail `require_role_at_least` checks (`"Role has expired"` panic).
-- Expiry is set/cleared via `set_role_expiry`.
+- Expired roles are also treated as **not privileged** for `Owner`/`Admin` helper checks used by permissioned methods (e.g. emergency config, cleanup, archiving).
+- Expiry is set/cleared via `set_role_expiry` and only applies to existing family members (non-members are rejected).
 
 ## Permissions Matrix
 
@@ -143,6 +145,11 @@ flowchart TD
     F --> G["Execute immediate token transfer"]
     G --> H["Update EM_LAST and emit events"]
 ```
+
+*Anti-Abuse Protections:*
+- **Replay Protection**: Identical emergency transfer proposals (same token, recipient, and amount) by the same proposer are rejected if one is already pending.
+- **Frequency/Burst Protection**: A single proposer is limited to a maximum of 1 active pending emergency transfer proposal at a time to prevent storage bloat and spam.
+- **Role Misuse**: Only active Family Members (excluding Viewers) can propose emergency transfers.
 
 ## Example Scenarios
 
