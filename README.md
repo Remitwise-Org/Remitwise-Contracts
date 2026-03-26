@@ -48,6 +48,18 @@ See [cli/README.md](cli/README.md) for usage instructions.
 - **orchestrator**: Cross-contract coordination
 - **reporting**: Financial reporting and insights
 
+### Reporting Archive Cleanup Safety
+
+The `reporting` contract cleanup flow is expected to be idempotent and safe for
+retries:
+
+- `cleanup_old_reports` can be called repeatedly with the same cutoff without
+  duplicate deletions.
+- Repeated cleanup calls return `0` once matching archives are already removed.
+- Storage counters are recalculated from source maps after mutations to avoid
+  counter drift/corruption.
+- Archive and cleanup operations are admin-gated.
+
 ## Prerequisites
 
 - Rust (latest stable version)

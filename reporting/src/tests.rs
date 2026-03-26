@@ -816,6 +816,110 @@ fn test_cleanup_old_reports() {
     assert_eq!(client.get_archived_reports(&user).len(), 0);
 }
 
+fn setup_reporting_with_mocks(env: &Env) -> (ReportingContractClient, Address, Address) {
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let user = Address::generate(env);
+
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(env);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    (client, admin, user)
+}
+
+#[test]
+fn test_cleanup_old_reports_idempotent_repeated_same_cutoff() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, user) = setup_reporting_with_mocks(&env);
+
+    set_ledger_time(&env, 10, 1_704_067_200);
+    let report_a =
+        client.get_financial_health_report(&user, &10000, &1_704_067_200, &1_706_745_600);
+    client.store_report(&user, &report_a, &202401);
+
+    set_ledger_time(&env, 11, 1_704_067_210);
+    let report_b =
+        client.get_financial_health_report(&user, &12000, &1_704_067_200, &1_706_745_600);
+    client.store_report(&user, &report_b, &202402);
+
+    set_ledger_time(&env, 12, 1_704_067_300);
+    assert_eq!(client.archive_old_reports(&admin, &2_000_000_000), 2);
+    assert_eq!(client.get_archived_reports(&user).len(), 2);
+
+    set_ledger_time(&env, 13, 1_704_067_400);
+    let first_deleted = client.cleanup_old_reports(&admin, &2_000_000_000);
+    assert_eq!(first_deleted, 2);
+
+    let after_first = client.get_storage_stats();
+    assert_eq!(after_first.active_reports, 0);
+    assert_eq!(after_first.archived_reports, 0);
+
+    set_ledger_time(&env, 14, 1_704_067_500);
+    let second_deleted = client.cleanup_old_reports(&admin, &2_000_000_000);
+    assert_eq!(second_deleted, 0);
+
+    let after_second = client.get_storage_stats();
+    assert_eq!(after_second.active_reports, 0);
+    assert_eq!(after_second.archived_reports, 0);
+    assert_eq!(client.get_archived_reports(&user).len(), 0);
+}
+
+#[test]
+fn test_cleanup_old_reports_no_duplicate_deletions_across_cutoffs() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, user) = setup_reporting_with_mocks(&env);
+
+    set_ledger_time(&env, 20, 1_704_067_200);
+    let report_older =
+        client.get_financial_health_report(&user, &10000, &1_704_067_200, &1_706_745_600);
+    client.store_report(&user, &report_older, &202301);
+    set_ledger_time(&env, 21, 1_704_067_220);
+    assert_eq!(client.archive_old_reports(&admin, &2_000_000_000), 1);
+
+    set_ledger_time(&env, 22, 1_704_067_400);
+    let report_newer =
+        client.get_financial_health_report(&user, &10000, &1_704_067_200, &1_706_745_600);
+    client.store_report(&user, &report_newer, &202302);
+    set_ledger_time(&env, 23, 1_704_067_420);
+    assert_eq!(client.archive_old_reports(&admin, &2_000_000_000), 1);
+
+    // First cleanup removes only the first archived batch.
+    assert_eq!(client.cleanup_old_reports(&admin, &1_704_067_300), 1);
+    let after_first = client.get_storage_stats();
+    assert_eq!(after_first.archived_reports, 1);
+
+    // Repeating with same cutoff must not delete anything else.
+    assert_eq!(client.cleanup_old_reports(&admin, &1_704_067_300), 0);
+    let after_repeat = client.get_storage_stats();
+    assert_eq!(after_repeat.archived_reports, 1);
+
+    // Later cutoff deletes the remaining archive exactly once.
+    assert_eq!(client.cleanup_old_reports(&admin, &1_704_067_500), 1);
+    assert_eq!(client.cleanup_old_reports(&admin, &1_704_067_500), 0);
+
+    let final_stats = client.get_storage_stats();
+    assert_eq!(final_stats.active_reports, 0);
+    assert_eq!(final_stats.archived_reports, 0);
+    assert_eq!(client.get_archived_reports(&user).len(), 0);
+}
+
 #[test]
 fn test_storage_stats() {
     let env = Env::default();
