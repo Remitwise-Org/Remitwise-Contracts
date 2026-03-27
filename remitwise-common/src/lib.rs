@@ -161,3 +161,9 @@ impl RemitwiseEvents {
         env.events().publish(topics, data);
     }
 }
+
+// Standardized TTL constants for persistent storage that outlives the
+// shorter instance-storage bump windows used across the contracts.
+pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days

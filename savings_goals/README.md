@@ -217,6 +217,21 @@ Checks if a goal is completed.
 
 **Returns:** True if current_amount >= target_amount
 
+## Time-lock & Schedules
+
+### Time-lock Boundary Behavior
+
+The contract enforces strict timestamp-based access control for withdrawals:
+- **Before `unlock_date`**: Withdrawal attempts return `GoalLocked` error.
+- **At/After `unlock_date`**: Withdrawal is permitted (assuming the goal is also manually unlocked).
+
+### Schedule Drift Handling
+
+Recurring savings schedules are designed to maintain their cadence even if execution is delayed:
+- **Catching Up**: If a schedule is executed after its `next_due`, the contract calculates how many whole `interval` periods have passed since `next_due`. 
+- **Missed Count**: Each passed interval that wasn't executed is recorded in `missed_count`.
+- **Deterministic Next Due**: The `next_due` for the next execution is set to the next future interval anchor, ensuring no drift accumulates over time.
+
 ## Usage Examples
 
 ### Creating a Goal
@@ -308,7 +323,8 @@ let vacation_id = savings_goals::create_goal(env, user, "Vacation", 2000_0000000
 ## Security Considerations
 
 - Owner authorization required for all operations
-- Goal locking prevents unauthorized withdrawals
+- Goal locking and **time-lock boundaries** prevent unauthorized or premature withdrawals
+- Support for **deterministic schedule execution** with drift compensation
 - Input validation for amounts and ownership
 - Balance checks prevent overdrafts
 - Access control ensures user data isolation

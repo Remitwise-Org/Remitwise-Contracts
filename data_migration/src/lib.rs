@@ -10,11 +10,27 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-/// Current schema version for migration compatibility.
+/// Current snapshot schema version for migration compatibility.
+///
+/// # Versioning Policy (workspace-wide)
+/// All snapshot export/import flows across the workspace use an explicit
+/// `schema_version` tag stored inside the snapshot struct (or header).
+/// When the snapshot format changes in a backward-incompatible way, bump
+/// `SCHEMA_VERSION` and update `MIN_SUPPORTED_VERSION` only if the old
+/// format can no longer be safely imported.
+///
+/// Importers must validate:
+///   `MIN_SUPPORTED_VERSION <= schema_version <= SCHEMA_VERSION`
+/// and reject anything outside that range to guarantee safe
+/// forward/backward compatibility handling.
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Minimum supported schema version for import.
+/// Snapshots with a version below this value are too old to import safely.
 pub const MIN_SUPPORTED_VERSION: u32 = 1;
+
+/// Alias used in snapshot headers to keep naming consistent with other contracts.
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = SCHEMA_VERSION;
 
 /// Versioned migration event payload meant for indexing and historical tracking.
 ///
