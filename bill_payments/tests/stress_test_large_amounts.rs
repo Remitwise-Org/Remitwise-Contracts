@@ -48,8 +48,8 @@ fn test_create_bill_near_max_i128() {
         &large_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -74,8 +74,8 @@ fn test_pay_bill_with_large_amount() {
         &large_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -103,8 +103,8 @@ fn test_recurring_bill_with_large_amount() {
         &large_amount,
         &1000000,
         &true,
-        &30,
-        &String::from_str(&env, "XLM"),
+        &30,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -139,8 +139,8 @@ fn test_get_total_unpaid_with_two_large_bills() {
         &amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -150,8 +150,8 @@ fn test_get_total_unpaid_with_two_large_bills() {
         &amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     let total = client.get_total_unpaid(&owner);
@@ -177,8 +177,8 @@ fn test_get_total_unpaid_overflow_panics() {
         &amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -188,8 +188,8 @@ fn test_get_total_unpaid_overflow_panics() {
         &amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     // This should panic due to overflow
@@ -215,8 +215,8 @@ fn test_multiple_large_bills_different_owners() {
         &large_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -226,8 +226,8 @@ fn test_multiple_large_bills_different_owners() {
         &large_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     let total1 = client.get_total_unpaid(&owner1);
@@ -256,8 +256,8 @@ fn test_archive_large_amount_bill() {
         &large_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     env.mock_all_auths();
@@ -291,8 +291,8 @@ fn test_batch_pay_large_bills() {
             &amount,
             &1000000,
             &false,
-            &0,
-            &String::from_str(&env, "XLM"),
+            &0,            &None,
+            &String::from_str(&env, "XLM")
         );
         bill_ids.push_back(bill_id);
         env.mock_all_auths();
@@ -357,8 +357,8 @@ fn test_edge_case_i128_max_minus_one() {
         &edge_amount,
         &1000000,
         &false,
-        &0,
-        &String::from_str(&env, "XLM"),
+        &0,        &None,
+        &String::from_str(&env, "XLM")
     );
 
     let bill = client.get_bill(&bill_id).unwrap();
@@ -384,8 +384,8 @@ fn test_pagination_with_large_amounts() {
             &large_amount,
             &1000000,
             &false,
-            &0,
-            &String::from_str(&env, "XLM"),
+            &0,            &None,
+            &String::from_str(&env, "XLM")
         );
         env.mock_all_auths();
     }
