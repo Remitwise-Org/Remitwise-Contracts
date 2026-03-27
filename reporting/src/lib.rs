@@ -590,7 +590,35 @@ impl ReportingContract {
         }
     }
 
-    /// Calculate financial health score
+    /// Calculate financial health score with hardened arithmetic and normalization
+    ///
+    /// This function computes a comprehensive financial health score (0-100) based on:
+    /// - Savings progress (0-40 points): Based on goal completion percentage
+    /// - Bill payment compliance (0-40 points): Based on unpaid/overdue bills
+    /// - Insurance coverage (0-20 points): Based on active policies
+    ///
+    /// # Arithmetic Safety
+    /// - Uses safe division to prevent overflow
+    /// - Clamps all intermediate and final scores to valid ranges
+    /// - Handles edge cases: zero targets, negative amounts, extreme values
+    ///
+    /// # Normalization Guarantees
+    /// - Overall score is always bounded [0, 100]
+    /// - Component scores are bounded to their respective maximums
+    /// - Progress calculations use saturating arithmetic
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `user` - Address of the user to calculate score for
+    /// * `_total_remittance` - Total remittance amount (currently unused)
+    ///
+    /// # Returns
+    /// `HealthScore` struct with overall and component scores
+    ///
+    /// # Security Notes
+    /// - All cross-contract calls are made to configured addresses
+    /// - Arithmetic operations are overflow-safe
+    /// - No external dependencies on ledger state beyond cross-contract data
     pub fn calculate_health_score(env: Env, user: Address, _total_remittance: i128) -> HealthScore {
         let addresses: ContractAddresses = env
             .storage()
@@ -598,55 +626,129 @@ impl ReportingContract {
             .get(&symbol_short!("ADDRS"))
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
-        // Savings score (0-40 points)
-        let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
-        let goals = savings_client.get_all_goals(&user);
-        let mut total_target = 0i128;
-        let mut total_saved = 0i128;
-        for goal in goals.iter() {
-            total_target += goal.target_amount;
-            total_saved += goal.current_amount;
-        }
-        let savings_score = if total_target > 0 {
-            let progress = ((total_saved * 100) / total_target) as u32;
-            if progress > 100 {
-                40
-            } else {
-                (progress * 40) / 100
-            }
-        } else {
-            20 // Default score if no goals
-        };
+        // Calculate savings score (0-40 points) with safe arithmetic
+        let savings_score = Self::calculate_savings_score(&env, &addresses, &user);
 
-        // Bills score (0-40 points)
-        let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let unpaid_bills = bill_client.get_unpaid_bills(&user, &0u32, &50u32).items;
-        let bills_score = if unpaid_bills.is_empty() {
-            40
-        } else {
-            let overdue_count = unpaid_bills
-                .iter()
-                .filter(|b| b.due_date < env.ledger().timestamp())
-                .count();
-            if overdue_count == 0 {
-                35 // Has unpaid but none overdue
-            } else {
-                20 // Has overdue bills
-            }
-        };
+        // Calculate bills score (0-40 points) with safe arithmetic
+        let bills_score = Self::calculate_bills_score(&env, &addresses, &user);
 
-        // Insurance score (0-20 points)
-        let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let policy_page = insurance_client.get_active_policies(&user, &0, &1);
-        let insurance_score = if !policy_page.items.is_empty() { 20 } else { 0 };
+        // Calculate insurance score (0-20 points)
+        let insurance_score = Self::calculate_insurance_score(&env, &addresses, &user);
 
-        let total_score = savings_score + bills_score + insurance_score;
+        // Calculate total score with bounds checking
+        let total_score = Self::clamp_score(savings_score + bills_score + insurance_score, 0, 100);
 
         HealthScore {
             score: total_score,
             savings_score,
             bills_score,
             insurance_score,
+        }
+    }
+
+    /// Calculate savings score component (0-40 points)
+    ///
+    /// Score is based on the percentage of savings goals achieved.
+    /// Uses safe division to prevent overflow and clamps result to [0, 40].
+    fn calculate_savings_score(env: &Env, addresses: &ContractAddresses, user: &Address) -> u32 {
+        let savings_client = SavingsGoalsClient::new(env, &addresses.savings_goals);
+        let goals = savings_client.get_all_goals(user);
+
+        let mut total_target = 0i128;
+        let mut total_saved = 0i128;
+
+        // Sum all goals with overflow protection
+        for goal in goals.iter() {
+            // Clamp individual amounts to prevent extreme values from dominating
+            let target = Self::clamp_amount(goal.target_amount, 0, i128::MAX / 2);
+            let saved = Self::clamp_amount(goal.current_amount, 0, target);
+
+            total_target = total_target.saturating_add(target);
+            total_saved = total_saved.saturating_add(saved);
+        }
+
+        if total_target == 0 {
+            // No goals set - assign default score
+            return 20;
+        }
+
+        // Safe percentage calculation: (saved * 100) / target
+        // To prevent overflow: use (saved * 100) / target, but check for overflow
+        let progress_percentage = if total_saved >= total_target {
+            100u32
+        } else {
+            // Safe division: multiply first, then divide to maintain precision
+            // (saved * 100) / target, but avoid intermediate overflow
+            let saved_scaled = total_saved.saturating_mul(100);
+            let progress = saved_scaled.checked_div(total_target).unwrap_or(0) as u32;
+            progress.min(100)
+        };
+
+        // Convert percentage to score: (progress * 40) / 100
+        let score = (progress_percentage as u32 * 40) / 100;
+        score.min(40) // Ensure maximum is 40
+    }
+
+    /// Calculate bills score component (0-40 points)
+    ///
+    /// Score is based on bill payment compliance:
+    /// - 40 points: No unpaid bills
+    /// - 35 points: Has unpaid bills but none overdue
+    /// - 20 points: Has overdue bills
+    fn calculate_bills_score(env: &Env, addresses: &ContractAddresses, user: &Address) -> u32 {
+        let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
+        let unpaid_bills = bill_client.get_unpaid_bills(user, &0u32, &1000u32).items; // Large limit to get all
+
+        if unpaid_bills.is_empty() {
+            return 40; // Perfect compliance
+        }
+
+        let current_time = env.ledger().timestamp();
+        let overdue_count = unpaid_bills
+            .iter()
+            .filter(|bill| bill.due_date < current_time)
+            .count();
+
+        if overdue_count == 0 {
+            35 // Has unpaid but none overdue
+        } else {
+            20 // Has overdue bills
+        }
+    }
+
+    /// Calculate insurance score component (0-20 points)
+    ///
+    /// Score is binary: 20 points if at least one active policy, 0 otherwise.
+    fn calculate_insurance_score(env: &Env, addresses: &ContractAddresses, user: &Address) -> u32 {
+        let insurance_client = InsuranceClient::new(env, &addresses.insurance);
+        let policy_page = insurance_client.get_active_policies(user, &0, &1); // Just check if any exist
+
+        if policy_page.items.is_empty() {
+            0
+        } else {
+            20
+        }
+    }
+
+    /// Clamp a score value to specified min/max bounds
+    fn clamp_score(value: u32, min: u32, max: u32) -> u32 {
+        if value < min {
+            min
+        } else if value > max {
+            max
+        } else {
+            value
+        }
+    }
+
+    /// Clamp an amount to specified min/max bounds
+    fn clamp_amount(value: i128, min: i128, max: i128) -> i128 {
+        if value < min {
+            min
+        } else if value > max {
+            max
+        } else {
+            value
         }
     }
 
