@@ -177,7 +177,7 @@ mod tests {
 
         loop {
             let page = client.get_audit_log(&from_index, &page_size);
-            if page.len() == 0 {
+            if page.is_empty() {
                 break;
             }
 
