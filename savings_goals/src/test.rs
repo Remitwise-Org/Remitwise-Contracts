@@ -1311,7 +1311,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
     });
 
     client.add_to_goal(&user, &id1, &3000);
-    client.get_goal(&id2); // Touch Goal 2 to extend its TTL
+    client.lock_goal(&user, &id2); // Touch Goal 2 via mutation to extend its TTL
 
     // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
     env.ledger().set(LedgerInfo {

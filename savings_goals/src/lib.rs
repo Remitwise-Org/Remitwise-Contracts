@@ -280,15 +280,8 @@ impl SavingsGoalContract {
             if goal.owner != caller { panic!("Not owner"); }
 
             goal.current_amount = goal.current_amount.checked_add(item.amount).expect("Overflow");
-            let was_completed = goal.current_amount >= goal.target_amount;
-            let previously_completed = (goal.current_amount - item.amount) >= goal.target_amount;
-
-            Self::set_goal_data(&env, item.goal_id, &goal);
-
-            RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::Medium, symbol_short!("funds_add"), (item.goal_id, caller.clone(), item.amount));
-            if was_completed && !previously_completed {
-                RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::High, symbol_short!("goal_comp"), (item.goal_id, caller.clone()));
-            }
+            let key = (symbol_short!("GOAL_D"), item.goal_id);
+            env.storage().persistent().set(&key, &goal);
             count += 1;
         }
         Self::append_audit(&env, symbol_short!("batch_add"), &caller, true);
@@ -456,7 +449,8 @@ impl SavingsGoalContract {
 
             if let Some(mut g) = Self::get_goal_data(&env, s.goal_id) {
                 g.current_amount = g.current_amount.checked_add(s.amount).expect("Overflow");
-                Self::set_goal_data(&env, s.goal_id, &g);
+                let goal_key = (symbol_short!("GOAL_D"), s.goal_id);
+                env.storage().persistent().set(&goal_key, &g);
                 RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::Medium, symbol_short!("funds_add"), (s.goal_id, g.owner, s.amount));
             }
 
@@ -470,7 +464,8 @@ impl SavingsGoalContract {
                 s.active = false;
             }
 
-            Self::set_schedule_data(&env, id, &s);
+            let sch_key = (symbol_short!("SCH_D"), id);
+            env.storage().persistent().set(&sch_key, &s);
             executed.push_back(id);
             RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::Medium, symbol_short!("sch_exec"), id);
         }
@@ -527,9 +522,7 @@ impl SavingsGoalContract {
 
     fn get_goal_data(env: &Env, id: u32) -> Option<SavingsGoal> { 
         let key = (symbol_short!("GOAL_D"), id);
-        let res: Option<SavingsGoal> = env.storage().persistent().get(&key);
-        if res.is_some() { Self::extend_persistent_ttl(env, &key); }
-        res
+        env.storage().persistent().get(&key)
     }
     fn set_goal_data(env: &Env, id: u32, goal: &SavingsGoal) { 
         let key = (symbol_short!("GOAL_D"), id);
@@ -538,9 +531,7 @@ impl SavingsGoalContract {
     }
     fn get_schedule_data(env: &Env, id: u32) -> Option<SavingsSchedule> { 
         let key = (symbol_short!("SCH_D"), id);
-        let res: Option<SavingsSchedule> = env.storage().persistent().get(&key);
-        if res.is_some() { Self::extend_persistent_ttl(env, &key); }
-        res
+        env.storage().persistent().get(&key)
     }
     fn set_schedule_data(env: &Env, id: u32, schedule: &SavingsSchedule) { 
         let key = (symbol_short!("SCH_D"), id);
@@ -549,9 +540,7 @@ impl SavingsGoalContract {
     }
     fn get_owner_goal_ids(env: &Env, owner: &Address) -> Vec<u32> {
         let key = (symbol_short!("O_GIDS"), owner.clone());
-        let res: Vec<u32> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
-        if !res.is_empty() { Self::extend_persistent_ttl(env, &key); }
-        res
+        env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
     }
     fn append_to_owner_goal_ids(env: &Env, owner: &Address, id: u32) {
         let key = (symbol_short!("O_GIDS"), owner.clone());
@@ -566,9 +555,7 @@ impl SavingsGoalContract {
     }
     fn get_owner_schedule_ids(env: &Env, owner: &Address) -> Vec<u32> {
         let key = (symbol_short!("O_SIDS"), owner.clone());
-        let res: Vec<u32> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
-        if !res.is_empty() { Self::extend_persistent_ttl(env, &key); }
-        res
+        env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
     }
     fn append_to_owner_schedule_ids(env: &Env, owner: &Address, id: u32) {
         let key = (symbol_short!("O_SIDS"), owner.clone());
