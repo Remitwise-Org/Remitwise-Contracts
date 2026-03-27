@@ -1,5 +1,54 @@
-use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
+use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError, OrchestratorAuditEntry};
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use testutils::generate_test_address;
+use soroban_sdk::testutils::Address as AddressTrait;
+use soroban_sdk::symbol_short;
+use soroban_sdk::testutils::Address as _;
+extern crate std;
+use std::collections::BTreeSet;
+// ===========================================================================
+// Test Helpers
+// ===========================================================================
+
+/// Helper to provide test environment similar to setup()
+
+    // Reuse the existing setup function for consistency
+    setup()
+}
+
+/// Stub for seeding audit log; no-op for now
+fn seed_audit_log(_env: &Env, _user: &Address, _seeded: u32) {
+    // In a full implementation this would populate audit logs for testing.
+    // For current tests a no-op is sufficient.
+}
+
+
+fn collect_all_pages(client: &OrchestratorClient, page_size: u32) -> std::vec::Vec<OrchestratorAuditEntry> {
+    let mut entries: std::vec::Vec<OrchestratorAuditEntry> = std::vec::Vec::new();
+    let mut cursor: u32 = 0;
+    loop {
+        let page = client.get_audit_log(&cursor, &page_size);
+        if page.is_empty() {
+            break;
+        }
+        for entry in page.iter() {
+            entries.push(entry.clone());
+        }
+        let page_len = page.len() as u32;
+        cursor += page_len;
+        if page_len < page_size {
+            break;
+        }
+    }
+    entries
+}
+    
+
+
+// ===========================================================================
+// Existing Tests (preserved)
+// ===========================================================================
+
 
 // ============================================================================
 // Mock Contract Implementations
@@ -132,7 +181,25 @@ mod tests {
         )
     }
 
-    // ============================================================================
+    // ===========================================================================
+    // Test Helpers
+    // ===========================================================================
+
+    /// Helper to provide test environment similar to setup()
+    fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+        // Reuse the existing setup function for consistency
+        setup()
+    }
+
+    /// Stub for seeding audit log; no-op for now
+    fn seed_audit_log(_env: &Env, _user: &Address, _seeded: u32) {
+        // In a full implementation this would populate audit logs for testing.
+        // For current tests a no-op is sufficient.
+    }
+
+    // ===========================================================================
+    // Existing Tests (preserved)
+    // ===========================================================================
     // Existing Tests (preserved)
     // ============================================================================
 
@@ -1392,7 +1459,7 @@ mod tests {
         for entry in &entries {
             dedupe.insert(entry.amount);
         }
-        assert_eq!(dedupe.len(), entries.len());
+        assert_eq!(dedupe.len(), entries.len() as usize);
     }
 
     #[test]

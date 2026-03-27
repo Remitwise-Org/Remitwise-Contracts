@@ -183,6 +183,7 @@ pub trait InsuranceTrait {
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
+
 pub enum OrchestratorError {
     /// Permission denied by family wallet
     PermissionDenied = 1,
@@ -200,14 +201,18 @@ pub enum OrchestratorError {
     InvalidAmount = 7,
     /// Invalid contract address provided
     InvalidContractAddress = 8,
+    /// Self reference not allowed
+    SelfReferenceNotAllowed = 9,
+    /// Duplicate contract address detected
+    DuplicateContractAddress = 10,
     /// Generic cross-contract call failure
-    CrossContractCallFailed = 9,
+    CrossContractCallFailed = 11,
     /// Reentrancy detected - execution is already in progress
     ///
     /// This error is returned when a public entry point is called while another
     /// execution is already in progress. This prevents nested execution attacks
     /// and partial-state corruption.
-    ReentrancyDetected = 10,
+    ReentrancyDetected = 12,
 }
 
 /// Execution state tracking for reentrancy protection.
@@ -224,7 +229,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -1012,6 +1017,45 @@ impl Orchestrator {
         // Reentrancy guard: always release lock before returning
         Self::release_execution_lock(&env);
         result
+    }
+
+    /// Validate that all contract addresses are distinct and valid
+    fn validate_remittance_flow_addresses(
+        env: &Env,
+        family_wallet_addr: &Address,
+        remittance_split_addr: &Address,
+        savings_addr: &Address,
+        bills_addr: &Address,
+        insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let orchestrator_id = env.current_contract_address();
+        
+        // Check for self-referential calls
+        if family_wallet_addr == &orchestrator_id
+            || remittance_split_addr == &orchestrator_id
+            || savings_addr == &orchestrator_id
+            || bills_addr == &orchestrator_id
+            || insurance_addr == &orchestrator_id
+        {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        
+        // Check all addresses are distinct
+        if family_wallet_addr == remittance_split_addr
+            || family_wallet_addr == savings_addr
+            || family_wallet_addr == bills_addr
+            || family_wallet_addr == insurance_addr
+            || remittance_split_addr == savings_addr
+            || remittance_split_addr == bills_addr
+            || remittance_split_addr == insurance_addr
+            || savings_addr == bills_addr
+            || savings_addr == insurance_addr
+            || bills_addr == insurance_addr
+        {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        
+        Ok(())
     }
 
     // ============================================================================

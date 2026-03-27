@@ -14,8 +14,6 @@ use soroban_sdk::{
 
 #[derive(Clone, Debug)]
 #[contracttype]
-#[derive(Clone, Debug)]
-#[contracttype]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -34,7 +32,6 @@ pub struct Bill {
     /// Defaults to "XLM" for entries created before this field was introduced.
     pub currency: String,
 }
-
 
 /// Paginated result for bill queries
 #[contracttype]
@@ -57,8 +54,6 @@ pub mod pause_functions {
     pub const RESTORE: soroban_sdk::Symbol = symbol_short!("restore");
 }
 
-const CONTRACT_VERSION: u32 = 1;
-const MAX_BATCH_SIZE: u32 = 50;
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
 
 #[contracterror]
@@ -84,8 +79,6 @@ pub enum Error {
 
 #[derive(Clone)]
 #[contracttype]
-#[derive(Clone)]
-#[contracttype]
 pub struct ArchivedBill {
     pub id: u32,
     pub owner: Address,
@@ -97,7 +90,6 @@ pub struct ArchivedBill {
     /// Intended currency/asset carried over from the originating `Bill`.
     pub currency: String,
 }
-
 
 /// Paginated result for archived bill queries
 #[contracttype]
@@ -393,24 +385,24 @@ impl BillPayments {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - If no upgrade admin exists, caller must equal new_admin (bootstrap pattern)
     /// - If upgrade admin exists, only current upgrade admin can transfer
     /// - Caller must be authenticated via require_auth()
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` on successful admin transfer
     /// - `Err(Error::Unauthorized)` if caller lacks permission
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         caller.require_auth();
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         // Authorization logic:
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
         // 2. If upgrade admin exists, only current upgrade admin can transfer
@@ -421,18 +413,18 @@ impl BillPayments {
                     return Err(Error::Unauthorized);
                 }
             }
-            Some(current_admin) => {
+            Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if current_admin != &caller {
                     return Err(Error::Unauthorized);
                 }
             }
         }
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         RemitwiseEvents::emit(
             &env,
@@ -441,12 +433,12 @@ impl BillPayments {
             symbol_short!("adm_xfr"),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         Ok(())
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -889,659 +881,661 @@ impl BillPayments {
         Ok(())
     }
 
-    /// Get all bills (paid and unpaid)
-    ///
-    /// # Returns
-    /// Vec of all Bill structs
-    pub fn get_all_bills(env: Env) -> Vec<Bill> {
-    // -----------------------------------------------------------------------
-    // Backward-compat helpers
-    // -----------------------------------------------------------------------
 
-    /// Legacy helper: returns ALL unpaid bills for owner in one Vec.
-    /// Only safe for owners with a small number of bills. Prefer the
-    /// paginated `get_unpaid_bills` for production use.
-    pub fn get_all_unpaid_bills_legacy(env: Env, owner: Address) -> Vec<Bill> {
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut result = Vec::new(&env);
-        for (_, bill) in bills.iter() {
-            if !bill.paid && bill.owner == owner {
-                result.push_back(bill);
-            }
-        }
-        result
-    }
+        // -----------------------------------------------------------------------
+        // Backward-compat helpers
+        // -----------------------------------------------------------------------
 
-    // -----------------------------------------------------------------------
-    // Archived bill queries (paginated)
-    // -----------------------------------------------------------------------
-
-    /// Get a page of archived bills for `owner`.
-    pub fn get_archived_bills(
-        env: Env,
-        owner: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> ArchivedBillPage {
-        let limit = clamp_limit(limit);
-        let archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut staging: Vec<(u32, ArchivedBill)> = Vec::new(&env);
-        for (id, bill) in archived.iter() {
-            if id <= cursor {
-                continue;
-            }
-            if bill.owner != owner {
-                continue;
-            }
-            staging.push_back((id, bill));
-            if staging.len() > limit {
-                break;
-            }
-        }
-
-        let has_next = staging.len() > limit;
-        let mut items = Vec::new(&env);
-        let mut next_cursor: u32 = 0;
-        let take = if has_next {
-            staging.len() - 1
-        } else {
-            staging.len()
-        };
-
-        for i in 0..take {
-            if let Some((_, bill)) = staging.get(i) {
-                items.push_back(bill);
-            }
-        }
-        if has_next {
-            if let Some((id, _)) = staging.get(take - 1) {
-                next_cursor = id;
-            }
-        }
-
-        let count = items.len();
-        ArchivedBillPage {
-            items,
-            next_cursor,
-            count,
-        }
-    }
-
-    pub fn get_archived_bill(env: Env, bill_id: u32) -> Option<ArchivedBill> {
-        let archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-        archived.get(bill_id)
-    }
-
-    // -----------------------------------------------------------------------
-    // Remaining operations
-    // -----------------------------------------------------------------------
-
-    pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
-        let mut bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let bill = bills.get(bill_id).ok_or(Error::BillNotFound)?;
-        if bill.owner != caller {
-            return Err(Error::Unauthorized);
-        }
-        let removed_unpaid_amount = if bill.paid { 0 } else { bill.amount };
-        bills.remove(bill_id);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("BILLS"), &bills);
-        if removed_unpaid_amount > 0 {
-            Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount);
-        }
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::State,
-            EventPriority::Medium,
-            symbol_short!("canceled"),
-            bill_id,
-        );
-        Ok(())
-    }
-
-    pub fn archive_paid_bills(
-        env: Env,
-        caller: Address,
-        before_timestamp: u64,
-    ) -> Result<u32, Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
-        Self::extend_instance_ttl(&env);
-
-        let mut bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let current_time = env.ledger().timestamp();
-        let mut archived_count = 0u32;
-        let mut to_remove: Vec<u32> = Vec::new(&env);
-
-        for (id, bill) in bills.iter() {
-            if let Some(paid_at) = bill.paid_at {
-                if bill.paid && paid_at < before_timestamp {
-                    let archived_bill = ArchivedBill {
-                        id: bill.id,
-                        owner: bill.owner.clone(),
-                        name: bill.name.clone(),
-                        amount: bill.amount,
-                        paid_at,
-                        archived_at: current_time,
-                        tags: bill.tags.clone(),
-                        currency: bill.currency.clone(),
-                    };
-                    archived.set(id, archived_bill);
-                    to_remove.push_back(id);
-                    archived_count += 1;
+        /// Legacy helper: returns ALL unpaid bills for owner in one Vec.
+        /// Only safe for owners with a small number of bills. Prefer the
+        /// paginated `get_unpaid_bills` for production use.
+        pub fn get_all_unpaid_bills_legacy(env: Env, owner: Address) -> Vec<Bill> {
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let mut result = Vec::new(&env);
+            for (_, bill) in bills.iter() {
+                if !bill.paid && bill.owner == owner {
+                    result.push_back(bill);
                 }
             }
+            result
         }
 
-        for id in to_remove.iter() {
-            bills.remove(id);
-        }
+        // -----------------------------------------------------------------------
+        // Archived bill queries (paginated)
+        // -----------------------------------------------------------------------
 
-        env.storage()
-            .instance()
-            .set(&symbol_short!("BILLS"), &bills);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_BILL"), &archived);
+        /// Get a page of archived bills for `owner`.
+        pub fn get_archived_bills(
+            env: Env,
+            owner: Address,
+            cursor: u32,
+            limit: u32,
+        ) -> ArchivedBillPage {
+            let limit = clamp_limit(limit);
+            let archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
 
-        Self::extend_archive_ttl(&env);
-        Self::update_storage_stats(&env);
+            let mut staging: Vec<(u32, ArchivedBill)> = Vec::new(&env);
+            for (id, bill) in archived.iter() {
+                if id <= cursor {
+                    continue;
+                }
+                if bill.owner != owner {
+                    continue;
+                }
+                staging.push_back((id, bill));
+                if staging.len() > limit {
+                    break;
+                }
+            }
 
-        RemitwiseEvents::emit_batch(
-            &env,
-            EventCategory::System,
-            symbol_short!("archived"),
-            archived_count,
-        );
+            let has_next = staging.len() > limit;
+            let mut items = Vec::new(&env);
+            let mut next_cursor: u32 = 0;
+            let take = if has_next {
+                staging.len() - 1
+            } else {
+                staging.len()
+            };
 
-        Ok(archived_count)
-    }
+            for i in 0..take {
+                if let Some((_, bill)) = staging.get(i) {
+                    items.push_back(bill);
+                }
+            }
+            if has_next {
+                if let Some((id, _)) = staging.get(take - 1) {
+                    next_cursor = id;
+                }
+            }
 
-    pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::RESTORE)?;
-        Self::extend_instance_ttl(&env);
-
-        let mut archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-        let archived_bill = archived.get(bill_id).ok_or(Error::BillNotFound)?;
-
-        if archived_bill.owner != caller {
-            return Err(Error::Unauthorized);
-        }
-
-        let mut bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let restored_bill = Bill {
-            id: archived_bill.id,
-            owner: archived_bill.owner.clone(),
-            name: archived_bill.name.clone(),
-            amount: archived_bill.amount,
-            due_date: env.ledger().timestamp() + 2592000,
-            recurring: false,
-            frequency_days: 0,
-            paid: true,
-            created_at: archived_bill.paid_at,
-            paid_at: Some(archived_bill.paid_at),
-            schedule_id: None,
-            tags: archived_bill.tags.clone(),
-            currency: archived_bill.currency.clone(),
-        };
-
-        bills.set(bill_id, restored_bill);
-        archived.remove(bill_id);
-
-        env.storage()
-            .instance()
-            .set(&symbol_short!("BILLS"), &bills);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_BILL"), &archived);
-
-        Self::update_storage_stats(&env);
-
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::State,
-            EventPriority::Medium,
-            symbol_short!("restored"),
-            bill_id,
-        );
-        Ok(())
-    }
-
-    pub fn bulk_cleanup_bills(
-        env: Env,
-        caller: Address,
-        before_timestamp: u64,
-    ) -> Result<u32, Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
-        Self::extend_instance_ttl(&env);
-
-        let mut archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut deleted_count = 0u32;
-        let mut to_remove: Vec<u32> = Vec::new(&env);
-
-        for (id, bill) in archived.iter() {
-            if bill.archived_at < before_timestamp {
-                to_remove.push_back(id);
-                deleted_count += 1;
+            let count = items.len();
+            ArchivedBillPage {
+                items,
+                next_cursor,
+                count,
             }
         }
 
-        for id in to_remove.iter() {
-            archived.remove(id);
+        pub fn get_archived_bill(env: Env, bill_id: u32) -> Option<ArchivedBill> {
+            let archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
+            archived.get(bill_id)
         }
 
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_BILL"), &archived);
-        Self::update_storage_stats(&env);
+        // -----------------------------------------------------------------------
+        // Remaining operations
+        // -----------------------------------------------------------------------
 
-        RemitwiseEvents::emit_batch(
-            &env,
-            EventCategory::System,
-            symbol_short!("cleaned"),
-            deleted_count,
-        );
-        Ok(deleted_count)
-    }
-
-    pub fn batch_pay_bills(env: Env, caller: Address, bill_ids: Vec<u32>) -> Result<u32, Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
-        if bill_ids.len() > (MAX_BATCH_SIZE as usize).try_into().unwrap_or(u32::MAX) {
-            return Err(Error::BatchTooLarge);
-        }
-        let bills_map: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        for id in bill_ids.iter() {
-            let bill = bills_map.get(id).ok_or(Error::BillNotFound)?;
+        pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
+            let mut bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let bill = bills.get(bill_id).ok_or(Error::BillNotFound)?;
             if bill.owner != caller {
                 return Err(Error::Unauthorized);
             }
-            if bill.paid {
-                return Err(Error::BillAlreadyPaid);
+            let removed_unpaid_amount = if bill.paid { 0 } else { bill.amount };
+            bills.remove(bill_id);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("BILLS"), &bills);
+            if removed_unpaid_amount > 0 {
+                Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount);
             }
-        }
-        Self::extend_instance_ttl(&env);
-        let mut bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let current_time = env.ledger().timestamp();
-        let mut next_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NEXT_ID"))
-            .unwrap_or(0u32);
-        let mut paid_count = 0u32;
-        let mut unpaid_delta = 0i128;
-        for id in bill_ids.iter() {
-            let mut bill = bills.get(id).ok_or(Error::BillNotFound)?;
-            if bill.owner != caller || bill.paid {
-                return Err(Error::BatchValidationFailed);
-            }
-            let amount = bill.amount;
-            bill.paid = true;
-            bill.paid_at = Some(current_time);
-            if bill.recurring {
-                next_id = next_id.saturating_add(1);
-                let next_due_date = bill.due_date + (bill.frequency_days as u64 * 86400);
-                let next_bill = Bill {
-                    id: next_id,
-                    owner: bill.owner.clone(),
-                    name: bill.name.clone(),
-                    amount: bill.amount,
-                    due_date: next_due_date,
-                    recurring: true,
-                    frequency_days: bill.frequency_days,
-                    paid: false,
-                    created_at: current_time,
-                    paid_at: None,
-                    schedule_id: bill.schedule_id,
-                    tags: bill.tags.clone(),
-                    currency: bill.currency.clone(),
-                };
-                bills.set(next_id, next_bill);
-            } else {
-                unpaid_delta = unpaid_delta.saturating_sub(amount);
-            }
-            bills.set(id, bill);
-            paid_count += 1;
             RemitwiseEvents::emit(
                 &env,
-                EventCategory::Transaction,
-                EventPriority::High,
-                symbol_short!("paid"),
-                (id, caller.clone(), amount),
+                EventCategory::State,
+                EventPriority::Medium,
+                symbol_short!("canceled"),
+                bill_id,
             );
-        }
-        env.storage()
-            .instance()
-            .set(&symbol_short!("NEXT_ID"), &next_id);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("BILLS"), &bills);
-        if unpaid_delta != 0 {
-            Self::adjust_unpaid_total(&env, &caller, unpaid_delta);
-        }
-        Self::update_storage_stats(&env);
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::Medium,
-            symbol_short!("batch_pay"),
-            (paid_count, caller),
-        );
-        Ok(paid_count)
-    }
-
-    pub fn get_total_unpaid(env: Env, owner: Address) -> i128 {
-        if let Some(totals) = Self::get_unpaid_totals_map(&env) {
-            if let Some(total) = totals.get(owner.clone()) {
-                return total;
-            }
+            Ok(())
         }
 
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut total = 0i128;
-        for (_, bill) in bills.iter() {
-            if !bill.paid && bill.owner == owner {
-                total += bill.amount;
-            }
-        }
-        total
-    }
+        pub fn archive_paid_bills(
+            env: Env,
+            caller: Address,
+            before_timestamp: u64,
+        ) -> Result<u32, Error> {
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
+            Self::extend_instance_ttl(&env);
 
-    pub fn get_storage_stats(env: Env) -> StorageStats {
-        env.storage()
-            .instance()
-            .get(&symbol_short!("STOR_STAT"))
-            .unwrap_or(StorageStats {
-                active_bills: 0,
-                archived_bills: 0,
-                total_unpaid_amount: 0,
-                total_archived_amount: 0,
-                last_updated: 0,
-            })
-    }
+            let mut bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let mut archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
 
-    // -----------------------------------------------------------------------
-    // Currency-filter helper queries
-    // -----------------------------------------------------------------------
+            let current_time = env.ledger().timestamp();
+            let mut archived_count = 0u32;
+            let mut to_remove: Vec<u32> = Vec::new(&env);
 
-    /// Get a page of ALL bills (paid + unpaid) for `owner` that match `currency`.
-    ///
-    /// # Arguments
-    /// * `owner`    – Address of the bill owner
-    /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
-    /// * `cursor`   – Start after this bill ID (pass 0 for the first page)
-    /// * `limit`    – Max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
-    ///
-    /// # Returns
-    /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
-    ///
-    /// # Currency Comparison
-    /// Currency comparison is case-insensitive and whitespace-insensitive:
-    /// - "usdc", "USDC", "UsDc", " usdc " all match
-    /// - Empty currency defaults to "XLM" for comparison
-    ///
-    /// # Examples
-    /// ```rust
-    /// // Get all USDC bills for owner
-    /// let page = client.get_bills_by_currency(&owner, &"USDC".into(), &0, &10);
-    /// ```
-    pub fn get_bills_by_currency(
-        env: Env,
-        owner: Address,
-        currency: String,
-        cursor: u32,
-        limit: u32,
-    ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
-        let normalized_currency = Self::normalize_currency(&env, &currency);
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            for (id, bill) in bills.iter() {
+                if let Some(paid_at) = bill.paid_at {
+                    if bill.paid && paid_at < before_timestamp {
+                        let archived_bill = ArchivedBill {
+                            id: bill.id,
+                            owner: bill.owner.clone(),
+                            name: bill.name.clone(),
+                            amount: bill.amount,
+                            paid_at,
+                            archived_at: current_time,
+                            tags: bill.tags.clone(),
+                            currency: bill.currency.clone(),
+                        };
+                        archived.set(id, archived_bill);
+                        to_remove.push_back(id);
+                        archived_count += 1;
+                    }
+                }
+            }
 
-        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for (id, bill) in bills.iter() {
-            if id <= cursor {
-                continue;
+            for id in to_remove.iter() {
+                bills.remove(id);
             }
-            if bill.owner != owner || bill.currency != normalized_currency {
-                continue;
-            }
-            staging.push_back((id, bill));
-            if staging.len() > limit {
-                break;
-            }
+
+            env.storage()
+                .instance()
+                .set(&symbol_short!("BILLS"), &bills);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("ARCH_BILL"), &archived);
+
+            Self::extend_archive_ttl(&env);
+            Self::update_storage_stats(&env);
+
+            RemitwiseEvents::emit_batch(
+                &env,
+                EventCategory::System,
+                symbol_short!("archived"),
+                archived_count,
+            );
+
+            Ok(archived_count)
         }
 
-        Self::build_page(&env, staging, limit)
-    }
+        pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::RESTORE)?;
+            Self::extend_instance_ttl(&env);
 
-    /// Get a page of **unpaid** bills for `owner` that match `currency`.
-    ///
-    /// # Arguments
-    /// * `owner`    – Address of the bill owner
-    /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
-    /// * `cursor`   – Start after this bill ID (pass 0 for the first page)
-    /// * `limit`    – Max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
-    ///
-    /// # Returns
-    /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
-    ///
-    /// # Currency Comparison
-    /// Currency comparison is case-insensitive and whitespace-insensitive:
-    /// - "usdc", "USDC", "UsDc", " usdc " all match
-    /// - Empty currency defaults to "XLM" for comparison
-    ///
-    /// # Examples
-    /// ```rust
-    /// // Get unpaid USDC bills for owner
-    /// let page = client.get_unpaid_bills_by_currency(&owner, &"USDC".into(), &0, &10);
-    /// ```
-    pub fn get_unpaid_bills_by_currency(
-        env: Env,
-        owner: Address,
-        currency: String,
-        cursor: u32,
-        limit: u32,
-    ) -> BillPage {
-        let limit = Self::clamp_limit(limit);
-        let normalized_currency = Self::normalize_currency(&env, &currency);
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            let mut archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
+            let archived_bill = archived.get(bill_id).ok_or(Error::BillNotFound)?;
 
-        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for (id, bill) in bills.iter() {
-            if id <= cursor {
-                continue;
+            if archived_bill.owner != caller {
+                return Err(Error::Unauthorized);
             }
-            if bill.owner != owner || bill.paid || bill.currency != normalized_currency {
-                continue;
-            }
-            staging.push_back((id, bill));
-            if staging.len() > limit {
-                break;
-            }
+
+            let mut bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+
+            let restored_bill = Bill {
+                id: archived_bill.id,
+                owner: archived_bill.owner.clone(),
+                name: archived_bill.name.clone(),
+                amount: archived_bill.amount,
+                due_date: env.ledger().timestamp() + 2592000,
+                recurring: false,
+                frequency_days: 0,
+                paid: true,
+                created_at: archived_bill.paid_at,
+                paid_at: Some(archived_bill.paid_at),
+                schedule_id: None,
+                tags: archived_bill.tags.clone(),
+                currency: archived_bill.currency.clone(),
+                external_ref: None,
+            };
+
+            bills.set(bill_id, restored_bill);
+            archived.remove(bill_id);
+
+            env.storage()
+                .instance()
+                .set(&symbol_short!("BILLS"), &bills);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("ARCH_BILL"), &archived);
+
+            Self::update_storage_stats(&env);
+
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                symbol_short!("restored"),
+                bill_id,
+            );
+            Ok(())
         }
 
-        Self::build_page(&env, staging, limit)
-    }
+        pub fn bulk_cleanup_bills(
+            env: Env,
+            caller: Address,
+            before_timestamp: u64,
+        ) -> Result<u32, Error> {
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
+            Self::extend_instance_ttl(&env);
 
-    /// Sum of all **unpaid** bill amounts for `owner` denominated in `currency`.
-    ///
-    /// # Arguments
-    /// * `owner`    – Address of the bill owner
-    /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
-    ///
-    /// # Returns
-    /// Total unpaid amount in the specified currency
-    ///
-    /// # Currency Comparison
-    /// Currency comparison is case-insensitive and whitespace-insensitive:
-    /// - "usdc", "USDC", "UsDc", " usdc " all match
-    /// - Empty currency defaults to "XLM" for comparison
-    ///
-    /// # Examples
-    /// ```rust
-    /// // Get total unpaid amount in USDC
-    /// let total_usdc = client.get_total_unpaid_by_currency(&owner, &"USDC".into());
-    /// // Get total unpaid amount in XLM
-    /// let total_xlm = client.get_total_unpaid_by_currency(&owner, &"XLM".into());
-    /// ```
-    pub fn get_total_unpaid_by_currency(env: Env, owner: Address, currency: String) -> i128 {
-        let normalized_currency = Self::normalize_currency(&env, &currency);
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
-        let mut total = 0i128;
-        for (_, bill) in bills.iter() {
-            if !bill.paid && bill.owner == owner && bill.currency == normalized_currency {
-                total += bill.amount;
+            let mut archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
+            let mut deleted_count = 0u32;
+            let mut to_remove: Vec<u32> = Vec::new(&env);
+
+            for (id, bill) in archived.iter() {
+                if bill.archived_at < before_timestamp {
+                    to_remove.push_back(id);
+                    deleted_count += 1;
+                }
             }
-        }
-        total
-    }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
-    fn extend_instance_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-    }
-
-    fn extend_archive_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
-    }
-
-    fn update_storage_stats(env: &Env) {
-        let bills: Map<u32, Bill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(env));
-        let archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(env));
-
-        let mut active_count = 0u32;
-        let mut unpaid_amount = 0i128;
-        for (_, bill) in bills.iter() {
-            active_count += 1;
-            if !bill.paid {
-                unpaid_amount = unpaid_amount.saturating_add(bill.amount);
+            for id in to_remove.iter() {
+                archived.remove(id);
             }
+
+            env.storage()
+                .instance()
+                .set(&symbol_short!("ARCH_BILL"), &archived);
+            Self::update_storage_stats(&env);
+
+            RemitwiseEvents::emit_batch(
+                &env,
+                EventCategory::System,
+                symbol_short!("cleaned"),
+                deleted_count,
+            );
+            Ok(deleted_count)
         }
 
-        let mut archived_count = 0u32;
-        let mut archived_amount = 0i128;
-        for (_, bill) in archived.iter() {
-            archived_count += 1;
-            archived_amount = archived_amount.saturating_add(bill.amount);
+        pub fn batch_pay_bills(
+            env: Env,
+            caller: Address,
+            bill_ids: Vec<u32>,
+        ) -> Result<u32, Error> {
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
+            if bill_ids.len() > (MAX_BATCH_SIZE as usize).try_into().unwrap_or(u32::MAX) {
+                return Err(Error::BatchTooLarge);
+            }
+            let bills_map: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            for id in bill_ids.iter() {
+                let bill = bills_map.get(id).ok_or(Error::BillNotFound)?;
+                if bill.owner != caller {
+                    return Err(Error::Unauthorized);
+                }
+                if bill.paid {
+                    return Err(Error::BillAlreadyPaid);
+                }
+            }
+            Self::extend_instance_ttl(&env);
+            let mut bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let current_time = env.ledger().timestamp();
+            let mut next_id: u32 = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("NEXT_ID"))
+                .unwrap_or(0u32);
+            let mut paid_count = 0u32;
+            let mut unpaid_delta = 0i128;
+            for id in bill_ids.iter() {
+                let mut bill = bills.get(id).ok_or(Error::BillNotFound)?;
+                if bill.owner != caller || bill.paid {
+                    return Err(Error::BatchValidationFailed);
+                }
+                let amount = bill.amount;
+                bill.paid = true;
+                bill.paid_at = Some(current_time);
+                if bill.recurring {
+                    next_id = next_id.saturating_add(1);
+                    let next_due_date = bill.due_date + (bill.frequency_days as u64 * 86400);
+                    let next_bill = Bill {
+                        id: next_id,
+                        owner: bill.owner.clone(),
+                        name: bill.name.clone(),
+                        amount: bill.amount,
+                        due_date: next_due_date,
+                        recurring: true,
+                        frequency_days: bill.frequency_days,
+                        paid: false,
+                        created_at: current_time,
+                        paid_at: None,
+                        schedule_id: bill.schedule_id,
+                        tags: bill.tags.clone(),
+                        currency: bill.currency.clone(),
+                        external_ref: bill.external_ref.clone(),
+                    };
+                    bills.set(next_id, next_bill);
+                } else {
+                    unpaid_delta = unpaid_delta.saturating_sub(amount);
+                }
+                bills.set(id, bill);
+                paid_count += 1;
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("paid"),
+                    (id, caller.clone(), amount),
+                );
+            }
+            env.storage()
+                .instance()
+                .set(&symbol_short!("NEXT_ID"), &next_id);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("BILLS"), &bills);
+            if unpaid_delta != 0 {
+                Self::adjust_unpaid_total(&env, &caller, unpaid_delta);
+            }
+            Self::update_storage_stats(&env);
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::System,
+                EventPriority::Medium,
+                symbol_short!("batch_pay"),
+                (paid_count, caller),
+            );
+            Ok(paid_count)
         }
 
-        let stats = StorageStats {
-            active_bills: active_count,
-            archived_bills: archived_count,
-            total_unpaid_amount: unpaid_amount,
-            total_archived_amount: archived_amount,
-            last_updated: env.ledger().timestamp(),
-        };
+        pub fn get_total_unpaid(env: Env, owner: Address) -> i128 {
+            if let Some(totals) = Self::get_unpaid_totals_map(&env) {
+                let total_opt: Option<i128> = totals.get(owner.clone());
+                if let Some(total) = total_opt {
+                    return total;
+                }
+            }
 
-        env.storage()
-            .instance()
-            .set(&symbol_short!("STOR_STAT"), &stats);
-    }
-    fn get_unpaid_totals_map(env: &Env) -> Option<Map<Address, i128>> {
-        env.storage().instance().get(&STORAGE_UNPAID_TOTALS)
-    }
-
-    fn adjust_unpaid_total(env: &Env, owner: &Address, delta: i128) {
-        if delta == 0 {
-            return;
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let mut total = 0i128;
+            for (_, bill) in bills.iter() {
+                if !bill.paid && bill.owner == owner {
+                    total += bill.amount;
+                }
+            }
+            total
         }
-        let mut totals: Map<Address, i128> = env
-            .storage()
-            .instance()
-            .get(&STORAGE_UNPAID_TOTALS)
-            .unwrap_or_else(|| Map::new(env));
-        let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.checked_add(delta).expect("overflow");
-        totals.set(owner.clone(), next);
-        env.storage()
-            .instance()
-            .set(&STORAGE_UNPAID_TOTALS, &totals);
-    }
-}
 
+        pub fn get_storage_stats(env: Env) -> StorageStats {
+            env.storage()
+                .instance()
+                .get(&symbol_short!("STOR_STAT"))
+                .unwrap_or(StorageStats {
+                    active_bills: 0,
+                    archived_bills: 0,
+                    total_unpaid_amount: 0,
+                    total_archived_amount: 0,
+                    last_updated: 0,
+                })
+        }
+
+        // -----------------------------------------------------------------------
+        // Currency-filter helper queries
+        // -----------------------------------------------------------------------
+
+        /// Get a page of ALL bills (paid + unpaid) for `owner` that match `currency`.
+        ///
+        /// # Arguments
+        /// * `owner`    – Address of the bill owner
+        /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
+        /// * `cursor`   – Start after this bill ID (pass 0 for the first page)
+        /// * `limit`    – Max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+        ///
+        /// # Returns
+        /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
+        ///
+        /// # Currency Comparison
+        /// Currency comparison is case-insensitive and whitespace-insensitive:
+        /// - "usdc", "USDC", "UsDc", " usdc " all match
+        /// - Empty currency defaults to "XLM" for comparison
+        ///
+        /// # Examples
+        /// ```rust
+        /// // Get all USDC bills for owner
+        /// let page = client.get_bills_by_currency(&owner, &"USDC".into(), &0, &10);
+        /// ```
+        pub fn get_bills_by_currency(
+            env: Env,
+            owner: Address,
+            currency: String,
+            cursor: u32,
+            limit: u32,
+        ) -> BillPage {
+            let limit = clamp_limit(limit);
+            let normalized_currency = Self::normalize_currency(&env, &currency);
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+
+            let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+            for (id, bill) in bills.iter() {
+                if id <= cursor {
+                    continue;
+                }
+                if bill.owner != owner || bill.currency != normalized_currency {
+                    continue;
+                }
+                staging.push_back((id, bill));
+                if staging.len() > limit {
+                    break;
+                }
+            }
+
+            Self::build_page(&env, staging, limit)
+        }
+
+        /// Get a page of **unpaid** bills for `owner` that match `currency`.
+        ///
+        /// # Arguments
+        /// * `owner`    – Address of the bill owner
+        /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
+        /// * `cursor`   – Start after this bill ID (pass 0 for the first page)
+        /// * `limit`    – Max items per page (0 → DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+        ///
+        /// # Returns
+        /// `BillPage { items, next_cursor, count }`. `next_cursor == 0` means no more pages.
+        ///
+        /// # Currency Comparison
+        /// Currency comparison is case-insensitive and whitespace-insensitive:
+        /// - "usdc", "USDC", "UsDc", " usdc " all match
+        /// - Empty currency defaults to "XLM" for comparison
+        ///
+        /// # Examples
+        /// ```rust
+        /// // Get unpaid USDC bills for owner
+        /// let page = client.get_unpaid_bills_by_currency(&owner, &"USDC".into(), &0, &10);
+        /// ```
+        pub fn get_unpaid_bills_by_currency(
+            env: Env,
+            owner: Address,
+            currency: String,
+            cursor: u32,
+            limit: u32,
+        ) -> BillPage {
+            let limit = clamp_limit(limit);
+            let normalized_currency = Self::normalize_currency(&env, &currency);
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+
+            let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+            for (id, bill) in bills.iter() {
+                if id <= cursor {
+                    continue;
+                }
+                if bill.owner != owner || bill.paid || bill.currency != normalized_currency {
+                    continue;
+                }
+                staging.push_back((id, bill));
+                if staging.len() > limit {
+                    break;
+                }
+            }
+
+            Self::build_page(&env, staging, limit)
+        }
+
+        /// Sum of all **unpaid** bill amounts for `owner` denominated in `currency`.
+        ///
+        /// # Arguments
+        /// * `owner`    – Address of the bill owner
+        /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
+        ///
+        /// # Returns
+        /// Total unpaid amount in the specified currency
+        ///
+        /// # Currency Comparison
+        /// Currency comparison is case-insensitive and whitespace-insensitive:
+        /// - "usdc", "USDC", "UsDc", " usdc " all match
+        /// - Empty currency defaults to "XLM" for comparison
+        ///
+        /// # Examples
+        /// ```rust
+        /// // Get total unpaid amount in USDC
+        /// let total_usdc = client.get_total_unpaid_by_currency(&owner, &"USDC".into());
+        /// // Get total unpaid amount in XLM
+        /// let total_xlm = client.get_total_unpaid_by_currency(&owner, &"XLM".into());
+        /// ```
+        pub fn get_total_unpaid_by_currency(env: Env, owner: Address, currency: String) -> i128 {
+            let normalized_currency = Self::normalize_currency(&env, &currency);
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(&env));
+            let mut total = 0i128;
+            for (_, bill) in bills.iter() {
+                if !bill.paid && bill.owner == owner && bill.currency == normalized_currency {
+                    total += bill.amount;
+                }
+            }
+            total
+        }
+
+        // -----------------------------------------------------------------------
+        // Internal helpers
+        // -----------------------------------------------------------------------
+
+        fn extend_instance_ttl(env: &Env) {
+            env.storage()
+                .instance()
+                .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+
+        fn extend_archive_ttl(env: &Env) {
+            env.storage()
+                .instance()
+                .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+        }
+
+        fn update_storage_stats(env: &Env) {
+            let bills: Map<u32, Bill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILLS"))
+                .unwrap_or_else(|| Map::new(env));
+            let archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(env));
+
+            let mut active_count = 0u32;
+            let mut unpaid_amount = 0i128;
+            for (_, bill) in bills.iter() {
+                active_count += 1;
+                if !bill.paid {
+                    unpaid_amount = unpaid_amount.saturating_add(bill.amount);
+                }
+            }
+
+            let mut archived_count = 0u32;
+            let mut archived_amount = 0i128;
+            for (_, bill) in archived.iter() {
+                archived_count += 1;
+                archived_amount = archived_amount.saturating_add(bill.amount);
+            }
+
+            let stats = StorageStats {
+                active_bills: active_count,
+                archived_bills: archived_count,
+                total_unpaid_amount: unpaid_amount,
+                total_archived_amount: archived_amount,
+                last_updated: env.ledger().timestamp(),
+            };
+
+            env.storage()
+                .instance()
+                .set(&symbol_short!("STOR_STAT"), &stats);
+        }
+        fn get_unpaid_totals_map(env: &Env) -> Option<Map<Address, i128>> {
+            env.storage().instance().get(&STORAGE_UNPAID_TOTALS)
+        }
+
+        fn adjust_unpaid_total(env: &Env, owner: &Address, delta: i128) {
+            if delta == 0 {
+                return;
+            }
+            let mut totals: Map<Address, i128> = env
+                .storage()
+                .instance()
+                .get(&STORAGE_UNPAID_TOTALS)
+                .unwrap_or_else(|| Map::new(env));
+            let current = totals.get(owner.clone()).unwrap_or(0);
+            let next = current.checked_add(delta).expect("overflow");
+            totals.set(owner.clone(), next);
+            env.storage()
+                .instance()
+                .set(&STORAGE_UNPAID_TOTALS, &totals);
+        }
+    }
 // -----------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------
@@ -2876,7 +2870,8 @@ mod test {
             &String::from_str(&env, "XLM"),
         );
 
-        let result = client.try_set_external_ref(&other, &bill_id, &Some(String::from_str(&env, "REF")));
+        let result =
+            client.try_set_external_ref(&other, &bill_id, &Some(String::from_str(&env, "REF")));
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
@@ -2900,7 +2895,7 @@ mod test {
             &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &bill_id);
-        
+
         // Archive it
         client.archive_paid_bills(&owner, &2000000);
 
@@ -2918,8 +2913,26 @@ mod test {
         let bob = Address::generate(&env);
 
         env.mock_all_auths();
-        let alice_bill = client.create_bill(&alice, &String::from_str(&env, "Alice"), &100, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
-        let bob_bill = client.create_bill(&bob, &String::from_str(&env, "Bob"), &200, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
+        let alice_bill = client.create_bill(
+            &alice,
+            &String::from_str(&env, "Alice"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        let bob_bill = client.create_bill(
+            &bob,
+            &String::from_str(&env, "Bob"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         let mut ids = Vec::new(&env);
         ids.push_back(alice_bill);
@@ -2952,22 +2965,4 @@ mod test {
 
         client.bulk_cleanup_bills(&admin, &1000000);
     }
-}
-}
-
-fn extend_instance_ttl(env: &Env) {
-    // Extend the contract instance itself
-    env.storage().instance().extend_ttl(
-        INSTANCE_LIFETIME_THRESHOLD, 
-        INSTANCE_BUMP_AMOUNT
-    );
-}
-}
-
-pub fn create_bill(env: Env, ...) {
-    extend_instance_ttl(&env); // Keep contract alive
-    // ... logic to create bill ...
-    let key = DataKey::Bill(bill_id);
-    env.storage().persistent().set(&key, &bill);
-    extend_ttl(&env, &key); // Keep this specific bill alive
 }

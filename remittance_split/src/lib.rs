@@ -281,11 +281,10 @@ impl RemittanceSplit {
             .ok_or(RemittanceSplitError::NotInitialized)?;
         
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
         // Authorization logic:
         // 1. If no upgrade admin exists, only contract owner can set initial admin
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match &current_upgrade_admin {
             None => {
                 // Initial admin setup - only owner can set
                 if config.owner != caller {
@@ -294,12 +293,11 @@ impl RemittanceSplit {
             }
             Some(current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if current_admin != &caller {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
         }
-        
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
@@ -307,7 +305,7 @@ impl RemittanceSplit {
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("split"), symbol_short!("adm_xfr")),
-            (current_upgrade_admin, new_admin.clone()),
+            (current_upgrade_admin.clone(), new_admin.clone()),
         );
         
         Ok(())
