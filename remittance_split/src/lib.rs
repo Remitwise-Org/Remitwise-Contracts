@@ -36,6 +36,10 @@ pub enum RemittanceSplitError {
     ChecksumMismatch = 9,
     InvalidDueDate = 10,
     ScheduleNotFound = 11,
+    /// The supplied token contract address does not match the trusted USDC contract.
+    UntrustedTokenContract = 12,
+    /// A destination account is the same as the sender, which would be a no-op transfer.
+    SelfTransferNotAllowed = 13,
 }
 
 #[derive(Clone)]
@@ -69,6 +73,9 @@ pub struct SplitConfig {
     pub insurance_percent: u32,
     pub timestamp: u64,
     pub initialized: bool,
+    /// The only token contract address permitted for distribute_usdc calls.
+    /// Stored at initialization time; prevents substitution attacks.
+    pub usdc_contract: Address,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,13 +96,25 @@ pub enum SplitEvent {
     Initialized,
     Updated,
     Calculated,
+    /// Emitted when distribute_usdc successfully completes all transfers.
+    DistributionCompleted,
 }
 
-/// Snapshot for data export/import (migration). Checksum is a simple numeric digest for on-chain verification.
+/// Snapshot for data export/import (migration).
+///
+/// # Schema Version Tag
+/// `schema_version` carries the explicit snapshot format version.
+/// Importers **must** validate this field against the supported range
+/// (`MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION`) before applying the
+/// snapshot. Snapshots with an unknown future version must be rejected to
+/// guarantee forward/backward compatibility.
+/// `checksum` is a simple numeric digest for on-chain integrity verification.
 #[contracttype]
 #[derive(Clone)]
 pub struct ExportSnapshot {
-    pub version: u32,
+    /// Explicit schema version tag for this snapshot format.
+    /// Supported range: MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION.
+    pub schema_version: u32,
     pub checksum: u64,
     pub config: SplitConfig,
 }
@@ -137,7 +156,10 @@ pub enum ScheduleEvent {
     Cancelled,
 }
 
-const SNAPSHOT_VERSION: u32 = 1;
+/// Current snapshot schema version. Bump this when the ExportSnapshot format changes.
+const SCHEMA_VERSION: u32 = 1;
+/// Oldest snapshot schema version this contract can import. Enables backward compat.
+const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
 const MAX_AUDIT_ENTRIES: u32 = 100;
 const CONTRACT_VERSION: u32 = 1;
 
@@ -230,24 +252,74 @@ impl RemittanceSplit {
     fn get_upgrade_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
+    /// Set or transfer the upgrade admin role.
+    /// 
+    /// # Security Requirements
+    /// - If no upgrade admin exists, only the contract owner can set the initial admin
+    /// - If upgrade admin exists, only the current upgrade admin can transfer to a new admin
+    /// - Caller must be authenticated via require_auth()
+    /// 
+    /// # Parameters
+    /// - `caller`: The address attempting to set the upgrade admin
+    /// - `new_admin`: The address to become the new upgrade admin
+    /// 
+    /// # Returns
+    /// - `Ok(())` on successful admin transfer
+    /// - `Err(RemittanceSplitError::Unauthorized)` if caller lacks permission
+    /// - `Err(RemittanceSplitError::NotInitialized)` if contract not initialized
     pub fn set_upgrade_admin(
         env: Env,
         caller: Address,
         new_admin: Address,
     ) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
+        
         let config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        if config.owner != caller {
-            return Err(RemittanceSplitError::Unauthorized);
+        
+        let current_upgrade_admin = Self::get_upgrade_admin(&env);
+        
+        // Authorization logic:
+        // 1. If no upgrade admin exists, only contract owner can set initial admin
+        // 2. If upgrade admin exists, only current upgrade admin can transfer
+        match current_upgrade_admin {
+            None => {
+                // Initial admin setup - only owner can set
+                if config.owner != caller {
+                    return Err(RemittanceSplitError::Unauthorized);
+                }
+            }
+            Some(current_admin) => {
+                // Admin transfer - only current admin can transfer
+                if current_admin != caller {
+                    return Err(RemittanceSplitError::Unauthorized);
+                }
+            }
         }
+        
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
+        
+        // Emit admin transfer event for audit trail
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("adm_xfr")),
+            (current_upgrade_admin, new_admin.clone()),
+        );
+        
         Ok(())
+    }
+
+    /// Get the current upgrade admin address.
+    /// 
+    /// # Returns
+    /// - `Some(Address)` if upgrade admin is set
+    /// - `None` if no upgrade admin has been configured
+    pub fn get_upgrade_admin_public(env: Env) -> Option<Address> {
+        Self::get_upgrade_admin(&env)
     }
     pub fn set_version(
         env: Env,
@@ -280,6 +352,8 @@ impl RemittanceSplit {
     /// # Arguments
     /// * `owner` - Address of the split owner (must authorize)
     /// * `nonce` - Caller's transaction nonce (must equal get_nonce(owner)) for replay protection
+    /// * `usdc_contract` - The trusted USDC token contract address; only this address is
+    ///   permitted in future `distribute_usdc` calls (prevents token substitution attacks)
     /// * `spending_percent` - Percentage for spending (0-100)
     /// * `savings_percent` - Percentage for savings (0-100)
     /// * `bills_percent` - Percentage for bills (0-100)
@@ -288,15 +362,16 @@ impl RemittanceSplit {
     /// # Returns
     /// True if initialization was successful
     ///
-    /// # Panics
-    /// - If owner doesn't authorize the transaction
-    /// - If nonce is invalid (replay)
-    /// - If percentages don't sum to 100
-    /// - If split is already initialized (use update_split instead)
+    /// # Errors
+    /// - `Unauthorized` if owner doesn't authorize the transaction
+    /// - `InvalidNonce` if nonce is invalid (replay protection)
+    /// - `PercentagesDoNotSumTo100` if percentages don't sum to 100
+    /// - `AlreadyInitialized` if split is already initialized (use update_split instead)
     pub fn initialize_split(
         env: Env,
         owner: Address,
         nonce: u64,
+        usdc_contract: Address,
         spending_percent: u32,
         savings_percent: u32,
         bills_percent: u32,
@@ -328,6 +403,7 @@ impl RemittanceSplit {
             insurance_percent,
             timestamp: env.ledger().timestamp(),
             initialized: true,
+            usdc_contract,
         };
 
         env.storage()
@@ -488,6 +564,36 @@ impl RemittanceSplit {
         Ok(vec![&env, spending, savings, bills, insurance])
     }
 
+    /// Distribute USDC from `from` to the four split destination accounts according
+    /// to the configured percentages.
+    ///
+    /// # Security invariants enforced
+    /// 1. `from.require_auth()` is the very first operation — no state is read before
+    ///    the caller proves authority.
+    /// 2. The contract must not be paused.
+    /// 3. `from` must be the configured split owner — prevents any third party from
+    ///    triggering transfers out of an owner's account even if they can self-authorize.
+    /// 4. `usdc_contract` must match the address stored at initialization time —
+    ///    prevents token-substitution attacks where a malicious token is passed in.
+    /// 5. None of the destination accounts may equal `from` — prevents silent no-op
+    ///    transfers that could be used to inflate audit logs or waste gas.
+    /// 6. Nonce replay protection is checked before any token interaction.
+    /// 7. A `DistributionCompleted` event is emitted on success for off-chain indexing.
+    ///
+    /// # Arguments
+    /// * `usdc_contract` - Token contract address (must match the trusted address stored at init)
+    /// * `from` - Sender address (must be the config owner and must authorize)
+    /// * `nonce` - Replay-protection nonce (must equal `get_nonce(from)`)
+    /// * `accounts` - Destination accounts for each split category
+    /// * `total_amount` - Total amount to distribute (must be > 0)
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `from` is not the config owner or contract is paused
+    /// - `UntrustedTokenContract` if `usdc_contract` ≠ stored trusted address
+    /// - `SelfTransferNotAllowed` if any destination account equals `from`
+    /// - `InvalidNonce` on replay
+    /// - `InvalidAmount` if `total_amount` ≤ 0
+    /// - `NotInitialized` if the contract has not been initialized
     pub fn distribute_usdc(
         env: Env,
         usdc_contract: Address,
@@ -496,14 +602,51 @@ impl RemittanceSplit {
         accounts: AccountGroup,
         total_amount: i128,
     ) -> Result<bool, RemittanceSplitError> {
+        // 1. Auth first — before any storage reads or state checks.
+        from.require_auth();
+
+        // 2. Pause guard.
+        Self::require_not_paused(&env)?;
+
+        // 3. Contract must be initialized; load config for subsequent checks.
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        // 4. Only the configured owner may trigger distributions.
+        if config.owner != from {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        // 5. Token contract must match the trusted address pinned at initialization.
+        if config.usdc_contract != usdc_contract {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
+        // 6. Amount validation.
         if total_amount <= 0 {
             Self::append_audit(&env, symbol_short!("distrib"), &from, false);
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        from.require_auth();
+        // 7. No destination account may equal the sender (self-transfer guard).
+        if accounts.spending == from
+            || accounts.savings == from
+            || accounts.bills == from
+            || accounts.insurance == from
+        {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::SelfTransferNotAllowed);
+        }
+
+        // 8. Replay protection.
         Self::require_nonce(&env, &from, nonce)?;
 
+        // 9. Calculate split amounts and execute transfers.
         let amounts = Self::calculate_split_amounts(&env, total_amount, false)?;
         let token = TokenClient::new(&env, &usdc_contract);
 
@@ -520,8 +663,14 @@ impl RemittanceSplit {
             token.transfer(&from, &accounts.insurance, &amounts[3]);
         }
 
+        // 10. Advance nonce, record audit, emit event.
         Self::increment_nonce(&env, &from)?;
         Self::append_audit(&env, symbol_short!("distrib"), &from, true);
+        env.events().publish(
+            (symbol_short!("split"), SplitEvent::DistributionCompleted),
+            (from, total_amount),
+        );
+
         Ok(true)
     }
 
@@ -574,9 +723,13 @@ impl RemittanceSplit {
         if config.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
         }
-        let checksum = Self::compute_checksum(SNAPSHOT_VERSION, &config);
+        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("snap_exp")),
+            SCHEMA_VERSION,
+        );
         Ok(Some(ExportSnapshot {
-            version: SNAPSHOT_VERSION,
+            schema_version: SCHEMA_VERSION,
             checksum,
             config,
         }))
@@ -591,11 +744,14 @@ impl RemittanceSplit {
         caller.require_auth();
         Self::require_nonce(&env, &caller, nonce)?;
 
-        if snapshot.version != SNAPSHOT_VERSION {
+        // Accept any schema_version within the supported range for backward/forward compat.
+        if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
+            || snapshot.schema_version > SCHEMA_VERSION
+        {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
-        let expected = Self::compute_checksum(snapshot.version, &snapshot.config);
+        let expected = Self::compute_checksum(snapshot.schema_version, &snapshot.config);
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ChecksumMismatch);
