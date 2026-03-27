@@ -30,14 +30,14 @@ use bill_payments::events::{
 };
 use bill_payments::{BillPayments, BillPaymentsClient};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{symbol_short, testutils::Events, Address, Env, IntoVal, Symbol, TryFromVal, Vec};
+use soroban_sdk::{symbol_short, testutils::Events, Address, Env, Symbol, TryFromVal, Vec};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /// Register the contract, create a client, and mock all auths.
-fn setup(env: &Env) -> (Address, BillPaymentsClient) {
+fn setup(env: &Env) -> (Address, BillPaymentsClient<'_>) {
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(env, &contract_id);
     (contract_id, client)
@@ -672,11 +672,10 @@ fn test_recurring_pay_emits_created_after_paid() {
     );
 
     // Clear event count before pay
-    let events_before = env.events().all().len();
+    // env.events().all().len();
 
     client.pay_bill(&user, &bill_id);
 
-    let all = env.events().all();
     // At least one paid event should have been emitted
     let paid_count = events_with_action(&env, symbol_short!("paid"));
     assert!(paid_count >= 1, "Expected at least 1 paid event");
