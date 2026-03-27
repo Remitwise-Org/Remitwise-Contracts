@@ -1,5 +1,8 @@
+extern crate std;
+
 use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
+use soroban_sdk::testutils::Address as _;
 
 // ============================================================================
 // Mock Contract Implementations
@@ -103,6 +106,50 @@ impl MockInsurance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use testutils::generate_test_address;
+
+    // Backwards-compat alias: older tests refer to `setup_test_env`.
+    fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+        setup()
+    }
+
+    fn seed_audit_log(env: &Env, orchestrator_id: &Address, user: &Address, n: u32) {
+        // Seed the audit log to a predictable post-rotation state:
+        // keep the most recent MAX_AUDIT_ENTRIES entries.
+        let retained_start = n.saturating_sub(100);
+        let mut log: Vec<crate::OrchestratorAuditEntry> = Vec::new(env);
+        for i in retained_start..n {
+            log.push_back(crate::OrchestratorAuditEntry {
+                caller: user.clone(),
+                operation: symbol_short!("execflow"),
+                amount: i as i128,
+                success: true,
+                timestamp: env.ledger().timestamp(),
+                error_code: None,
+            });
+        }
+
+        env.as_contract(orchestrator_id, || {
+            env.storage().instance().set(&symbol_short!("AUDIT"), &log);
+        });
+    }
+
+    fn collect_all_pages(client: &OrchestratorClient, page_size: u32) -> Vec<crate::OrchestratorAuditEntry> {
+        let first = client.get_audit_log(&0, &page_size);
+        let mut out = Vec::new(first.env());
+        let mut cursor = 0u32;
+        loop {
+            let page = client.get_audit_log(&cursor, &page_size);
+            if page.len() == 0 {
+                break;
+            }
+            for entry in page.iter() {
+                out.push_back(entry);
+            }
+            cursor = cursor.saturating_add(page.len());
+        }
+        out
+    }
 
     /// Full test environment with all contracts deployed.
     /// Returns (env, orchestrator, family_wallet, remittance_split,
@@ -1373,7 +1420,7 @@ mod tests {
 
         // Seed above capacity to force rotation and emulate heavy execution history.
         let seeded = 130u32;
-        seed_audit_log(&env, &user, seeded);
+        seed_audit_log(&env, &orchestrator_id, &user, seeded);
 
         // Fetch in multiple pages and assert continuity without duplicates.
         let page_size = 17u32;
@@ -1392,7 +1439,7 @@ mod tests {
         for entry in &entries {
             dedupe.insert(entry.amount);
         }
-        assert_eq!(dedupe.len(), entries.len());
+        assert_eq!(dedupe.len() as u32, entries.len());
     }
 
     #[test]
@@ -1400,7 +1447,7 @@ mod tests {
         let (env, orchestrator_id, _, _, _, _, _, user) = setup_test_env();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        seed_audit_log(&env, &user, 12);
+        seed_audit_log(&env, &orchestrator_id, &user, 12);
 
         // limit=0 should produce empty page.
         assert_eq!(client.get_audit_log(&0, &0).len(), 0);
@@ -1423,7 +1470,7 @@ mod tests {
         let (env, orchestrator_id, _, _, _, _, _, user) = setup_test_env();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        seed_audit_log(&env, &user, 5);
+        seed_audit_log(&env, &orchestrator_id, &user, 5);
 
         // Regression test: very large cursor should safely return empty page
         // rather than panicking due to u32 addition overflow.

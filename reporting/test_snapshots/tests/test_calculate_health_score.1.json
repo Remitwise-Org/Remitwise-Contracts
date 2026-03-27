@@ -60,14 +60,14 @@
     []
   ],
   "ledger": {
-    "protocol_version": 20,
+    "protocol_version": 21,
     "sequence_number": 1,
     "timestamp": 1704067200,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 10,
-    "min_persistent_entry_ttl": 10,
-    "min_temp_entry_ttl": 10,
-    "max_entry_ttl": 3110400,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 2000000,
     "ledger_entries": [
       [
         {
@@ -189,7 +189,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          2000000
         ]
       ],
       [
@@ -222,7 +222,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          2000000
         ]
       ],
       [
@@ -254,7 +254,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -286,7 +286,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -318,7 +318,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -350,7 +350,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -958,7 +958,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }

@@ -208,6 +208,10 @@ pub enum OrchestratorError {
     /// execution is already in progress. This prevents nested execution attacks
     /// and partial-state corruption.
     ReentrancyDetected = 10,
+    /// A contract address points to the orchestrator itself, which is forbidden.
+    SelfReferenceNotAllowed = 11,
+    /// Two or more required contract addresses are identical.
+    DuplicateContractAddress = 12,
 }
 
 /// Execution state tracking for reentrancy protection.
@@ -224,7 +228,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -232,6 +236,7 @@ pub enum ExecutionState {
     /// An execution is in progress; reentrant calls will be rejected
     Executing = 1,
 }
+
 
 /// Result of a complete remittance flow execution
 #[contracttype]
@@ -477,6 +482,70 @@ impl Orchestrator {
         }
     }
 
+    /// Validate addresses used in the remittance flow entrypoint.
+    ///
+    /// Security checks:
+    /// - None of the downstream addresses may equal this orchestrator address.
+    /// - All downstream addresses must be pairwise distinct.
+    fn validate_remittance_flow_addresses(
+        env: &Env,
+        family_wallet_addr: &Address,
+        remittance_split_addr: &Address,
+        savings_addr: &Address,
+        bills_addr: &Address,
+        insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let self_addr = env.current_contract_address();
+
+        for addr in [
+            family_wallet_addr,
+            remittance_split_addr,
+            savings_addr,
+            bills_addr,
+            insurance_addr,
+        ] {
+            if addr == &self_addr {
+                return Err(OrchestratorError::SelfReferenceNotAllowed);
+            }
+        }
+
+        if family_wallet_addr == remittance_split_addr
+            || family_wallet_addr == savings_addr
+            || family_wallet_addr == bills_addr
+            || family_wallet_addr == insurance_addr
+            || remittance_split_addr == savings_addr
+            || remittance_split_addr == bills_addr
+            || remittance_split_addr == insurance_addr
+            || savings_addr == bills_addr
+            || savings_addr == insurance_addr
+            || bills_addr == insurance_addr
+        {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+
+        Ok(())
+    }
+
+    /// Validate addresses for 2-leg entrypoints (wallet + downstream contract).
+    ///
+    /// Security checks:
+    /// - Neither address may equal this orchestrator address.
+    /// - The two addresses must be distinct.
+    fn validate_two_contract_addresses(
+        env: &Env,
+        a: &Address,
+        b: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let self_addr = env.current_contract_address();
+        if a == &self_addr || b == &self_addr {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if a == b {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
     // ============================================================================
     // Helper Functions - Remittance Split Allocation
     // ============================================================================
@@ -648,7 +717,10 @@ impl Orchestrator {
         // Call pay_premium on the insurance contract
         // This will panic if the policy doesn't exist or is inactive
         // The panic will cause the entire transaction to revert (atomicity)
-        insurance_client.pay_premium(caller, &policy_id);
+        let ok = insurance_client.pay_premium(caller, &policy_id);
+        if !ok {
+            return Err(OrchestratorError::InsurancePaymentFailed);
+        }
 
         Ok(())
     }
@@ -760,6 +832,8 @@ impl Orchestrator {
         // Require caller authorization
         caller.require_auth();
 
+        Self::validate_two_contract_addresses(&env, &family_wallet_addr, &savings_addr)?;
+
         let timestamp = env.ledger().timestamp();
 
         // Step 1: Check family wallet permission
@@ -859,6 +933,8 @@ impl Orchestrator {
         // Require caller authorization
         caller.require_auth();
 
+        Self::validate_two_contract_addresses(&env, &family_wallet_addr, &bills_addr)?;
+
         let timestamp = env.ledger().timestamp();
 
         let result = (|| {
@@ -957,6 +1033,8 @@ impl Orchestrator {
 
         // Require caller authorization
         caller.require_auth();
+
+        Self::validate_two_contract_addresses(&env, &family_wallet_addr, &insurance_addr)?;
 
         let timestamp = env.ledger().timestamp();
 

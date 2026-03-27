@@ -48,6 +48,8 @@ orchestrator = { path = "./orchestrator" }
 
 [dev-dependencies]
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+remitwise-common = { path = "./remitwise-common" }
+orchestrator = { path = "./orchestrator" }
 
 [profile.release]
 opt-level = "z"

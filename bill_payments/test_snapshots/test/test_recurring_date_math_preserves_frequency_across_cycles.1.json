@@ -34,6 +34,7 @@
                 {
                   "u32": 7
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -174,6 +175,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "frequency_days"
                                     },
                                     "val": {
@@ -233,6 +240,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -277,6 +292,12 @@
                                     "val": {
                                       "u64": 1604800
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -339,6 +360,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -383,6 +412,12 @@
                                     "val": {
                                       "u64": 2209600
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -443,6 +478,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -652,6 +695,7 @@
                 {
                   "u32": 7
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -1002,6 +1046,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "frequency_days"
                   },
                   "val": {
@@ -1061,6 +1111,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }
@@ -1149,6 +1207,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "frequency_days"
                   },
                   "val": {
@@ -1208,6 +1272,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }
@@ -1296,6 +1368,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "frequency_days"
                   },
                   "val": {
@@ -1353,6 +1431,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }

@@ -7,7 +7,7 @@ use soroban_sdk::{
     Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
-use testutils::{set_ledger_time, setup_test_env};
+use testutils::set_ledger_time;
 
 // Removed local set_time in favor of testutils::set_ledger_time
 

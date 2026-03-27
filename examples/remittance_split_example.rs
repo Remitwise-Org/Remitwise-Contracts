@@ -18,7 +18,7 @@ fn main() {
     // 4. [Write] Initialize the split configuration
     // Percentages: 50% Spending, 30% Savings, 15% Bills, 5% Insurance
     println!("Initializing split configuration for owner: {:?}", owner);
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &owner, &50, &30, &15, &5);
 
     // 5. [Read] Verify the configuration
     let config = client.get_config().unwrap();

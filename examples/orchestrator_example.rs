@@ -8,17 +8,15 @@ fn main() {
 
     // 2. Register the Orchestrator contract
     let contract_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &contract_id);
-
-    // 3. Generate mock addresses for all participants and contracts
-    let caller = Address::generate(&env);
+    let _client = OrchestratorClient::new(&env, &contract_id);
+    let _caller = Address::generate(&env);
     
     // Contract addresses
-    let family_wallet_addr = Address::generate(&env);
-    let remittance_split_addr = Address::generate(&env);
-    let savings_addr = Address::generate(&env);
-    let bills_addr = Address::generate(&env);
-    let insurance_addr = Address::generate(&env);
+    let _family_wallet_addr = Address::generate(&env);
+    let _remittance_split_addr = Address::generate(&env);
+    let _savings_addr = Address::generate(&env);
+    let _bills_addr = Address::generate(&env);
+    let _insurance_addr = Address::generate(&env);
 
     // Resource IDs
     let goal_id = 1u32;

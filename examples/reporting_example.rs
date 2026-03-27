@@ -1,5 +1,5 @@
 use soroban_sdk::{Env, Address, testutils::Address as _};
-use reporting::{ReportingClient, Category};
+use reporting::{ReportingContract, ReportingContractClient};
 
 // Mock contracts for the reporting example
 // In a real scenario, these would be the actual deployed contract IDs
@@ -11,12 +11,12 @@ fn main() {
     env.mock_all_auths();
 
     // 2. Register the Reporting contract
-    let contract_id = env.register_contract(None, reporting::Reporting);
-    let client = ReportingClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
-    let user = Address::generate(&env);
+    let _user = Address::generate(&env);
     
     // Dependencies
     let split_addr = Address::generate(&env);
@@ -29,7 +29,7 @@ fn main() {
 
     // 4. [Write] Initialize the contract
     println!("Initializing Reporting contract with admin: {:?}", admin);
-    client.init(&admin).unwrap();
+    client.init(&admin);
 
     // 5. [Write] Configure contract addresses
     println!("Configuring dependency addresses...");
@@ -40,7 +40,7 @@ fn main() {
         &bills_addr,
         &insurance_addr,
         &family_addr
-    ).unwrap();
+    );
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report

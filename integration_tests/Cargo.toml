@@ -9,3 +9,9 @@ soroban-sdk = "21.0.0"
 
 [dev-dependencies]
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+bill_payments = { path = "../bill_payments" }
+insurance = { path = "../insurance" }
+remittance_split = { path = "../remittance_split" }
+savings_goals = { path = "../savings_goals" }
+orchestrator = { path = "../orchestrator" }
+remitwise-common = { path = "../remitwise-common" }

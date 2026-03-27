@@ -204,12 +204,6 @@ mod insurance {
     }
 }
 
-fn create_test_env() -> Env {
-    let env = Env::default();
-    env.mock_all_auths();
-    env
-}
-
 #[test]
 fn test_init_reporting_contract_succeeds() {
     let env = Env::default();
@@ -1315,7 +1309,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
 // of call order, ledger timestamp, or user address.
 // ============================================================================
 
-fn make_client(env: &Env) -> (ReportingContractClient, Address) {
+fn make_client(env: &Env) -> (ReportingContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
