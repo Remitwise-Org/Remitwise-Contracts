@@ -178,25 +178,25 @@ pub struct RemittanceSplit;
 impl RemittanceSplit {
     fn get_schedule(env: &Env, schedule_id: u32) -> Option<RemittanceSchedule> {
         env.storage()
-            .instance()
+            .persistent()
             .get(&RemittanceScheduleDataKey::Schedule(schedule_id))
     }
 
     fn set_schedule(env: &Env, schedule: &RemittanceSchedule) {
         env.storage()
-            .instance()
+            .persistent()
             .set(&RemittanceScheduleDataKey::Schedule(schedule.id), schedule);
     }
 
     fn get_owner_schedule_head(env: &Env, owner: &Address) -> Option<u32> {
         env.storage()
-            .instance()
+            .persistent()
             .get(&RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()))
     }
 
     fn set_owner_schedule_head(env: &Env, owner: &Address, schedule_id: u32) {
         env.storage()
-            .instance()
+            .persistent()
             .set(&RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()), &schedule_id);
     }
 

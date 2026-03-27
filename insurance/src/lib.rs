@@ -1324,7 +1324,7 @@ mod test_events {
 
         let name = String::from_str(&env, "Health Insurance");
         let coverage_type = String::from_str(&env, "health");
-        let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
+        client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
         setup_policies(&env, &client, &owner, 7);
 
         let page1 = client.get_active_policies(&owner, &0, &3);
@@ -1348,7 +1348,7 @@ mod test_events {
         let owner = Address::generate(&env);
 
         // Create a policy
-        let policy_id = client.create_policy(
+        client.create_policy(
             &owner,
             &String::from_str(&env, "Emergency Coverage"),
             &String::from_str(&env, "emergency"),
@@ -1361,7 +1361,7 @@ mod test_events {
 
         let name = String::from_str(&env, "Health Insurance");
         let coverage_type = String::from_str(&env, "health");
-        let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
+        client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
         let ids = setup_policies(&env, &client, &owner, 4);
         // Deactivate policy #2
         client.deactivate_policy(&owner, &ids.get(1).unwrap());
@@ -1445,15 +1445,15 @@ mod test_events {
         // Create multiple policies
         let name1 = String::from_str(&env, "Health Insurance");
         let coverage_type1 = String::from_str(&env, "health");
-        let policy_id1 = client.create_policy(&owner, &name1, &coverage_type1, &100, &10000, &None);
+        client.create_policy(&owner, &name1, &coverage_type1, &100, &10000, &None);
 
         let name2 = String::from_str(&env, "Emergency Insurance");
         let coverage_type2 = String::from_str(&env, "emergency");
-        let policy_id2 = client.create_policy(&owner, &name2, &coverage_type2, &200, &20000, &None);
+        client.create_policy(&owner, &name2, &coverage_type2, &200, &20000, &None);
 
         let name3 = String::from_str(&env, "Life Insurance");
         let coverage_type3 = String::from_str(&env, "life");
-        let policy_id3 = client.create_policy(&owner, &name3, &coverage_type3, &300, &30000, &None);
+        client.create_policy(&owner, &name3, &coverage_type3, &300, &30000, &None);
         let policy_id = client.create_policy(
             &owner,
             &String::from_str(&env, "Policy 1"),
@@ -1505,7 +1505,7 @@ mod test_events {
 
         let name3 = String::from_str(&env, "Life Insurance");
         let coverage_type3 = String::from_str(&env, "life");
-        let policy_id3 = client.create_policy(&owner, &name3, &coverage_type3, &300, &30000, &None);
+        client.create_policy(&owner, &name3, &coverage_type3, &300, &30000, &None);
         // Create a policy
         let policy_id = client.create_policy(
             &owner,

@@ -777,7 +777,7 @@ fn test_create_policy_emits_event() {
     let policy_id = client.create_policy(&owner, &name, &coverage_type, &100, &10000, &None);
 
     let events = env.events().all();
-    assert!(events.len() >= 1);
+    assert!(!events.is_empty());
 
     let audit_event = events.last().unwrap();
 
@@ -817,7 +817,7 @@ fn test_pay_premium_emits_event() {
     client.pay_premium(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 1);
+    assert!(!events.is_empty());
 
     let audit_event = events.last().unwrap();
 
@@ -857,7 +857,7 @@ fn test_deactivate_policy_emits_event() {
     client.deactivate_policy(&owner, &policy_id);
 
     let events = env.events().all();
-    assert!(events.len() >= 1);
+    assert!(!events.is_empty());
 
     let audit_event = events.last().unwrap();
 
