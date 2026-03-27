@@ -1,6 +1,6 @@
 use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionType, TransactionData, BatchMemberItem};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
-use soroban_sdk::{Address, Env, Vec, vec, String, token::{TokenClient, StellarAssetClient}};
+use soroban_sdk::{Address, Env, Vec, vec, token::StellarAssetClient};
 use remitwise_common::FamilyRole;
 
 fn bench_env() -> Env {
@@ -37,7 +37,7 @@ where
     (cpu, mem, result)
 }
 
-fn setup_wallet(env: &Env) -> (FamilyWalletClient, Address, Vec<Address>) {
+fn setup_wallet(env: &Env) -> (FamilyWalletClient<'_>, Address, Vec<Address>) {
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(env, &contract_id);
     let owner = Address::generate(env);
