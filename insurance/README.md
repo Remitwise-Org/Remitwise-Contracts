@@ -172,7 +172,7 @@ Owner-only. Updates or clears the `external_ref` field of a policy.
 
 Owner-only. Marks a policy as inactive and removes it from the active-policy list.
 
-**Emits**: `PolicyDeactivatedEvent`
+This function is **idempotent**: if the policy is already inactive, it returns `false` without emitting duplicate events or updating storage.
 
 ---
 

@@ -20,7 +20,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -57,7 +57,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -94,7 +94,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -131,7 +131,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -168,7 +168,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -205,7 +205,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -242,7 +242,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -344,7 +344,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -429,7 +429,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -514,7 +514,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -599,7 +599,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -684,7 +684,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -769,7 +769,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -854,7 +854,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -1204,7 +1204,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -1255,7 +1255,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -1384,7 +1384,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -1435,7 +1435,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -1564,7 +1564,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -1615,7 +1615,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -1744,7 +1744,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -1795,7 +1795,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -1924,7 +1924,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -1975,7 +1975,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -2104,7 +2104,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -2155,7 +2155,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -2284,7 +2284,7 @@
                   "string": "Policy"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -2335,7 +2335,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -2530,7 +2530,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -2610,7 +2610,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -2690,7 +2690,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -2855,7 +2855,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -2935,7 +2935,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -3015,7 +3015,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {
@@ -3180,7 +3180,7 @@
                               "symbol": "coverage_type"
                             },
                             "val": {
-                              "string": "health"
+                              "u32": 1
                             }
                           },
                           {

@@ -20,7 +20,7 @@
                   "string": "Life Insurance"
                 },
                 {
-                  "string": "life"
+                  "u32": 2
                 },
                 {
                   "i128": {
@@ -142,7 +142,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "life"
+                                      "u32": 2
                                     }
                                   },
                                   {
@@ -195,26 +195,6 @@
                                     "val": "void"
                                   }
                                 ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "PRM_TOT"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 200
-                                }
                               }
                             }
                           ]
@@ -347,7 +327,7 @@
                   "string": "Life Insurance"
                 },
                 {
-                  "string": "life"
+                  "u32": 2
                 },
                 {
                   "i128": {
@@ -398,7 +378,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "life"
+                    "u32": 2
                   }
                 },
                 {
@@ -646,7 +626,9 @@
                 "symbol": "pay_premium"
               }
             ],
-            "data": "void"
+            "data": {
+              "bool": true
+            }
           }
         }
       },

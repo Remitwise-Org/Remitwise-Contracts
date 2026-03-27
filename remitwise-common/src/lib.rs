@@ -34,6 +34,9 @@ pub enum CoverageType {
     Property = 3,
     Auto = 4,
     Liability = 5,
+    Emergency = 6,
+    Travel = 7,
+    Dental = 8,
 }
 
 /// Event categories for logging
@@ -164,8 +167,3 @@ impl RemitwiseEvents {
 
 // Standardized TTL Constants (Ledger Counts)
 pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
-pub const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS; // 30 days
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS; // 7 days
-
-pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
-pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days

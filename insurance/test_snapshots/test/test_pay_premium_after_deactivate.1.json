@@ -20,7 +20,7 @@
                   "string": "Health Plan"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -144,7 +144,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -197,26 +197,6 @@
                                     "val": "void"
                                   }
                                 ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "PRM_TOT"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 0
-                                }
                               }
                             }
                           ]
@@ -349,7 +329,7 @@
                   "string": "Health Plan"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -400,7 +380,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -569,7 +549,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -715,7 +695,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "insure"
+                "symbol": "insuranc"
               },
               {
                 "vec": [
@@ -830,7 +810,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
                 },
                 {
@@ -931,16 +911,21 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "pay_premium"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 6
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Policy is not active' from contract function 'Symbol(obj#187)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 1
+                }
+              ]
             }
           }
         }
@@ -960,12 +945,12 @@
               },
               {
                 "error": {
-                  "contract": 6
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -985,14 +970,14 @@
               },
               {
                 "error": {
-                  "contract": 6
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "contract try_call failed"
+                  "string": "contract call failed"
                 },
                 {
                   "symbol": "pay_premium"
@@ -1008,6 +993,31 @@
                   ]
                 }
               ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "wasm_vm": "invalid_action"
+                }
+              }
+            ],
+            "data": {
+              "string": "escalating error to panic"
             }
           }
         }

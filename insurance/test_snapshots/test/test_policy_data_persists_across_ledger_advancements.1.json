@@ -20,7 +20,7 @@
                   "string": "Auto Insurance"
                 },
                 {
-                  "string": "auto"
+                  "u32": 4
                 },
                 {
                   "i128": {
@@ -79,7 +79,7 @@
                   "string": "Travel Insurance"
                 },
                 {
-                  "string": "travel"
+                  "u32": 7
                 },
                 {
                   "i128": {
@@ -181,7 +181,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "auto"
+                                      "u32": 4
                                     }
                                   },
                                   {
@@ -266,7 +266,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "travel"
+                                      "u32": 7
                                     }
                                   },
                                   {
@@ -319,26 +319,6 @@
                                     "val": "void"
                                   }
                                 ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "PRM_TOT"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 200
-                                }
                               }
                             }
                           ]
@@ -504,7 +484,7 @@
                   "string": "Auto Insurance"
                 },
                 {
-                  "string": "auto"
+                  "u32": 4
                 },
                 {
                   "i128": {
@@ -555,7 +535,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "auto"
+                    "u32": 4
                   }
                 },
                 {
@@ -803,7 +783,9 @@
                 "symbol": "pay_premium"
               }
             ],
-            "data": "void"
+            "data": {
+              "bool": true
+            }
           }
         }
       },
@@ -836,7 +818,7 @@
                   "string": "Travel Insurance"
                 },
                 {
-                  "string": "travel"
+                  "u32": 7
                 },
                 {
                   "i128": {
@@ -887,7 +869,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "travel"
+                    "u32": 7
                   }
                 },
                 {
@@ -1056,7 +1038,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "auto"
+                    "u32": 4
                   }
                 },
                 {
@@ -1182,7 +1164,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "travel"
+                    "u32": 7
                   }
                 },
                 {
