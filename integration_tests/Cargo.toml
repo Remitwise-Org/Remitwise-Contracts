@@ -5,7 +5,16 @@ edition = "2021"
 publish = false
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "=21.7.7"
+bill_payments = { path = "../bill_payments" }
+insurance = { path = "../insurance" }
+remittance_split = { path = "../remittance_split" }
+savings_goals = { path = "../savings_goals" }
+orchestrator = { path = "../orchestrator" }
+family_wallet = { path = "../family_wallet" }
+reporting = { path = "../reporting" }
+remitwise-common = { path = "../remitwise-common" }
+testutils = { path = "../testutils" }
 
 [dev-dependencies]
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

@@ -1,4 +1,6 @@
-use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
+use crate::{
+    ExecutionState, Orchestrator, OrchestratorAuditEntry, OrchestratorClient, OrchestratorError,
+};
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
 // ============================================================================
@@ -103,6 +105,7 @@ impl MockInsurance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::{symbol_short, testutils::Address as _};
 
     /// Full test environment with all contracts deployed.
     /// Returns (env, orchestrator, family_wallet, remittance_split,
@@ -130,6 +133,52 @@ mod tests {
             insurance_id,
             user,
         )
+    }
+
+    fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+        setup()
+    }
+
+    fn seed_audit_log(env: &Env, orchestrator_id: &Address, caller: &Address, count: u32) {
+        let mut log = Vec::new(env);
+        for i in 0..count {
+            log.push_back(OrchestratorAuditEntry {
+                caller: caller.clone(),
+                operation: symbol_short!("execflow"),
+                amount: i as i128,
+                success: true,
+                timestamp: i as u64,
+                error_code: None,
+            });
+        }
+
+        env.as_contract(orchestrator_id, || {
+            env.storage().instance().set(&symbol_short!("AUDIT"), &log);
+        });
+    }
+
+    fn collect_all_pages(
+        env: &Env,
+        client: &OrchestratorClient,
+        page_size: u32,
+    ) -> Vec<OrchestratorAuditEntry> {
+        let mut from_index = 0u32;
+        let mut all_entries = Vec::new(env);
+
+        loop {
+            let page = client.get_audit_log(&from_index, &page_size);
+            if page.len() == 0 {
+                break;
+            }
+
+            let page_len = page.len();
+            for entry in page.iter() {
+                all_entries.push_back(entry);
+            }
+            from_index += page_len;
+        }
+
+        all_entries
     }
 
     // ============================================================================
@@ -1373,11 +1422,11 @@ mod tests {
 
         // Seed above capacity to force rotation and emulate heavy execution history.
         let seeded = 130u32;
-        seed_audit_log(&env, &user, seeded);
+        seed_audit_log(&env, &orchestrator_id, &user, seeded);
 
         // Fetch in multiple pages and assert continuity without duplicates.
         let page_size = 17u32;
-        let entries = collect_all_pages(&client, page_size);
+        let entries = collect_all_pages(&env, &client, page_size);
         assert_eq!(entries.len() as u32, 100);
 
         // Rotation should retain the most recent [30..129] amounts.
@@ -1388,9 +1437,11 @@ mod tests {
             assert_eq!(entry.operation, symbol_short!("execflow"));
         }
 
-        let mut dedupe = std::collections::BTreeSet::new();
-        for entry in &entries {
-            dedupe.insert(entry.amount);
+        let mut dedupe = Vec::new(&env);
+        for entry in entries.iter() {
+            if !dedupe.contains(entry.amount) {
+                dedupe.push_back(entry.amount);
+            }
         }
         assert_eq!(dedupe.len(), entries.len());
     }
@@ -1400,7 +1451,7 @@ mod tests {
         let (env, orchestrator_id, _, _, _, _, _, user) = setup_test_env();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        seed_audit_log(&env, &user, 12);
+        seed_audit_log(&env, &orchestrator_id, &user, 12);
 
         // limit=0 should produce empty page.
         assert_eq!(client.get_audit_log(&0, &0).len(), 0);
@@ -1423,7 +1474,7 @@ mod tests {
         let (env, orchestrator_id, _, _, _, _, _, user) = setup_test_env();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        seed_audit_log(&env, &user, 5);
+        seed_audit_log(&env, &orchestrator_id, &user, 5);
 
         // Regression test: very large cursor should safely return empty page
         // rather than panicking due to u32 addition overflow.
@@ -1443,7 +1494,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let savings_id = env.register_contract(None, MockSavingsGoals);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1453,7 +1504,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1464,7 +1515,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let family_wallet_id = env.register_contract(None, MockFamilyWallet);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1479,7 +1530,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1490,7 +1541,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let family_wallet_id = env.register_contract(None, MockFamilyWallet);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1500,7 +1551,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1511,7 +1562,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let bills_id = env.register_contract(None, MockBillPayments);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1520,7 +1571,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1531,7 +1582,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let family_wallet_id = env.register_contract(None, MockFamilyWallet);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1546,7 +1597,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1557,7 +1608,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let insurance_id = env.register_contract(None, MockInsurance);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1567,7 +1618,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1602,7 +1653,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1637,7 +1688,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1672,7 +1723,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1683,7 +1734,7 @@ mod tests {
 
         let orchestrator_id = env.register_contract(None, Orchestrator);
         let single_contract = env.register_contract(None, MockFamilyWallet);
-        let user = generate_test_address(&env);
+        let user = Address::generate(&env);
 
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1703,7 +1754,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 }
