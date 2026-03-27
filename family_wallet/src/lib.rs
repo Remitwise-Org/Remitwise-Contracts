@@ -118,7 +118,6 @@ pub struct BatchMemberItem {
     pub role: FamilyRole,
 }
 
-
 #[contract]
 pub struct FamilyWallet;
 
@@ -144,11 +143,11 @@ pub enum Error {
 #[contractimpl]
 impl FamilyWallet {
     /// Initializes the family wallet with an owner and a set of initial members.
-    /// 
+    ///
     /// ### Arguments
     /// * `owner` - The address that will have full administrative control.
     /// * `initial_members` - A list of addresses to be added as regular members.
-    /// 
+    ///
     /// ### Security
     /// * Requires owner authorization.
     /// * Can only be called once.
@@ -454,16 +453,16 @@ impl FamilyWallet {
     }
 
     /// Proposes a new multi-sig transaction.
-    /// 
-    /// If the transaction does not require multi-sig (e.g., small withdrawal), 
-    /// it executes immediately. Otherwise, it creates a pending transaction 
+    ///
+    /// If the transaction does not require multi-sig (e.g., small withdrawal),
+    /// it executes immediately. Otherwise, it creates a pending transaction
     /// that requires further signatures.
-    /// 
+    ///
     /// ### Arguments
     /// * `proposer` - The address proposing the transaction.
     /// * `tx_type` - The category of the transaction (LargeWithdrawal, RoleChange, etc.).
     /// * `data` - The specific details of the transaction (recipient, amount, etc.).
-    /// 
+    ///
     /// ### Returns
     /// * `u64` - The unique transaction ID, or 0 if executed immediately.
     pub fn propose_transaction(
@@ -550,14 +549,14 @@ impl FamilyWallet {
     }
 
     /// Signs a pending multi-sig transaction.
-    /// 
-    /// If the signature threshold for the transaction type is reached, 
+    ///
+    /// If the signature threshold for the transaction type is reached,
     /// the transaction is executed automatically.
-    /// 
+    ///
     /// ### Arguments
     /// * `signer` - The authorized signer adding their approval.
     /// * `tx_id` - The ID of the pending transaction.
-    /// 
+    ///
     /// ### Returns
     /// * `bool` - True if the signature was successfully added.
     pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> bool {
@@ -721,10 +720,10 @@ impl FamilyWallet {
     }
 
     /// Proposes or executes an emergency transfer.
-    /// 
+    ///
     /// If emergency mode is ON, the transfer executes immediately (subject to cooldown).
     /// If emergency mode is OFF, this creates a multi-sig proposal.
-    /// 
+    ///
     /// ### Arguments
     /// * `proposer` - The address initiating the emergency transfer.
     /// * `token` - The address of the token to transfer.
@@ -1240,42 +1239,42 @@ impl FamilyWallet {
     }
 
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - Only wallet owners can set or transfer upgrade admin role
     /// - Caller must be authenticated via require_auth()
     /// - Caller must have at least Owner role in the family wallet
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `true` on successful admin transfer
-    /// 
+    ///
     /// # Panics
     /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         true
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured

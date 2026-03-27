@@ -6,7 +6,10 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD,
+};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -24,7 +27,6 @@ pub enum InsuranceError {
 
 // Event topics
 // Unused legacy event constants removed
-
 
 // Event data structures
 #[derive(Clone)]
@@ -700,7 +702,7 @@ impl Insurance {
         // In the current simple loop above, if we break, next_cursor is the last item's ID.
         // If we don't break, it's also the last item's ID.
         // To be compliant with the test expectation (next_cursor=0 at end), we need to check if more exist.
-        
+
         let mut has_more = false;
         for (id, policy) in policies.iter() {
             if id <= next_cursor {
@@ -711,7 +713,7 @@ impl Insurance {
                 break;
             }
         }
-        
+
         if !has_more {
             next_cursor = 0;
         }
@@ -766,7 +768,7 @@ impl Insurance {
                 break;
             }
         }
-        
+
         if !has_more {
             next_cursor = 0;
         }
@@ -1227,7 +1229,7 @@ mod test_events {
     use proptest::prelude::*;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as _, Events, Ledger, LedgerInfo};
-    use soroban_sdk::{Env, String, vec};
+    use soroban_sdk::{vec, Env, String};
 
     fn make_env() -> Env {
         Env::default()
@@ -1388,7 +1390,7 @@ mod test_events {
             &String::from_str(&env, "health"),
             &100,
             &10000,
-            &None
+            &None,
         );
 
         // Get events before paying premium
@@ -1897,8 +1899,6 @@ mod test_events {
     // -----------------------------------------------------------------------
     // Property-based tests: time-dependent behavior
     // -----------------------------------------------------------------------
-
-
 
     // ══════════════════════════════════════════════════════════════════════
     // Time & Ledger Drift Resilience Tests (#158)

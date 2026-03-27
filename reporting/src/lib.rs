@@ -5,9 +5,8 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    Category, EventCategory, EventPriority, RemitwiseEvents,
-    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
+    Category, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
+    ARCHIVE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
 };
 
 // Storage TTL constants are imported from remitwise-common

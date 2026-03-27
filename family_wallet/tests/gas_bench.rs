@@ -1,7 +1,9 @@
-use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionType, TransactionData, BatchMemberItem};
-use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
-use soroban_sdk::{Address, Env, Vec, vec, token::StellarAssetClient};
+use family_wallet::{
+    BatchMemberItem, FamilyWallet, FamilyWalletClient, TransactionData, TransactionType,
+};
 use remitwise_common::FamilyRole;
+use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
+use soroban_sdk::{token::StellarAssetClient, vec, Address, Env, Vec};
 
 fn bench_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {
@@ -60,7 +62,7 @@ fn bench_init() {
     }
 
     let (cpu, mem, _) = measure(&env, || client.init(&owner, &initial_members));
-    
+
     println!(
         r#"{{"contract":"family_wallet","method":"init","scenario":"5_initial_members","cpu":{},"mem":{}}}"#,
         cpu, mem
@@ -71,7 +73,7 @@ fn bench_init() {
 fn bench_propose_transaction() {
     let env = bench_env();
     let (client, owner, _) = setup_wallet(&env);
-    
+
     let token = Address::generate(&env);
     let recipient = Address::generate(&env);
     let data = TransactionData::Withdrawal(token, recipient, 1000_0000000);
@@ -97,7 +99,7 @@ fn bench_sign_transaction_non_executing() {
     // Configure multisig with threshold 3
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
     client.configure_multisig(&owner, &TransactionType::LargeWithdrawal, &3, &signers, &0);
-    
+
     let token = Address::generate(&env);
     let recipient = Address::generate(&env);
     let data = TransactionData::Withdrawal(token, recipient, 1000_0000000);
@@ -126,7 +128,7 @@ fn bench_sign_transaction_executing() {
     // Configure multisig with threshold 2
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
     client.configure_multisig(&owner, &TransactionType::LargeWithdrawal, &2, &signers, &0);
-    
+
     let recipient = Address::generate(&env);
     let data = TransactionData::Withdrawal(token_contract.address(), recipient, 1000_0000000);
     let tx_id = client.propose_transaction(&owner, &TransactionType::LargeWithdrawal, &data);
@@ -144,17 +146,22 @@ fn bench_sign_transaction_executing() {
 fn bench_emergency_transfer_direct() {
     let env = bench_env();
     let (client, owner, _) = setup_wallet(&env);
-    
+
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
 
     client.configure_emergency(&owner, &5000_0000000, &0, &0);
     client.set_emergency_mode(&owner, &true);
-    
+
     let recipient = Address::generate(&env);
     let (cpu, mem, _) = measure(&env, || {
-        client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &1000_0000000)
+        client.propose_emergency_transfer(
+            &owner,
+            &token_contract.address(),
+            &recipient,
+            &1000_0000000,
+        )
     });
 
     println!(
@@ -185,7 +192,9 @@ fn bench_archive_transactions() {
         client.sign_transaction(&member1, &tx_id);
     }
 
-    let (cpu, mem, archived) = measure(&env, || client.archive_old_transactions(&owner, &1_800_000_000));
+    let (cpu, mem, archived) = measure(&env, || {
+        client.archive_old_transactions(&owner, &1_800_000_000)
+    });
     assert_eq!(archived, 10);
 
     println!(
@@ -230,7 +239,7 @@ fn bench_cleanup_expired_pending() {
 fn bench_batch_add_family_members() {
     let env = bench_env();
     let (client, owner, _) = setup_wallet(&env);
-    
+
     let mut members = Vec::new(&env);
     for _ in 0..20 {
         members.push_back(BatchMemberItem {

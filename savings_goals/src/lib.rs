@@ -653,7 +653,7 @@ impl SavingsGoalContract {
         }
 
         Self::append_audit(&env, symbol_short!("add"), &caller, true);
-        
+
         // Emit compliant events
         RemitwiseEvents::emit(
             &env,
@@ -1003,7 +1003,9 @@ impl SavingsGoalContract {
 
         let mut result = Vec::new(&env);
         for i in start_index..end_index {
-            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Pagination index out of sync"));
+            let goal_id = ids
+                .get(i)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
             let goal = goals
                 .get(goal_id)
                 .unwrap_or_else(|| panic!("Pagination index out of sync"));

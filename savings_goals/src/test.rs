@@ -932,7 +932,10 @@ fn test_create_goal_emits_event() {
         }
     }
 
-    assert!(found_created, "RemitwiseEvents::emit was not called for goal creation");
+    assert!(
+        found_created,
+        "RemitwiseEvents::emit was not called for goal creation"
+    );
 }
 
 #[test]
@@ -967,7 +970,8 @@ fn test_add_to_goal_emits_event() {
         if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
             let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
             if topic3 == symbol_short!("added") {
-                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                let data: (u32, Address, i128) =
+                    <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
                 if data.0 == goal_id && data.2 == 1000 {
                     found_added = true;
                 }
@@ -975,7 +979,10 @@ fn test_add_to_goal_emits_event() {
         }
     }
 
-    assert!(found_added, "RemitwiseEvents::emit was not called for FundsAdded");
+    assert!(
+        found_added,
+        "RemitwiseEvents::emit was not called for FundsAdded"
+    );
 }
 
 #[test]
@@ -1017,7 +1024,10 @@ fn test_goal_completed_emits_event() {
         }
     }
 
-    assert!(found_completed, "RemitwiseEvents::emit was not called for GoalCompleted");
+    assert!(
+        found_completed,
+        "RemitwiseEvents::emit was not called for GoalCompleted"
+    );
 }
 
 #[test]
@@ -1050,7 +1060,8 @@ fn test_withdraw_from_goal_emits_event() {
         if topic0 == symbol_short!("Remitwise") && topics.len() > 3 {
             let topic3: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
             if topic3 == symbol_short!("withdr") {
-                let data: (u32, Address, i128) = <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
+                let data: (u32, Address, i128) =
+                    <(u32, Address, i128)>::try_from_val(&env, &event.2).unwrap();
                 if data.0 == goal_id && data.2 == 600 {
                     found_withdrawn = true;
                 }
@@ -1058,7 +1069,10 @@ fn test_withdraw_from_goal_emits_event() {
         }
     }
 
-    assert!(found_withdrawn, "RemitwiseEvents::emit was not called for FundsWithdrawn");
+    assert!(
+        found_withdrawn,
+        "RemitwiseEvents::emit was not called for FundsWithdrawn"
+    );
 }
 
 #[test]
@@ -1098,7 +1112,10 @@ fn test_lock_goal_emits_event() {
         }
     }
 
-    assert!(found_locked, "RemitwiseEvents::emit was not called for GoalLocked");
+    assert!(
+        found_locked,
+        "RemitwiseEvents::emit was not called for GoalLocked"
+    );
 }
 
 #[test]
@@ -1137,7 +1154,10 @@ fn test_unlock_goal_emits_event() {
         }
     }
 
-    assert!(found_unlocked, "RemitwiseEvents::emit was not called for GoalUnlocked");
+    assert!(
+        found_unlocked,
+        "RemitwiseEvents::emit was not called for GoalUnlocked"
+    );
 }
 
 #[test]

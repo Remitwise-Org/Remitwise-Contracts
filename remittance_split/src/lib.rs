@@ -195,9 +195,10 @@ impl RemittanceSplit {
     }
 
     fn set_owner_schedule_head(env: &Env, owner: &Address, schedule_id: u32) {
-        env.storage()
-            .persistent()
-            .set(&RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()), &schedule_id);
+        env.storage().persistent().set(
+            &RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()),
+            &schedule_id,
+        );
     }
 
     fn get_pause_admin(env: &Env) -> Option<Address> {
@@ -295,16 +296,16 @@ impl RemittanceSplit {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - If no upgrade admin exists, only the contract owner can set the initial admin
     /// - If upgrade admin exists, only the current upgrade admin can transfer to a new admin
     /// - Caller must be authenticated via require_auth()
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` on successful admin transfer
     /// - `Err(RemittanceSplitError::Unauthorized)` if caller lacks permission
@@ -315,15 +316,15 @@ impl RemittanceSplit {
         new_admin: Address,
     ) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
-        
+
         let config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         // Authorization logic:
         // 1. If no upgrade admin exists, only contract owner can set initial admin
         // 2. If upgrade admin exists, only current upgrade admin can transfer
@@ -341,22 +342,22 @@ impl RemittanceSplit {
                 }
             }
         }
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("split"), symbol_short!("adm_xfr")),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         Ok(())
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -468,7 +469,7 @@ impl RemittanceSplit {
 
         Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
-        
+
         // Emit compliant events
         RemitwiseEvents::emit(
             &env,
@@ -1168,7 +1169,8 @@ mod test {
         setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
 
         // Initialize split
-        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+        let result =
+            client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Verify event was emitted
@@ -1261,7 +1263,8 @@ mod test {
         let owner = Address::generate(&env);
 
         // initialize_split calls extend_instance_ttl
-        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+        let result =
+            client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
@@ -1412,7 +1415,8 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        let result = client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
+        let result =
+            client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
         assert!(result, "initialize_split should return true on success");
 
         let config = client
@@ -1452,14 +1456,16 @@ mod test {
         let owner = Address::generate(&env);
 
         // 40 + 30 + 15 + 5 = 90, not 100
-        let result = client.try_initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &15, &5);
+        let result =
+            client.try_initialize_split(&owner, &0, &Address::generate(&env), &40, &30, &15, &5);
         assert_eq!(
             result,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
         );
 
         // 50 + 50 + 10 + 0 = 110, not 100
-        let result2 = client.try_initialize_split(&owner, &0, &Address::generate(&env), &50, &50, &10, &0);
+        let result2 =
+            client.try_initialize_split(&owner, &0, &Address::generate(&env), &50, &50, &10, &0);
         assert_eq!(
             result2,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
@@ -1480,7 +1486,8 @@ mod test {
         client.initialize_split(&owner, &0, &Address::generate(&env), &50, &30, &15, &5);
 
         // Second init must fail with AlreadyInitialized
-        let result = client.try_initialize_split(&owner, &1, &Address::generate(&env), &50, &30, &15, &5);
+        let result =
+            client.try_initialize_split(&owner, &1, &Address::generate(&env), &50, &30, &15, &5);
         assert_eq!(result, Err(Ok(RemittanceSplitError::AlreadyInitialized)));
     }
 
@@ -1707,10 +1714,12 @@ mod test {
 
         let events_after_update = env.events().all();
         let update_event = events_after_update.last().unwrap();
-        let upd_topic0: Symbol = Symbol::try_from_val(&env, &update_event.1.get(0).unwrap()).unwrap();
+        let upd_topic0: Symbol =
+            Symbol::try_from_val(&env, &update_event.1.get(0).unwrap()).unwrap();
         let upd_topic1: u32 = u32::try_from_val(&env, &update_event.1.get(1).unwrap()).unwrap();
         let upd_topic2: u32 = u32::try_from_val(&env, &update_event.1.get(2).unwrap()).unwrap();
-        let upd_topic3: Symbol = Symbol::try_from_val(&env, &update_event.1.get(3).unwrap()).unwrap();
+        let upd_topic3: Symbol =
+            Symbol::try_from_val(&env, &update_event.1.get(3).unwrap()).unwrap();
 
         assert_eq!(upd_topic0, symbol_short!("Remitwise"));
         assert_eq!(upd_topic1, 1); // EventCategory::State

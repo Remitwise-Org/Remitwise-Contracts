@@ -66,11 +66,11 @@
 //! );
 //! ```
 
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
     Env, Symbol, Vec,
 };
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 #[cfg(test)]
 mod test;
