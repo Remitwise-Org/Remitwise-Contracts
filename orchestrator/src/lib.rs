@@ -224,7 +224,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -475,6 +475,36 @@ impl Orchestrator {
         } else {
             Err(OrchestratorError::SpendingLimitExceeded)
         }
+    }
+
+    fn validate_remittance_flow_addresses(
+        _env: &Env,
+        family_wallet_addr: &Address,
+        remittance_split_addr: &Address,
+        savings_addr: &Address,
+        bills_addr: &Address,
+        insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let pairs = [
+            (family_wallet_addr, remittance_split_addr),
+            (family_wallet_addr, savings_addr),
+            (family_wallet_addr, bills_addr),
+            (family_wallet_addr, insurance_addr),
+            (remittance_split_addr, savings_addr),
+            (remittance_split_addr, bills_addr),
+            (remittance_split_addr, insurance_addr),
+            (savings_addr, bills_addr),
+            (savings_addr, insurance_addr),
+            (bills_addr, insurance_addr),
+        ];
+
+        for (left, right) in pairs {
+            if left == right {
+                return Err(OrchestratorError::InvalidContractAddress);
+            }
+        }
+
+        Ok(())
     }
 
     // ============================================================================
