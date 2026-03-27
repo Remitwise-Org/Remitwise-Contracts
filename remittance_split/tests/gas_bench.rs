@@ -249,7 +249,7 @@ fn bench_get_remittance_schedules_with_data() {
         let interval = 604_800u64;
         
         let result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
-        assert_eq!(result, i as u32);
+        assert_eq!(result, (5 + i) as u32);
     }
 
     let (cpu, mem, schedules) = measure(&env, || {

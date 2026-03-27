@@ -309,7 +309,7 @@ fn test_data_isolation_security() {
         let interval = 604_800u64;
         
         let result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
-        assert_eq!(result, i as u32, "Owner2 schedule {} creation should succeed", i);
+        assert_eq!(result, (3 + i) as u32, "Owner2 schedule {} creation should succeed", i);
     }
 
     // Validate data isolation

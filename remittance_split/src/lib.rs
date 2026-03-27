@@ -11,10 +11,6 @@ use remitwise_common::{
     INSTANCE_LIFETIME_THRESHOLD,
 };
 
-// Event topics
-const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
-const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
-
 // Event data structures
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -146,6 +142,14 @@ pub struct RemittanceSchedule {
     pub created_at: u64,
     pub last_executed: Option<u64>,
     pub missed_count: u32,
+    pub next_for_owner: Option<u32>,
+}
+
+#[derive(Clone)]
+#[contracttype]
+enum RemittanceScheduleDataKey {
+    Schedule(u32),
+    OwnerScheduleHead(Address),
 }
 
 /// Schedule event types
@@ -171,6 +175,30 @@ pub struct RemittanceSplit;
 
 #[contractimpl]
 impl RemittanceSplit {
+    fn get_schedule(env: &Env, schedule_id: u32) -> Option<RemittanceSchedule> {
+        env.storage()
+            .instance()
+            .get(&RemittanceScheduleDataKey::Schedule(schedule_id))
+    }
+
+    fn set_schedule(env: &Env, schedule: &RemittanceSchedule) {
+        env.storage()
+            .instance()
+            .set(&RemittanceScheduleDataKey::Schedule(schedule.id), schedule);
+    }
+
+    fn get_owner_schedule_head(env: &Env, owner: &Address) -> Option<u32> {
+        env.storage()
+            .instance()
+            .get(&RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()))
+    }
+
+    fn set_owner_schedule_head(env: &Env, owner: &Address, schedule_id: u32) {
+        env.storage()
+            .instance()
+            .set(&RemittanceScheduleDataKey::OwnerScheduleHead(owner.clone()), &schedule_id);
+    }
+
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -942,7 +970,7 @@ impl RemittanceSplit {
             .ok_or(RemittanceSplitError::Overflow)?;
 
         if emit_events {
-            let event = SplitCalculatedEvent {
+            let _event = SplitCalculatedEvent {
                 total_amount,
                 spending_amount: spending,
                 savings_amount: savings,
@@ -989,12 +1017,6 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
         let next_schedule_id = env
             .storage()
             .instance()
@@ -1013,12 +1035,12 @@ impl RemittanceSplit {
             created_at: current_time,
             last_executed: None,
             missed_count: 0,
+            next_for_owner: Self::get_owner_schedule_head(&env, &owner),
         };
 
-        schedules.set(next_schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+        Self::set_schedule(&env, &schedule);
+        Self::set_owner_schedule_head(&env, &owner, next_schedule_id);
+
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_RSCH"), &next_schedule_id);
@@ -1055,15 +1077,8 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
-            .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+        let mut schedule =
+            Self::get_schedule(&env, schedule_id).ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
@@ -1074,10 +1089,7 @@ impl RemittanceSplit {
         schedule.interval = interval;
         schedule.recurring = interval > 0;
 
-        schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+        Self::set_schedule(&env, &schedule);
 
         RemitwiseEvents::emit(
             &env,
@@ -1099,15 +1111,8 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
-            .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+        let mut schedule =
+            Self::get_schedule(&env, schedule_id).ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
@@ -1115,10 +1120,7 @@ impl RemittanceSplit {
 
         schedule.active = false;
 
-        schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+        Self::set_schedule(&env, &schedule);
 
         RemitwiseEvents::emit(
             &env,
@@ -1132,29 +1134,22 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
         let mut result = Vec::new(&env);
-        for (_, schedule) in schedules.iter() {
-            if schedule.owner == owner {
-                result.push_back(schedule);
-            }
+        let mut next_schedule_id = Self::get_owner_schedule_head(&env, &owner);
+
+        while let Some(schedule_id) = next_schedule_id {
+            let Some(schedule) = Self::get_schedule(&env, schedule_id) else {
+                break;
+            };
+            next_schedule_id = schedule.next_for_owner;
+            result.push_back(schedule);
         }
+
         result
     }
 
     pub fn get_remittance_schedule(env: Env, schedule_id: u32) -> Option<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        schedules.get(schedule_id)
+        Self::get_schedule(&env, schedule_id)
     }
 }
 
