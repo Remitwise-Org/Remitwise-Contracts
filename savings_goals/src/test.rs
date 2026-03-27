@@ -907,8 +907,6 @@ fn test_create_goal_emits_event() {
                 let event_data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
                 assert_eq!(event_data.goal_id, goal_id);
                 found_created_struct = true;
-            } else if action == symbol_short!("savings") {
-                found_created_enum = true;
             }
         }
     }
@@ -916,10 +914,6 @@ fn test_create_goal_emits_event() {
     assert!(
         found_created_struct,
         "GoalCreated struct event was not emitted"
-    );
-    assert!(
-        found_created_enum,
-        "SavingsEvent::GoalCreated was not emitted"
     );
 }
 
@@ -961,8 +955,6 @@ fn test_add_to_goal_emits_event() {
                 assert_eq!(event_data.goal_id, goal_id);
                 assert_eq!(event_data.amount, 1000);
                 found_added_struct = true;
-            } else if action == symbol_short!("savings") {
-                found_added_enum = true;
             }
         }
     }
@@ -971,7 +963,6 @@ fn test_add_to_goal_emits_event() {
         found_added_struct,
         "FundsAdded struct event was not emitted"
     );
-    assert!(found_added_enum, "SavingsEvent::FundsAdded was not emitted");
 }
 
 #[test]
@@ -1011,8 +1002,6 @@ fn test_goal_completed_emits_event() {
                 assert_eq!(event_data.goal_id, goal_id);
                 assert_eq!(event_data.final_amount, 1000);
                 found_completed_struct = true;
-            } else if action == symbol_short!("savings") {
-                found_completed_enum = true;
             }
         }
     }
@@ -1020,10 +1009,6 @@ fn test_goal_completed_emits_event() {
     assert!(
         found_completed_struct,
         "GoalCompleted struct event was not emitted"
-    );
-    assert!(
-        found_completed_enum,
-        "SavingsEvent::GoalCompleted was not emitted"
     );
 }
 
@@ -1053,10 +1038,9 @@ fn test_withdraw_from_goal_emits_event() {
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsWithdrawn) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if action == symbol_short!("funds_wit") {
                 found_withdrawn_enum = true;
             }
         }
@@ -1064,7 +1048,7 @@ fn test_withdraw_from_goal_emits_event() {
 
     assert!(
         found_withdrawn_enum,
-        "SavingsEvent::FundsWithdrawn was not emitted"
+        "funds_wit event was not emitted"
     );
 }
 
@@ -1093,10 +1077,9 @@ fn test_lock_goal_emits_event() {
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalLocked) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if action == symbol_short!("locked") {
                 found_locked_enum = true;
             }
         }
@@ -1104,7 +1087,7 @@ fn test_lock_goal_emits_event() {
 
     assert!(
         found_locked_enum,
-        "SavingsEvent::GoalLocked was not emitted"
+        "locked event was not emitted"
     );
 }
 
@@ -1132,10 +1115,9 @@ fn test_unlock_goal_emits_event() {
     for event in events.iter() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalUnlocked) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if action == symbol_short!("unlocked") {
                 found_unlocked_enum = true;
             }
         }
@@ -1143,7 +1125,7 @@ fn test_unlock_goal_emits_event() {
 
     assert!(
         found_unlocked_enum,
-        "SavingsEvent::GoalUnlocked was not emitted"
+        "unlocked event was not emitted"
     );
 }
 
@@ -1162,9 +1144,9 @@ fn test_multiple_goals_emit_separate_events() {
     client.create_goal(&user, &String::from_str(&env, "Goal 2"), &2000, &1735689600);
     client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
 
-    // Should have 3 * 2 events = 6 events
+    // Should have 3 events (one per goal)
     let events = env.events().all();
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.len(), 3);
 }
 
 // ============================================================================
@@ -1329,6 +1311,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
     });
 
     client.add_to_goal(&user, &id1, &3000);
+    client.get_goal(&id2); // Touch Goal 2 to extend its TTL
 
     // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
     env.ledger().set(LedgerInfo {

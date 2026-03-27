@@ -80,7 +80,14 @@
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
             "key": {
-              "symbol": "GOALS"
+              "vec": [
+                {
+                  "symbol": "GOAL_D"
+                },
+                {
+                  "u32": 1
+                }
+              ]
             },
             "durability": "persistent"
           }
@@ -93,17 +100,101 @@
                 "ext": "v0",
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
                 "key": {
-                  "symbol": "GOALS"
+                  "vec": [
+                    {
+                      "symbol": "GOAL_D"
+                    },
+                    {
+                      "u32": 1
+                    }
+                  ]
                 },
                 "durability": "persistent",
                 "val": {
-                  "map": []
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "current_amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 1000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "id"
+                      },
+                      "val": {
+                        "u32": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "locked"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "name"
+                      },
+                      "val": {
+                        "string": "Emergency Fund"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "owner"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tags"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "target_amount"
+                      },
+                      "val": {
+                        "i128": {
+                          "hi": 0,
+                          "lo": 1000
+                        }
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "target_date"
+                      },
+                      "val": {
+                        "u64": 1735689600
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
+                    }
+                  ]
                 }
               }
             },
             "ext": "v0"
           },
-          4095
+          2073600
         ]
       ],
       [
@@ -111,7 +202,14 @@
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
             "key": {
-              "symbol": "NEXT_ID"
+              "vec": [
+                {
+                  "symbol": "O_GIDS"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
             },
             "durability": "persistent"
           }
@@ -124,17 +222,28 @@
                 "ext": "v0",
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
                 "key": {
-                  "symbol": "NEXT_ID"
+                  "vec": [
+                    {
+                      "symbol": "O_GIDS"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
                 },
                 "durability": "persistent",
                 "val": {
-                  "u32": 1
+                  "vec": [
+                    {
+                      "u32": 1
+                    }
+                  ]
                 }
               }
             },
             "ext": "v0"
           },
-          4095
+          2073600
         ]
       ],
       [
@@ -181,6 +290,42 @@
                                     "symbol": "operation"
                                   },
                                   "val": {
+                                    "symbol": "create"
+                                  }
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "success"
+                                  },
+                                  "val": {
+                                    "bool": true
+                                  }
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "timestamp"
+                                  },
+                                  "val": {
+                                    "u64": 0
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "map": [
+                                {
+                                  "key": {
+                                    "symbol": "caller"
+                                  },
+                                  "val": {
+                                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                  }
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "operation"
+                                  },
+                                  "val": {
                                     "symbol": "add"
                                   }
                                 },
@@ -207,100 +352,6 @@
                       },
                       {
                         "key": {
-                          "symbol": "GOALS"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "u32": 1
-                              },
-                              "val": {
-                                "map": [
-                                  {
-                                    "key": {
-                                      "symbol": "current_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 1000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 1
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "locked"
-                                    },
-                                    "val": {
-                                      "bool": true
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Emergency Fund"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "tags"
-                                    },
-                                    "val": {
-                                      "vec": []
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "target_amount"
-                                    },
-                                    "val": {
-                                      "i128": {
-                                        "hi": 0,
-                                        "lo": 1000
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "target_date"
-                                    },
-                                    "val": {
-                                      "u64": 1735689600
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "unlock_date"
-                                    },
-                                    "val": "void"
-                                  }
-                                ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
                           "symbol": "NEXT_ID"
                         },
                         "val": {
@@ -309,23 +360,10 @@
                       },
                       {
                         "key": {
-                          "symbol": "OWN_GOAL"
+                          "symbol": "NEXT_SCH"
                         },
                         "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "vec": [
-                                  {
-                                    "u32": 1
-                                  }
-                                ]
-                              }
-                            }
-                          ]
+                          "u32": 0
                         }
                       }
                     ]
@@ -592,42 +630,6 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "Remitwise"
-              },
-              {
-                "u32": 1
-              },
-              {
-                "u32": 1
-              },
-              {
-                "symbol": "savings"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -837,7 +839,7 @@
                 "u32": 1
               },
               {
-                "symbol": "savings"
+                "symbol": "funds_add"
               }
             ],
             "data": {
@@ -853,40 +855,6 @@
                     "hi": 0,
                     "lo": 1000
                   }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "savings"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "GoalCompleted"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }
