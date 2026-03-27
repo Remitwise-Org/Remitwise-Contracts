@@ -113,7 +113,7 @@
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 100000,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -383,7 +383,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ],
       [
@@ -416,7 +416,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -449,7 +449,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -482,7 +482,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -503,7 +503,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ]
     ]
@@ -559,6 +559,15 @@
         "body": {
           "v0": {
             "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
               {
                 "symbol": "created"
               }
@@ -624,14 +633,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "savings"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "GoalCreated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "savings"
               }
             ],
             "data": {

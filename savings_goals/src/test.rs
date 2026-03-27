@@ -900,17 +900,14 @@ fn test_create_goal_emits_event() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_CREATED {
-            let event_data: GoalCreatedEvent =
-                GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            found_created_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCreated) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            
+            if action == GOAL_CREATED {
+                let event_data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
+                assert_eq!(event_data.goal_id, goal_id);
+                found_created_struct = true;
+            } else if action == symbol_short!("savings") {
                 found_created_enum = true;
             }
         }
@@ -956,18 +953,15 @@ fn test_add_to_goal_emits_event() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == FUNDS_ADDED {
-            let event_data: FundsAddedEvent =
-                FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.amount, 1000);
-            found_added_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::FundsAdded) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            
+            if action == FUNDS_ADDED {
+                let event_data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
+                assert_eq!(event_data.goal_id, goal_id);
+                assert_eq!(event_data.amount, 1000);
+                found_added_struct = true;
+            } else if action == symbol_short!("savings") {
                 found_added_enum = true;
             }
         }
@@ -1009,18 +1003,15 @@ fn test_goal_completed_emits_event() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == GOAL_COMPLETED {
-            let event_data: GoalCompletedEvent =
-                GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.final_amount, 1000);
-            found_completed_struct = true;
-        }
-
-        if topic0 == symbol_short!("savings") && topics.len() > 1 {
-            let topic1: SavingsEvent =
-                SavingsEvent::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-            if matches!(topic1, SavingsEvent::GoalCompleted) {
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            
+            if action == GOAL_COMPLETED {
+                let event_data: GoalCompletedEvent = GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
+                assert_eq!(event_data.goal_id, goal_id);
+                assert_eq!(event_data.final_amount, 1000);
+                found_completed_struct = true;
+            } else if action == symbol_short!("savings") {
                 found_completed_enum = true;
             }
         }

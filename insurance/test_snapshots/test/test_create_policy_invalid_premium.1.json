@@ -4,6 +4,7 @@
     "nonce": 0
   },
   "auth": [
+    [],
     []
   ],
   "ledger": {
@@ -38,7 +39,32 @@
                     "executable": {
                       "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                     },
-                    "storage": null
+                    "storage": [
+                      {
+                        "key": {
+                          "symbol": "COUNTER"
+                        },
+                        "val": {
+                          "u32": 0
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWNER"
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "SCH_CTR"
+                        },
+                        "val": {
+                          "u32": 0
+                        }
+                      }
+                    ]
                   }
                 }
               }
@@ -87,6 +113,53 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
+                "symbol": "init"
+              }
+            ],
+            "data": {
+              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "init"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
                 "symbol": "create_policy"
               }
             ],
@@ -99,7 +172,7 @@
                   "string": "Bad"
                 },
                 {
-                  "string": "Type"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -110,9 +183,10 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 10000
+                    "lo": 10000000
                   }
-                }
+                },
+                "void"
               ]
             }
           }
@@ -137,7 +211,7 @@
             ],
             "data": {
               "error": {
-                "contract": 1
+                "contract": 7
               }
             }
           }
@@ -158,7 +232,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 7
                 }
               }
             ],
@@ -183,7 +257,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 7
                 }
               }
             ],
@@ -204,7 +278,7 @@
                       "string": "Bad"
                     },
                     {
-                      "string": "Type"
+                      "u32": 1
                     },
                     {
                       "i128": {
@@ -215,9 +289,10 @@
                     {
                       "i128": {
                         "hi": 0,
-                        "lo": 10000
+                        "lo": 10000000
                       }
-                    }
+                    },
+                    "void"
                   ]
                 }
               ]

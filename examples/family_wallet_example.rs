@@ -36,7 +36,7 @@ fn main() {
     // 6. [Write] Add a new family member with a specific role and spending limit
     println!("\nAdding new member: {:?}", member2);
     let spending_limit = 1000i128;
-    client.add_member(&owner, &member2, &FamilyRole::Member, &spending_limit).unwrap();
+    client.add_member(&owner, &member2, &FamilyRole::Member, &spending_limit);
     println!("Member added successfully!");
 
     // 7. [Read] Verify the new member

@@ -954,14 +954,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "Initialized"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "split"
               }
             ],
             "data": {
@@ -1049,6 +1051,15 @@
           "v0": {
             "topics": [
               {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
                 "symbol": "init"
               }
             ],
@@ -1110,14 +1121,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "Updated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "split"
               }
             ],
             "data": {

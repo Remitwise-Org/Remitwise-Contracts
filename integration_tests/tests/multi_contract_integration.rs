@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
+use soroban_sdk::{testutils::{Address as _, Events}, Address, Env, String as SorobanString, TryFromVal};
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
@@ -32,12 +32,12 @@ pub struct MockRemittanceSplit;
 
 #[contractimpl]
 impl MockRemittanceSplit {
-    pub fn calculate_split(env: Env, total_amount: i128) -> SorobanVec<i128> {
+    pub fn calculate_split(env: Env, total_amount: i128) -> soroban_sdk::Vec<i128> {
         let spending  = (total_amount * 40) / 100;
         let savings   = (total_amount * 30) / 100;
         let bills     = (total_amount * 20) / 100;
         let insurance = total_amount - spending - savings - bills; // remainder
-        SorobanVec::from_array(&env, [spending, savings, bills, insurance])
+        soroban_sdk::Vec::from_array(&env, [spending, savings, bills, insurance])
     }
 }
 
@@ -148,9 +148,10 @@ fn test_multi_contract_user_flow() {
 
     let insurance_contract_id = env.register_contract(None, Insurance);
     let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
+    insurance_client.init(&user);
 
     let nonce = 0u64;
-    remittance_client.initialize_split(&user, &nonce, &40u32, &30u32, &20u32, &10u32);
+    remittance_client.initialize_split(&user, &nonce, &Address::generate(&env), &40u32, &30u32, &20u32, &10u32);
 
     let goal_name = SorobanString::from_str(&env, "Education Fund");
     let target_amount = 10_000i128;
@@ -165,6 +166,7 @@ fn test_multi_contract_user_flow() {
 
     let bill_id = bills_client.create_bill(
         &user, &bill_name, &bill_amount, &due_date, &true, &30u32,
+        &None, // memo
         &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
@@ -172,9 +174,10 @@ fn test_multi_contract_user_flow() {
     let policy_id = insurance_client.create_policy(
         &user,
         &SorobanString::from_str(&env, "Health Insurance"),
-        &SorobanString::from_str(&env, "health"),
-        &200i128,
-        &50_000i128,
+        &remitwise_common::CoverageType::Health,
+        &2_000_000i128,
+        &50_000_000i128,
+        &None, // external_ref
     );
     assert_eq!(policy_id, 1u32, "Policy ID should be 1");
 
@@ -213,7 +216,7 @@ fn test_split_with_rounding() {
     let remittance_contract_id = env.register_contract(None, RemittanceSplit);
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
 
-    remittance_client.initialize_split(&user, &0u64, &33u32, &33u32, &17u32, &17u32);
+    remittance_client.initialize_split(&user, &0u64, &Address::generate(&env), &33u32, &33u32, &17u32, &17u32);
 
     let total = 1_000i128;
     let amounts = remittance_client.calculate_split(&total);
@@ -249,6 +252,7 @@ fn test_multiple_entities_creation() {
 
     let insurance_contract_id = env.register_contract(None, Insurance);
     let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
+    insurance_client.init(&user);
 
     let goal1 = savings_client.create_goal(
         &user, &SorobanString::from_str(&env, "Emergency Fund"),
@@ -265,26 +269,26 @@ fn test_multiple_entities_creation() {
     let bill1 = bills_client.create_bill(
         &user, &SorobanString::from_str(&env, "Rent"),
         &1_500i128, &(env.ledger().timestamp() + 30 * 86400),
-        &true, &30u32, &SorobanString::from_str(&env, "XLM"),
+        &true, &30u32, &None, &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill1, 1u32);
 
     let bill2 = bills_client.create_bill(
         &user, &SorobanString::from_str(&env, "Internet"),
         &100i128, &(env.ledger().timestamp() + 15 * 86400),
-        &true, &30u32, &SorobanString::from_str(&env, "XLM"),
+        &true, &30u32, &None, &SorobanString::from_str(&env, "XLM"),
     );
     assert_eq!(bill2, 2u32);
 
     let policy1 = insurance_client.create_policy(
         &user, &SorobanString::from_str(&env, "Life Insurance"),
-        &SorobanString::from_str(&env, "life"), &150i128, &100_000i128,
+        &remitwise_common::CoverageType::Life, &1_000_000i128, &100_000_000i128, &None,
     );
     assert_eq!(policy1, 1u32);
 
     let policy2 = insurance_client.create_policy(
         &user, &SorobanString::from_str(&env, "Emergency Coverage"),
-        &SorobanString::from_str(&env, "emergency"), &50i128, &10_000i128,
+        &remitwise_common::CoverageType::Property, &2_500_000i128, &150_000_000i128, &None,
     );
     assert_eq!(policy2, 2u32);
 
@@ -481,7 +485,7 @@ fn test_integration_accounting_split_sums_to_total() {
     let remittance_id = env.register_contract(None, RemittanceSplit);
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_id);
 
-    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
+    remittance_client.initialize_split(&user, &0u64, &Address::generate(&env), &40u32, &30u32, &20u32, &10u32);
 
     for total in [1_000i128, 9_999i128, 10_000i128, 77_777i128] {
         let amounts = remittance_client.calculate_split(&total);
@@ -758,9 +762,10 @@ fn test_event_topic_compliance_across_contracts() {
 
     let insurance_id = env.register_contract(None, Insurance);
     let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    insurance_client.init(&user);
 
     // Trigger events in each contract
-    remittance_client.initialize_split(&user, &0u64, &40u32, &30u32, &20u32, &10u32);
+    remittance_client.initialize_split(&user, &0u64, &Address::generate(&env), &40u32, &30u32, &20u32, &10u32);
 
     let goal_name = SorobanString::from_str(&env, "Compliance Goal");
     let _ = savings_client.create_goal(&user, &goal_name, &1000i128, &(env.ledger().timestamp() + 86400));
@@ -773,12 +778,12 @@ fn test_event_topic_compliance_across_contracts() {
         &(env.ledger().timestamp() + 86400),
         &true,
         &30u32,
+        &None, // memo
         &SorobanString::from_str(&env, "XLM"),
     );
 
     let policy_name = SorobanString::from_str(&env, "Compliance Policy");
-    let coverage_type = SorobanString::from_str(&env, "health");
-    let _ = insurance_client.create_policy(&user, &policy_name, &coverage_type, &50i128, &1000i128);
+    let _ = insurance_client.create_policy(&user, &policy_name, &remitwise_common::CoverageType::Health, &1_500_000i128, &20_000_000i128, &None);
 
     // Collect published events
     let events = env.events().all();
@@ -790,8 +795,10 @@ fn test_event_topic_compliance_across_contracts() {
     for ev in events.iter() {
         let topics = &ev.1;
         // Expect topics to be a vector of length 4 starting with symbol_short!("Remitwise")
-        let ok = topics.len() == 4 && topics.get(0).unwrap() == symbol_short!("Remitwise").into_val(&env);
+        let first_topic = topics.get(0).unwrap();
+        let ok = topics.len() == 4 && soroban_sdk::Symbol::try_from_val(&env, &first_topic) == Ok(symbol_short!("Remitwise"));
         if !ok {
+            println!("Non-compliant topics: {:?}", topics);
             non_compliant.push_back(ev.clone());
         }
     }

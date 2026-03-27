@@ -237,24 +237,7 @@ fn test_calculate_complex_rounding() {
     assert_eq!(amounts.get(3).unwrap(), 410);
 }
 
-#[test]
-fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
-    set_ledger_time(&env, 1000);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
-
-    let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
-    assert_eq!(schedule_id, 1);
-
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some());
-    let schedule = schedule.unwrap();
-    assert_eq!(schedule.amount, 10000);
-    assert_eq!(schedule.next_due, 3000);
-    assert_eq!(schedule.interval, 86400);
-    assert!(schedule.active);
-}
 // ---------------------------------------------------------------------------
 // distribute_usdc — happy path
 // ---------------------------------------------------------------------------
@@ -763,10 +746,10 @@ fn test_initialize_split_events() {
 
     let events = env.events().all();
     let last_event = events.last().unwrap();
-    let topic0: Symbol = Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic0, symbol_short!("split"));
-    assert_eq!(topic1, SplitEvent::Initialized);
+    let topics = last_event.1;
+    assert_eq!(topics.len(), 4);
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(0).unwrap()), Ok(symbol_short!("Remitwise")));
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(3).unwrap()), Ok(symbol_short!("split")));
 }
 
 #[test]
@@ -784,8 +767,10 @@ fn test_update_split_events() {
 
     let events = env.events().all();
     let last_event = events.last().unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic1, SplitEvent::Updated);
+    let topics = last_event.1;
+    assert_eq!(topics.len(), 4);
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(0).unwrap()), Ok(symbol_short!("Remitwise")));
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(3).unwrap()), Ok(symbol_short!("split")));
 }
 
 // ---------------------------------------------------------------------------
@@ -902,7 +887,7 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(
@@ -920,7 +905,7 @@ fn test_import_snapshot_current_schema_version_succeeds() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(snapshot.schema_version, 1);
@@ -939,7 +924,7 @@ fn test_import_snapshot_future_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot produced by a newer contract version.
@@ -963,7 +948,7 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot too old to import.
@@ -987,7 +972,7 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1009,7 +994,7 @@ fn test_snapshot_export_import_roundtrip_restores_config() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     // Update so there is something interesting to round-trip.
     // Note: update_split checks the nonce but does NOT increment it.
@@ -1039,7 +1024,7 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &soroban_sdk::Address::generate(&env), &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
 

@@ -34,46 +34,7 @@
                 {
                   "u32": 0
                 },
-                {
-                  "string": "XLM"
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "create_bill",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "string": "Bill2"
-                },
-                {
-                  "i128": {
-                    "hi": 4611686018427387904,
-                    "lo": 999
-                  }
-                },
-                {
-                  "u64": 1000000
-                },
-                {
-                  "bool": false
-                },
-                {
-                  "u32": 0
-                },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -168,6 +129,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "frequency_days"
                                     },
                                     "val": {
@@ -225,110 +192,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": {
-                                "u32": 2
-                              },
-                              "val": {
-                                "map": [
+                                  },
                                   {
                                     "key": {
-                                      "symbol": "amount"
+                                      "symbol": "tags"
                                     },
                                     "val": {
-                                      "i128": {
-                                        "hi": 4611686018427387904,
-                                        "lo": 999
-                                      }
+                                      "vec": []
                                     }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "created_at"
-                                    },
-                                    "val": {
-                                      "u64": 0
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "currency"
-                                    },
-                                    "val": {
-                                      "string": "XLM"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "due_date"
-                                    },
-                                    "val": {
-                                      "u64": 1000000
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "frequency_days"
-                                    },
-                                    "val": {
-                                      "u32": 0
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "id"
-                                    },
-                                    "val": {
-                                      "u32": 2
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "name"
-                                    },
-                                    "val": {
-                                      "string": "Bill2"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "owner"
-                                    },
-                                    "val": {
-                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "paid"
-                                    },
-                                    "val": {
-                                      "bool": false
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "paid_at"
-                                    },
-                                    "val": "void"
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "recurring"
-                                    },
-                                    "val": {
-                                      "bool": false
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": "void"
                                   }
                                 ]
                               }
@@ -341,7 +212,7 @@
                           "symbol": "NEXT_ID"
                         },
                         "val": {
-                          "u32": 2
+                          "u32": 1
                         }
                       },
                       {
@@ -356,8 +227,8 @@
                               },
                               "val": {
                                 "i128": {
-                                  "hi": 9223372036854775807,
-                                  "lo": 18446744073709551615
+                                  "hi": 4611686018427387904,
+                                  "lo": 999
                                 }
                               }
                             }
@@ -396,39 +267,6 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 801925984706572462
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 5541220902715666415
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 5541220902715666415
                   }
                 },
                 "durability": "temporary",
@@ -505,6 +343,7 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -624,53 +463,9 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "Remitwise"
-              },
-              {
-                "u32": 1
-              },
-              {
-                "u32": 1
-              },
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 2
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "i128": {
-                    "hi": 4611686018427387904,
-                    "lo": 999
-                  }
-                },
-                {
-                  "u64": 1000000
                 }
               ]
             }
@@ -688,14 +483,126 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_bill"
+                "symbol": "log"
               }
             ],
             "data": {
-              "u32": 2
+              "vec": [
+                {
+                  "string": "caught panic 'overflow' from contract function 'Symbol(obj#59)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Bill2"
+                },
+                {
+                  "i128": {
+                    "hi": 4611686018427387904,
+                    "lo": 999
+                  }
+                },
+                {
+                  "u64": 1000000
+                },
+                {
+                  "bool": false
+                },
+                {
+                  "u32": 0
+                },
+                "void",
+                {
+                  "string": "XLM"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "wasm_vm": "invalid_action"
+                }
+              }
+            ],
+            "data": {
+              "string": "caught error from function"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "wasm_vm": "invalid_action"
+                }
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "string": "contract call failed"
+                },
+                {
+                  "symbol": "create_bill"
+                },
+                {
+                  "vec": [
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    {
+                      "string": "Bill2"
+                    },
+                    {
+                      "i128": {
+                        "hi": 4611686018427387904,
+                        "lo": 999
+                      }
+                    },
+                    {
+                      "u64": 1000000
+                    },
+                    {
+                      "bool": false
+                    },
+                    {
+                      "u32": 0
+                    },
+                    "void",
+                    {
+                      "string": "XLM"
+                    }
+                  ]
+                }
+              ]
             }
           }
         }
@@ -711,43 +618,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_call"
+                "symbol": "error"
               },
               {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "get_total_unpaid"
+                "error": {
+                  "wasm_vm": "invalid_action"
+                }
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "get_total_unpaid"
-              }
-            ],
-            "data": {
-              "i128": {
-                "hi": 9223372036854775807,
-                "lo": 18446744073709551615
-              }
+              "string": "escalating error to panic"
             }
           }
         }

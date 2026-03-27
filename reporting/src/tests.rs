@@ -204,11 +204,11 @@ mod insurance {
     }
 }
 
-fn create_test_env() -> Env {
-    let env = Env::default();
-    env.mock_all_auths();
-    env
-}
+
+
+
+
+
 
 #[test]
 fn test_init_reporting_contract_succeeds() {

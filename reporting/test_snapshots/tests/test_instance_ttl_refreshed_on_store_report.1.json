@@ -1144,6 +1144,39 @@
                             }
                           ]
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "STOR_STAT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "active_reports"
+                              },
+                              "val": {
+                                "u32": 1
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "archived_reports"
+                              },
+                              "val": {
+                                "u32": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "last_updated"
+                              },
+                              "val": {
+                                "u64": 1706745600
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -1993,7 +2026,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }
