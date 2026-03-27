@@ -2134,6 +2134,39 @@
                             }
                           ]
                         }
+                      },
+                      {
+                        "key": {
+                          "symbol": "STOR_STAT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "active_reports"
+                              },
+                              "val": {
+                                "u32": 2
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "archived_reports"
+                              },
+                              "val": {
+                                "u32": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "last_updated"
+                              },
+                              "val": {
+                                "u64": 1709424000
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -2832,7 +2865,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1000
                 }
               ]
             }
@@ -3016,7 +3049,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }
@@ -5339,7 +5372,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1000
                 }
               ]
             }
@@ -5351,43 +5384,7 @@
     {
       "event": {
         "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000007"
-              },
-              {
-                "symbol": "get_active_policies"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "u32": 0
-                },
-                {
-                  "u32": 1
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000007",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000006",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -5450,13 +5447,6 @@
                             },
                             "val": {
                               "u64": 1735689600
-                              "symbol": "coverage_amount"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 50000
-                              }
                             }
                           },
                           {
@@ -5465,10 +5455,6 @@
                             },
                             "val": {
                               "u32": 30
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "string": "health"
                             }
                           },
                           {
@@ -5485,13 +5471,6 @@
                             },
                             "val": {
                               "string": "Electricity"
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 200
-                              }
                             }
                           },
                           {
@@ -5500,10 +5479,6 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Health Insurance"
                             }
                           },
                           {
@@ -5512,10 +5487,6 @@
                             },
                             "val": {
                               "bool": false
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 1735689600
                             }
                           },
                           {
@@ -5530,10 +5501,6 @@
                             },
                             "val": {
                               "bool": true
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
                           },
                           {
@@ -5589,7 +5556,7 @@
                   "u32": 0
                 },
                 {
-                  "u32": 50
+                  "u32": 1
                 }
               ]
             }
@@ -5700,6 +5667,12 @@
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                             }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
                           }
                         ]
                       }
