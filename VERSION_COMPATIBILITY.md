@@ -292,6 +292,74 @@ If you encounter compatibility issues:
 3. Test with minimal reproduction case
 4. Report with full version details
 
+## Snapshot Schema Versioning
+
+Each contract that supports data export/import carries an explicit **schema version tag**
+inside every snapshot it produces. This is separate from the contract deployment version
+(`get_version()`).
+
+### Constants (workspace-wide)
+
+| Constant | Value | Contract(s) |
+|---|---|---|
+| `SCHEMA_VERSION` | 1 | remittance_split, savings_goals, data_migration |
+| `MIN_SUPPORTED_SCHEMA_VERSION` / `MIN_SUPPORTED_VERSION` | 1 | all three |
+| `SNAPSHOT_SCHEMA_VERSION` (alias) | 1 | data_migration |
+
+### Snapshot struct fields
+
+| Contract | Struct | Schema version field |
+|---|---|---|
+| `remittance_split` | `ExportSnapshot` | `schema_version: u32` |
+| `savings_goals` | `GoalsExportSnapshot` | `schema_version: u32` |
+| `data_migration` | `SnapshotHeader` | `version: u32` (= `SCHEMA_VERSION`) |
+
+### Import validation rules
+
+All `import_snapshot` entry points validate the schema version against the
+supported range before applying any data:
+
+```
+MIN_SUPPORTED_SCHEMA_VERSION <= snapshot.schema_version <= SCHEMA_VERSION
+```
+
+- **Too old** (`schema_version < MIN_SUPPORTED_SCHEMA_VERSION`): rejected as `UnsupportedVersion`.
+- **Too new** (`schema_version > SCHEMA_VERSION`): rejected as `UnsupportedVersion`
+  (forward-compatibility rejection — the contract cannot safely apply an unknown format).
+- **In range**: accepted; checksum is verified next before data is written.
+
+### Error codes
+
+| Contract | Error variant | Code |
+|---|---|---|
+| `remittance_split` | `RemittanceSplitError::UnsupportedVersion` | 8 |
+| `remittance_split` | `RemittanceSplitError::ChecksumMismatch` | 9 |
+| `savings_goals` | `SavingsGoalError::UnsupportedVersion` | 6 |
+| `savings_goals` | `SavingsGoalError::ChecksumMismatch` | 7 |
+| `data_migration` | `MigrationError::IncompatibleVersion` | — |
+
+### Bumping the schema version
+
+When the snapshot format changes:
+
+1. Increment `SCHEMA_VERSION` in the affected contract(s).
+2. If old snapshots can still be safely imported, leave `MIN_SUPPORTED_SCHEMA_VERSION` unchanged.
+3. If old snapshots are no longer safe to import, bump `MIN_SUPPORTED_SCHEMA_VERSION` to match.
+4. Add a new test asserting that the previous version is accepted or rejected as appropriate.
+5. Update this table.
+
+### Events emitted
+
+Both `remittance_split` and `savings_goals` emit an event on every `export_snapshot`
+call containing the `schema_version` value for indexer consumption:
+
+| Contract | Topic 1 | Topic 2 | Data |
+|---|---|---|---|
+| `remittance_split` | `"split"` | `"snap_exp"` | `schema_version: u32` |
+| `savings_goals` | `"goals"` | `"snap_exp"` | `schema_version: u32` |
+
+---
+
 ## Maintenance
 
 This document is maintained alongside contract releases.

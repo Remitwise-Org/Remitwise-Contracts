@@ -41,6 +41,31 @@
       "cpu_percent": 12,
       "mem_percent": 12,
       "description": "Slightly higher thresholds for bulk retrieval"
+    },
+    "create_remittance_schedule": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for schedule creation"
+    },
+    "modify_remittance_schedule": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for schedule modification"
+    },
+    "cancel_remittance_schedule": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for schedule cancellation"
+    },
+    "get_remittance_schedules": {
+      "cpu_percent": 15,
+      "mem_percent": 12,
+      "description": "Higher thresholds for schedule queries due to iteration"
+    },
+    "get_remittance_schedule": {
+      "cpu_percent": 8,
+      "mem_percent": 8,
+      "description": "Lower thresholds for single schedule lookup"
     }
   }
 }

@@ -1816,7 +1816,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#491)'"
+                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#495)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

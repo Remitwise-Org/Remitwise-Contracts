@@ -24,3 +24,7 @@ Makefile
 # local verification logs
 *verification*.txt
 compile_errors_*.txt
+
+# Brief and BM artifacts
+brief.md
+BM/
