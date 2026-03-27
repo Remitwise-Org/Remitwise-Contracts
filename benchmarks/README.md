@@ -79,6 +79,41 @@ The remittance split contract includes comprehensive benchmarks for schedule lif
 - `get_remittance_schedules/50_schedules_worst_case`: Worst-case query performance
 - `get_remittance_schedule/single_schedule_lookup`: Single schedule retrieval
 
+## Insurance Schedule Operations
+
+The insurance contract includes comprehensive benchmarks for premium schedule lifecycle operations under heavy workloads.
+
+### Running Insurance Benchmarks
+```bash
+RUST_TEST_THREADS=1 cargo test -p insurance --test gas_bench -- --nocapture
+```
+
+### Create Operations
+- `create_premium_schedule/single_recurring_schedule`: Basic schedule creation
+- `create_premium_schedule/51st_schedule_with_existing`: Scaling with 50 existing schedules
+
+### Modify Operations
+- `modify_premium_schedule/single_schedule_modification`: Update existing schedule
+- `modify_premium_schedule/modify_middle_of_100_schedules`: Modify schedule in middle of 100
+
+### Cancel Operations
+- `cancel_premium_schedule/single_schedule_cancellation`: Cancel active schedule
+- `cancel_premium_schedule/cancel_middle_of_50_schedules`: Cancel schedule in middle of 50
+
+### Execute Operations
+- `execute_due_premium_schedules/single_due_schedule`: Execute one due schedule
+- `execute_due_premium_schedules/10_due_of_50_schedules`: Execute 10 of 50 schedules
+- `execute_due_premium_schedules/all_50_schedules_due`: Execute all 50 due schedules
+- `execute_due_premium_schedules/schedule_with_5_missed_periods`: Execute with missed periods
+
+### Query Operations
+- `get_premium_schedule/single_schedule_lookup`: Single schedule retrieval
+- `get_active_schedules/empty_schedules`: Query with no schedules
+- `get_active_schedules/50_active_schedules`: Query with 50 schedules
+- `get_active_schedules/100_schedules_worst_case`: Worst-case query with 100 schedules
+- `get_active_schedules/50_schedules_2_owners_isolation`: Owner isolation validation
+- `get_total_monthly_premium/100_active_policies`: Aggregate query over 100 policies
+
 ## Security Considerations
 
 All benchmarks include security validations:
