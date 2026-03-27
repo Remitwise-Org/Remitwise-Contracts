@@ -1,6 +1,6 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
-use reporting::{ReportingContract, ReportingContractClient};
 use remitwise_common::Category;
+use reporting::{ReportingContract, ReportingContractClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 // Mock contracts for the reporting example
 // In a real scenario, these would be the actual deployed contract IDs
@@ -18,7 +18,7 @@ fn main() {
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
-    
+
     // Dependencies
     let split_addr = Address::generate(&env);
     let savings_addr = Address::generate(&env);
@@ -40,15 +40,15 @@ fn main() {
         &savings_addr,
         &bills_addr,
         &insurance_addr,
-        &family_addr
+        &family_addr,
     );
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report
-    // Note: In this environment, calling reports that query other contracts 
+    // Note: In this environment, calling reports that query other contracts
     // would require those contracts to be registered at the provided addresses.
     // For simplicity in this standalone example, we'll focus on the configuration and health score calculation
-    
+
     println!("\nReporting contract is now ready to generate financial insights.");
     println!("Example completed successfully!");
 }

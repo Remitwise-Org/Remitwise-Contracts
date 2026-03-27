@@ -16,17 +16,17 @@
 //!   MAX_PAGE_LIMIT              = 50
 //!   DEFAULT_PAGE_LIMIT          = 20
 //!   MAX_BATCH_SIZE              = 50
- 
+
 use insurance::{Insurance, InsuranceClient};
 use remitwise_common::CoverageType;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
- 
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
- 
+
 fn stress_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {
         capture_snapshot_at_drop: false,
@@ -46,7 +46,7 @@ fn stress_env() -> Env {
     env.budget().reset_unlimited();
     env
 }
- 
+
 fn measure<F, R>(env: &Env, f: F) -> (u64, u64, R)
 where
     F: FnOnce() -> R,
@@ -59,11 +59,11 @@ where
     let mem = budget.memory_bytes_cost();
     (cpu, mem, result)
 }
- 
+
 // ---------------------------------------------------------------------------
 // Stress: many entities per user
 // ---------------------------------------------------------------------------
- 
+
 /// Create 200 policies for a single user and verify full dataset is accessible
 /// via cursor-based get_active_policies pagination (MAX_PAGE_LIMIT = 50).
 #[test]
@@ -73,14 +73,21 @@ fn stress_200_policies_single_user() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "StressPolicy");
     let coverage_type = CoverageType::Health;
- 
+
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
     }
- 
+
     // Verify aggregate monthly premium
     let total_premium = client.get_total_monthly_premium(&owner);
     assert_eq!(
@@ -88,7 +95,7 @@ fn stress_200_policies_single_user() {
         200 * 1_000_000i128,
         "get_total_monthly_premium must sum premiums across all 200 policies"
     );
- 
+
     // Exhaust all pages (MAX_PAGE_LIMIT = 50 → 4 pages)
     let mut collected = 0u32;
     let mut cursor = 0u32;
@@ -107,11 +114,18 @@ fn stress_200_policies_single_user() {
         }
         cursor = page.next_cursor;
     }
- 
-    assert_eq!(collected, 200, "Pagination must return all 200 active policies");
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
+
+    assert_eq!(
+        collected, 200,
+        "Pagination must return all 200 active policies"
+    );
+    assert!(
+        (4..=5).contains(&pages),
+        "Expected 4-5 pages for 200 policies at limit 50, got {}",
+        pages
+    );
 }
- 
+
 /// Create 200 policies and verify instance TTL remains valid after the instance
 /// Map grows to 200 entries.
 #[test]
@@ -121,14 +135,21 @@ fn stress_instance_ttl_valid_after_200_policies() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "TTLPolicy");
     let coverage_type = CoverageType::Life;
- 
+
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &500_000i128, &50_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &500_000i128,
+            &50_000_000i128,
+            &None,
+        );
     }
- 
+
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl >= 518_400,
@@ -136,11 +157,11 @@ fn stress_instance_ttl_valid_after_200_policies() {
         ttl
     );
 }
- 
+
 // ---------------------------------------------------------------------------
 // Stress: many users
 // ---------------------------------------------------------------------------
- 
+
 /// Create 20 policies each for 10 different users (200 total) and verify
 /// per-owner isolation — each user sees only their own policies and premiums.
 #[test]
@@ -150,15 +171,15 @@ fn stress_policies_across_10_users() {
     let client = InsuranceClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.init(&admin);
- 
+
     const N_USERS: usize = 10;
     const POLICIES_PER_USER: u32 = 20;
     const PREMIUM_PER_POLICY: i128 = 1_000_000;
     let name = String::from_str(&env, "UserPolicy");
     let coverage_type = CoverageType::Health;
- 
+
     let users: std::vec::Vec<Address> = (0..N_USERS).map(|_| Address::generate(&env)).collect();
- 
+
     for user in &users {
         for _ in 0..POLICIES_PER_USER {
             client.create_policy(
@@ -171,7 +192,7 @@ fn stress_policies_across_10_users() {
             );
         }
     }
- 
+
     for user in &users {
         let total = client.get_total_monthly_premium(user);
         assert_eq!(
@@ -179,7 +200,7 @@ fn stress_policies_across_10_users() {
             POLICIES_PER_USER as i128 * PREMIUM_PER_POLICY,
             "Each user's total premium must reflect only their own policies"
         );
- 
+
         // Verify paginated count
         let mut seen = 0u32;
         let mut cursor = 0u32;
@@ -198,11 +219,11 @@ fn stress_policies_across_10_users() {
         );
     }
 }
- 
+
 // ---------------------------------------------------------------------------
 // Stress: TTL re-bump after ledger advancement
 // ---------------------------------------------------------------------------
- 
+
 /// Verify the instance TTL is re-bumped to >= INSTANCE_BUMP_AMOUNT (518,400)
 /// after the ledger advances far enough to drop TTL below the threshold (17,280).
 #[test]
@@ -212,22 +233,29 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "TTLStress");
     let coverage_type = CoverageType::Health;
- 
+
     // Phase 1: 50 creates
     for _ in 0..50 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
     }
- 
+
     let ttl_batch1 = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl_batch1 >= 518_400,
         "TTL ({}) must be >= 518,400 after first batch of creates",
         ttl_batch1
     );
- 
+
     // Phase 2: advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
@@ -239,17 +267,24 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 700_000,
     });
- 
+
     let ttl_degraded = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl_degraded < 17_280,
         "TTL ({}) must have degraded below threshold 17,280 after ledger jump",
         ttl_degraded
     );
- 
+
     // Phase 3: create_policy fires extend_ttl → re-bumped
-    client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
- 
+    client.create_policy(
+        &owner,
+        &name,
+        &coverage_type,
+        &1_000_000i128,
+        &10_000_000i128,
+        &None,
+    );
+
     let ttl_rebumped = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl_rebumped >= 518_400,
@@ -257,7 +292,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
         ttl_rebumped
     );
 }
- 
+
 /// Verify TTL is also re-bumped by pay_premium after ledger advancement.
 #[test]
 fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
@@ -266,7 +301,7 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "PayTTL"),
@@ -275,7 +310,7 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
         &10_000_000i128,
         &None,
     );
- 
+
     // Advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
@@ -287,11 +322,11 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 700_000,
     });
- 
+
     // pay_premium must re-bump TTL
     let paid = client.pay_premium(&owner, &policy_id);
     assert!(paid, "pay_premium must succeed");
- 
+
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl >= 518_400,
@@ -299,11 +334,11 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
         ttl
     );
 }
- 
+
 // ---------------------------------------------------------------------------
 // Stress: batch operations at limit
 // ---------------------------------------------------------------------------
- 
+
 /// Create 50 policies and pay all premiums in a single batch_pay_premiums call
 /// (MAX_BATCH_SIZE = 50). Verify count returned and each policy has been updated.
 #[test]
@@ -313,22 +348,29 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
-    const BATCH_SIZE: u32 = 50; 
+
+    const BATCH_SIZE: u32 = 50;
     let name = String::from_str(&env, "BatchPolicy");
     let coverage_type = CoverageType::Health;
- 
+
     let mut policy_ids = std::vec![];
     for _ in 0..BATCH_SIZE {
-        let id = client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
         policy_ids.push(id);
     }
- 
+
     let mut ids_vec = soroban_sdk::Vec::new(&env);
     for &id in &policy_ids {
         ids_vec.push_back(id);
     }
- 
+
     let paid_count = client.batch_pay_premiums(&owner, &ids_vec);
     assert_eq!(
         paid_count, BATCH_SIZE,
@@ -336,7 +378,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
         BATCH_SIZE
     );
 }
- 
+
 #[test]
 fn stress_deactivate_half_of_200_policies() {
     let env = stress_env();
@@ -344,19 +386,26 @@ fn stress_deactivate_half_of_200_policies() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner); // owner IS the contract owner
- 
+
     let name = String::from_str(&env, "DeactPolicy");
     let coverage_type = CoverageType::Life;
- 
+
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &500_000i128, &50_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &500_000i128,
+            &50_000_000i128,
+            &None,
+        );
     }
- 
+
     // Deactivate even-numbered policies (IDs 2, 4, 6, …, 200)
     for id in (2u32..=200).step_by(2) {
         client.deactivate_policy(&owner, &id);
     }
- 
+
     // get_active_policies must return only the 100 remaining active ones
     let mut active_count = 0u32;
     let mut cursor = 0u32;
@@ -368,17 +417,17 @@ fn stress_deactivate_half_of_200_policies() {
         }
         cursor = page.next_cursor;
     }
- 
+
     assert_eq!(
         active_count, 100,
         "After deactivating 100 of 200 policies, only 100 must be returned by get_active_policies"
     );
 }
- 
+
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
- 
+
 #[test]
 fn bench_get_active_policies_first_page_of_200() {
     let env = stress_env();
@@ -386,18 +435,25 @@ fn bench_get_active_policies_first_page_of_200() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "BenchPolicy");
     let coverage_type = CoverageType::Health;
- 
+
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
     }
- 
-    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
+
+    let (_cpu, _mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
     assert_eq!(page.count, 50, "First page must return 50 policies");
 }
- 
+
 #[test]
 fn bench_get_total_monthly_premium_200_policies() {
     let env = stress_env();
@@ -405,19 +461,26 @@ fn bench_get_total_monthly_premium_200_policies() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "PremBench");
     let coverage_type = CoverageType::Health;
- 
+
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
     }
- 
+
     let expected = 200i128 * 1_000_000;
-    let (cpu, mem, total) = measure(&env, || client.get_total_monthly_premium(&owner));
+    let (_cpu, _mem, total) = measure(&env, || client.get_total_monthly_premium(&owner));
     assert_eq!(total, expected);
 }
- 
+
 #[test]
 fn bench_batch_pay_premiums_50_policies() {
     let env = stress_env();
@@ -425,21 +488,28 @@ fn bench_batch_pay_premiums_50_policies() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     client.init(&owner);
- 
+
     let name = String::from_str(&env, "BatchBench");
     let coverage_type = CoverageType::Health;
- 
+
     let mut policy_ids = std::vec![];
     for _ in 0..50 {
-        let id = client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &10_000_000i128, &None);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &10_000_000i128,
+            &None,
+        );
         policy_ids.push(id);
     }
- 
+
     let mut ids_vec = soroban_sdk::Vec::new(&env);
     for &id in &policy_ids {
         ids_vec.push_back(id);
     }
- 
-    let (cpu, mem, count) = measure(&env, || client.batch_pay_premiums(&owner, &ids_vec));
+
+    let (_cpu, _mem, count) = measure(&env, || client.batch_pay_premiums(&owner, &ids_vec));
     assert_eq!(count, 50);
 }

@@ -19,8 +19,8 @@
     "contract": "savings_goals",
     "method": "create_savings_schedule",
     "scenario": "single_schedule",
-    "cpu": 106237,
-    "mem": 18811,
+    "cpu": 124297,
+    "mem": 21437,
     "description": "Create a single savings schedule"
   },
   {

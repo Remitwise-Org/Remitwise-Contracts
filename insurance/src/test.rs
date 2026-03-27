@@ -1,11 +1,6 @@
-#![cfg(test)]
-
 use super::*;
 use crate::InsuranceError;
-use soroban_sdk::{
-    testutils::{Address as AddressTrait, Ledger, LedgerInfo},
-    Address, Env, String, Vec, vec,
-};
+use soroban_sdk::{testutils::Address as AddressTrait, Address, Env, String};
 
 use testutils::{set_ledger_time, setup_test_env};
 
@@ -22,9 +17,9 @@ fn test_create_policy_succeeds() {
         &owner,
         &name,
         &coverage_type,
-        &1_000_000,   // monthly_premium
+        &1_000_000,  // monthly_premium
         &10_000_000, // coverage_amount
-        &None,        // external_ref
+        &None,       // external_ref
     );
 
     assert_eq!(policy_id, 1);
@@ -138,9 +133,30 @@ fn test_get_active_policies() {
     setup_test_env!(env, Insurance, InsuranceClient, client, owner);
     client.init(&owner);
 
-    client.create_policy(&owner, &String::from_str(&env, "P1"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
-    let p2 = client.create_policy(&owner, &String::from_str(&env, "P2"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
-    client.create_policy(&owner, &String::from_str(&env, "P3"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P1"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
+    let p2 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "P2"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P3"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
 
     client.deactivate_policy(&owner, &p2);
 
@@ -153,8 +169,22 @@ fn test_get_total_monthly_premium() {
     setup_test_env!(env, Insurance, InsuranceClient, client, owner);
     client.init(&owner);
 
-    client.create_policy(&owner, &String::from_str(&env, "P1"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
-    client.create_policy(&owner, &String::from_str(&env, "P2"), &CoverageType::Health, &2_000_000, &20_000_000, &None);
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P1"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "P2"),
+        &CoverageType::Health,
+        &2_000_000,
+        &20_000_000,
+        &None,
+    );
 
     let total = client.get_total_monthly_premium(&owner);
     assert_eq!(total, 3_000_000);
@@ -165,7 +195,14 @@ fn test_create_premium_schedule_succeeds() {
     setup_test_env!(env, Insurance, InsuranceClient, client, owner);
     client.init(&owner);
 
-    let policy_id = client.create_policy(&owner, &String::from_str(&env, "P1"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "P1"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
     assert_eq!(schedule_id, 1);
 
@@ -180,14 +217,21 @@ fn test_execute_due_premium_schedules() {
     setup_test_env!(env, Insurance, InsuranceClient, client, owner);
     client.init(&owner);
 
-    let policy_id = client.create_policy(&owner, &String::from_str(&env, "P1"), &CoverageType::Health, &1_000_000, &10_000_000, &None);
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "P1"),
+        &CoverageType::Health,
+        &1_000_000,
+        &10_000_000,
+        &None,
+    );
     let _schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &0);
 
     set_ledger_time(&env, 1, 3500);
     let executed = client.execute_due_premium_schedules();
 
     assert_eq!(executed.len(), 1);
-    
+
     let updated_policy = client.get_policy(&policy_id).unwrap();
     assert!(updated_policy.next_payment_date > 3500);
 }

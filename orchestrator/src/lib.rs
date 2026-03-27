@@ -989,18 +989,17 @@ impl Orchestrator {
             )?;
 
             // Step 3: Pay insurance premium
-            let _success = Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).map_err(
-                |e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("insuranc"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                },
-            )?;
+            let _success = Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)
+                .map_err(|e| {
+                Self::emit_error_event(
+                    &env,
+                    &caller,
+                    symbol_short!("insuranc"),
+                    e as u32,
+                    timestamp,
+                );
+                e
+            })?;
 
             // Emit success event
             let allocations = Vec::from_array(&env, [0, 0, 0, amount]);
@@ -1180,18 +1179,19 @@ impl Orchestrator {
                     .is_ok();
 
             // Step 7: Pay insurance premium
-            let insurance_success = Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)
-                .map_err(|e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("insuranc"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                })?; // Hard failure on error, but returns bool for successful call result
-
+            let insurance_success =
+                Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).map_err(
+                    |e| {
+                        Self::emit_error_event(
+                            &env,
+                            &caller,
+                            symbol_short!("insuranc"),
+                            e as u32,
+                            timestamp,
+                        );
+                        e
+                    },
+                )?; // Hard failure on error, but returns bool for successful call result
 
             // Build result
             let flow_result = RemittanceFlowResult {

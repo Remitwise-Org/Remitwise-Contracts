@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
@@ -7,7 +5,7 @@ use soroban_sdk::{
     Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
 
-use testutils::{set_ledger_time, setup_test_env};
+use testutils::set_ledger_time;
 
 // Removed local set_time in favor of testutils::set_ledger_time
 
@@ -99,7 +97,11 @@ fn test_init_idempotent_does_not_wipe_goals() {
     assert_eq!(goal_after_second_init.current_amount, 0);
 
     let all_goals = client.get_all_goals(&owner_a);
-    assert_eq!(all_goals.len(), 1, "get_all_goals must still return the one goal");
+    assert_eq!(
+        all_goals.len(),
+        1,
+        "get_all_goals must still return the one goal"
+    );
 
     // Verify NEXT_ID was not reset: next created goal must get goal_id == 2, not 1
     let name2 = String::from_str(&env, "Second Goal");
@@ -435,7 +437,10 @@ fn test_withdraw_from_goal_nonexistent_goal_panics() {
     client.init();
     env.mock_all_auths();
     let result = client.try_withdraw_from_goal(&user, &999, &100);
-    assert!(result.is_err(), "Expected error for nonexistent goal withdrawal");
+    assert!(
+        result.is_err(),
+        "Expected error for nonexistent goal withdrawal"
+    );
 }
 
 #[test]
@@ -894,7 +899,6 @@ fn test_create_goal_emits_event() {
 
     let events = env.events().all();
     let mut found_created_struct = false;
-    let mut found_created_enum = false;
 
     for event in events.iter() {
         let topics = event.1;
@@ -902,9 +906,10 @@ fn test_create_goal_emits_event() {
 
         if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
             let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
-            
+
             if action == GOAL_CREATED {
-                let event_data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
+                let event_data: GoalCreatedEvent =
+                    GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
                 assert_eq!(event_data.goal_id, goal_id);
                 found_created_struct = true;
             }
@@ -941,7 +946,6 @@ fn test_add_to_goal_emits_event() {
 
     let events = env.events().all();
     let mut found_added_struct = false;
-    let mut found_added_enum = false;
 
     for event in events.iter() {
         let topics = event.1;
@@ -949,9 +953,10 @@ fn test_add_to_goal_emits_event() {
 
         if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
             let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
-            
+
             if action == FUNDS_ADDED {
-                let event_data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
+                let event_data: FundsAddedEvent =
+                    FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
                 assert_eq!(event_data.goal_id, goal_id);
                 assert_eq!(event_data.amount, 1000);
                 found_added_struct = true;
@@ -988,7 +993,6 @@ fn test_goal_completed_emits_event() {
 
     let events = env.events().all();
     let mut found_completed_struct = false;
-    let mut found_completed_enum = false;
 
     for event in events.iter() {
         let topics = event.1;
@@ -996,9 +1000,10 @@ fn test_goal_completed_emits_event() {
 
         if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
             let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
-            
+
             if action == GOAL_COMPLETED {
-                let event_data: GoalCompletedEvent = GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
+                let event_data: GoalCompletedEvent =
+                    GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
                 assert_eq!(event_data.goal_id, goal_id);
                 assert_eq!(event_data.final_amount, 1000);
                 found_completed_struct = true;
@@ -1046,10 +1051,7 @@ fn test_withdraw_from_goal_emits_event() {
         }
     }
 
-    assert!(
-        found_withdrawn_enum,
-        "funds_wit event was not emitted"
-    );
+    assert!(found_withdrawn_enum, "funds_wit event was not emitted");
 }
 
 #[test]
@@ -1085,10 +1087,7 @@ fn test_lock_goal_emits_event() {
         }
     }
 
-    assert!(
-        found_locked_enum,
-        "locked event was not emitted"
-    );
+    assert!(found_locked_enum, "locked event was not emitted");
 }
 
 #[test]
@@ -1123,10 +1122,7 @@ fn test_unlock_goal_emits_event() {
         }
     }
 
-    assert!(
-        found_unlocked_enum,
-        "unlocked event was not emitted"
-    );
+    assert!(found_unlocked_enum, "unlocked event was not emitted");
 }
 
 #[test]
@@ -1801,9 +1797,18 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
-    assert!(goals_a.iter().any(|g| g.id == goal_a1), "Goals for A should contain goal_a1");
-    assert!(goals_a.iter().any(|g| g.id == goal_a2), "Goals for A should contain goal_a2");
-    assert!(goals_a.iter().any(|g| g.id == goal_a3), "Goals for A should contain goal_a3");
+    assert!(
+        goals_a.iter().any(|g| g.id == goal_a1),
+        "Goals for A should contain goal_a1"
+    );
+    assert!(
+        goals_a.iter().any(|g| g.id == goal_a2),
+        "Goals for A should contain goal_a2"
+    );
+    assert!(
+        goals_a.iter().any(|g| g.id == goal_a3),
+        "Goals for A should contain goal_a3"
+    );
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1819,8 +1824,14 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
-    assert!(goals_b.iter().any(|g| g.id == goal_b1), "Goals for B should contain goal_b1");
-    assert!(goals_b.iter().any(|g| g.id == goal_b2), "Goals for B should contain goal_b2");
+    assert!(
+        goals_b.iter().any(|g| g.id == goal_b1),
+        "Goals for B should contain goal_b1"
+    );
+    assert!(
+        goals_b.iter().any(|g| g.id == goal_b2),
+        "Goals for B should contain goal_b2"
+    );
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
     for goal_a in goals_a.iter() {
@@ -1853,7 +1864,12 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let owner = Address::generate(&env);
 
     client.init();
-    let _id = client.create_goal(&owner, &String::from_str(&env, "House"), &10000, &2000000000);
+    let _id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "House"),
+        &10000,
+        &2000000000,
+    );
 
     let snapshot = client.export_snapshot(&owner);
     assert_eq!(
@@ -1917,7 +1933,12 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Education"), &8000, &2000000000);
+    client.create_goal(
+        &owner,
+        &String::from_str(&env, "Education"),
+        &8000,
+        &2000000000,
+    );
 
     let mut snapshot = client.export_snapshot(&owner);
     // Simulate a snapshot too old to be safely imported.
@@ -1942,7 +1963,12 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Savings"), &2000, &2000000000);
+    client.create_goal(
+        &owner,
+        &String::from_str(&env, "Savings"),
+        &2000,
+        &2000000000,
+    );
 
     let mut snapshot = client.export_snapshot(&owner);
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1965,8 +1991,18 @@ fn test_snapshot_export_import_roundtrip_restores_goals() {
     let owner = Address::generate(&env);
 
     client.init();
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Fund A"), &5000, &2000000000);
-    let id2 = client.create_goal(&owner, &String::from_str(&env, "Fund B"), &8000, &2000000000);
+    let id1 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Fund A"),
+        &5000,
+        &2000000000,
+    );
+    let id2 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Fund B"),
+        &8000,
+        &2000000000,
+    );
     client.add_to_goal(&owner, &id1, &1500);
 
     let snapshot = client.export_snapshot(&owner);
@@ -1995,14 +2031,22 @@ fn test_import_snapshot_min_supported_version_accepted() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(&owner, &String::from_str(&env, "Min Version"), &1000, &2000000000);
+    client.create_goal(
+        &owner,
+        &String::from_str(&env, "Min Version"),
+        &1000,
+        &2000000000,
+    );
 
     let snapshot = client.export_snapshot(&owner);
     // schema_version is already 1 == MIN_SUPPORTED_SCHEMA_VERSION.
     assert_eq!(snapshot.schema_version, 1);
 
     let ok = client.import_snapshot(&owner, &0, &snapshot);
-    assert!(ok, "snapshot at MIN_SUPPORTED_SCHEMA_VERSION must be accepted");
+    assert!(
+        ok,
+        "snapshot at MIN_SUPPORTED_SCHEMA_VERSION must be accepted"
+    );
 }
 
 #[test]
@@ -2014,12 +2058,17 @@ fn test_withdraw_time_lock_boundaries() {
 
     env.mock_all_auths();
     client.init();
-    
+
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
     let unlock_date = 5000;
-    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Time Lock Boundary"), &10000, &unlock_date);
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Time Lock Boundary"),
+        &10000,
+        &unlock_date,
+    );
 
     client.add_to_goal(&owner, &goal_id, &5000);
     client.unlock_goal(&owner, &goal_id);
@@ -2033,12 +2082,18 @@ fn test_withdraw_time_lock_boundaries() {
     // 2. Test withdrawal at unlock_date (should succeed)
     set_ledger_time(&env, 1, unlock_date);
     let new_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
-    assert_eq!(new_amount, 4000, "Withdrawal should succeed exactly at unlock_date");
+    assert_eq!(
+        new_amount, 4000,
+        "Withdrawal should succeed exactly at unlock_date"
+    );
 
     // 3. Test withdrawal at unlock_date + 1 (should succeed)
     set_ledger_time(&env, 1, unlock_date + 1);
     let final_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
-    assert_eq!(final_amount, 3000, "Withdrawal should succeed after unlock_date");
+    assert_eq!(
+        final_amount, 3000,
+        "Withdrawal should succeed after unlock_date"
+    );
 }
 
 #[test]
@@ -2050,39 +2105,54 @@ fn test_savings_schedule_drift_and_missed_intervals() {
 
     env.mock_all_auths();
     client.init();
-    
+
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
-    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Schedule Drift"), &10000, &5000);
-    
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Schedule Drift"),
+        &10000,
+        &5000,
+    );
+
     let amount = 500;
     let next_due = 3000;
     let interval = 86400; // 1 day
-    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &amount, &next_due, &interval);
+    let schedule_id =
+        client.create_savings_schedule(&owner, &goal_id, &amount, &next_due, &interval);
 
     // 1. Advance time past next_due + interval * 2 + 100 (simulating significant drift/delay)
     // 3000 + 172800 + 100 = 175900
     let current_time = next_due + interval * 2 + 100;
     set_ledger_time(&env, 1, current_time);
-    
+
     let executed_ids = client.execute_due_savings_schedules();
     assert_eq!(executed_ids.len(), 1);
     assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
 
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
     // It should have executed once (for the first due date) and missed 2 subsequent ones
-    assert_eq!(schedule.missed_count, 2, "Should have marked 2 intervals as missed");
-    
+    assert_eq!(
+        schedule.missed_count, 2,
+        "Should have marked 2 intervals as missed"
+    );
+
     // next_due should be set to the next FUTURE interval relative to current_time
     // Original: 3000
     // +1: 89400
     // +2: 175800
     // +3: 262200 (This is the next future one after 175900)
-    assert_eq!(schedule.next_due, 262200, "next_due should anchor to the next future interval");
+    assert_eq!(
+        schedule.next_due, 262200,
+        "next_due should anchor to the next future interval"
+    );
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.current_amount, amount, "Only one execution should have happened");
+    assert_eq!(
+        goal.current_amount, amount,
+        "Only one execution should have happened"
+    );
 }
 
 #[test]
@@ -2094,24 +2164,37 @@ fn test_savings_schedule_exact_timestamp_execution() {
 
     env.mock_all_auths();
     client.init();
-    
+
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
-    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Exact Schedule"), &10000, &5000);
-    
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Exact Schedule"),
+        &10000,
+        &5000,
+    );
+
     let next_due = 3000;
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &next_due, &0); // non-recurring
 
     // 1. Test at next_due - 1 (should NOT execute)
     set_ledger_time(&env, 1, next_due - 1);
     let executed_ids = client.execute_due_savings_schedules();
-    assert_eq!(executed_ids.len(), 0, "Schedule should not execute before next_due");
+    assert_eq!(
+        executed_ids.len(),
+        0,
+        "Schedule should not execute before next_due"
+    );
 
     // 2. Test at next_due (should execute)
     set_ledger_time(&env, 1, next_due);
     let executed_ids = client.execute_due_savings_schedules();
-    assert_eq!(executed_ids.len(), 1, "Schedule should execute exactly at next_due");
+    assert_eq!(
+        executed_ids.len(),
+        1,
+        "Schedule should execute exactly at next_due"
+    );
     assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
 
     let goal = client.get_goal(&goal_id).unwrap();

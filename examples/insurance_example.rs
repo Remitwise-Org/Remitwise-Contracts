@@ -1,6 +1,6 @@
-use soroban_sdk::{Env, Address, String, testutils::Address as _};
 use insurance::{Insurance, InsuranceClient};
 use remitwise_common::CoverageType;
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -22,16 +22,29 @@ fn main() {
     let monthly_premium = 200i128;
     let coverage_amount = 50000i128;
 
-    println!("Creating policy: '{:?}' with premium: {} and coverage: {:?}", policy_name, monthly_premium, coverage_type);
+    println!(
+        "Creating policy: '{:?}' with premium: {} and coverage: {:?}",
+        policy_name, monthly_premium, coverage_type
+    );
     // Client returns u32 and panics on error because the contract returns Result
-    let policy_id = client.create_policy(&owner, &policy_name, &coverage_type, &monthly_premium, &coverage_amount, &None);
+    let policy_id = client.create_policy(
+        &owner,
+        &policy_name,
+        &coverage_type,
+        &monthly_premium,
+        &coverage_amount,
+        &None,
+    );
     println!("Policy created successfully with ID: {}", policy_id);
 
     // 5. [Read] List active policies
     let policy_page = client.get_active_policies(&owner, &0, &5);
     println!("\nActive Policies for {:?}:", owner);
     for policy in policy_page.items.iter() {
-        println!("  ID: {}, Name: {:?}, Premium: {}, Coverage: {:?}", policy.id, policy.name, policy.monthly_premium, policy.coverage_type);
+        println!(
+            "  ID: {}, Name: {:?}, Premium: {}, Coverage: {:?}",
+            policy.id, policy.name, policy.monthly_premium, policy.coverage_type
+        );
     }
 
     // 6. [Write] Pay a premium
@@ -46,7 +59,10 @@ fn main() {
 
     // 7. [Read] Verify policy status (next payment date updated)
     let policy = client.get_policy(&policy_id).expect("Policy should exist");
-    println!("Next Payment Date (Timestamp): {}", policy.next_payment_date);
+    println!(
+        "Next Payment Date (Timestamp): {}",
+        policy.next_payment_date
+    );
 
     println!("\nExample completed successfully!");
 }

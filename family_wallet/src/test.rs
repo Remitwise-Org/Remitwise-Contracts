@@ -1165,9 +1165,19 @@ fn test_emergency_proposal_replay_prevention() {
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let recipient = Address::generate(&env);
-    
-    client.propose_emergency_transfer(&member1, &token_contract.address(), &recipient, &1000_0000000);
-    client.propose_emergency_transfer(&member1, &token_contract.address(), &recipient, &1000_0000000);
+
+    client.propose_emergency_transfer(
+        &member1,
+        &token_contract.address(),
+        &recipient,
+        &1000_0000000,
+    );
+    client.propose_emergency_transfer(
+        &member1,
+        &token_contract.address(),
+        &recipient,
+        &1000_0000000,
+    );
 }
 
 #[test]
@@ -1184,9 +1194,19 @@ fn test_emergency_proposal_frequency_burst() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let recipient1 = Address::generate(&env);
     let recipient2 = Address::generate(&env);
-    
-    client.propose_emergency_transfer(&member1, &token_contract.address(), &recipient1, &1000_0000000);
-    client.propose_emergency_transfer(&member1, &token_contract.address(), &recipient2, &500_0000000);
+
+    client.propose_emergency_transfer(
+        &member1,
+        &token_contract.address(),
+        &recipient1,
+        &1000_0000000,
+    );
+    client.propose_emergency_transfer(
+        &member1,
+        &token_contract.address(),
+        &recipient2,
+        &500_0000000,
+    );
 }
 
 #[test]
@@ -1203,6 +1223,11 @@ fn test_emergency_proposal_role_misuse() {
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let recipient = Address::generate(&env);
-    
-    client.propose_emergency_transfer(&viewer, &token_contract.address(), &recipient, &1000_0000000);
+
+    client.propose_emergency_transfer(
+        &viewer,
+        &token_contract.address(),
+        &recipient,
+        &1000_0000000,
+    );
 }
