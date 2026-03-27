@@ -37,3 +37,25 @@ Returns an empty Vec when fewer than two points are supplied.
 output regardless of call order, ledger state, or caller identity.
 
 ## Running Tests
+
+```bash
+cargo test -p reporting
+```
+
+## Archive Cleanup Idempotency
+
+`cleanup_old_reports(caller, before_timestamp)` is designed to be idempotent for
+the same cutoff:
+
+- First call deletes all matching archived entries and returns that count.
+- Repeated calls with the same cutoff return `0`.
+- Storage counters remain aligned (`active_reports` and `archived_reports` are
+  recomputed from on-chain maps after each mutation).
+
+### Security Notes
+
+- Cleanup and archiving are admin-only; non-admin calls fail before mutation.
+- Deletions are key-based on unique map entries, which prevents duplicate
+  deletion accounting.
+- Cleanup does not affect active reports, only archived records older than the
+  supplied cutoff.

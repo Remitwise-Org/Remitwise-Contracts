@@ -123,7 +123,10 @@ impl ExportSnapshot {
     /// Compute SHA256 checksum of the payload (canonical JSON).
     pub fn compute_checksum(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_vec(&self.payload).unwrap_or_else(|_| panic!("payload must be serializable")));
+        hasher.update(
+            serde_json::to_vec(&self.payload)
+                .unwrap_or_else(|_| panic!("payload must be serializable")),
+        );
         hex::encode(hasher.finalize().as_ref())
     }
 

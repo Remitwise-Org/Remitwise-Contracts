@@ -918,7 +918,10 @@ impl ReportingContract {
         result
     }
 
-    /// Permanently delete old archives before specified timestamp
+    /// @notice Permanently deletes archived reports older than `before_timestamp`.
+    /// @dev Admin-only operation. Unauthorized callers panic before any state mutation.
+    /// @dev Idempotent for a fixed cutoff: once entries are removed, repeating the same call
+    ///      deletes `0` additional entries and keeps archive counters consistent.
     ///
     /// # Arguments
     /// * `caller` - Address of the caller (must be admin)

@@ -34,6 +34,7 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -150,6 +151,12 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "frequency_days"
                                     },
                                     "val": {
@@ -209,6 +216,14 @@
                                       "symbol": "schedule_id"
                                     },
                                     "val": "void"
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
                                   }
                                 ]
                               }
@@ -385,6 +400,7 @@
                 {
                   "u32": 0
                 },
+                "void",
                 {
                   "string": "XLM"
                 }
@@ -639,6 +655,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "frequency_days"
                   },
                   "val": {
@@ -698,6 +720,14 @@
                     "symbol": "schedule_id"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
                 }
               ]
             }

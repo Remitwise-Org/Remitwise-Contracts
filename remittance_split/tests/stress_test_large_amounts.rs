@@ -10,7 +10,15 @@ fn dummy_token(env: &Env) -> Address {
     Address::generate(env)
 }
 
-fn init(client: &RemittanceSplitClient, env: &Env, owner: &Address, s: u32, g: u32, b: u32, i: u32) {
+fn init(
+    client: &RemittanceSplitClient,
+    env: &Env,
+    owner: &Address,
+    s: u32,
+    g: u32,
+    b: u32,
+    i: u32,
+) {
     let token = dummy_token(env);
     client.initialize_split(owner, &0, &token, &s, &g, &b, &i);
 }
@@ -174,7 +182,13 @@ fn test_sequential_large_calculations() {
 
     init(&client, &env, &owner, 50, 30, 15, 5);
 
-    for amount in &[i128::MAX / 1000, i128::MAX / 500, i128::MAX / 200, i128::MAX / 150, i128::MAX / 100] {
+    for amount in &[
+        i128::MAX / 1000,
+        i128::MAX / 500,
+        i128::MAX / 200,
+        i128::MAX / 150,
+        i128::MAX / 100,
+    ] {
         let result = client.try_calculate_split(amount);
         assert!(result.is_ok(), "Failed for amount: {}", amount);
         let splits = result.unwrap().unwrap();
@@ -195,7 +209,11 @@ fn test_checked_arithmetic_prevents_silent_overflow() {
 
     for amount in &[i128::MAX / 40, i128::MAX / 30, i128::MAX] {
         let result = client.try_calculate_split(amount);
-        assert!(result.is_err(), "Should have detected overflow for amount: {}", amount);
+        assert!(
+            result.is_err(),
+            "Should have detected overflow for amount: {}",
+            amount
+        );
     }
 }
 

@@ -1,9 +1,7 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, Events, Ledger},
     testutils::storage::Instance as StorageInstance,
+    testutils::{Address as AddressTrait, Events, Ledger},
     token::{StellarAssetClient, TokenClient},
     Address, Env, Symbol, TryFromVal,
 };
@@ -15,7 +13,9 @@ use soroban_sdk::{
 /// Register a native Stellar asset (SAC) and return (contract_id, admin).
 /// The admin is the issuer; we mint `amount` to `recipient`.
 fn setup_token(env: &Env, admin: &Address, recipient: &Address, amount: i128) -> Address {
-    let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let sac = StellarAssetClient::new(env, &token_id);
     sac.mint(recipient, &amount);
     token_id
@@ -46,7 +46,7 @@ fn test_initialize_split_succeeds() {
     let token_id = setup_token(&env, &token_admin, &owner, 0);
 
     let success = client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
-    assert_eq!(success, true);
+    assert!(success);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.owner, owner);
@@ -68,7 +68,10 @@ fn test_initialize_split_invalid_sum() {
     let token_id = setup_token(&env, &token_admin, &owner, 0);
 
     let result = client.try_initialize_split(&owner, &0, &token_id, &50, &50, &10, &0);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 #[test]
@@ -114,7 +117,7 @@ fn test_update_split() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let success = client.update_split(&owner, &1, &40, &40, &10, &10);
-    assert_eq!(success, true);
+    assert!(success);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.spending_percent, 40);
@@ -163,7 +166,10 @@ fn test_update_split_percentages_must_sum_to_100() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -237,24 +243,6 @@ fn test_calculate_complex_rounding() {
     assert_eq!(amounts.get(3).unwrap(), 410);
 }
 
-#[test]
-fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
-    set_ledger_time(&env, 1000);
-
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
-
-    let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
-    assert_eq!(schedule_id, 1);
-
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some());
-    let schedule = schedule.unwrap();
-    assert_eq!(schedule.amount, 10000);
-    assert_eq!(schedule.next_due, 3000);
-    assert_eq!(schedule.interval, 86400);
-    assert!(schedule.active);
-}
 // ---------------------------------------------------------------------------
 // distribute_usdc — happy path
 // ---------------------------------------------------------------------------
@@ -274,7 +262,7 @@ fn test_distribute_usdc_success() {
 
     let accounts = make_accounts(&env);
     let result = client.distribute_usdc(&token_id, &owner, &1, &accounts, &total);
-    assert_eq!(result, true);
+    assert!(result);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 500);
@@ -395,7 +383,10 @@ fn test_distribute_usdc_untrusted_token_rejected() {
     let evil_token = Address::generate(&env);
     let accounts = make_accounts(&env);
     let result = client.try_distribute_usdc(&evil_token, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::UntrustedTokenContract)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UntrustedTokenContract))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -422,7 +413,10 @@ fn test_distribute_usdc_self_transfer_spending_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -444,7 +438,10 @@ fn test_distribute_usdc_self_transfer_savings_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -466,7 +463,10 @@ fn test_distribute_usdc_self_transfer_bills_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -488,7 +488,10 @@ fn test_distribute_usdc_self_transfer_insurance_rejected() {
         insurance: owner.clone(),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -683,9 +686,9 @@ fn test_distribute_usdc_multiple_rounds() {
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 1_500); // 3 * 500
-    assert_eq!(token.balance(&accounts.savings), 900);    // 3 * 300
-    assert_eq!(token.balance(&accounts.bills), 450);      // 3 * 150
-    assert_eq!(token.balance(&accounts.insurance), 150);  // 3 * 50
+    assert_eq!(token.balance(&accounts.savings), 900); // 3 * 300
+    assert_eq!(token.balance(&accounts.bills), 450); // 3 * 150
+    assert_eq!(token.balance(&accounts.insurance), 150); // 3 * 50
     assert_eq!(token.balance(&owner), 0);
 }
 
@@ -763,10 +766,16 @@ fn test_initialize_split_events() {
 
     let events = env.events().all();
     let last_event = events.last().unwrap();
-    let topic0: Symbol = Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic0, symbol_short!("split"));
-    assert_eq!(topic1, SplitEvent::Initialized);
+    let topics = last_event.1;
+    assert_eq!(topics.len(), 4);
+    assert_eq!(
+        Symbol::try_from_val(&env, &topics.get(0).unwrap()),
+        Ok(symbol_short!("Remitwise"))
+    );
+    assert_eq!(
+        Symbol::try_from_val(&env, &topics.get(3).unwrap()),
+        Ok(symbol_short!("split"))
+    );
 }
 
 #[test]
@@ -784,8 +793,16 @@ fn test_update_split_events() {
 
     let events = env.events().all();
     let last_event = events.last().unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic1, SplitEvent::Updated);
+    let topics = last_event.1;
+    assert_eq!(topics.len(), 4);
+    assert_eq!(
+        Symbol::try_from_val(&env, &topics.get(0).unwrap()),
+        Ok(symbol_short!("Remitwise"))
+    );
+    assert_eq!(
+        Symbol::try_from_val(&env, &topics.get(3).unwrap()),
+        Ok(symbol_short!("split"))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -879,7 +896,10 @@ fn test_instance_ttl_extended_on_initialize_split() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert!(ttl >= 518_400, "TTL must be >= INSTANCE_BUMP_AMOUNT after init");
+    assert!(
+        ttl >= 518_400,
+        "TTL must be >= INSTANCE_BUMP_AMOUNT after init"
+    );
 }
 
 // ============================================================================
@@ -902,7 +922,15 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(
@@ -920,7 +948,15 @@ fn test_import_snapshot_current_schema_version_succeeds() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(snapshot.schema_version, 1);
@@ -939,7 +975,15 @@ fn test_import_snapshot_future_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot produced by a newer contract version.
@@ -963,7 +1007,15 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot too old to import.
@@ -987,7 +1039,15 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1009,7 +1069,15 @@ fn test_snapshot_export_import_roundtrip_restores_config() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     // Update so there is something interesting to round-trip.
     // Note: update_split checks the nonce but does NOT increment it.
@@ -1039,7 +1107,15 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(
+        &owner,
+        &0,
+        &soroban_sdk::Address::generate(&env),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
 
     let snapshot = client.export_snapshot(&owner).unwrap();
 

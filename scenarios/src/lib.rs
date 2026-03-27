@@ -1,8 +1,7 @@
 pub mod tests {
-    use soroban_sdk::Env;
-    use testutils::set_ledger_time;
     use soroban_sdk::testutils::{Ledger, LedgerInfo};
     use soroban_sdk::Env;
+    // use testutils::set_ledger_time; // commenting out as it was marked unused and might be redundant with LedgerInfo manual set
 
     pub fn setup_env() -> Env {
         let env = Env::default();

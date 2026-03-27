@@ -3,104 +3,128 @@
     "contract": "bill_payments",
     "method": "get_total_unpaid",
     "scenario": "100_bills_50_cancelled",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 1416937,
+    "mem": 301710,
     "description": "Worst-case scenario with 100 bills, 50 cancelled"
+  },
+  {
+    "contract": "savings_goals",
+    "method": "batch_add_to_goals",
+    "scenario": "50_items",
+    "cpu": 4602200,
+    "mem": 904612,
+    "description": "Batch add funds to 50 various goals"
+  },
+  {
+    "contract": "savings_goals",
+    "method": "create_savings_schedule",
+    "scenario": "single_schedule",
+    "cpu": 124297,
+    "mem": 21437,
+    "description": "Create a single savings schedule"
+  },
+  {
+    "contract": "savings_goals",
+    "method": "execute_due_savings_schedules",
+    "scenario": "50_schedules",
+    "cpu": 7072018,
+    "mem": 1445311,
+    "description": "Execute 50 due savings schedules in a single invocation"
   },
   {
     "contract": "savings_goals",
     "method": "get_all_goals",
     "scenario": "100_goals_single_owner",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 3468767,
+    "mem": 429349,
     "description": "Retrieve 100 goals for a single owner"
   },
   {
     "contract": "insurance",
     "method": "get_total_monthly_premium",
     "scenario": "100_active_policies",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 2196650,
+    "mem": 415609,
     "description": "Calculate total premium for 100 active policies"
   },
   {
     "contract": "family_wallet",
     "method": "configure_multisig",
     "scenario": "9_signers_threshold_all",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 343463,
+    "mem": 69170,
     "description": "Configure multisig with 9 signers requiring all signatures"
   },
   {
     "contract": "remittance_split",
     "method": "distribute_usdc",
     "scenario": "4_recipients_all_nonzero",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 708193,
+    "mem": 100165,
     "description": "Distribute USDC to 4 recipients with non-zero amounts"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "single_recurring_schedule",
-    "cpu": 145230,
-    "mem": 28456,
+    "cpu": 68175,
+    "mem": 10533,
     "description": "Create a single recurring remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "11th_schedule_with_existing",
-    "cpu": 167890,
-    "mem": 32145,
+    "cpu": 115821,
+    "mem": 23922,
     "description": "Create schedule when 10 existing schedules are present"
   },
   {
     "contract": "remittance_split",
     "method": "modify_remittance_schedule",
     "scenario": "single_schedule_modification",
-    "cpu": 134567,
-    "mem": 26789,
+    "cpu": 70178,
+    "mem": 10529,
     "description": "Modify an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "cancel_remittance_schedule",
     "scenario": "single_schedule_cancellation",
-    "cpu": 123456,
-    "mem": 24567,
+    "cpu": 70160,
+    "mem": 10457,
     "description": "Cancel an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "empty_schedules",
-    "cpu": 45678,
-    "mem": 12345,
+    "cpu": 18307,
+    "mem": 2143,
     "description": "Query schedules when none exist for owner"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "5_schedules_with_isolation",
-    "cpu": 234567,
-    "mem": 45678,
+    "cpu": 135643,
+    "mem": 13800,
     "description": "Query 5 schedules with data isolation validation"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedule",
     "scenario": "single_schedule_lookup",
-    "cpu": 67890,
-    "mem": 15432,
+    "cpu": 34794,
+    "mem": 3779,
     "description": "Retrieve a single schedule by ID"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "50_schedules_worst_case",
-    "cpu": 1234567,
-    "mem": 234567,
+    "cpu": 1205123,
+    "mem": 119434,
     "description": "Query schedules in worst-case scenario with 50 schedules"
   }
 ]

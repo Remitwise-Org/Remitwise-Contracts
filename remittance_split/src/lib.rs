@@ -1,6 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+#![allow(clippy::too_many_arguments)]
 
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, Env, Map, Symbol, Vec,
@@ -253,16 +255,16 @@ impl RemittanceSplit {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - If no upgrade admin exists, only the contract owner can set the initial admin
     /// - If upgrade admin exists, only the current upgrade admin can transfer to a new admin
     /// - Caller must be authenticated via require_auth()
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` on successful admin transfer
     /// - `Err(RemittanceSplitError::Unauthorized)` if caller lacks permission
@@ -273,15 +275,15 @@ impl RemittanceSplit {
         new_admin: Address,
     ) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
-        
+
         let config: SplitConfig = env
             .storage()
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         // Authorization logic:
         // 1. If no upgrade admin exists, only contract owner can set initial admin
         // 2. If upgrade admin exists, only current upgrade admin can transfer
@@ -292,29 +294,29 @@ impl RemittanceSplit {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
-            Some(current_admin) => {
+            Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if *current_admin != caller {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
         }
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("split"), symbol_short!("adm_xfr")),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         Ok(())
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -422,8 +424,13 @@ impl RemittanceSplit {
 
         Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::Initialized), owner);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("split"),
+            owner,
+        );
 
         Ok(true)
     }
@@ -486,9 +493,20 @@ impl RemittanceSplit {
             insurance_percent,
             timestamp: env.ledger().timestamp(),
         };
-        env.events().publish((SPLIT_INITIALIZED,), event);
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::Updated), caller);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            SPLIT_INITIALIZED,
+            event,
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("split"),
+            caller,
+        );
 
         Ok(true)
     }
@@ -513,9 +531,9 @@ impl RemittanceSplit {
         }
 
         let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
+        let s0 = split.get(0).unwrap_or(50) as i128;
+        let s1 = split.get(1).unwrap_or(30) as i128;
+        let s2 = split.get(2).unwrap_or(15) as i128;
 
         let spending = total_amount
             .checked_mul(s0)
@@ -923,8 +941,12 @@ impl RemittanceSplit {
                 timestamp: env.ledger().timestamp(),
             };
             env.events().publish((SPLIT_CALCULATED,), event);
-            env.events().publish(
-                (symbol_short!("split"), SplitEvent::Calculated),
+
+            RemitwiseEvents::emit(
+                env,
+                EventCategory::Transaction,
+                EventPriority::Low,
+                symbol_short!("split"),
                 total_amount,
             );
         }
@@ -959,12 +981,6 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
         let next_schedule_id = env
             .storage()
             .instance()
@@ -985,16 +1001,27 @@ impl RemittanceSplit {
             missed_count: 0,
         };
 
-        schedules.set(next_schedule_id, schedule);
+        // Store schedule in individual persistent key
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&(symbol_short!("SCH"), next_schedule_id), &schedule);
+
+        // Update owner's list of IDs
+        let mut owner_ids = Self::get_owner_schedule_ids(&env, &owner);
+        owner_ids.push_back(next_schedule_id);
+        env.storage()
+            .persistent()
+            .set(&(symbol_short!("OWN_SCH"), owner.clone()), &owner_ids);
+
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_RSCH"), &next_schedule_id);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Created),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("sch_new"),
             (next_schedule_id, owner),
         );
 
@@ -1022,14 +1049,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
+        let mut schedule: RemittanceSchedule = env
             .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
+            .persistent()
+            .get(&(symbol_short!("SCH"), schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
@@ -1041,13 +1064,15 @@ impl RemittanceSplit {
         schedule.interval = interval;
         schedule.recurring = interval > 0;
 
-        schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&(symbol_short!("SCH"), schedule_id), &schedule);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Modified),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("sch_mod"),
             (schedule_id, caller),
         );
 
@@ -1063,14 +1088,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedules: Map<u32, RemittanceSchedule> = env
+        let mut schedule: RemittanceSchedule = env
             .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
+            .persistent()
+            .get(&(symbol_short!("SCH"), schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
@@ -1079,13 +1100,15 @@ impl RemittanceSplit {
 
         schedule.active = false;
 
-        schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&(symbol_short!("SCH"), schedule_id), &schedule);
 
-        env.events().publish(
-            (symbol_short!("schedule"), ScheduleEvent::Cancelled),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("sch_can"),
             (schedule_id, caller),
         );
 
@@ -1093,15 +1116,14 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
+        let ids = Self::get_owner_schedule_ids(&env, &owner);
         let mut result = Vec::new(&env);
-        for (_, schedule) in schedules.iter() {
-            if schedule.owner == owner {
+        for id in ids.iter() {
+            if let Some(schedule) = env
+                .storage()
+                .persistent()
+                .get::<_, RemittanceSchedule>(&(symbol_short!("SCH"), id))
+            {
                 result.push_back(schedule);
             }
         }
@@ -1109,13 +1131,17 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedule(env: Env, schedule_id: u32) -> Option<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
+        env.storage()
+            .persistent()
+            .get(&(symbol_short!("SCH"), schedule_id))
+    }
 
-        schedules.get(schedule_id)
+    // Private helpers for optimized storage
+    fn get_owner_schedule_ids(env: &Env, owner: &Address) -> Vec<u32> {
+        env.storage()
+            .persistent()
+            .get(&(symbol_short!("OWN_SCH"), owner.clone()))
+            .unwrap_or_else(|| Vec::new(env))
     }
 }
 

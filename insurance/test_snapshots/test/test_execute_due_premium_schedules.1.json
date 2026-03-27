@@ -4,6 +4,7 @@
     "nonce": 0
   },
   "auth": [
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -17,23 +18,24 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "P1"
                 },
                 {
-                  "string": "health"
+                  "u32": 1
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 500
+                    "lo": 1000000
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 50000
+                    "lo": 10000000
                   }
-                }
+                },
+                "void"
               ]
             }
           },
@@ -80,7 +82,7 @@
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 100000,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -107,7 +109,7 @@
                     "storage": [
                       {
                         "key": {
-                          "symbol": "NEXT_ID"
+                          "symbol": "COUNTER"
                         },
                         "val": {
                           "u32": 1
@@ -115,15 +117,15 @@
                       },
                       {
                         "key": {
-                          "symbol": "NEXT_PSCH"
+                          "symbol": "OWNER"
                         },
                         "val": {
-                          "u32": 1
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                         }
                       },
                       {
                         "key": {
-                          "symbol": "POLICIES"
+                          "symbol": "POL"
                         },
                         "val": {
                           "map": [
@@ -148,7 +150,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 50000
+                                        "lo": 10000000
                                       }
                                     }
                                   },
@@ -157,8 +159,14 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "health"
+                                      "u32": 1
                                     }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "external_ref"
+                                    },
+                                    "val": "void"
                                   },
                                   {
                                     "key": {
@@ -175,7 +183,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 500
+                                        "lo": 1000000
                                       }
                                     }
                                   },
@@ -184,7 +192,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Health Insurance"
+                                      "string": "P1"
                                     }
                                   },
                                   {
@@ -202,14 +210,6 @@
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                                     }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "schedule_id"
-                                    },
-                                    "val": {
-                                      "u32": 1
-                                    }
                                   }
                                 ]
                               }
@@ -219,7 +219,7 @@
                       },
                       {
                         "key": {
-                          "symbol": "PREM_SCH"
+                          "symbol": "SCH"
                         },
                         "val": {
                           "map": [
@@ -239,14 +239,6 @@
                                   },
                                   {
                                     "key": {
-                                      "symbol": "created_at"
-                                    },
-                                    "val": {
-                                      "u64": 1000
-                                    }
-                                  },
-                                  {
-                                    "key": {
                                       "symbol": "id"
                                     },
                                     "val": {
@@ -259,14 +251,6 @@
                                     },
                                     "val": {
                                       "u64": 0
-                                    }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "last_executed"
-                                    },
-                                    "val": {
-                                      "u64": 3500
                                     }
                                   },
                                   {
@@ -300,14 +284,6 @@
                                     "val": {
                                       "u32": 1
                                     }
-                                  },
-                                  {
-                                    "key": {
-                                      "symbol": "recurring"
-                                    },
-                                    "val": {
-                                      "bool": false
-                                    }
                                   }
                                 ]
                               }
@@ -317,22 +293,10 @@
                       },
                       {
                         "key": {
-                          "symbol": "PRM_TOT"
+                          "symbol": "SCH_CTR"
                         },
                         "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 500
-                                }
-                              }
-                            }
-                          ]
+                          "u32": 1
                         }
                       }
                     ]
@@ -342,7 +306,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518400
         ]
       ],
       [
@@ -375,7 +339,7 @@
             },
             "ext": "v0"
           },
-          100000
+          6311999
         ]
       ],
       [
@@ -408,7 +372,7 @@
             },
             "ext": "v0"
           },
-          100000
+          6311999
         ]
       ],
       [
@@ -429,12 +393,59 @@
             },
             "ext": "v0"
           },
-          100000
+          518400
         ]
       ]
     ]
   },
   "events": [
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "init"
+              }
+            ],
+            "data": {
+              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "init"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
     {
       "event": {
         "ext": "v0",
@@ -459,132 +470,24 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Insurance"
+                  "string": "P1"
                 },
-                {
-                  "string": "health"
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 500
-                  }
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 50000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "created"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "coverage_amount"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 50000
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "coverage_type"
-                  },
-                  "val": {
-                    "string": "health"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "monthly_premium"
-                  },
-                  "val": {
-                    "i128": {
-                      "hi": 0,
-                      "lo": 500
-                    }
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "name"
-                  },
-                  "val": {
-                    "string": "Health Insurance"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "policy_id"
-                  },
-                  "val": {
-                    "u32": 1
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": 1000
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PolicyCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
                 {
                   "u32": 1
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000000
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000000
+                  }
+                },
+                "void"
               ]
             }
           }
@@ -646,40 +549,6 @@
                 },
                 {
                   "u64": 0
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "ScheduleCreated"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }
@@ -730,67 +599,6 @@
               }
             ],
             "data": "void"
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "PremiumPaid"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "insure"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "ScheduleExecuted"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "u32": 1
-            }
           }
         }
       },
@@ -881,7 +689,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 50000
+                      "lo": 10000000
                     }
                   }
                 },
@@ -890,8 +698,14 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "health"
+                    "u32": 1
                   }
+                },
+                {
+                  "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
                 },
                 {
                   "key": {
@@ -908,7 +722,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 500
+                      "lo": 1000000
                     }
                   }
                 },
@@ -917,7 +731,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Health Insurance"
+                    "string": "P1"
                   }
                 },
                 {
@@ -934,14 +748,6 @@
                   },
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "schedule_id"
-                  },
-                  "val": {
-                    "u32": 1
                   }
                 }
               ]

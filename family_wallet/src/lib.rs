@@ -5,7 +5,7 @@ use soroban_sdk::{
     Env, Map, Symbol, Vec,
 };
 
-use remitwise_common::FamilyRole;
+pub use remitwise_common::FamilyRole;
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -580,7 +580,9 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs.get(tx_id).unwrap_or_else(|| panic!("Transaction not found"));
+        let mut pending_tx = pending_txs
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"));
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -1215,42 +1217,42 @@ impl FamilyWallet {
     }
 
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - Only wallet owners can set or transfer upgrade admin role
     /// - Caller must be authenticated via require_auth()
     /// - Caller must have at least Owner role in the family wallet
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `true` on successful admin transfer
-    /// 
+    ///
     /// # Panics
     /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         true
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -1592,7 +1594,9 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
-        let member = members.get(caller.clone()).unwrap_or_else(|| panic!("Not a family member"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
         }

@@ -66,7 +66,7 @@ fn bench_batch_add_to_goals_max() {
 
     let name = String::from_str(&env, "BatchGoal");
     let mut contributions = Vec::new(&env);
-    
+
     // Create 50 goals and prepare contributions
     for _ in 0..50 {
         let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
@@ -94,14 +94,14 @@ fn bench_execute_due_savings_schedules() {
 
     let name = String::from_str(&env, "ScheduleGoal");
     let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64);
-    
+
     // Create 50 schedules
     let current_time = 1_700_000_000;
     let next_due = current_time + 10;
     for _ in 0..50 {
         client.create_savings_schedule(&owner, &goal_id, &100i128, &next_due, &86400u64);
     }
-    
+
     // Advance time so schedules are due
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
@@ -132,11 +132,13 @@ fn bench_create_savings_schedule() {
 
     let name = String::from_str(&env, "ScheduleGoal");
     let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
-    
+
     let current_time = 1_700_000_000;
     let next_due = current_time + 10;
-    
-    let (cpu, mem, _) = measure(&env, || client.create_savings_schedule(&owner, &goal_id, &100i128, &next_due, &86400u64));
+
+    let (cpu, mem, _) = measure(&env, || {
+        client.create_savings_schedule(&owner, &goal_id, &100i128, &next_due, &86400u64)
+    });
 
     println!(
         r#"{{"contract":"savings_goals","method":"create_savings_schedule","scenario":"single_schedule","cpu":{},"mem":{}}}"#,
