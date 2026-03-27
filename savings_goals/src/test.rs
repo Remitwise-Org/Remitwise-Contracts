@@ -11,11 +11,6 @@ use soroban_sdk::{
 };
 
 use testutils::{set_ledger_time, setup_test_env};
-fn set_time(env: &Env, timestamp: u64) {
-    set_ledger_time(env, 1u32, timestamp);
-}
-
-// Removed local set_time in favor of testutils::set_ledger_time
 
 #[test]
 fn test_create_goal_unique_ids_succeeds() {

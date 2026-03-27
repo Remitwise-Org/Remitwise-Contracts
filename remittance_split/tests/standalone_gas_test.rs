@@ -397,7 +397,6 @@ fn test_complete_schedule_lifecycle() {
     let (create_cpu, create_mem, schedule_id) = measure_gas(&env, || {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
-    let schedule_id = schedule_id;
     println!("   Create - CPU: {}, Memory: {}", create_cpu, create_mem);
 
     // 2. Query single schedule

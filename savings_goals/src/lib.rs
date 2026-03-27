@@ -1,19 +1,13 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
 };
 
 use remitwise_common::{
     EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD,
 };
-
-// Event topics
-const GOAL_CREATED: Symbol = symbol_short!("created");
-const FUNDS_ADDED: Symbol = symbol_short!("added");
-const GOAL_COMPLETED: Symbol = symbol_short!("completed");
 
 #[derive(Clone)]
 #[contracttype]

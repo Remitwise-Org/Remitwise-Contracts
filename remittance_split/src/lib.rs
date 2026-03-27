@@ -173,6 +173,7 @@ const CONTRACT_VERSION: u32 = 1;
 #[contract]
 pub struct RemittanceSplit;
 
+#[allow(clippy::too_many_arguments)]
 #[contractimpl]
 impl RemittanceSplit {
     fn get_schedule(env: &Env, schedule_id: u32) -> Option<RemittanceSchedule> {
@@ -411,6 +412,7 @@ impl RemittanceSplit {
     /// - `InvalidNonce` if nonce is invalid (replay protection)
     /// - `PercentagesDoNotSumTo100` if percentages don't sum to 100
     /// - `AlreadyInitialized` if split is already initialized (use update_split instead)
+    #[allow(clippy::too_many_arguments)]
     pub fn initialize_split(
         env: Env,
         owner: Address,
@@ -979,7 +981,7 @@ impl RemittanceSplit {
                 timestamp: env.ledger().timestamp(),
             };
             RemitwiseEvents::emit(
-                &env,
+                env,
                 EventCategory::Transaction,
                 EventPriority::Low,
                 symbol_short!("calc"),
