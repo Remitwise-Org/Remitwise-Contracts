@@ -4,10 +4,10 @@
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
 #[contract]
-pub struct InsuranceContract;
+pub struct Insurance;
 
 #[contractimpl]
-impl InsuranceContract {
+impl Insurance {
     pub fn pay_premium(_env: Env, caller: Address, _policy_id: u32) -> bool {
         caller.require_auth();
         // Placeholder for premium payment logic
