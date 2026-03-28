@@ -307,6 +307,14 @@ pub struct InsurancePolicy {
     pub tags: Vec<soroban_sdk::String>,
 }
 
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<InsurancePolicy>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
 #[contract]
 pub struct ReportingContract;
 
