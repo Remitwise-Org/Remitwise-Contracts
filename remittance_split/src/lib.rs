@@ -40,6 +40,12 @@ pub enum RemittanceSplitError {
     UntrustedTokenContract = 12,
     /// A destination account is the same as the sender, which would be a no-op transfer.
     SelfTransferNotAllowed = 13,
+    /// The schedule is inactive and cannot be modified.
+    InactiveSchedule = 14,
+    /// The schedule interval is too short.
+    IntervalTooShort = 15,
+    /// The due date is too far in the future.
+    LeadTimeTooLong = 16,
 }
 
 #[derive(Clone)]
@@ -61,6 +67,10 @@ pub struct AccountGroup {
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+
+// Schedule guardrail constants
+const MIN_SCHEDULE_INTERVAL: u64 = 3600; // 1 hour
+const MAX_SCHEDULE_LEAD_TIME: u64 = 31536000; // 1 year (365 days)
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -976,21 +986,13 @@ impl RemittanceSplit {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
-    /// Creates a new remittance schedule with a unique, monotonic ID.
-    ///
-    /// # Arguments
-    /// * `owner` - The address of the schedule owner (must authorize)
-    /// * `amount` - The positive i128 amount to be distributed on each execution
-    /// * `next_due` - The Unix timestamp of the first/next execution (must be in the future)
-    /// * `interval` - The interval in seconds for recurring schedules (0 for one-time)
-    ///
-    /// # Returns
-    /// * `Ok(u32)` - The unique, monotonic ID assigned to the new schedule
-    /// * `Err(RemittanceSplitError)` - If authorization fails or parameters are invalid
-    ///
-    /// # Security Invariants
-    /// 1. ID Generation is monotonic and derived from an instance-synchronized counter (`NEXT_RSCH`).
-    /// 2. The ID is unique across the lifetime of the contract instance.
+    /// @notice Creates a new remittance schedule for a recurring or one-time payment.
+    /// @param owner The address that will authorize the schedule creation (must match config.owner).
+    /// @param amount Transfer amount per execution (must be greater than 0).
+    /// @param next_due Unix timestamp for the next/initial execution (must be within 1 year).
+    /// @param interval Duration in seconds between recurring executions (min 1 hour if recurring).
+    /// @return The unique ID of the newly created schedule.
+    /// @security This method enforces STRICT lead-time and interval constraints to prevent spam and accidental fund locking.
     pub fn create_remittance_schedule(
         env: Env,
         owner: Address,
@@ -1000,6 +1002,16 @@ impl RemittanceSplit {
     ) -> Result<u32, RemittanceSplitError> {
         owner.require_auth();
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != owner {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1007,6 +1019,14 @@ impl RemittanceSplit {
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(RemittanceSplitError::InvalidDueDate);
+        }
+
+        if next_due > current_time.saturating_add(MAX_SCHEDULE_LEAD_TIME) {
+            return Err(RemittanceSplitError::LeadTimeTooLong);
+        }
+
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(RemittanceSplitError::IntervalTooShort);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1061,6 +1081,14 @@ impl RemittanceSplit {
         Ok(next_schedule_id)
     }
 
+    /// @notice Modifies an existing, active remittance schedule.
+    /// @param caller The address authorizing the modification (must match the schedule owner).
+    /// @param schedule_id The ID of the schedule to modify.
+    /// @param amount New transfer amount.
+    /// @param next_due New Unix timestamp for the next execution.
+    /// @param interval New interval for the schedule.
+    /// @return true if modification was successful.
+    /// @security Only the configured owner can modify schedules; schedule MUST be active.
     pub fn modify_remittance_schedule(
         env: Env,
         caller: Address,
@@ -1071,6 +1099,16 @@ impl RemittanceSplit {
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1078,6 +1116,14 @@ impl RemittanceSplit {
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(RemittanceSplitError::InvalidDueDate);
+        }
+
+        if next_due > current_time.saturating_add(MAX_SCHEDULE_LEAD_TIME) {
+            return Err(RemittanceSplitError::LeadTimeTooLong);
+        }
+
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(RemittanceSplitError::IntervalTooShort);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1091,6 +1137,10 @@ impl RemittanceSplit {
         let mut schedule = schedules
             .get(schedule_id)
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
@@ -1114,12 +1164,27 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    /// @notice Cancels an existing, active remittance schedule.
+    /// @param caller The address authorizing the cancellation (must match the schedule owner).
+    /// @param schedule_id The ID of the schedule to cancel.
+    /// @return true if cancellation was successful.
+    /// @security Deactivated schedules cannot be re-activated or modified further.
     pub fn cancel_remittance_schedule(
         env: Env,
         caller: Address,
         schedule_id: u32,
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
 
         Self::extend_instance_ttl(&env);
 
@@ -1132,6 +1197,10 @@ impl RemittanceSplit {
         let mut schedule = schedules
             .get(schedule_id)
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);

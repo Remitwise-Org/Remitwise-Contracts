@@ -280,7 +280,8 @@ fn test_create_remittance_schedule_succeeds() {
     setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
     set_ledger_time(&env, 1000);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
     assert_eq!(schedule_id, 1);
@@ -940,7 +941,8 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(
@@ -958,7 +960,8 @@ fn test_import_snapshot_current_schema_version_succeeds() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(snapshot.schema_version, 1);
@@ -977,7 +980,8 @@ fn test_import_snapshot_future_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot produced by a newer contract version.
@@ -1001,7 +1005,8 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot too old to import.
@@ -1025,7 +1030,8 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1047,7 +1053,8 @@ fn test_snapshot_export_import_roundtrip_restores_config() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    let token_id_auto = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_id_auto, &50, &30, &15, &5);
 
     // Update so there is something interesting to round-trip.
     // Note: update_split checks the nonce but does NOT increment it.
@@ -1076,8 +1083,9 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
+    let token_id = Address::generate(&env);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
 
@@ -1087,4 +1095,103 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
         Err(Ok(RemittanceSplitError::Unauthorized)),
         "non-owner must not import snapshot"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Schedule Guardrail Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_schedule_interval_too_short() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    env.ledger().set_timestamp(1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    // Interval 1800 < 3600
+    let result = client.try_create_remittance_schedule(&owner, &1000, &2000, &1800);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::IntervalTooShort)));
+}
+
+#[test]
+fn test_create_schedule_lead_time_too_long() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    env.ledger().set_timestamp(1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    // Lead time > 1 year
+    let result = client.try_create_remittance_schedule(&owner, &1000, &(1000 + 31536000 + 1), &86400);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::LeadTimeTooLong)));
+}
+
+#[test]
+fn test_modify_inactive_schedule_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    env.ledger().set_timestamp(1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    let id = client.create_remittance_schedule(&owner, &1000, &2000, &86400);
+    client.cancel_remittance_schedule(&owner, &id);
+
+    let result = client.try_modify_remittance_schedule(&owner, &id, &2000, &3000, &86400);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InactiveSchedule)));
+}
+
+#[test]
+fn test_cancel_inactive_schedule_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    env.ledger().set_timestamp(1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    let id = client.create_remittance_schedule(&owner, &1000, &2000, &86400);
+    client.cancel_remittance_schedule(&owner, &id);
+
+    let result = client.try_cancel_remittance_schedule(&owner, &id);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InactiveSchedule)));
+}
+
+#[test]
+fn test_schedule_ops_require_config_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    env.ledger().set_timestamp(1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    // Other user tries to create schedule for themselves
+    let result = client.try_create_remittance_schedule(&other, &1000, &2000, &86400);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
 }
