@@ -164,7 +164,26 @@ Returns the new policy's `u32` ID.
 
 Records a premium payment. `amount` must equal the policy's `monthly_premium` exactly.
 
-Updates `last_payment_at` and advances `next_payment_due` by 30 days.
+Updates `last_payment_at` and advances `next_payment_due` deterministically.
+
+#### Date Progression Logic
+
+The next payment date is calculated to prevent schedule drift:
+
+- **Early/On-time payment**: The next due date advances by exactly one 30-day interval
+  from the *previous* due date (not the current timestamp).
+- **Late payment**: The next due date advances from the previous due date by 30 days.
+  If that new date is still in the past, it continues advancing by 30-day intervals
+  until the next due date is in the future.
+
+This ensures that:
+1. Early payments don't shift the schedule forward (no "drift bonus")
+2. Late payments don't double-cover periods (no skipped periods)
+3. The payment schedule remains deterministic regardless of payment timing
+
+**Example**: If `next_payment_due` is January 15th and payment is made on January 10th,
+the new `next_payment_due` will be February 14th (January 15th + 30 days), not
+February 9th (January 10th + 30 days).
 
 **Emits**: `PremiumPaidEvent`
 
