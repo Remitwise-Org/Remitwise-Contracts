@@ -88,14 +88,22 @@ to prevent silent numeric wrap-around.
 
 ### Authorization
 
-| Function            | Who can call?       |
-|---------------------|---------------------|
-| `init`              | Owner (once)        |
-| `create_policy`     | Any authenticated caller |
-| `pay_premium`       | Any authenticated caller |
-| `set_external_ref`  | Owner only          |
-| `deactivate_policy` | Owner only          |
-| `get_*` (queries)   | Anyone (read-only)  |
+| Function                        | Who can call?                 |
+|---------------------------------|-------------------------------|
+| `init`                          | Owner (once)                  |
+| `create_policy`                 | Any authenticated caller      |
+| `pay_premium`                   | Any authenticated caller      |
+| `set_external_ref`              | Owner only                    |
+| `deactivate_policy`             | Owner only                    |
+| `set_pause_all`                 | Owner only                    |
+| `set_pause_fn`                  | Owner only                    |
+| `batch_pay_premiums`            | Any authenticated caller      |
+| `create_premium_schedule`       | Any authenticated caller      |
+| `modify_premium_schedule`       | Schedule owner only           |
+| `cancel_premium_schedule`       | Schedule owner only           |
+| `execute_due_premium_schedules` | Anyone (permissionless crank)  |
+| `is_paused` / `is_fn_paused`   | Anyone (read-only)            |
+| `get_*` (queries)               | Anyone (read-only)            |
 
 ### Invariants
 
@@ -173,6 +181,49 @@ Owner-only. Updates or clears the `external_ref` field of a policy.
 Owner-only. Marks a policy as inactive and removes it from the active-policy list.
 
 **Emits**: `PolicyDeactivatedEvent`
+
+---
+
+### `set_pause_all(owner, paused: bool)`
+
+Owner-only. Sets or clears the **global emergency pause** flag.  
+When `paused = true`, ALL state-mutating functions (`create_policy`, `pay_premium`,
+`deactivate_policy`, `set_external_ref`, schedule operations, `batch_pay_premiums`)
+will panic with `"contract is paused"`.
+
+The owner can always call this function regardless of the current pause state.
+
+---
+
+### `set_pause_fn(owner, fn_name: Symbol, paused: bool)`
+
+Owner-only. Sets or clears a **granular per-function pause** flag.
+
+Supported `fn_name` values:
+
+| `fn_name`      | Functions blocked                                         |
+|----------------|-----------------------------------------------------------|
+| `"create"`     | `create_policy`                                           |
+| `"pay"`        | `pay_premium`, `batch_pay_premiums`                       |
+| `"deactivate"` | `deactivate_policy`                                       |
+| `"set_ref"`    | `set_external_ref`                                        |
+| `"schedule"`   | `create_premium_schedule`, `modify_premium_schedule`, `cancel_premium_schedule` |
+
+The **global pause always takes priority** over per-function flags.  
+If the global flag is set, all functions are blocked regardless of per-function settings.
+
+---
+
+### `is_paused() → bool`
+
+Returns whether the global emergency pause flag is set.
+
+---
+
+### `is_fn_paused(fn_name: Symbol) → bool`
+
+Returns `true` if the specified function is blocked — either because the
+global pause is set **or** the per-function flag for `fn_name` is `true`.
 
 ---
 
@@ -360,7 +411,19 @@ external_ref.len() in 1..=128  (if supplied)
 4. **No self-referential calls** — this contract does not call back into itself
    or other contracts, eliminating classical reentrancy vectors.
 
-5. **Pre-mainnet gaps** (inherited from project-level THREAT_MODEL.md):
+5. **Pause controls** — the contract supports two layers of pause protection:
+   - **Global emergency pause** (`set_pause_all`): blocks ALL mutating operations.
+     The owner can always toggle this flag, even while the contract is paused.
+   - **Granular per-function pauses** (`set_pause_fn`): block only specific
+     functions (e.g. `"create"`, `"pay"`) while leaving others operational.
+   - **Priority rule**: the global pause always overrides per-function flags.
+   - **Read-only queries** (`get_policy`, `get_active_policies`,
+     `get_total_monthly_premium`, `is_paused`, `is_fn_paused`) are **never**
+     blocked by pause controls.
+   - Both pause toggle functions require `owner.require_auth()`, preventing
+     non-owner addresses from activating or deactivating pauses.
+
+6. **Pre-mainnet gaps** (inherited from project-level THREAT_MODEL.md):
    - `[SECURITY-003]` Rate limiting for emergency transfers is not yet implemented.
    - `[SECURITY-005]` MAX_POLICIES (1,000) provides a soft cap but no per-user limit.
 
