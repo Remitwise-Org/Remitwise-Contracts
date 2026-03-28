@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -30,7 +30,10 @@ fn main() {
 
     // 6. [Write] Simulate a remittance distribution
     let total_amount = 1000i128;
-    println!("\nCalculating allocation for total amount: {}", total_amount);
+    println!(
+        "\nCalculating allocation for total amount: {}",
+        total_amount
+    );
     let allocations = client.calculate_split(&total_amount);
 
     println!("Allocations:");

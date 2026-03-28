@@ -82,7 +82,11 @@ fn stress_200_goals_single_user() {
 
     // Verify via get_all_goals (unbounded)
     let all_goals = client.get_all_goals(&owner);
-    assert_eq!(all_goals.len(), 200, "get_all_goals must return all 200 goals");
+    assert_eq!(
+        all_goals.len(),
+        200,
+        "get_all_goals must return all 200 goals"
+    );
 
     // Verify via paginated get_goals (MAX_PAGE_LIMIT = 50 → 4 pages)
     let mut collected = 0u32;
@@ -103,11 +107,18 @@ fn stress_200_goals_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected, 200, "Paginated get_goals must return all 200 goals");
+    assert_eq!(
+        collected, 200,
+        "Paginated get_goals must return all 200 goals"
+    );
     // get_goals sets next_cursor = last_returned_id; when a page is exactly full the
     // caller receives a non-zero cursor that produces a trailing empty page, so the
     // number of round-trips is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 goals at limit 50, got {}", pages);
+    assert!(
+        pages >= 4 && pages <= 5,
+        "Expected 4-5 pages for 200 goals at limit 50, got {}",
+        pages
+    );
 }
 
 /// Create 200 goals and verify instance TTL stays valid after the instance Map
@@ -305,7 +316,7 @@ fn stress_batch_add_to_goals_at_max_batch_size() {
         });
     }
 
-    let processed = client.batch_add_to_goals(&owner, &contributions);
+    let processed = client.batch_add_to_goals(&owner, &contributions).unwrap();
     assert_eq!(
         processed, BATCH_SIZE,
         "batch_add_to_goals must process all {} contributions",
@@ -404,7 +415,10 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
 
     // TTL must still be positive
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert!(ttl > 0, "Instance TTL must be > 0 after all ledger advancements");
+    assert!(
+        ttl > 0,
+        "Instance TTL must be > 0 after all ledger advancements"
+    );
 }
 
 // ---------------------------------------------------------------------------

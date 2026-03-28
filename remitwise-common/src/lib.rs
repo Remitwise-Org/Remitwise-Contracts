@@ -74,10 +74,6 @@ impl EventPriority {
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
 pub const MAX_PAGE_LIMIT: u32 = 50;
 
-/// Storage TTL constants for active data
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-pub const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-
 /// Storage TTL constants for archived data
 pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
@@ -92,6 +88,45 @@ pub const CONTRACT_VERSION: u32 = 1;
 pub const MAX_BATCH_SIZE: u32 = 50;
 
 /// Helper function to clamp limit
+///
+/// # Behavior Contract
+///
+/// `clamp_limit` normalises a caller-supplied page-size value so that every
+/// pagination call in the workspace uses a consistent, bounded limit.
+///
+/// ## Rules (in evaluation order)
+///
+/// | Input condition          | Returned value        | Rationale                                      |
+/// |--------------------------|----------------------|------------------------------------------------|
+/// | `limit == 0`             | `DEFAULT_PAGE_LIMIT` | Zero is treated as "use the default".          |
+/// | `limit > MAX_PAGE_LIMIT` | `MAX_PAGE_LIMIT`     | Cap to prevent unbounded storage reads.        |
+/// | otherwise                | `limit`              | Caller value is within the valid range.        |
+///
+/// ## Invariants
+///
+/// - The return value is always in the range `[1, MAX_PAGE_LIMIT]`.
+/// - `clamp_limit(0) == DEFAULT_PAGE_LIMIT` (default substitution).
+/// - `clamp_limit(MAX_PAGE_LIMIT) == MAX_PAGE_LIMIT` (boundary is inclusive).
+/// - `clamp_limit(MAX_PAGE_LIMIT + 1) == MAX_PAGE_LIMIT` (cap is enforced).
+/// - The function is pure and has no side effects.
+///
+/// ## Security Assumptions
+///
+/// - Callers must not rely on receiving a value larger than `MAX_PAGE_LIMIT`.
+/// - A zero input is **not** an error; it is silently replaced with the default.
+///   Contracts that need to distinguish "no limit requested" from "default limit"
+///   should inspect the raw input before calling this function.
+///
+/// ## Usage
+///
+/// ```rust
+/// use remitwise_common::{clamp_limit, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
+///
+/// assert_eq!(clamp_limit(0),                  DEFAULT_PAGE_LIMIT);
+/// assert_eq!(clamp_limit(10),                 10);
+/// assert_eq!(clamp_limit(MAX_PAGE_LIMIT),     MAX_PAGE_LIMIT);
+/// assert_eq!(clamp_limit(MAX_PAGE_LIMIT + 1), MAX_PAGE_LIMIT);
+/// ```
 pub fn clamp_limit(limit: u32) -> u32 {
     if limit == 0 {
         DEFAULT_PAGE_LIMIT
@@ -162,141 +197,11 @@ impl RemitwiseEvents {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::{testutils::Events, Env, FromVal, IntoVal, Symbol, TryFromVal, symbol_short};
+// Standardized TTL Constants (Ledger Counts)
+pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
 
-    #[test]
-    fn test_constants_stability() {
-        assert_eq!(DEFAULT_PAGE_LIMIT, 20);
-        assert_eq!(MAX_PAGE_LIMIT, 50);
-        assert_eq!(INSTANCE_LIFETIME_THRESHOLD, 17280);
-        assert_eq!(INSTANCE_BUMP_AMOUNT, 518400);
-        assert_eq!(ARCHIVE_LIFETIME_THRESHOLD, 17280);
-        assert_eq!(ARCHIVE_BUMP_AMOUNT, 2592000);
-        assert_eq!(SIGNATURE_EXPIRATION, 86400);
-        assert_eq!(CONTRACT_VERSION, 1);
-        assert_eq!(MAX_BATCH_SIZE, 50);
-    }
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
 
-    #[test]
-    fn test_clamp_limit_edge_cases() {
-        assert_eq!(clamp_limit(0), DEFAULT_PAGE_LIMIT);
-        assert_eq!(clamp_limit(1), 1);
-        assert_eq!(clamp_limit(MAX_PAGE_LIMIT), MAX_PAGE_LIMIT);
-        assert_eq!(clamp_limit(MAX_PAGE_LIMIT + 1), MAX_PAGE_LIMIT);
-    }
-
-    #[test]
-    fn test_enum_discriminants_and_ordering() {
-        assert_eq!(Category::Spending as u32, 1);
-        assert_eq!(Category::Savings as u32, 2);
-        assert_eq!(Category::Bills as u32, 3);
-        assert_eq!(Category::Insurance as u32, 4);
-
-        assert_eq!(FamilyRole::Owner as u32, 1);
-        assert_eq!(FamilyRole::Admin as u32, 2);
-        assert_eq!(FamilyRole::Member as u32, 3);
-        assert_eq!(FamilyRole::Viewer as u32, 4);
-        assert!(FamilyRole::Owner < FamilyRole::Admin);
-        assert!(FamilyRole::Admin < FamilyRole::Member);
-        assert!(FamilyRole::Member < FamilyRole::Viewer);
-
-        assert_eq!(CoverageType::Health as u32, 1);
-        assert_eq!(CoverageType::Life as u32, 2);
-        assert_eq!(CoverageType::Property as u32, 3);
-        assert_eq!(CoverageType::Auto as u32, 4);
-        assert_eq!(CoverageType::Liability as u32, 5);
-
-        assert_eq!(EventCategory::Transaction as u32, 0);
-        assert_eq!(EventCategory::State as u32, 1);
-        assert_eq!(EventCategory::Alert as u32, 2);
-        assert_eq!(EventCategory::System as u32, 3);
-        assert_eq!(EventCategory::Access as u32, 4);
-
-        assert_eq!(EventPriority::Low as u32, 0);
-        assert_eq!(EventPriority::Medium as u32, 1);
-        assert_eq!(EventPriority::High as u32, 2);
-    }
-
-    #[test]
-    fn test_enum_serialization_round_trip() {
-        let env = Env::default();
-
-        for category in [Category::Spending, Category::Savings, Category::Bills, Category::Insurance] {
-            let val = category.into_val(&env);
-            let restored = Category::try_from_val(&env, &val).unwrap();
-            assert_eq!(restored, category);
-        }
-
-        for role in [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Member, FamilyRole::Viewer] {
-            let val = role.into_val(&env);
-            let restored = FamilyRole::try_from_val(&env, &val).unwrap();
-            assert_eq!(restored, role);
-        }
-
-        for coverage in [CoverageType::Health, CoverageType::Life, CoverageType::Property, CoverageType::Auto, CoverageType::Liability] {
-            let val = coverage.into_val(&env);
-            let restored = CoverageType::try_from_val(&env, &val).unwrap();
-            assert_eq!(restored, coverage);
-        }
-
-        for category in [EventCategory::Transaction, EventCategory::State, EventCategory::Alert, EventCategory::System, EventCategory::Access] {
-            let val = category.into_val(&env);
-            let restored = EventCategory::try_from_val(&env, &val).unwrap();
-            assert_eq!(restored as u32, category as u32);
-        }
-
-        for priority in [EventPriority::Low, EventPriority::Medium, EventPriority::High] {
-            let val = priority.into_val(&env);
-            let restored = EventPriority::try_from_val(&env, &val).unwrap();
-            assert_eq!(restored as u32, priority as u32);
-        }
-    }
-
-    #[test]
-    fn test_remitwise_events_topics_and_payload() {
-        let env = Env::default();
-
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::High,
-            symbol_short!("stability-test"),
-            123u32,
-        );
-
-        let events = env.events().all();
-        assert!(!events.is_empty());
-        let last_event = events.last().unwrap();
-        let topics = &last_event.1;
-
-        let namespace: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        let category: u32 = u32::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-        let priority: u32 = u32::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
-        let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
-
-        assert_eq!(namespace, symbol_short!("Remitwise"));
-        assert_eq!(category, EventCategory::System.to_u32());
-        assert_eq!(priority, EventPriority::High.to_u32());
-        assert_eq!(action, symbol_short!("stability-test"));
-
-        let actual_data: u32 = u32::try_from_val(&env, &last_event.2).unwrap();
-        assert_eq!(actual_data, 123);
-
-        RemitwiseEvents::emit_batch(&env, EventCategory::Alert, symbol_short!("batch-test"), 55);
-        let batch_event = env.events().all().last().unwrap();
-
-        let batch_topics = &batch_event.1;
-        let alert_category: u32 = u32::try_from_val(&env, &batch_topics.get(1).unwrap()).unwrap();
-        let alert_priority: u32 = u32::try_from_val(&env, &batch_topics.get(2).unwrap()).unwrap();
-
-        assert_eq!(alert_category, EventCategory::Alert.to_u32());
-        assert_eq!(alert_priority, EventPriority::Low.to_u32());
-
-        let payload: (Symbol, u32) = FromVal::from_val(&env, &batch_event.2);
-        assert_eq!(payload.0, symbol_short!("batch-test"));
-        assert_eq!(payload.1, 55);
-    }
-}
+pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
+pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day

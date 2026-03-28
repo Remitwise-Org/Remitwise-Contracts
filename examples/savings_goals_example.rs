@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Address, String, testutils::Address as _};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -20,8 +20,13 @@ fn main() {
     let target_amount = 5000i128;
     let target_date = env.ledger().timestamp() + 31536000; // 1 year from now
 
-    println!("Creating savings goal: '{}' with target: {}", goal_name, target_amount);
-    let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date).unwrap();
+    println!(
+        "Creating savings goal: '{}' with target: {}",
+        goal_name, target_amount
+    );
+    let goal_id = client
+        .create_goal(&owner, &goal_name, &target_amount, &target_date)
+        .unwrap();
     println!("Goal created successfully with ID: {}", goal_id);
 
     // 5. [Read] Fetch the goal to check progress
