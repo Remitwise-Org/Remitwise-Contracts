@@ -1,5 +1,8 @@
 use insurance::{Insurance, InsuranceClient};
+<<<<<<< HEAD
 use remitwise_common::CoverageType;
+=======
+>>>>>>> origin/main
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn main() {
@@ -23,6 +26,7 @@ fn main() {
     let coverage_amount = 50000i128;
 
     println!(
+<<<<<<< HEAD
         "Creating policy: '{:?}' with premium: {} and coverage: {:?}",
         policy_name, monthly_premium, coverage_type
     );
@@ -35,6 +39,20 @@ fn main() {
         &coverage_amount,
         &None,
     );
+=======
+        "Creating policy: '{}' with premium: {} and coverage: {}",
+        policy_name, monthly_premium, coverage_amount
+    );
+    let policy_id = client
+        .create_policy(
+            &owner,
+            &policy_name,
+            &coverage_type,
+            &monthly_premium,
+            &coverage_amount,
+        )
+        .unwrap();
+>>>>>>> origin/main
     println!("Policy created successfully with ID: {}", policy_id);
 
     // 5. [Read] List active policies
@@ -42,8 +60,13 @@ fn main() {
     println!("\nActive Policies for {:?}:", owner);
     for policy in policy_page.items.iter() {
         println!(
+<<<<<<< HEAD
             "  ID: {}, Name: {:?}, Premium: {}, Coverage: {:?}",
             policy.id, policy.name, policy.monthly_premium, policy.coverage_type
+=======
+            "  ID: {}, Name: {}, Premium: {}, Coverage: {}",
+            policy.id, policy.name, policy.monthly_premium, policy.coverage_amount
+>>>>>>> origin/main
         );
     }
 
@@ -58,7 +81,11 @@ fn main() {
     }
 
     // 7. [Read] Verify policy status (next payment date updated)
+<<<<<<< HEAD
     let policy = client.get_policy(&policy_id).expect("Policy should exist");
+=======
+    let policy = client.get_policy(&policy_id).unwrap();
+>>>>>>> origin/main
     println!(
         "Next Payment Date (Timestamp): {}",
         policy.next_payment_date

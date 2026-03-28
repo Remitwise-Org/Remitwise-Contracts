@@ -4,6 +4,7 @@
     "nonce": 0
   },
   "auth": [
+<<<<<<< HEAD
     [],
     [
       [
@@ -72,12 +73,14 @@
       ]
     ],
     [],
+=======
+>>>>>>> origin/main
     []
   ],
   "ledger": {
     "protocol_version": 21,
     "sequence_number": 1,
-    "timestamp": 3500,
+    "timestamp": 1000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
@@ -106,6 +109,7 @@
                     "executable": {
                       "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                     },
+<<<<<<< HEAD
                     "storage": [
                       {
                         "key": {
@@ -300,12 +304,16 @@
                         }
                       }
                     ]
+=======
+                    "storage": null
+>>>>>>> origin/main
                   }
                 }
               }
             },
             "ext": "v0"
           },
+<<<<<<< HEAD
           518400
         ]
       ],
@@ -373,6 +381,9 @@
             "ext": "v0"
           },
           6311999
+=======
+          4095
+>>>>>>> origin/main
         ]
       ],
       [
@@ -393,7 +404,11 @@
             },
             "ext": "v0"
           },
+<<<<<<< HEAD
           518400
+=======
+          4095
+>>>>>>> origin/main
         ]
       ]
     ]
@@ -478,13 +493,21 @@
                 {
                   "i128": {
                     "hi": 0,
+<<<<<<< HEAD
                     "lo": 1000000
+=======
+                    "lo": 500
+>>>>>>> origin/main
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
+<<<<<<< HEAD
                     "lo": 10000000
+=======
+                    "lo": 50000
+>>>>>>> origin/main
                   }
                 },
                 "void"
@@ -504,19 +527,67 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "create_policy"
+                "symbol": "log"
               }
             ],
             "data": {
-              "u32": 1
+              "vec": [
+                {
+                  "string": "caught panic 'not initialized' from contract function 'Symbol(obj#9)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "string": "Health Insurance"
+                },
+                {
+                  "u32": 1
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 500
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000
+                  }
+                },
+                "void"
+              ]
             }
           }
         }
       },
-      "failed_call": false
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "wasm_vm": "invalid_action"
+                }
+              }
+            ],
+            "data": {
+              "string": "caught error from function"
+            }
+          }
+        }
+      },
+      "failed_call": true
     },
     {
       "event": {
@@ -527,29 +598,13 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_call"
+                "symbol": "error"
               },
               {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "create_premium_schedule"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                },
-                {
-                  "u32": 1
-                },
-                {
-                  "u64": 3000
-                },
-                {
-                  "u64": 0
+                "error": {
+                  "wasm_vm": "invalid_action"
                 }
+<<<<<<< HEAD
               ]
             }
           }
@@ -617,12 +672,47 @@
               },
               {
                 "symbol": "execute_due_premium_schedules"
+=======
+>>>>>>> origin/main
               }
             ],
             "data": {
               "vec": [
                 {
+<<<<<<< HEAD
                   "u32": 1
+=======
+                  "string": "contract call failed"
+                },
+                {
+                  "symbol": "create_policy"
+                },
+                {
+                  "vec": [
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    {
+                      "string": "Health Insurance"
+                    },
+                    {
+                      "u32": 1
+                    },
+                    {
+                      "i128": {
+                        "hi": 0,
+                        "lo": 500
+                      }
+                    },
+                    {
+                      "i128": {
+                        "hi": 0,
+                        "lo": 50000
+                      }
+                    },
+                    "void"
+                  ]
+>>>>>>> origin/main
                 }
               ]
             }
@@ -640,9 +730,10 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_call"
+                "symbol": "error"
               },
               {
+<<<<<<< HEAD
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
@@ -749,8 +840,15 @@
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                   }
+=======
+                "error": {
+                  "wasm_vm": "invalid_action"
+>>>>>>> origin/main
                 }
-              ]
+              }
+            ],
+            "data": {
+              "string": "escalating error to panic"
             }
           }
         }

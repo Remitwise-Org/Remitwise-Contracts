@@ -1,7 +1,7 @@
 // Standalone test for gas benchmark implementation
 // This test validates the benchmark functions work correctly without external dependencies
 
-use remittance_split::{RemittanceSplit, RemittanceSplitClient};
+use remittance_split::{RemittanceSplit, RemittanceSplitClient, RemittanceSplitError};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env};
 
@@ -60,6 +60,7 @@ fn test_create_schedule_gas_measurement() {
     let next_due = env.ledger().timestamp() + 86400; // 1 day from now
     let interval = 2_592_000u64; // 30 days
 
+<<<<<<< HEAD
     let (cpu, mem, result) = measure_gas(&env, || {
         client.try_create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
@@ -67,6 +68,14 @@ fn test_create_schedule_gas_measurement() {
     // Validate the operation succeeded
     assert!(result.is_ok(), "Schedule creation should succeed");
     let schedule_id = result.unwrap().unwrap();
+=======
+    let (cpu, mem, schedule_id) = measure_gas(&env, || {
+        client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
+    });
+
+    // Validate the operation succeeded
+    let schedule_id = result;
+>>>>>>> origin/main
     assert_eq!(schedule_id, 1, "First schedule should have ID 1");
 
     // Validate gas measurements are reasonable
@@ -90,7 +99,11 @@ fn test_modify_schedule_gas_measurement() {
     let next_due = env.ledger().timestamp() + 86400;
     let interval = 2_592_000u64;
 
+<<<<<<< HEAD
     // Create initial schedule using direct call (returns u32)
+=======
+    // Create initial schedule
+>>>>>>> origin/main
     let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure modification
@@ -99,7 +112,11 @@ fn test_modify_schedule_gas_measurement() {
     let new_interval = 604_800u64; // 1 week
 
     let (cpu, mem, result) = measure_gas(&env, || {
+<<<<<<< HEAD
         client.try_modify_remittance_schedule(
+=======
+        client.modify_remittance_schedule(
+>>>>>>> origin/main
             &owner,
             &schedule_id,
             &new_amount,
@@ -109,8 +126,12 @@ fn test_modify_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
+<<<<<<< HEAD
     assert!(result.is_ok(), "Schedule modification should succeed");
     assert!(result.unwrap().unwrap(), "Modification should return true");
+=======
+    assert!(result, "Modification should return true");
+>>>>>>> origin/main
 
     // Validate gas measurements
     assert!(cpu > 0, "CPU cost should be measured");
@@ -133,7 +154,11 @@ fn test_cancel_schedule_gas_measurement() {
     let next_due = env.ledger().timestamp() + 86400;
     let interval = 2_592_000u64;
 
+<<<<<<< HEAD
     // Create initial schedule using direct call (returns u32)
+=======
+    // Create initial schedule
+>>>>>>> origin/main
     let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure cancellation
@@ -142,8 +167,12 @@ fn test_cancel_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
+<<<<<<< HEAD
     assert!(result.is_ok(), "Schedule cancellation should succeed");
     assert!(result.unwrap().unwrap(), "Cancellation should return true");
+=======
+    assert!(result, "Cancellation should return true");
+>>>>>>> origin/main
 
     // Validate gas measurements
     assert!(cpu > 0, "CPU cost should be measured");
@@ -192,7 +221,11 @@ fn test_query_schedules_with_data_gas_measurement() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
 
+<<<<<<< HEAD
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+=======
+        let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+>>>>>>> origin/main
     }
 
     // Measure query with data
@@ -257,8 +290,13 @@ fn test_gas_scaling_with_multiple_schedules() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
+<<<<<<< HEAD
 
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+=======
+        
+        let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+>>>>>>> origin/main
     }
 
     // Measure creating the 11th schedule (with existing storage)
@@ -266,6 +304,7 @@ fn test_gas_scaling_with_multiple_schedules() {
     let next_due = env.ledger().timestamp() + 86400 * 11;
     let interval = 2_592_000u64;
 
+<<<<<<< HEAD
     let (cpu, mem, result) = measure_gas(&env, || {
         client.try_create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
@@ -273,6 +312,14 @@ fn test_gas_scaling_with_multiple_schedules() {
     // Validate the operation succeeded
     assert!(result.is_ok(), "11th schedule creation should succeed");
     let schedule_id = result.unwrap().unwrap();
+=======
+    let (cpu, mem, schedule_id) = measure_gas(&env, || {
+        client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
+    });
+
+    // Validate the operation succeeded
+    let schedule_id = result;
+>>>>>>> origin/main
     assert_eq!(schedule_id, 11, "Should be the 11th schedule");
 
     // Validate gas measurements show reasonable scaling
@@ -299,8 +346,13 @@ fn test_data_isolation_security() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
+<<<<<<< HEAD
 
         client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
+=======
+        
+        let _result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
+>>>>>>> origin/main
     }
 
     // Create schedules for owner2
@@ -308,8 +360,13 @@ fn test_data_isolation_security() {
         let amount = 2_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 604_800u64;
+<<<<<<< HEAD
 
         client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
+=======
+        
+        let _result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
+>>>>>>> origin/main
     }
 
     // Validate data isolation
@@ -356,39 +413,68 @@ fn test_input_validation_security() {
 
     // Test invalid amount (zero)
     let result = client.try_create_remittance_schedule(
+<<<<<<< HEAD
         &owner,
         &0i128, // Invalid: zero amount
         &(env.ledger().timestamp() + 86400),
         &2_592_000u64,
+=======
+        &owner, 
+        &0i128, // Invalid: zero amount
+        &(env.ledger().timestamp() + 86400),
+        &2_592_000u64
+>>>>>>> origin/main
     );
-    assert!(result.is_err(), "Zero amount should be rejected");
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)), "Zero amount should be rejected");
 
     // Test invalid amount (negative)
     let result = client.try_create_remittance_schedule(
+<<<<<<< HEAD
         &owner,
         &(-1000i128), // Invalid: negative amount
         &(env.ledger().timestamp() + 86400),
         &2_592_000u64,
+=======
+        &owner, 
+        &(-1000i128), // Invalid: negative amount
+        &(env.ledger().timestamp() + 86400),
+        &2_592_000u64
+>>>>>>> origin/main
     );
-    assert!(result.is_err(), "Negative amount should be rejected");
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)), "Negative amount should be rejected");
 
     // Test invalid due date (past)
     let result = client.try_create_remittance_schedule(
+<<<<<<< HEAD
         &owner,
         &1000i128,
         &(env.ledger().timestamp() - 86400), // Invalid: past date
         &2_592_000u64,
+=======
+        &owner, 
+        &1000i128, 
+        &(env.ledger().timestamp() - 10), // Invalid: past due date
+        &2_592_000u64
+>>>>>>> origin/main
     );
-    assert!(result.is_err(), "Past due date should be rejected");
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDueDate)), "Past due date should be rejected");
 
     // Test valid parameters work
+<<<<<<< HEAD
     let result = client.try_create_remittance_schedule(
         &owner,
         &1000i128,
         &(env.ledger().timestamp() + 86400),
         &2_592_000u64,
+=======
+    client.create_remittance_schedule(
+        &owner,
+        &1000i128,
+        &(env.ledger().timestamp() + 86400),
+        &2_592_000u64
+>>>>>>> origin/main
     );
-    assert!(result.is_ok(), "Valid parameters should succeed");
+    assert!(result > 0, "Valid parameters should succeed");
 
     println!("✅ Input validation security verified");
 }
@@ -411,8 +497,12 @@ fn test_complete_schedule_lifecycle() {
     let (create_cpu, create_mem, result) = measure_gas(&env, || {
         client.try_create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
+<<<<<<< HEAD
     assert!(result.is_ok(), "Schedule creation should succeed");
     let schedule_id = result.unwrap().unwrap();
+=======
+    let schedule_id = schedule_id;
+>>>>>>> origin/main
     println!("   Create - CPU: {}, Memory: {}", create_cpu, create_mem);
 
     // 2. Query single schedule
@@ -438,8 +528,13 @@ fn test_complete_schedule_lifecycle() {
     let new_next_due = env.ledger().timestamp() + 172800;
     let new_interval = 604_800u64;
 
+<<<<<<< HEAD
     let (modify_cpu, modify_mem, result) = measure_gas(&env, || {
         client.try_modify_remittance_schedule(
+=======
+    let (modify_cpu, modify_mem, modified) = measure_gas(&env, || {
+        client.modify_remittance_schedule(
+>>>>>>> origin/main
             &owner,
             &schedule_id,
             &new_amount,
@@ -447,16 +542,24 @@ fn test_complete_schedule_lifecycle() {
             &new_interval,
         )
     });
+<<<<<<< HEAD
     assert!(result.is_ok(), "Schedule modification should succeed");
     assert!(result.unwrap().unwrap(), "Modification returned true");
+=======
+    assert!(modified, "Schedule modification should succeed");
+>>>>>>> origin/main
     println!("   Modify - CPU: {}, Memory: {}", modify_cpu, modify_mem);
 
     // 5. Cancel schedule
     let (cancel_cpu, cancel_mem, result) = measure_gas(&env, || {
         client.try_cancel_remittance_schedule(&owner, &schedule_id)
     });
+<<<<<<< HEAD
     assert!(result.is_ok(), "Schedule cancellation should succeed");
     assert!(result.unwrap().unwrap(), "Cancellation returned true");
+=======
+    assert!(cancelled, "Schedule cancellation should succeed");
+>>>>>>> origin/main
     println!("   Cancel - CPU: {}, Memory: {}", cancel_cpu, cancel_mem);
 
     // 6. Verify cancellation
@@ -491,14 +594,21 @@ fn test_performance_stress() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
+<<<<<<< HEAD
 
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
+=======
+>>>>>>> origin/main
 
+        let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+        let _result = (result, "Schedule {} creation should succeed", i);
+    }
     // Measure query performance with 20 schedules
     let (cpu, mem, schedules) = measure_gas(&env, || client.get_remittance_schedules(&owner));
 
     assert_eq!(schedules.len(), 20, "Should return all 20 schedules");
+<<<<<<< HEAD
 
     // Performance should still be reasonable
     assert!(
@@ -514,4 +624,18 @@ fn test_performance_stress() {
         "✅ Stress test passed - 20 schedules query: CPU: {}, Memory: {}",
         cpu, mem
     );
+=======
+
+    // Performance should still be reasonable
+    assert!(
+        cpu < 5_000_000,
+        "CPU cost should remain reasonable with 20 schedules"
+    );
+    assert!(
+        mem < 500_000,
+        "Memory cost should remain reasonable with 20 schedules"
+    );
+
+    println!("✅ Stress test passed - 20 schedules query: CPU: {}, Memory: {}", cpu, mem);
+>>>>>>> origin/main
 }

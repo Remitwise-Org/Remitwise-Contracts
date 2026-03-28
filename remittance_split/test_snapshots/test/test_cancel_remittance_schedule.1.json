@@ -218,7 +218,11 @@
             "key": {
               "vec": [
                 {
+<<<<<<< HEAD
                   "symbol": "OWN_SCH"
+=======
+                  "symbol": "OwnerSchedules"
+>>>>>>> origin/main
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -238,7 +242,11 @@
                 "key": {
                   "vec": [
                     {
+<<<<<<< HEAD
                       "symbol": "OWN_SCH"
+=======
+                      "symbol": "OwnerSchedules"
+>>>>>>> origin/main
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -257,7 +265,11 @@
             },
             "ext": "v0"
           },
+<<<<<<< HEAD
           100
+=======
+          100099
+>>>>>>> origin/main
         ]
       ],
       [
@@ -267,7 +279,11 @@
             "key": {
               "vec": [
                 {
+<<<<<<< HEAD
                   "symbol": "SCH"
+=======
+                  "symbol": "Schedule"
+>>>>>>> origin/main
                 },
                 {
                   "u32": 1
@@ -287,7 +303,11 @@
                 "key": {
                   "vec": [
                     {
+<<<<<<< HEAD
                       "symbol": "SCH"
+=======
+                      "symbol": "Schedule"
+>>>>>>> origin/main
                     },
                     {
                       "u32": 1
@@ -384,7 +404,11 @@
             },
             "ext": "v0"
           },
+<<<<<<< HEAD
           100
+=======
+          100099
+>>>>>>> origin/main
         ]
       ],
       [

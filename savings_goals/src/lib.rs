@@ -9,6 +9,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
@@ -81,10 +82,17 @@ pub struct SavingsSchedule {
     pub missed_count: u32,
 }
 
+<<<<<<< HEAD
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum SavingsGoalError {
+=======
+#[contracttype]
+#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SavingsGoalsError {
+>>>>>>> origin/main
     InvalidAmount = 1,
     GoalNotFound = 2,
     Unauthorized = 3,
@@ -254,10 +262,247 @@ impl SavingsGoalContract {
             .unwrap_or(CONTRACT_VERSION)
     }
 
+<<<<<<< HEAD
+=======
+    fn get_upgrade_admin(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&symbol_short!("UPG_ADM"))
+    }
+
+    /// Set or transfer the upgrade admin role.
+    ///
+    /// # Security Requirements
+    /// - If no upgrade admin exists, caller must equal new_admin (bootstrap pattern)
+    /// - If upgrade admin exists, only current upgrade admin can transfer
+    /// - Caller must be authenticated via require_auth()
+    ///
+    /// # Parameters
+    /// - `caller`: The address attempting to set the upgrade admin
+    /// - `new_admin`: The address to become the new upgrade admin
+    ///
+    /// # Panics
+    /// - If caller is unauthorized for the operation
+    pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) {
+        caller.require_auth();
+
+        let current_upgrade_admin = Self::get_upgrade_admin(&env);
+
+        // Authorization logic:
+        // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
+        // 2. If upgrade admin exists, only current upgrade admin can transfer
+        match &current_upgrade_admin {
+            None => {
+                // Bootstrap pattern - caller must be setting themselves as admin
+                if caller != new_admin {
+                    panic!("Unauthorized: bootstrap requires caller == new_admin");
+                }
+            }
+            Some(ref current_admin) => {
+                // Admin transfer - only current admin can transfer
+                if *current_admin != caller {
+                    panic!("Unauthorized: only current upgrade admin can transfer");
+                }
+            }
+        } else if caller != new_admin {
+            panic!("Unauthorized: bootstrap requires caller == new_admin");
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("UPG_ADM"), &new_admin);
+
+        // Emit admin transfer event for audit trail
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("adm_xfr")),
+            (current_upgrade_admin.clone(), new_admin.clone()),
+        );
+    }
+
+    /// Get the current upgrade admin address.
+    ///
+    /// # Returns
+    /// - `Some(Address)` if upgrade admin is set
+    /// - `None` if no upgrade admin has been configured
+    pub fn get_upgrade_admin_public(env: Env) -> Option<Address> {
+        Self::get_upgrade_admin(&env)
+    }
+
+    pub fn set_version(env: Env, caller: Address, new_version: u32) {
+        caller.require_auth();
+        let admin = match Self::get_upgrade_admin(&env) {
+            Some(a) => a,
+            None => panic!("No upgrade admin set"),
+        };
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let prev = Self::get_version(env.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &new_version);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("upgraded"),
+            (prev, new_version),
+        );
+    }
+
+>>>>>>> origin/main
     // -----------------------------------------------------------------------
     // Core Logic (Scalable Storage)
     // -----------------------------------------------------------------------
 
+<<<<<<< HEAD
+=======
+    /// Validates a tag batch for metadata operations.
+    ///
+    /// Requirements:
+    /// - At least one tag must be provided.
+    /// - Each tag length must be between 1 and 32 characters.
+    fn validate_tags(tags: &Vec<String>) {
+        if tags.is_empty() {
+            panic!("Tags cannot be empty");
+        }
+        for tag in tags.iter() {
+            if tag.len() == 0 || tag.len() > 32 {
+                panic!("Tag must be between 1 and 32 characters");
+            }
+        }
+    }
+
+    /// Adds tags to a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can add tags.
+    ///
+    /// Notes:
+    /// - Duplicate tags are preserved as provided.
+    /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
+    pub fn add_tags_to_goal(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        tags: Vec<String>,
+    ) {
+        caller.require_auth();
+        Self::validate_tags(&tags);
+        Self::extend_instance_ttl(&env);
+
+        let mut goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut goal = goals.get(goal_id).expect("Goal not found");
+
+        if goal.owner != caller {
+            Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
+            panic!("Only the goal owner can add tags");
+        }
+
+        for tag in tags.iter() {
+            goal.tags.push_back(tag);
+        }
+
+        goals.set(goal_id, goal);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("tags_add"),
+            (goal_id, caller.clone(), tags.clone()),
+        );
+
+        Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
+    }
+
+    /// Removes tags from a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can remove tags.
+    ///
+    /// Notes:
+    /// - Removing a tag that is not present is a no-op.
+    /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
+    pub fn remove_tags_from_goal(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        tags: Vec<String>,
+    ) {
+        caller.require_auth();
+        Self::validate_tags(&tags);
+        Self::extend_instance_ttl(&env);
+
+        let mut goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut goal = goals.get(goal_id).expect("Goal not found");
+
+        if goal.owner != caller {
+            Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
+            panic!("Only the goal owner can remove tags");
+        }
+
+        let mut new_tags = Vec::new(&env);
+        for existing_tag in goal.tags.iter() {
+            let mut should_keep = true;
+            for remove_tag in tags.iter() {
+                if existing_tag == remove_tag {
+                    should_keep = false;
+                    break;
+                }
+            }
+            if should_keep {
+                new_tags.push_back(existing_tag);
+            }
+        }
+
+        goal.tags = new_tags;
+        goals.set(goal_id, goal);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("tags_rem"),
+            (goal_id, caller.clone(), tags.clone()),
+        );
+
+        Self::append_audit(&env, symbol_short!("rem_tags"), &caller, true);
+    }
+
+    // -----------------------------------------------------------------------
+    // Core goal operations
+    // -----------------------------------------------------------------------
+
+    /// Creates a new savings goal.
+    ///
+    /// - `owner` must authorize the call.
+    /// - `target_amount` must be positive.
+    /// - `target_date` is stored as provided and may be in the past. This
+    ///   supports backfill or migration use cases where historical goals are
+    ///   recorded after the fact. Callers that need strictly future-dated
+    ///   goals should validate this before invoking the contract.
+    ///
+    /// # Events
+    /// - Emits `GOAL_CREATED` with goal details.
+    /// - Emits `SavingsEvent::GoalCreated`.
+>>>>>>> origin/main
     pub fn create_goal(
         env: Env,
         owner: Address,
@@ -297,10 +542,30 @@ impl SavingsGoalContract {
         Self::set_goal_data(&env, next_id, &goal);
         Self::append_to_owner_goal_ids(&env, &owner, next_id);
 
+<<<<<<< HEAD
+=======
+        goals.set(next_id, goal.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_ID"), &next_id);
+        Self::append_owner_goal_id(&env, &owner, next_id);
+
+        let event = GoalCreatedEvent {
+            goal_id: next_id,
+            name: goal.name.clone(),
+            target_amount,
+            target_date,
+            timestamp: env.ledger().timestamp(),
+        };
+>>>>>>> origin/main
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
+<<<<<<< HEAD
             GOAL_CREATED,
             GoalCreatedEvent {
                 goal_id: next_id,
@@ -309,6 +574,17 @@ impl SavingsGoalContract {
                 target_date,
                 timestamp: env.ledger().timestamp(),
             },
+=======
+            symbol_short!("created"),
+            event,
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("goal_new"),
+            (next_id, owner),
+>>>>>>> origin/main
         );
         Self::append_audit(&env, symbol_short!("create"), &owner, true);
         Ok(next_id)
@@ -343,12 +619,25 @@ impl SavingsGoalContract {
 
         Self::set_goal_data(&env, goal_id, &goal);
 
+<<<<<<< HEAD
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
             EventPriority::Medium,
             FUNDS_ADDED,
             FundsAddedEvent {
+=======
+        let funds_event = FundsAddedEvent {
+            goal_id,
+            amount,
+            new_total,
+            timestamp: env.ledger().timestamp(),
+        };
+        RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::Medium, symbol_short!("funds_add"), funds_event);
+
+        if was_completed && !previously_completed {
+            let completed_event = GoalCompletedEvent {
+>>>>>>> origin/main
                 goal_id,
                 amount,
                 new_total: goal.current_amount,
@@ -384,19 +673,20 @@ impl SavingsGoalContract {
         env: Env,
         caller: Address,
         contributions: Vec<ContributionItem>,
-    ) -> u32 {
+    ) -> Result<u32, SavingsGoalsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
         if contributions.len() > MAX_BATCH_SIZE {
-            panic!("Batch too large");
+            return Err(SavingsGoalsError::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
         let mut count = 0u32;
         for item in contributions.iter() {
             if item.amount <= 0 {
-                panic!("Amount must be positive");
+                return Err(SavingsGoalsError::InvalidAmount);
             }
+<<<<<<< HEAD
             let mut goal =
                 Self::get_goal_data(&env, item.goal_id).unwrap_or_else(|| panic!("Goal not found"));
             if goal.owner != caller {
@@ -413,6 +703,84 @@ impl SavingsGoalContract {
         }
         Self::append_audit(&env, symbol_short!("batch_add"), &caller, true);
         count
+=======
+            let goal = match goals_map.get(item.goal_id) {
+                Some(g) => g,
+                None => return Err(SavingsGoalsError::GoalNotFound),
+            };
+            if goal.owner != caller {
+                return Err(SavingsGoalsError::Unauthorized);
+            }
+        }
+        Self::extend_instance_ttl(&env);
+        let mut goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let mut count = 0u32;
+        for item in contributions.iter() {
+            let mut goal = match goals.get(item.goal_id) {
+                Some(g) => g,
+                None => return Err(SavingsGoalsError::GoalNotFound),
+            };
+            if goal.owner != caller {
+                return Err(SavingsGoalsError::Unauthorized);
+            }
+            goal.current_amount = match goal.current_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => panic!("overflow"),
+            };
+            let new_total = goal.current_amount;
+            let was_completed = new_total >= goal.target_amount;
+            let previously_completed = (new_total - item.amount) >= goal.target_amount;
+            goals.set(item.goal_id, goal.clone());
+            let funds_event = FundsAddedEvent {
+                goal_id: item.goal_id,
+                amount: item.amount,
+                new_total,
+                timestamp: env.ledger().timestamp(),
+            };
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Medium,
+                symbol_short!("funds_add"),
+                funds_event,
+            );
+            if was_completed && !previously_completed {
+                let completed_event = GoalCompletedEvent {
+                    goal_id: item.goal_id,
+                    name: goal.name.clone(),
+                    final_amount: new_total,
+                    timestamp: env.ledger().timestamp(),
+                };
+                env.events().publish((GOAL_COMPLETED,), completed_event);
+            }
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                (item.goal_id, caller.clone(), item.amount),
+            );
+            if was_completed && !previously_completed {
+                env.events().publish(
+                    (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                    (item.goal_id, caller.clone()),
+                );
+            }
+            count += 1;
+        }
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("batch_add"),
+            (count, caller),
+        );
+        Ok(count)
+>>>>>>> origin/main
     }
 
     pub fn withdraw_from_goal(
@@ -569,12 +937,241 @@ impl SavingsGoalContract {
                 panic!("Cursor not found");
             }
         }
+<<<<<<< HEAD
         let end = (start + limit).min(ids.len());
         let mut items = Vec::new(&env);
         for i in start..end {
             if let Some(id) = ids.get(i) {
                 if let Some(g) = Self::get_goal_data(&env, id) {
                     items.push_back(g);
+=======
+
+        let mut end_index = start_index + limit;
+        if end_index > ids.len() {
+            end_index = ids.len();
+        }
+
+        let mut result = Vec::new(&env);
+        for i in start_index..end_index {
+            let goal_id = ids
+                .get(i)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
+            let goal = goals
+                .get(goal_id)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
+            if goal.owner != owner {
+                panic!("Pagination index owner mismatch");
+            }
+            result.push_back(goal);
+        }
+
+        let next_cursor = if end_index < ids.len() {
+            ids.get(end_index - 1)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"))
+        } else {
+            0
+        };
+
+        GoalPage {
+            items: result,
+            next_cursor,
+            count: end_index - start_index,
+        }
+    }
+
+    /// Backward-compatible: returns ALL goals for owner in one Vec.
+    /// Prefer the paginated `get_goals` for production use.
+    pub fn get_all_goals(env: Env, owner: Address) -> Vec<SavingsGoal> {
+        let goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let mut result = Vec::new(&env);
+        for (_, goal) in goals.iter() {
+            if goal.owner == owner {
+                result.push_back(goal);
+            }
+        }
+        result
+    }
+
+    pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
+        let storage = env.storage().instance();
+        let goals: Map<u32, SavingsGoal> = storage
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or(Map::new(&env));
+        if let Some(goal) = goals.get(goal_id) {
+            goal.current_amount >= goal.target_amount
+        } else {
+            false
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Snapshot, audit, schedule
+    // -----------------------------------------------------------------------
+
+    pub fn get_nonce(env: Env, address: Address) -> u64 {
+        let nonces: Option<Map<Address, u64>> =
+            env.storage().instance().get(&symbol_short!("NONCES"));
+        nonces
+            .as_ref()
+            .and_then(|m: &Map<Address, u64>| m.get(address))
+            .unwrap_or(0)
+    }
+
+    pub fn export_snapshot(env: Env, caller: Address) -> GoalsExportSnapshot {
+        caller.require_auth();
+        let goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let next_id = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NEXT_ID"))
+            .unwrap_or(0u32);
+        let mut list = Vec::new(&env);
+        for i in 1..=next_id {
+            if let Some(g) = goals.get(i) {
+                list.push_back(g);
+            }
+        }
+        let checksum = Self::compute_goals_checksum(SCHEMA_VERSION, next_id, &list);
+        env.events().publish(
+            (symbol_short!("goals"), symbol_short!("snap_exp")),
+            SCHEMA_VERSION,
+        );
+        GoalsExportSnapshot {
+            schema_version: SCHEMA_VERSION,
+            checksum,
+            next_id,
+            goals: list,
+        }
+    }
+
+    pub fn import_snapshot(
+        env: Env,
+        caller: Address,
+        nonce: u64,
+        snapshot: GoalsExportSnapshot,
+    ) -> Result<bool, SavingsGoalError> {
+        caller.require_auth();
+        Self::require_nonce(&env, &caller, nonce);
+
+        // Accept any schema_version within the supported range for backward/forward compat.
+        if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
+            || snapshot.schema_version > SCHEMA_VERSION
+        {
+            Self::append_audit(&env, symbol_short!("import"), &caller, false);
+            return Err(SavingsGoalError::UnsupportedVersion);
+        }
+        let expected = Self::compute_goals_checksum(
+            snapshot.schema_version,
+            snapshot.next_id,
+            &snapshot.goals,
+        );
+        if snapshot.checksum != expected {
+            Self::append_audit(&env, symbol_short!("import"), &caller, false);
+            return Err(SavingsGoalError::ChecksumMismatch);
+        }
+
+        Self::extend_instance_ttl(&env);
+        let mut goals: Map<u32, SavingsGoal> = Map::new(&env);
+        let mut owner_goal_ids: Map<Address, Vec<u32>> = Map::new(&env);
+        for g in snapshot.goals.iter() {
+            goals.set(g.id, g.clone());
+            let mut ids = owner_goal_ids
+                .get(g.owner.clone())
+                .unwrap_or_else(|| Vec::new(&env));
+            ids.push_back(g.id);
+            owner_goal_ids.set(g.owner.clone(), ids);
+        }
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_ID"), &snapshot.next_id);
+        env.storage()
+            .instance()
+            .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
+
+        Self::increment_nonce(&env, &caller);
+        Self::append_audit(&env, symbol_short!("import"), &caller, true);
+        Ok(true)
+    }
+
+    pub fn get_audit_log(env: Env, from_index: u32, limit: u32) -> Vec<AuditEntry> {
+        let log: Option<Vec<AuditEntry>> = env.storage().instance().get(&symbol_short!("AUDIT"));
+        let log = log.unwrap_or_else(|| Vec::new(&env));
+        let len = log.len();
+        let cap = MAX_AUDIT_ENTRIES.min(limit);
+        let mut out = Vec::new(&env);
+        if from_index >= len {
+            return out;
+        }
+        let end = (from_index + cap).min(len);
+        for i in from_index..end {
+            if let Some(entry) = log.get(i) {
+                out.push_back(entry);
+            }
+        }
+        out
+    }
+
+    fn require_nonce(env: &Env, address: &Address, expected: u64) {
+        let current = Self::get_nonce(env.clone(), address.clone());
+        if expected != current {
+            panic!("Invalid nonce: expected {}, got {}", current, expected);
+        }
+    }
+
+    fn increment_nonce(env: &Env, address: &Address) {
+        let current = Self::get_nonce(env.clone(), address.clone());
+        let next = match current.checked_add(1) {
+            Some(v) => v,
+            None => panic!("nonce overflow"),
+        };
+        let mut nonces: Map<Address, u64> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NONCES"))
+            .unwrap_or_else(|| Map::new(env));
+        nonces.set(address.clone(), next);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NONCES"), &nonces);
+    }
+
+    fn compute_goals_checksum(version: u32, next_id: u32, goals: &Vec<SavingsGoal>) -> u64 {
+        let mut c = version as u64 + next_id as u64;
+        for i in 0..goals.len() {
+            if let Some(g) = goals.get(i) {
+                c = c
+                    .wrapping_add(g.id as u64)
+                    .wrapping_add(g.target_amount as u64)
+                    .wrapping_add(g.current_amount as u64);
+            }
+        }
+        c.wrapping_mul(31)
+    }
+
+    fn append_audit(env: &Env, operation: Symbol, caller: &Address, success: bool) {
+        let timestamp = env.ledger().timestamp();
+        let mut log: Vec<AuditEntry> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("AUDIT"))
+            .unwrap_or_else(|| Vec::new(env));
+        if log.len() >= MAX_AUDIT_ENTRIES {
+            let mut new_log = Vec::new(env);
+            for i in 1..log.len() {
+                if let Some(entry) = log.get(i) {
+                    new_log.push_back(entry);
+>>>>>>> origin/main
                 }
             }
         }
@@ -700,6 +1297,7 @@ impl SavingsGoalContract {
                 continue;
             }
 
+<<<<<<< HEAD
             if let Some(mut g) = Self::get_goal_data(&env, s.goal_id) {
                 g.current_amount = g
                     .current_amount
@@ -713,6 +1311,20 @@ impl SavingsGoalContract {
                     EventPriority::Medium,
                     symbol_short!("funds_add"),
                     (s.goal_id, g.owner, s.amount),
+=======
+            if let Some(mut goal) = goals.get(schedule.goal_id) {
+                goal.current_amount = match goal.current_amount.checked_add(schedule.amount) {
+                    Some(v) => v,
+                    None => panic!("overflow"),
+                };
+
+                let is_completed = goal.current_amount >= goal.target_amount;
+                goals.set(schedule.goal_id, goal.clone());
+
+                env.events().publish(
+                    (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                    (schedule.goal_id, goal.owner.clone(), schedule.amount),
+>>>>>>> origin/main
                 );
             }
 

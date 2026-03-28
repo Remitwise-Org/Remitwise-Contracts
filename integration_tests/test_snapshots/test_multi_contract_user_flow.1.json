@@ -691,8 +691,75 @@
                                   "key": {
                                     "symbol": "caller"
                                   },
+<<<<<<< HEAD
                                   "val": {
                                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+=======
+                                  {
+                                    "key": {
+                                      "symbol": "id"
+                                    },
+                                    "val": {
+                                      "u32": 1
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "locked"
+                                    },
+                                    "val": {
+                                      "bool": true
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "name"
+                                    },
+                                    "val": {
+                                      "string": "Education Fund"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "owner"
+                                    },
+                                    "val": {
+                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "target_amount"
+                                    },
+                                    "val": {
+                                      "i128": {
+                                        "hi": 0,
+                                        "lo": 10000
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "target_date"
+                                    },
+                                    "val": {
+                                      "u64": 31536000
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "unlock_date"
+                                    },
+                                    "val": "void"
+>>>>>>> origin/main
                                   }
                                 },
                                 {
@@ -963,6 +1030,7 @@
                       },
                       {
                         "key": {
+<<<<<<< HEAD
                           "symbol": "OWNER"
                         },
                         "val": {
@@ -972,6 +1040,9 @@
                       {
                         "key": {
                           "symbol": "POL"
+=======
+                          "symbol": "POLS"
+>>>>>>> origin/main
                         },
                         "val": {
                           "map": [
@@ -1062,6 +1133,7 @@
                             }
                           ]
                         }
+<<<<<<< HEAD
                       },
                       {
                         "key": {
@@ -1070,6 +1142,8 @@
                         "val": {
                           "u32": 0
                         }
+=======
+>>>>>>> origin/main
                       }
                     ]
                   }
@@ -1078,7 +1152,7 @@
             },
             "ext": "v0"
           },
-          518400
+          4095
         ]
       ],
       [
@@ -1218,7 +1292,11 @@
                 "u32": 1
               },
               {
+<<<<<<< HEAD
                 "symbol": "split"
+=======
+                "symbol": "init"
+>>>>>>> origin/main
               }
             ],
             "data": {
@@ -1371,6 +1449,45 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000003",
+<<<<<<< HEAD
+=======
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "goal_new"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000003",
+>>>>>>> origin/main
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -1537,6 +1654,7 @@
                   "string": "Health Insurance"
                 },
                 {
+<<<<<<< HEAD
                   "u32": 1
                 },
                 {
@@ -1544,14 +1662,71 @@
                     "hi": 0,
                     "lo": 2000000
                   }
+=======
+                  "u32": 1
                 },
                 {
                   "i128": {
                     "hi": 0,
+                    "lo": 200
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000005",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+>>>>>>> origin/main
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+<<<<<<< HEAD
                     "lo": 50000000
                   }
                 },
                 "void"
+=======
+                    "lo": 200
+                  }
+                }
+>>>>>>> origin/main
               ]
             }
           }
@@ -1619,6 +1794,15 @@
         "body": {
           "v0": {
             "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 0
+              },
+              {
+                "u32": 0
+              },
               {
                 "symbol": "calc"
               }
@@ -1704,14 +1888,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "Calculated"
-                  }
-                ]
+                "u32": 0
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "calc_raw"
               }
             ],
             "data": {

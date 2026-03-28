@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
+ /// Encrypted migration payload marker prefix.
+ ///
+ /// Format: `enc:v1:<base64>`
+ const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
+
 /// Current snapshot schema version for migration compatibility.
 ///
 /// # Versioning Policy (workspace-wide)
@@ -188,6 +193,8 @@ pub enum MigrationError {
     InvalidFormat(String),
     ValidationFailed(String),
     DeserializeError(String),
+    /// Indicates that the payload has already been imported.
+    DuplicateImport,
 }
 
 impl std::fmt::Display for MigrationError {
@@ -204,11 +211,47 @@ impl std::fmt::Display for MigrationError {
             MigrationError::InvalidFormat(s) => write!(f, "invalid format: {}", s),
             MigrationError::ValidationFailed(s) => write!(f, "validation failed: {}", s),
             MigrationError::DeserializeError(s) => write!(f, "deserialize error: {}", s),
+            MigrationError::DuplicateImport => write!(f, "duplicate payload import detected"),
         }
     }
 }
 
 impl std::error::Error for MigrationError {}
+
+/// Tracks imported migration payloads to prevent replay attacks and duplicate restores.
+///
+/// Binds payload identity to a `(checksum, version)` tuple.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MigrationTracker {
+    /// Stores the set of imported payloads, keyed by their checksum and version.
+    /// Tracks the timestamp when it was imported.
+    imported_payloads: HashMap<(String, u32), u64>,
+}
+
+impl MigrationTracker {
+    pub fn new() -> Self {
+        Self {
+            imported_payloads: HashMap::new(),
+        }
+    }
+
+    /// Mark a payload as imported.
+    /// Returns an error if it was already imported, preventing replay attacks.
+    pub fn mark_imported(&mut self, snapshot: &ExportSnapshot, timestamp_ms: u64) -> Result<(), MigrationError> {
+        let identity = (snapshot.header.checksum.clone(), snapshot.header.version);
+        if self.imported_payloads.contains_key(&identity) {
+            return Err(MigrationError::DuplicateImport);
+        }
+        self.imported_payloads.insert(identity, timestamp_ms);
+        Ok(())
+    }
+
+    /// Check if a snapshot has already been imported.
+    pub fn is_imported(&self, snapshot: &ExportSnapshot) -> bool {
+        let identity = (snapshot.header.checksum.clone(), snapshot.header.version);
+        self.imported_payloads.contains_key(&identity)
+    }
+}
 
 /// Export snapshot to JSON bytes.
 pub fn export_to_json(snapshot: &ExportSnapshot) -> Result<Vec<u8>, MigrationError> {
@@ -253,29 +296,50 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 
 /// Encrypted format: store base64-encoded payload (caller encrypts before passing).
 pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(plain_bytes)
+    let b64 = base64::engine::general_purpose::STANDARD.encode(plain_bytes);
+    format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, b64)
 }
 
 /// Decode encrypted payload from base64 (caller decrypts after).
 pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, MigrationError> {
+    let rest = encoded
+        .strip_prefix(ENCRYPTED_PAYLOAD_PREFIX_V1)
+        .ok_or_else(|| MigrationError::InvalidFormat("missing or invalid encrypted payload marker".into()))?;
+
+    if rest.is_empty() {
+        return Err(MigrationError::InvalidFormat(
+            "empty encrypted payload ciphertext".into(),
+        ));
+    }
+
     base64::engine::general_purpose::STANDARD
-        .decode(encoded)
+        .decode(rest)
         .map_err(|e| MigrationError::InvalidFormat(e.to_string()))
 }
 
-/// Import snapshot from JSON bytes with validation.
-pub fn import_from_json(bytes: &[u8]) -> Result<ExportSnapshot, MigrationError> {
+/// Import snapshot from JSON bytes with validation and replay protection.
+pub fn import_from_json(
+    bytes: &[u8],
+    tracker: &mut MigrationTracker,
+    timestamp_ms: u64,
+) -> Result<ExportSnapshot, MigrationError> {
     let snapshot: ExportSnapshot = serde_json::from_slice(bytes)
         .map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
     snapshot.validate_for_import()?;
+    tracker.mark_imported(&snapshot, timestamp_ms)?;
     Ok(snapshot)
 }
 
-/// Import snapshot from binary bytes with validation.
-pub fn import_from_binary(bytes: &[u8]) -> Result<ExportSnapshot, MigrationError> {
+/// Import snapshot from binary bytes with validation and replay protection.
+pub fn import_from_binary(
+    bytes: &[u8],
+    tracker: &mut MigrationTracker,
+    timestamp_ms: u64,
+) -> Result<ExportSnapshot, MigrationError> {
     let snapshot: ExportSnapshot =
         bincode::deserialize(bytes).map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
     snapshot.validate_for_import()?;
+    tracker.mark_imported(&snapshot, timestamp_ms)?;
     Ok(snapshot)
 }
 
@@ -374,7 +438,8 @@ mod tests {
         });
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
         let bytes = export_to_json(&snapshot).unwrap();
-        let loaded = import_from_json(&bytes).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let loaded = import_from_json(&bytes, &mut tracker, 123456).unwrap();
         assert_eq!(loaded.header.version, SCHEMA_VERSION);
         assert!(loaded.verify_checksum());
     }
@@ -390,8 +455,32 @@ mod tests {
         });
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Binary);
         let bytes = export_to_binary(&snapshot).unwrap();
-        let loaded = import_from_binary(&bytes).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let loaded = import_from_binary(&bytes, &mut tracker, 123456).unwrap();
         assert!(loaded.verify_checksum());
+    }
+
+    #[test]
+    fn test_import_replay_protection_prevents_duplicates() {
+        let payload = SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+            owner: "GREPLAY".into(),
+            spending_percent: 50,
+            savings_percent: 30,
+            bills_percent: 10,
+            insurance_percent: 10,
+        });
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        
+        let mut tracker = MigrationTracker::new();
+        
+        // First import should succeed
+        let loaded1 = import_from_json(&bytes, &mut tracker, 1000).unwrap();
+        assert!(tracker.is_imported(&loaded1));
+        
+        // Second import of the exact same snapshot should fail
+        let result2 = import_from_json(&bytes, &mut tracker, 2000);
+        assert_eq!(result2.unwrap_err(), MigrationError::DuplicateImport);
     }
 
     #[test]
@@ -458,5 +547,67 @@ mod tests {
 
         let MigrationEvent::V1(v1) = loaded;
         assert_eq!(v1.version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_encrypted_payload_roundtrip_succeeds() {
+        let plain = b"hello migration".to_vec();
+        let encoded = export_to_encrypted_payload(&plain);
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain);
+    }
+
+    #[test]
+    fn test_encrypted_payload_missing_marker_fails() {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(b"abc");
+        let err = import_from_encrypted_payload(&encoded).unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_version_marker_fails() {
+        let encoded = format!(
+            "enc:v2:{}",
+            base64::engine::general_purpose::STANDARD.encode(b"abc")
+        );
+        let err = import_from_encrypted_payload(&encoded).unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_encrypted_payload_empty_ciphertext_fails() {
+        let err = import_from_encrypted_payload("enc:v1:").unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_encrypted_payload_invalid_base64_fails() {
+        let err = import_from_encrypted_payload("enc:v1:!!!not-base64!!!").unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_encrypted_payload_truncated_base64_fails() {
+        let plain = b"abcdef".to_vec();
+        let encoded = export_to_encrypted_payload(&plain);
+        let truncated = encoded[..encoded.len().saturating_sub(1)].to_string();
+        let err = import_from_encrypted_payload(&truncated).unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_encrypted_payload_manipulated_ciphertext_fails() {
+        let plain = b"abcdef".to_vec();
+        let mut encoded = export_to_encrypted_payload(&plain);
+        let idx = encoded
+            .find(ENCRYPTED_PAYLOAD_PREFIX_V1)
+            .unwrap() + ENCRYPTED_PAYLOAD_PREFIX_V1.len();
+
+        let mut bytes = encoded.into_bytes();
+        bytes[idx] = b'!';
+        encoded = String::from_utf8(bytes).unwrap();
+
+        let err = import_from_encrypted_payload(&encoded).unwrap_err();
+        assert!(matches!(err, MigrationError::InvalidFormat(_)));
     }
 }

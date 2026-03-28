@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 use remitwise_common::Category;
 use reporting::{ReportingContract, ReportingContractClient};
+=======
+use reporting::{Category, ReportingClient};
+>>>>>>> origin/main
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 // Mock contracts for the reporting example
@@ -34,6 +38,7 @@ fn main() {
 
     // 5. [Write] Configure contract addresses
     println!("Configuring dependency addresses...");
+<<<<<<< HEAD
     client.configure_addresses(
         &admin,
         &split_addr,
@@ -42,12 +47,32 @@ fn main() {
         &insurance_addr,
         &family_addr,
     );
+=======
+    client
+        .configure_addresses(
+            &admin,
+            &split_addr,
+            &savings_addr,
+            &bills_addr,
+            &insurance_addr,
+            &family_addr,
+        )
+        .unwrap();
+>>>>>>> origin/main
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report
     // Note: In this environment, calling reports that query other contracts
     // would require those contracts to be registered at the provided addresses.
     // For simplicity in this standalone example, we'll focus on the configuration and health score calculation
+<<<<<<< HEAD
+=======
+    // if the logic allows it without full cross-contract state.
+
+    // However, since we're using Env::default(), we can actually register simple mocks if needed.
+    // But for a clear "runnable example" that doesn't get too complex,
+    // showing the setup and a successful call is the primary goal.
+>>>>>>> origin/main
 
     println!("\nReporting contract is now ready to generate financial insights.");
     println!("Example completed successfully!");

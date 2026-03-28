@@ -124,7 +124,8 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 
 #### T-UA-01: Information Disclosure via Reporting Contract
 **Severity:** HIGH
-**Description:** The reporting contract allows any caller to query sensitive financial data for any user without authorization checks.
+**Status:** MITIGATED
+**Description:** The reporting contract previously allowed any caller to query sensitive financial data. It now enforces `user.require_auth()` and validates that the `caller` matches the `user` address.
 
 **Affected Functions:**
 - `get_remittance_summary()`
@@ -132,12 +133,7 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 - `get_bill_compliance_report()`
 - `get_insurance_coverage_report()`
 
-**Attack Vector:**
-1. Attacker calls reporting functions with victim's address
-2. Retrieves complete financial profile including balances, goals, bills, policies
-3. Uses information for social engineering or targeted attacks
-
-**Impact:** Privacy violation, information disclosure, potential for targeted attacks
+**Impact:** Privacy violation, information disclosure (Blocked by authorization checks)
 
 ---
 
@@ -282,21 +278,16 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 
 ---
 
-#### T-EC-02: Emergency Mode Fund Drain
+#### T-EC-02: Emergency Mode Fund Drain Risk
 **Severity:** HIGH
-**Description:** Emergency mode allows unlimited transfers without multi-sig and no cooldown enforcement.
+**Status:** MITIGATED
+**Description:** Emergency mode previously allowed unlimited transfers. It now enforces a strict `EM_LAST` timestamp cooldown and limits amounts based on `EmergencyConfig`.
 
 **Affected Functions:**
 - `family_wallet::execute_emergency_transfer_now()`
 - `family_wallet::set_emergency_mode()`
 
-**Attack Vector:**
-1. Attacker compromises Owner/Admin account
-2. Activates emergency mode
-3. Executes multiple emergency transfers rapidly
-4. Drains family wallet before detection
-
-**Impact:** Complete fund loss
+**Impact:** Complete fund loss (Blocked by cooldown and amount limits)
 
 ---
 

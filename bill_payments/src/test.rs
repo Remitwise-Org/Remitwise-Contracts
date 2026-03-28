@@ -24,6 +24,8 @@ mod testsuit {
                         &(now - 1 - i as u64), // due_date < now
                         &false,
                         &0,
+                        &None,
+                        &String::from_str(&env, "XLM"),
                     );
                     env.mock_all_auths();
                 }
@@ -37,6 +39,8 @@ mod testsuit {
                         &(now + 1 + i as u64), // due_date > now
                         &false,
                         &0,
+                        &None,
+                        &String::from_str(&env, "XLM"),
                     );
                     env.mock_all_auths();
                 }
@@ -54,6 +58,12 @@ mod testsuit {
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
     use soroban_sdk::Env;
     use proptest::prelude::*;
+
+    // Helper to set ledger time with a monotonically increasing sequence.
+    fn set_time(env: &Env, timestamp: u64) {
+        let next_seq = env.ledger().sequence().saturating_add(1);
+        set_ledger_time(env, next_seq, timestamp);
+    }
 
     // Removed local set_time in favor of testutils::set_ledger_time
 
@@ -2721,6 +2731,8 @@ mod testsuit {
             &1_000_000,
             &true, // recurring
             &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Before payment: one unpaid bill of 500
@@ -2736,6 +2748,118 @@ mod testsuit {
             "after paying a recurring bill, the newly created bill must appear in total_unpaid"
         );
     }
-}
 
+    #[test]
+    fn test_batch_pay_bills_mixed_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        
+        // 1. Valid bill
+        let id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Valid"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
+        // 2. Already paid bill (we'll pay it first)
+        let id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "AlreadyPaid"),
+            &2000,
+            &1000000,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        client.pay_bill(&owner, &id2);
+
+        // 3. Unauthorized bill (different owner)
+        env.mock_all_auths();
+        let id3 = client.create_bill(
+            &other,
+            &String::from_str(&env, "OtherOwner"),
+            &3000,
+            &1000000,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
+        // 4. Non-existent bill ID (e.g., 999)
+
+        env.mock_all_auths();
+        let bill_ids = Vec::from_array(&env, [id1, id2, id3, 999]);
+        
+        // Should succeed and return 1 (only id1 is valid for caller 'owner')
+        let success_count = client.batch_pay_bills(&owner, &bill_ids);
+        assert_eq!(success_count, 1);
+
+        // Verify id1 is paid
+        let bill1 = client.get_bill(&id1).unwrap();
+        assert!(bill1.paid);
+        
+        // Verify id2 remains paid (as it was)
+        let bill2 = client.get_bill(&id2).unwrap();
+        assert!(bill2.paid);
+    }
+
+    #[test]
+    fn test_batch_pay_bills_all_invalid() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_ids = Vec::from_array(&env, [888, 999]);
+        
+        let success_count = client.batch_pay_bills(&owner, &bill_ids);
+        assert_eq!(success_count, 0);
+    }
+
+    #[test]
+    fn test_batch_pay_bills_duplicate_ids() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "DuplicateTest"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &String::from_str(&env, "XLM"),
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
+        // Pass the same ID twice
+        let bill_ids = Vec::from_array(&env, [id, id]);
+        
+        // First one succeeds, second one fails (already paid by the first)
+        let success_count = client.batch_pay_bills(&owner, &bill_ids);
+        assert_eq!(success_count, 1);
+
+        let bill = client.get_bill(&id).unwrap();
+        assert!(bill.paid);
+    }
 }

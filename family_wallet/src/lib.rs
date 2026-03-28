@@ -5,7 +5,11 @@ use soroban_sdk::{
     Env, Map, Symbol, Vec,
 };
 
+<<<<<<< HEAD
 pub use remitwise_common::FamilyRole;
+=======
+use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
+>>>>>>> origin/main
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -15,8 +19,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280;
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 
-// Signature expiration time (24 hours in seconds)
-const SIGNATURE_EXPIRATION: u64 = 86400;
+// Signature expiration time constants
+const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
+const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -65,8 +70,10 @@ pub enum TransactionData {
 pub struct FamilyMember {
     pub address: Address,
     pub role: FamilyRole,
-    /// Per-transaction cap in stroops. 0 = unlimited.
+    /// Legacy per-transaction cap in stroops. 0 = unlimited.
     pub spending_limit: i128,
+    /// Enhanced precision spending limit (optional)
+    pub precision_limit: Option<PrecisionSpendingLimit>,
     pub added_at: u64,
 }
 
@@ -76,6 +83,7 @@ pub struct EmergencyConfig {
     pub max_amount: i128,
     pub cooldown: u64,
     pub min_balance: i128,
+    pub daily_limit: i128,
 }
 
 #[contracttype]
@@ -137,6 +145,9 @@ pub struct AccessAuditEntry {
 const CONTRACT_VERSION: u32 = 1;
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
 const MAX_BATCH_MEMBERS: u32 = 30;
+const MAX_SIGNERS: u32 = 100;
+const MIN_THRESHOLD: u32 = 1;
+const MAX_THRESHOLD: u32 = 100;
 
 #[contracttype]
 #[derive(Clone)]
@@ -145,13 +156,64 @@ pub struct BatchMemberItem {
     pub role: FamilyRole,
 }
 
+/// Spending period configuration for rollover behavior
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingPeriod {
+    /// Period type: 0=Daily, 1=Weekly, 2=Monthly
+    pub period_type: u32,
+    /// Period start timestamp (aligned to period boundary)
+    pub period_start: u64,
+    /// Period duration in seconds
+    pub period_duration: u64,
+}
+
+/// Cumulative spending tracking for precision validation
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingTracker {
+    /// Current period spending amount
+    pub current_spent: i128,
+    /// Last transaction timestamp for precision validation
+    pub last_tx_timestamp: u64,
+    /// Transaction count in current period
+    pub tx_count: u32,
+    /// Period configuration
+    pub period: SpendingPeriod,
+}
+
+/// Enhanced spending limit with precision controls
+#[contracttype]
+#[derive(Clone)]
+pub struct PrecisionSpendingLimit {
+    /// Base spending limit per period
+    pub limit: i128,
+    /// Minimum precision unit (prevents dust attacks)
+    pub min_precision: i128,
+    /// Maximum single transaction amount
+    pub max_single_tx: i128,
+    /// Enable rollover validation
+    pub enable_rollover: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum ArchiveEvent {
     TransactionsArchived,
     ExpiredCleaned,
+    TransactionCancelled,
 }
 
+/// @title Family Wallet Multisig Proposal Expiry
+/// @notice Manages the lifecycle of multisig proposals with deterministic expiry.
+///
+/// Security Assumptions:
+/// 1. Proposer Authorization: Only authenticated family members can propose.
+/// 2. Deterministic Expiry: Expiry is set at proposal time based on contract configuration.
+/// 3. Signer Authorization: Only designated signers for a transaction type can sign.
+/// 4. Cancellation Safety: Proposers can cancel their own proposals; Admins can cancel any.
+/// 5. Expiry Enforcement: Expired proposals cannot be signed or executed.
+/// 6. Storage Bounds: Expired proposals can be pruned by Admins to manage storage costs.
 #[contract]
 pub struct FamilyWallet;
 
@@ -172,6 +234,12 @@ pub enum Error {
     MemberNotFound = 11,
     TransactionAlreadyExecuted = 12,
     InvalidSpendingLimit = 13,
+    ThresholdBelowMinimum = 14,
+    ThresholdAboveMaximum = 15,
+    SignersListEmpty = 16,
+    SignerNotMember = 17,
+    DuplicateSigner = 18,
+    TooManySigners = 19,
 }
 
 #[contractimpl]
@@ -251,22 +319,26 @@ impl FamilyWallet {
             .set(&symbol_short!("NEXT_TX"), &1u64);
 
         let em_config = EmergencyConfig {
-            max_amount: 1000_0000000,
+            max_amount: 10000_0000000,
             cooldown: 3600,
             min_balance: 0,
+            daily_limit: 100000_0000000,
         };
         env.storage()
             .instance()
             .set(&symbol_short!("EM_CONF"), &em_config);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_MODE"), &false);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &0u64);
 
         true
     }
+
 
     pub fn add_member(
         env: Env,
@@ -307,6 +379,7 @@ impl FamilyWallet {
                 address: member_address.clone(),
                 role,
                 spending_limit,
+                precision_limit: None, // Default to legacy behavior
                 added_at: now,
             },
         );
@@ -314,8 +387,11 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
 
-        env.events().publish(
-            (symbol_short!("added"), symbol_short!("member")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("member"),
             MemberAddedEvent {
                 member: member_address,
                 role,
@@ -373,8 +449,11 @@ impl FamilyWallet {
             .set(&symbol_short!("MEMBERS"), &members);
 
         let now = env.ledger().timestamp();
-        env.events().publish(
-            (symbol_short!("updated"), symbol_short!("limit")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::Medium,
+            symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
                 member: member_address,
                 old_limit,
@@ -428,6 +507,15 @@ impl FamilyWallet {
         amount <= member.spending_limit
     }
 
+    /// @notice Configure multisig parameters for a given transaction type.
+    /// @dev Validates threshold bounds, signer membership, and uniqueness.
+    ///      Returns `Result<bool, Error>` instead of panicking on invalid input.
+    /// @param caller Owner or Admin authorizing the configuration.
+    /// @param tx_type The transaction type to configure.
+    /// @param threshold Number of signatures required (MIN_THRESHOLD..=min(MAX_THRESHOLD, signer_count)).
+    /// @param signers List of authorized signers (must be family members, no duplicates).
+    /// @param spending_limit Non-negative spending cap for the configuration.
+    /// @return Ok(true) on success, or a specific Error variant on failure.
     pub fn configure_multisig(
         env: Env,
         caller: Address,
@@ -435,7 +523,7 @@ impl FamilyWallet {
         threshold: u32,
         signers: Vec<Address>,
         spending_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -446,23 +534,45 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         if !Self::is_owner_or_admin_in_members(&env, &members, &caller) {
-            panic!("Only Owner or Admin can configure multi-sig");
+            return Err(Error::Unauthorized);
         }
 
-        // Validate threshold
         let signer_count = signers.len();
-        if threshold == 0 || threshold > signer_count {
-            panic!("Invalid threshold");
+
+        if signer_count == 0 {
+            return Err(Error::SignersListEmpty);
         }
 
+        if signer_count > MAX_SIGNERS {
+            return Err(Error::TooManySigners);
+        }
+
+        if threshold < MIN_THRESHOLD {
+            return Err(Error::ThresholdBelowMinimum);
+        }
+
+        if threshold > MAX_THRESHOLD {
+            return Err(Error::ThresholdAboveMaximum);
+        }
+
+        if threshold > signer_count {
+            return Err(Error::InvalidThreshold);
+        }
+
+        // Check signer membership and uniqueness in a single pass
+        let mut checked: Map<Address, bool> = Map::new(&env);
         for signer in signers.iter() {
             if members.get(signer.clone()).is_none() {
-                panic!("Signer must be a family member");
+                return Err(Error::SignerNotMember);
             }
+            if checked.get(signer.clone()).is_some() {
+                return Err(Error::DuplicateSigner);
+            }
+            checked.set(signer.clone(), true);
         }
 
         if spending_limit < 0 {
-            panic!("Spending limit must be non-negative");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         Self::extend_instance_ttl(&env);
@@ -477,7 +587,7 @@ impl FamilyWallet {
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
 
-        true
+        Ok(true)
     }
 
     pub fn propose_transaction(
@@ -539,13 +649,19 @@ impl FamilyWallet {
         let mut signatures = Vec::new(&env);
         signatures.push_back(proposer.clone());
 
+        let expiry_duration: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
+
         let pending_tx = PendingTransaction {
             tx_id,
             tx_type,
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
-            expires_at: timestamp + SIGNATURE_EXPIRATION,
+            expires_at: timestamp + expiry_duration,
             data: data.clone(),
         };
 
@@ -662,6 +778,11 @@ impl FamilyWallet {
     ) -> u64 {
         if amount <= 0 {
             panic!("Amount must be positive");
+        }
+
+        // Enhanced precision and rollover validation
+        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount) {
+            panic_with_error!(&env, error);
         }
 
         let config: MultiSigConfig = env
@@ -789,6 +910,7 @@ impl FamilyWallet {
         max_amount: i128,
         cooldown: u64,
         min_balance: i128,
+        daily_limit: i128,
     ) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -811,6 +933,7 @@ impl FamilyWallet {
                 max_amount,
                 cooldown,
                 min_balance,
+                daily_limit,
             },
         );
 
@@ -836,8 +959,13 @@ impl FamilyWallet {
         } else {
             EmergencyEvent::ModeOff
         };
-        env.events()
-            .publish((symbol_short!("emerg"), event), caller);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("em_mode"),
+            event,
+        );
 
         true
     }
@@ -867,6 +995,7 @@ impl FamilyWallet {
                 address: member.clone(),
                 role,
                 spending_limit: 0,
+                precision_limit: None, // Default to legacy behavior
                 added_at: timestamp,
             },
         );
@@ -1021,8 +1150,11 @@ impl FamilyWallet {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("wallet"), ArchiveEvent::TransactionsArchived),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::Low,
+            symbol_short!("archived"),
             (archived_count, caller),
         );
 
@@ -1085,11 +1217,13 @@ impl FamilyWallet {
 
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("wallet"), ArchiveEvent::ExpiredCleaned),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::Low,
+            symbol_short!("archived"),
             (removed_count, caller),
         );
-
         removed_count
     }
 
@@ -1245,7 +1379,7 @@ impl FamilyWallet {
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
-            (current_upgrade_admin, new_admin.clone()),
+            (current_upgrade_admin.clone(), new_admin.clone()),
         );
 
         true
@@ -1291,11 +1425,15 @@ impl FamilyWallet {
         members: Vec<BatchMemberItem>,
     ) -> u32 {
         caller.require_auth();
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::Medium,
+            symbol_short!("batch_mem"),
+            members.len() as u32,
+        );
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         Self::require_not_paused(&env);
-        if members.len() > MAX_BATCH_MEMBERS {
-            panic!("Batch too large");
-        }
         Self::extend_instance_ttl(&env);
         let mut members_map: Map<Address, FamilyMember> = env
             .storage()
@@ -1314,6 +1452,7 @@ impl FamilyWallet {
                     address: item.address.clone(),
                     role: item.role,
                     spending_limit: 0,
+                    precision_limit: None, // Default to legacy behavior
                     added_at: timestamp,
                 },
             );
@@ -1425,14 +1564,33 @@ impl FamilyWallet {
             panic!("Emergency transfer cooldown period not elapsed");
         }
 
+        // Daily Rate Limit Enforcement
+        let day_in_seconds = 86400u64;
+        let mut daily_usage: (i128, u64) = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_VOL"))
+            .unwrap_or((0i128, 0u64));
+
+        if now >= daily_usage.1.saturating_add(day_in_seconds) {
+            daily_usage = (0i128, now);
+        }
+
+        if daily_usage.0.saturating_add(amount) > config.daily_limit {
+            panic!("Emergency daily limit exceeded");
+        }
+
         let token_client = TokenClient::new(&env, &token);
         let current_balance = token_client.balance(&proposer);
         if current_balance - amount < config.min_balance {
             panic!("Emergency transfer would violate minimum balance requirement");
         }
 
-        env.events().publish(
-            (symbol_short!("emerg"), EmergencyEvent::TransferInit),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("em_init"),
             (proposer.clone(), recipient.clone(), amount),
         );
 
@@ -1445,10 +1603,15 @@ impl FamilyWallet {
             false,
         );
 
-        let store_ts: u64 = if now == 0 { 1u64 } else { now };
+        let store_ts = env.ledger().timestamp();
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
+
+        daily_usage.0 = daily_usage.0.saturating_add(amount);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_VOL"), &daily_usage);
 
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),

@@ -42,6 +42,7 @@
                     "storage": [
                       {
                         "key": {
+<<<<<<< HEAD
                           "symbol": "COUNTER"
                         },
                         "val": {
@@ -51,10 +52,14 @@
                       {
                         "key": {
                           "symbol": "OWNER"
+=======
+                          "symbol": "PAUSE_ADM"
+>>>>>>> origin/main
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                         }
+<<<<<<< HEAD
                       },
                       {
                         "key": {
@@ -63,6 +68,8 @@
                         "val": {
                           "u32": 0
                         }
+=======
+>>>>>>> origin/main
                       }
                     ]
                   }
@@ -113,7 +120,11 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
+<<<<<<< HEAD
                 "symbol": "init"
+=======
+                "symbol": "initialize"
+>>>>>>> origin/main
               }
             ],
             "data": {
@@ -136,7 +147,11 @@
                 "symbol": "fn_return"
               },
               {
+<<<<<<< HEAD
                 "symbol": "init"
+=======
+                "symbol": "initialize"
+>>>>>>> origin/main
               }
             ],
             "data": "void"
@@ -211,7 +226,11 @@
             ],
             "data": {
               "error": {
+<<<<<<< HEAD
                 "contract": 8
+=======
+                "contract": 3
+>>>>>>> origin/main
               }
             }
           }
@@ -232,7 +251,11 @@
               },
               {
                 "error": {
+<<<<<<< HEAD
                   "contract": 8
+=======
+                  "contract": 3
+>>>>>>> origin/main
                 }
               }
             ],
@@ -257,7 +280,11 @@
               },
               {
                 "error": {
+<<<<<<< HEAD
                   "contract": 8
+=======
+                  "contract": 3
+>>>>>>> origin/main
                 }
               }
             ],

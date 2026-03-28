@@ -14,7 +14,7 @@
 //! - No explicit caps are imposed by the contract, but overflow/underflow will panic
 //! - batch_add_to_goals has same limitations as add_to_goal for each contribution
 
-use savings_goals::{ContributionItem, SavingsGoalContract, SavingsGoalContractClient};
+use savings_goals::{ContributionItem, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalsError};
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
 use soroban_sdk::{Env, String, Vec};
 
@@ -114,8 +114,7 @@ fn test_add_to_goal_multiple_large_contributions() {
     assert_eq!(total3, contribution + contribution + contribution);
 }
 #[test]
-#[should_panic(expected = "overflow")]
-fn test_add_to_goal_overflow_panics() {
+fn test_add_to_goal_overflow_returns_error() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -133,13 +132,54 @@ fn test_add_to_goal_overflow_panics() {
         &2000000,
     );
 
-    // First addition
+    // First addition should succeed
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &overflow_amount);
+    let first = client.add_to_goal(&owner, &goal_id, &overflow_amount);
+    assert_eq!(first, overflow_amount);
 
-    // Second addition should overflow
+    // Second addition should return an overflow error rather than panic
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal_id, &overflow_amount);
+    let result = client.try_add_to_goal(&owner, &goal_id, &overflow_amount);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert_eq!(err, SavingsGoalsError::Overflow);
+}
+
+#[test]
+fn test_batch_add_to_goals_overflow_returns_error() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let large_target = i128::MAX;
+    let contribution = i128::MAX / 2 + 1;
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Batch Overflow Goal"),
+        &large_target,
+        &2000000,
+    );
+
+    env.mock_all_auths();
+    let mut contributions = Vec::new(&env);
+    contributions.push_back(ContributionItem {
+        goal_id,
+        amount: contribution,
+    });
+    contributions.push_back(ContributionItem {
+        goal_id,
+        amount: contribution,
+    });
+
+    env.mock_all_auths();
+    let result = client.batch_add_to_goals(&owner, &contributions);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert_eq!(err, SavingsGoalsError::Overflow);
 }
 #[test]
 fn test_withdraw_from_goal_with_large_amount() {
@@ -293,7 +333,7 @@ fn test_batch_add_with_large_amounts() {
     });
 
     env.mock_all_auths();
-    let count = client.batch_add_to_goals(&owner, &contributions);
+    let count = client.batch_add_to_goals(&owner, &contributions).unwrap();
 
     assert_eq!(count, 3);
 

@@ -36,6 +36,7 @@ Returns an empty Vec when fewer than two points are supplied.
 **Determinism guarantee**: identical `history` input always produces identical
 output regardless of call order, ledger state, or caller identity.
 
+<<<<<<< HEAD
 ## Running Tests
 
 ```bash
@@ -59,3 +60,5 @@ the same cutoff:
   deletion accounting.
 - Cleanup does not affect active reports, only archived records older than the
   supplied cutoff.
+=======
+>>>>>>> origin/main

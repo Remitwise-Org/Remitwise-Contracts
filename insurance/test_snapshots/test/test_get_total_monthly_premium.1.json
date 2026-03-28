@@ -34,6 +34,7 @@
                     "hi": 0,
                     "lo": 10000000
                   }
+<<<<<<< HEAD
                 },
                 "void"
               ]
@@ -73,6 +74,9 @@
                     "lo": 20000000
                   }
                 },
+=======
+                },
+>>>>>>> origin/main
                 "void"
               ]
             }
@@ -121,7 +125,15 @@
                           "symbol": "COUNTER"
                         },
                         "val": {
-                          "u32": 2
+                          "u32": 1
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "PAUSE_ADM"
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                         }
                       },
                       {
@@ -219,6 +231,7 @@
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                                     }
+<<<<<<< HEAD
                                   }
                                 ]
                               }
@@ -236,12 +249,21 @@
                                     "val": {
                                       "bool": true
                                     }
+=======
                                   },
                                   {
                                     "key": {
-                                      "symbol": "coverage_amount"
+                                      "symbol": "schedule_id"
+                                    },
+                                    "val": "void"
+>>>>>>> origin/main
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
                                     },
                                     "val": {
+<<<<<<< HEAD
                                       "i128": {
                                         "hi": 0,
                                         "lo": 20000000
@@ -304,6 +326,10 @@
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                                     }
+=======
+                                      "vec": []
+                                    }
+>>>>>>> origin/main
                                   }
                                 ]
                               }
@@ -316,7 +342,23 @@
                           "symbol": "SCH_CTR"
                         },
                         "val": {
+<<<<<<< HEAD
                           "u32": 0
+=======
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 100
+                                }
+                              }
+                            }
+                          ]
+>>>>>>> origin/main
                         }
                       }
                     ]
@@ -351,39 +393,6 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 801925984706572462
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": 5541220902715666415
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": 5541220902715666415
                   }
                 },
                 "durability": "temporary",
@@ -434,7 +443,11 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
+<<<<<<< HEAD
                 "symbol": "init"
+=======
+                "symbol": "initialize"
+>>>>>>> origin/main
               }
             ],
             "data": {
@@ -457,7 +470,11 @@
                 "symbol": "fn_return"
               },
               {
+<<<<<<< HEAD
                 "symbol": "init"
+=======
+                "symbol": "initialize"
+>>>>>>> origin/main
               }
             ],
             "data": "void"
@@ -493,6 +510,7 @@
                   "string": "P1"
                 },
                 {
+<<<<<<< HEAD
                   "u32": 1
                 },
                 {
@@ -506,6 +524,131 @@
                     "hi": 0,
                     "lo": 10000000
                   }
+=======
+                  "u32": 1
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 100
+                  }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1000
+                  }
+                },
+                "void"
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 1000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 100
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "P1"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "policy_id"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "insure"
+              },
+              {
+                "vec": [
+                  {
+                    "symbol": "PolicyCreated"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+>>>>>>> origin/main
                 },
                 "void"
               ]
@@ -565,7 +708,11 @@
                   "string": "P2"
                 },
                 {
+<<<<<<< HEAD
                   "u32": 1
+=======
+                  "u32": 2
+>>>>>>> origin/main
                 },
                 {
                   "i128": {
@@ -576,7 +723,11 @@
                 {
                   "i128": {
                     "hi": 0,
+<<<<<<< HEAD
                     "lo": 20000000
+=======
+                    "lo": 2000
+>>>>>>> origin/main
                   }
                 },
                 "void"
@@ -603,7 +754,92 @@
               }
             ],
             "data": {
-              "u32": 2
+              "error": {
+                "contract": 3
+              }
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 3
+                }
+              }
+            ],
+            "data": {
+              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 3
+                }
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "string": "contract call failed"
+                },
+                {
+                  "symbol": "create_policy"
+                },
+                {
+                  "vec": [
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    {
+                      "string": "P2"
+                    },
+                    {
+                      "u32": 2
+                    },
+                    {
+                      "i128": {
+                        "hi": 0,
+                        "lo": 200
+                      }
+                    },
+                    {
+                      "i128": {
+                        "hi": 0,
+                        "lo": 2000
+                      }
+                    },
+                    "void"
+                  ]
+                }
+              ]
             }
           }
         }
@@ -619,16 +855,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_call"
+                "symbol": "error"
               },
               {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "get_total_monthly_premium"
+                "error": {
+                  "contract": 3
+                }
               }
             ],
             "data": {
+<<<<<<< HEAD
               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
             }
           }
@@ -656,6 +892,9 @@
                 "hi": 0,
                 "lo": 3000000
               }
+=======
+              "string": "escalating error to panic"
+>>>>>>> origin/main
             }
           }
         }

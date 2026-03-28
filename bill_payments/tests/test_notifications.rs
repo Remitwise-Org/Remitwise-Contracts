@@ -26,7 +26,11 @@ fn test_notification_flow() {
         &1234567890,
         &false,
         &0,
+<<<<<<< HEAD
         &None, // memo
+=======
+        &None,
+>>>>>>> origin/main
         &soroban_sdk::String::from_str(&e, "XLM"),
     );
 

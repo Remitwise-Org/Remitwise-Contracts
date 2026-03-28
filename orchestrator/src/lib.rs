@@ -9,67 +9,12 @@
 //! The Cross-Contract Orchestrator coordinates automated remittance allocation across
 //! multiple Soroban smart contracts in the Remitwise ecosystem. It implements atomic,
 //! multi-contract operations with family wallet permission enforcement.
-//!
-//! ## Architecture
-//!
-//! The orchestrator acts as a coordination layer that:
-//! 1. Validates configured contract addresses before execution
-//! 2. Validates permissions via the Family Wallet contract
-//! 3. Calculates remittance splits via the Remittance Split contract
-//! 4. Executes downstream operations:
-//!    - Deposits to Savings Goals
-//!    - Pays Bills
-//!    - Pays Insurance Premiums
-//!
-//! ## Address Validation
-//!
-//! Before executing any cross-contract calls, the orchestrator validates:
-//! - No address references the orchestrator itself (prevents self-referential calls)
-//! - All addresses are distinct (prevents misconfiguration where same contract serves multiple roles)
-//!
-//! This validation occurs early in the execution flow to minimize gas costs on invalid inputs.
-//!
-//! ## Atomicity Guarantees
-//!
-//! All operations execute atomically via Soroban's panic/revert mechanism:
-//! - If any step fails, all prior state changes in the transaction are reverted
-//! - No partial state changes can occur
-//! - Events are also rolled back on failure
-//!
-//! ## Gas Estimation
-//!
-//! Typical gas costs for orchestrator operations:
-//! - Address validation: ~500 gas
-//! - Permission check: ~2,000 gas
-//! - Remittance split calculation: ~3,000 gas
-//! - Each downstream operation: ~4,000 gas
-//! - Complete remittance flow: ~22,500 gas
-//!
-//! ## Usage Example
-//!
-//! ```rust,ignore
-//! use orchestrator::{Orchestrator, OrchestratorClient};
-//!
-//! // Execute a complete remittance flow
-//! let result = orchestrator_client.execute_remittance_flow(
-//!     &env,
-//!     &user_address,
-//!     &1000_0000000, // 1000 tokens (7 decimals)
-//!     &family_wallet_addr,
-//!     &remittance_split_addr,
-//!     &savings_addr,
-//!     &bills_addr,
-//!     &insurance_addr,
-//!     &goal_id,
-//!     &bill_id,
-//!     &policy_id,
-//! );
-//! ```
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
-    Env, Symbol, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
+    symbol_short, Address, Env, Symbol, Vec,
 };
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 #[cfg(test)]
 mod test;
@@ -78,279 +23,135 @@ mod test;
 // Contract Client Interfaces for Cross-Contract Calls
 // ============================================================================
 
-/// Family Wallet contract client interface
-///
-/// The Family Wallet enforces role-based permissions and spending limits.
-/// Gas estimation: ~2000 gas per permission check
 #[contractclient(name = "FamilyWalletClient")]
 pub trait FamilyWalletTrait {
-    /// Check if a caller has permission to perform an operation
-    ///
-    /// # Arguments
-    /// * `caller` - Address requesting permission
-    /// * `operation_type` - Type of operation (1=withdrawal, 2=split_config, etc.)
-    /// * `amount` - Amount involved in the operation
-    ///
-    /// # Returns
-    /// true if permission granted, panics otherwise
-    ///
-    /// # Gas Estimation
-    /// ~2000 gas
     fn check_spending_limit(env: Env, caller: Address, amount: i128) -> bool;
 }
 
-/// Remittance Split contract client interface
-///
-/// Calculates allocation percentages for incoming remittances.
-/// Gas estimation: ~3000 gas per split calculation
 #[contractclient(name = "RemittanceSplitClient")]
 pub trait RemittanceSplitTrait {
-    /// Calculate split amounts from a total remittance amount
-    ///
-    /// # Arguments
-    /// * `total_amount` - The total amount to split (must be positive)
-    ///
-    /// # Returns
-    /// Vec containing [spending, savings, bills, insurance] amounts
-    ///
-    /// # Gas Estimation
-    /// ~3000 gas
     fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
 }
 
-/// Savings Goals contract client interface
-///
-/// Manages goal-based savings with target dates.
-/// Gas estimation: ~4000 gas per deposit
 #[contractclient(name = "SavingsGoalsClient")]
 pub trait SavingsGoalsTrait {
-    /// Add funds to a savings goal
-    ///
-    /// # Arguments
-    /// * `caller` - Address of the caller (must be the goal owner)
-    /// * `goal_id` - ID of the goal
-    /// * `amount` - Amount to add (must be positive)
-    ///
-    /// # Returns
-    /// Updated current amount
-    ///
-    /// # Gas Estimation
-    /// ~4000 gas
     fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
 }
 
-/// Bill Payments contract client interface
-///
-/// Tracks and processes bill payments.
-/// Gas estimation: ~4000 gas per payment
 #[contractclient(name = "BillPaymentsClient")]
 pub trait BillPaymentsTrait {
-    /// Mark a bill as paid
-    ///
-    /// # Arguments
-    /// * `caller` - Address of the caller (must be the bill owner)
-    /// * `bill_id` - ID of the bill
-    ///
-    /// # Returns
-    /// Result indicating success or error
-    ///
-    /// # Gas Estimation
-    /// ~4000 gas
     fn pay_bill(env: Env, caller: Address, bill_id: u32);
 }
 
-/// Insurance contract client interface
-///
-/// Manages insurance policies and premium payments.
-/// Gas estimation: ~4000 gas per premium payment
 #[contractclient(name = "InsuranceClient")]
 pub trait InsuranceTrait {
-    /// Pay monthly premium for a policy
-    ///
-    /// # Arguments
-    /// * `caller` - Address of the caller (must be the policy owner)
-    /// * `policy_id` - ID of the policy
-    ///
-    /// # Returns
-    /// True if payment was successful
-    ///
-    /// # Gas Estimation
-    /// ~4000 gas
     fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
 }
 
-/// Orchestrator-specific errors
+// ============================================================================
+// Data Types
+// ============================================================================
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum OrchestratorError {
-    /// Permission denied by family wallet
     PermissionDenied = 1,
-    /// Operation amount exceeds spending limit
     SpendingLimitExceeded = 2,
-    /// Failed to deposit to savings goal
     SavingsDepositFailed = 3,
-    /// Failed to pay bill
     BillPaymentFailed = 4,
-    /// Failed to pay insurance premium
     InsurancePaymentFailed = 5,
-    /// Failed to calculate remittance split
     RemittanceSplitFailed = 6,
-    /// Invalid amount (must be positive)
     InvalidAmount = 7,
-    /// Invalid contract address provided
     InvalidContractAddress = 8,
-    /// Generic cross-contract call failure
     CrossContractCallFailed = 9,
-    /// Reentrancy detected - execution is already in progress
-    ///
-    /// This error is returned when a public entry point is called while another
-    /// execution is already in progress. This prevents nested execution attacks
-    /// and partial-state corruption.
     ReentrancyDetected = 10,
+    DuplicateContractAddress = 11,
+    ContractNotConfigured = 12,
+    SelfReferenceNotAllowed = 13,
 }
 
-/// Execution state tracking for reentrancy protection.
-///
-/// Tracks the current execution phase of the orchestrator to prevent
-/// nested calls and ensure state consistency. The state transitions are:
-///
-/// ```text
-/// Idle -> Executing -> Idle (success)
-///                   -> Idle (failure, automatic cleanup)
-/// ```
-///
-/// # Security Invariant
-/// At most one execution can be active at any time. Any attempt to enter
-/// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
+<<<<<<< HEAD
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+=======
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+>>>>>>> origin/main
 #[repr(u32)]
 pub enum ExecutionState {
-    /// No execution in progress; entry points may be called
     Idle = 0,
-    /// An execution is in progress; reentrant calls will be rejected
     Executing = 1,
 }
 
-/// Result of a complete remittance flow execution
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemittanceFlowResult {
-    /// Total remittance amount processed
     pub total_amount: i128,
-    /// Amount allocated to spending
     pub spending_amount: i128,
-    /// Amount allocated to savings
     pub savings_amount: i128,
-    /// Amount allocated to bills
     pub bills_amount: i128,
-    /// Amount allocated to insurance
     pub insurance_amount: i128,
-    /// Whether savings deposit succeeded
     pub savings_success: bool,
-    /// Whether bill payment succeeded
     pub bills_success: bool,
-    /// Whether insurance payment succeeded
     pub insurance_success: bool,
-    /// Timestamp of execution
     pub timestamp: u64,
 }
 
-/// Event emitted on successful remittance flow completion
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemittanceFlowEvent {
-    /// Address that initiated the flow
     pub caller: Address,
-    /// Total amount processed
     pub total_amount: i128,
-    /// Allocation amounts [spending, savings, bills, insurance]
     pub allocations: Vec<i128>,
-    /// Timestamp of execution
     pub timestamp: u64,
 }
 
-/// Event emitted on remittance flow failure
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemittanceFlowErrorEvent {
-    /// Address that initiated the flow
     pub caller: Address,
-    /// Step that failed (e.g., "perm_chk", "savings", "bills", "insurance")
     pub failed_step: Symbol,
-    /// Error code from OrchestratorError
     pub error_code: u32,
-    /// Timestamp of failure
     pub timestamp: u64,
 }
 
-/// Execution statistics for monitoring orchestrator performance
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionStats {
-    /// Total number of flows successfully executed
     pub total_flows_executed: u64,
-    /// Total number of flows that failed
     pub total_flows_failed: u64,
-    /// Total amount processed across all flows
     pub total_amount_processed: i128,
-    /// Timestamp of last execution
     pub last_execution: u64,
 }
 
-/// Audit log entry for compliance and security tracking
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrchestratorAuditEntry {
-    /// Address that initiated the operation
     pub caller: Address,
-    /// Operation performed (e.g., "exec_flow", "exec_save", "exec_bill")
     pub operation: Symbol,
-    /// Amount involved in the operation
     pub amount: i128,
-    /// Whether the operation succeeded
     pub success: bool,
-    /// Timestamp of operation
     pub timestamp: u64,
-    /// Error code if operation failed
     pub error_code: Option<u32>,
 }
 
-// Storage TTL constants matching other Remitwise contracts
-#[allow(dead_code)]
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-#[allow(dead_code)]
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-
-// Maximum audit log entries to keep in storage
-#[allow(dead_code)]
+const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
+const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 const MAX_AUDIT_ENTRIES: u32 = 100;
 
-/// Main orchestrator contract
+// ============================================================================
+// Contract Implementation
+// ============================================================================
+
 #[contract]
 pub struct Orchestrator;
 
-#[allow(clippy::manual_inspect)]
 #[contractimpl]
 impl Orchestrator {
-    // ============================================================================
-    // Reentrancy Guard - Execution State Management
-    // ============================================================================
+    // -----------------------------------------------------------------------
+    // Reentrancy Guard
+    // -----------------------------------------------------------------------
 
-    /// Acquire the execution lock, preventing reentrant calls.
-    ///
-    /// Checks the current execution state stored under the `EXEC_ST` key in
-    /// instance storage. If the state is `Idle` (or unset), transitions to
-    /// `Executing` and returns `Ok(())`. If already `Executing`, returns
-    /// `Err(OrchestratorError::ReentrancyDetected)`.
-    ///
-    /// # Security
-    /// This MUST be called at the very start of every public entry point,
-    /// before any state reads or cross-contract calls.
-    ///
-    /// # Gas Estimation
-    /// ~500 gas (single instance storage read + write)
     fn acquire_execution_lock(env: &Env) -> Result<(), OrchestratorError> {
         let state: ExecutionState = env
             .storage()
@@ -369,23 +170,12 @@ impl Orchestrator {
         Ok(())
     }
 
-    /// Release the execution lock, allowing future calls.
-    ///
-    /// Unconditionally sets the execution state back to `Idle`.
-    /// This MUST be called before returning from any public entry point,
-    /// on both success and error paths.
-    ///
-    /// # Gas Estimation
-    /// ~300 gas (single instance storage write)
     fn release_execution_lock(env: &Env) {
         env.storage()
             .instance()
             .set(&symbol_short!("EXEC_ST"), &ExecutionState::Idle);
     }
 
-    /// Query the current execution state.
-    ///
-    /// Returns the current `ExecutionState`. Useful for monitoring and testing.
     pub fn get_execution_state(env: Env) -> ExecutionState {
         env.storage()
             .instance()
@@ -393,10 +183,11 @@ impl Orchestrator {
             .unwrap_or(ExecutionState::Idle)
     }
 
-    // ============================================================================
-    // Helper Functions - Family Wallet Permission Checking
-    // ============================================================================
+    // -----------------------------------------------------------------------
+    // Main Entry Points
+    // -----------------------------------------------------------------------
 
+<<<<<<< HEAD
     /// Check family wallet permission before executing an operation
     ///
     /// This function validates that the caller has permission to perform the operation
@@ -1064,6 +855,8 @@ impl Orchestrator {
     /// 8. Pay insurance premium
     /// 9. Build and return result
     /// 10. On error, emit error event and return error
+=======
+>>>>>>> origin/main
     #[allow(clippy::too_many_arguments)]
     pub fn execute_remittance_flow(
         env: Env,
@@ -1078,14 +871,11 @@ impl Orchestrator {
         bill_id: u32,
         policy_id: u32,
     ) -> Result<RemittanceFlowResult, OrchestratorError> {
-        // Reentrancy guard: acquire execution lock
         Self::acquire_execution_lock(&env)?;
-
-        // Require caller authorization
         caller.require_auth();
-
         let timestamp = env.ledger().timestamp();
 
+<<<<<<< HEAD
         // Address validation removed to fix build
 
         if total_amount <= 0 {
@@ -1127,42 +917,36 @@ impl Orchestrator {
                     );
                     e
                 },
+=======
+        let res = (|| {
+            Self::validate_remittance_flow_addresses(
+                &env,
+                &family_wallet_addr,
+                &remittance_split_addr,
+                &savings_addr,
+                &bills_addr,
+                &insurance_addr,
+>>>>>>> origin/main
             )?;
 
-            // Step 4: Extract allocations from remittance split
-            let allocations = Self::extract_allocations(&env, &remittance_split_addr, total_amount)
-                .map_err(|e| {
-                    Self::emit_error_event(
-                        &env,
-                        &caller,
-                        symbol_short!("split"),
-                        e as u32,
-                        timestamp,
-                    );
-                    e
-                })?;
+            if total_amount <= 0 {
+                return Err(OrchestratorError::InvalidAmount);
+            }
 
-            // Extract individual amounts
+            Self::check_spending_limit(&env, &family_wallet_addr, &caller, total_amount)?;
+
+            let allocations = Self::extract_allocations(&env, &remittance_split_addr, total_amount)?;
+
             let spending_amount = allocations.get(0).unwrap_or(0);
             let savings_amount = allocations.get(1).unwrap_or(0);
             let bills_amount = allocations.get(2).unwrap_or(0);
             let insurance_amount = allocations.get(3).unwrap_or(0);
 
-            // Step 5: Deposit to savings goal
-            let savings_success =
-                Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount)
-                    .map_err(|e| {
-                        Self::emit_error_event(
-                            &env,
-                            &caller,
-                            symbol_short!("savings"),
-                            e as u32,
-                            timestamp,
-                        );
-                        e
-                    })
-                    .is_ok();
+            let savings_success = Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount).is_ok();
+            let bills_success = Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id).is_ok();
+            let insurance_success = Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).is_ok();
 
+<<<<<<< HEAD
             // Step 6: Pay bill
             let bills_success =
                 Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)
@@ -1194,6 +978,8 @@ impl Orchestrator {
                 )?; // Hard failure on error, but returns bool for successful call result
 
             // Build result
+=======
+>>>>>>> origin/main
             let flow_result = RemittanceFlowResult {
                 total_amount,
                 spending_amount,
@@ -1206,17 +992,41 @@ impl Orchestrator {
                 timestamp,
             };
 
-            // Emit success event
             Self::emit_success_event(&env, &caller, total_amount, &allocations, timestamp);
-
             Ok(flow_result)
         })();
 
-        // Reentrancy guard: always release lock before returning
+        if let Err(e) = &res {
+             Self::emit_error_event(&env, &caller, symbol_short!("flow"), *e as u32, timestamp);
+        }
+
+        Self::release_execution_lock(&env);
+        res
+    }
+
+    pub fn execute_savings_deposit(
+        env: Env,
+        caller: Address,
+        amount: i128,
+        family_wallet_addr: Address,
+        savings_addr: Address,
+        goal_id: u32,
+    ) -> Result<(), OrchestratorError> {
+        Self::acquire_execution_lock(&env)?;
+        caller.require_auth();
+        let timestamp = env.ledger().timestamp();
+
+        let result = (|| {
+            Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
+            Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, amount)?;
+            Ok(())
+        })();
+
         Self::release_execution_lock(&env);
         result
     }
 
+<<<<<<< HEAD
     // ============================================================================
     // Helper Functions - Audit Logging and Statistics
     // ============================================================================
@@ -1276,97 +1086,138 @@ impl Orchestrator {
         env: &Env,
         caller: &Address,
         operation: Symbol,
+=======
+    pub fn execute_bill_payment(
+        env: Env,
+        caller: Address,
+>>>>>>> origin/main
         amount: i128,
-        success: bool,
-        error_code: Option<u32>,
-    ) {
-        Self::extend_instance_ttl(env);
+        family_wallet_addr: Address,
+        bills_addr: Address,
+        bill_id: u32,
+    ) -> Result<(), OrchestratorError> {
+        Self::acquire_execution_lock(&env)?;
+        caller.require_auth();
+        let result = (|| {
+            Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
+            Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)?;
+            Ok(())
+        })();
+        Self::release_execution_lock(&env);
+        result
+    }
 
-        let timestamp = env.ledger().timestamp();
-        let mut log: Vec<OrchestratorAuditEntry> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("AUDIT"))
-            .unwrap_or_else(|| Vec::new(env));
+    pub fn execute_insurance_payment(
+        env: Env,
+        caller: Address,
+        amount: i128,
+        family_wallet_addr: Address,
+        insurance_addr: Address,
+        policy_id: u32,
+    ) -> Result<(), OrchestratorError> {
+        Self::acquire_execution_lock(&env)?;
+        caller.require_auth();
+        let result = (|| {
+            Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
+            Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)?;
+            Ok(())
+        })();
+        Self::release_execution_lock(&env);
+        result
+    }
 
-        // Implement log rotation if at capacity
-        if log.len() >= MAX_AUDIT_ENTRIES {
-            let mut new_log = Vec::new(env);
-            for i in 1..log.len() {
-                if let Some(entry) = log.get(i) {
-                    new_log.push_back(entry);
-                }
-            }
-            log = new_log;
+    // -----------------------------------------------------------------------
+    // Internal Helpers
+    // -----------------------------------------------------------------------
+
+    fn check_spending_limit(env: &Env, family_wallet_addr: &Address, caller: &Address, amount: i128) -> Result<(), OrchestratorError> {
+        let wallet_client = FamilyWalletClient::new(env, family_wallet_addr);
+        if wallet_client.check_spending_limit(caller, &amount) {
+            Ok(())
+        } else {
+            Err(OrchestratorError::SpendingLimitExceeded)
         }
+    }
 
-        log.push_back(OrchestratorAuditEntry {
+    fn extract_allocations(env: &Env, split_addr: &Address, total: i128) -> Result<Vec<i128>, OrchestratorError> {
+        let client = RemittanceSplitClient::new(env, split_addr);
+        Ok(client.calculate_split(&total))
+    }
+
+    fn deposit_to_savings(env: &Env, addr: &Address, caller: &Address, goal_id: u32, amount: i128) -> Result<(), OrchestratorError> {
+        let client = SavingsGoalsClient::new(env, addr);
+        client.add_to_goal(caller, &goal_id, &amount);
+        Ok(())
+    }
+
+    fn execute_bill_payment_internal(env: &Env, addr: &Address, caller: &Address, bill_id: u32) -> Result<(), OrchestratorError> {
+        let client = BillPaymentsClient::new(env, addr);
+        client.pay_bill(caller, &bill_id);
+        Ok(())
+    }
+
+    fn pay_insurance_premium(env: &Env, addr: &Address, caller: &Address, policy_id: u32) -> Result<(), OrchestratorError> {
+        let client = InsuranceClient::new(env, addr);
+        client.pay_premium(caller, &policy_id);
+        Ok(())
+    }
+
+    fn validate_remittance_flow_addresses(
+        env: &Env,
+        family: &Address,
+        split: &Address,
+        savings: &Address,
+        bills: &Address,
+        insurance: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let current = env.current_contract_address();
+        if family == &current || split == &current || savings == &current || bills == &current || insurance == &current {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if family == split || family == savings || family == bills || family == insurance ||
+           split == savings || split == bills || split == insurance ||
+           savings == bills || savings == insurance ||
+           bills == insurance {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
+    fn emit_success_event(env: &Env, caller: &Address, total: i128, allocations: &Vec<i128>, timestamp: u64) {
+        env.events().publish((symbol_short!("flow_ok"),), RemittanceFlowEvent {
             caller: caller.clone(),
-            operation,
-            amount,
-            success,
+            total_amount: total,
+            allocations: allocations.clone(),
             timestamp,
-            error_code,
         });
-
-        env.storage().instance().set(&symbol_short!("AUDIT"), &log);
     }
 
-    /// Get current execution statistics
-    ///
-    /// # Returns
-    /// ExecutionStats struct with current metrics
+    fn emit_error_event(env: &Env, caller: &Address, step: Symbol, code: u32, timestamp: u64) {
+        env.events().publish((symbol_short!("flow_err"),), RemittanceFlowErrorEvent {
+            caller: caller.clone(),
+            failed_step: step,
+            error_code: code,
+            timestamp,
+        });
+    }
+
     pub fn get_execution_stats(env: Env) -> ExecutionStats {
-        env.storage()
-            .instance()
-            .get(&symbol_short!("STATS"))
-            .unwrap_or(ExecutionStats {
-                total_flows_executed: 0,
-                total_flows_failed: 0,
-                total_amount_processed: 0,
-                last_execution: 0,
-            })
+        env.storage().instance().get(&symbol_short!("STATS")).unwrap_or(ExecutionStats {
+            total_flows_executed: 0,
+            total_flows_failed: 0,
+            total_amount_processed: 0,
+            last_execution: 0,
+        })
     }
 
-    /// Get paginated audit log entries using a stable cursor index.
-    ///
-    /// # Arguments
-    /// * `from_index` - Zero-based starting index in the current bounded audit log
-    /// * `limit` - Maximum number of entries to return (clamped to `MAX_AUDIT_ENTRIES`)
-    ///
-    /// # Returns
-    /// Vec of `OrchestratorAuditEntry` structs ordered from oldest to newest.
-    ///
-    /// # Security Notes
-    /// - Uses saturating arithmetic when computing page end to prevent cursor overflow.
-    /// - Returns an empty page when `from_index` is out of range.
-    /// - Does not duplicate entries within a page because iteration is strictly monotonic.
     pub fn get_audit_log(env: Env, from_index: u32, limit: u32) -> Vec<OrchestratorAuditEntry> {
-        let log: Option<Vec<OrchestratorAuditEntry>> =
-            env.storage().instance().get(&symbol_short!("AUDIT"));
-        let log = log.unwrap_or_else(|| Vec::new(&env));
-        let len = log.len();
-        let cap = MAX_AUDIT_ENTRIES.min(limit);
+        let log: Vec<OrchestratorAuditEntry> = env.storage().instance().get(&symbol_short!("AUDIT")).unwrap_or_else(|| Vec::new(&env));
         let mut out = Vec::new(&env);
-
-        if from_index >= len {
-            return out;
-        }
-
-        let end = from_index.saturating_add(cap).min(len);
+        let len = log.len();
+        let end = from_index.saturating_add(limit).min(len);
         for i in from_index..end {
-            if let Some(entry) = log.get(i) {
-                out.push_back(entry);
-            }
+            if let Some(e) = log.get(i) { out.push_back(e); }
         }
         out
-    }
-
-    /// Extend the TTL of instance storage
-    #[allow(dead_code)]
-    fn extend_instance_ttl(env: &Env) {
-        env.storage()
-            .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 }
