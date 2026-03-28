@@ -1957,7 +1957,7 @@
                     "symbol": "next_cursor"
                   },
                   "val": {
-                    "u32": 4
+                    "u32": 0
                   }
                 }
               ]

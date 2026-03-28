@@ -88,6 +88,7 @@ pub struct SavingsSchedule {
 }
 
 #[contracttype]
+#[derive(Clone, Copy, Debug)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavingsGoalsError {
     InvalidAmount = 1,
@@ -394,54 +395,54 @@ impl SavingsGoalContract {
     }
 
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - If no upgrade admin exists, caller must equal new_admin (bootstrap pattern)
     /// - If upgrade admin exists, only current upgrade admin can transfer
     /// - Caller must be authenticated via require_auth()
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Panics
     /// - If caller is unauthorized for the operation
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) {
         caller.require_auth();
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         // Authorization logic:
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match &current_upgrade_admin {
             None => {
                 // Bootstrap pattern - caller must be setting themselves as admin
                 if caller != new_admin {
                     panic!("Unauthorized: bootstrap requires caller == new_admin");
                 }
             }
-            Some(current_admin) => {
+            Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if *current_admin != caller {
                     panic!("Unauthorized: only current upgrade admin can transfer");
                 }
             }
         }
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("adm_xfr")),
-            (current_upgrade_admin, new_admin.clone()),
+            (current_upgrade_admin.clone(), new_admin.clone()),
         );
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -472,6 +473,11 @@ impl SavingsGoalContract {
     // Tag management
     // -----------------------------------------------------------------------
 
+    /// Validates a tag batch for metadata operations.
+    ///
+    /// Requirements:
+    /// - At least one tag must be provided.
+    /// - Each tag length must be between 1 and 32 characters.
     fn validate_tags(tags: &Vec<String>) {
         if tags.is_empty() {
             panic!("Tags cannot be empty");
@@ -483,6 +489,15 @@ impl SavingsGoalContract {
         }
     }
 
+    /// Adds tags to a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can add tags.
+    ///
+    /// Notes:
+    /// - Duplicate tags are preserved as provided.
+    /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
     pub fn add_tags_to_goal(
         env: Env,
         caller: Address,
@@ -523,6 +538,15 @@ impl SavingsGoalContract {
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
     }
 
+    /// Removes tags from a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can remove tags.
+    ///
+    /// Notes:
+    /// - Removing a tag that is not present is a no-op.
+    /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
     pub fn remove_tags_from_goal(
         env: Env,
         caller: Address,
@@ -800,12 +824,10 @@ impl SavingsGoalContract {
             if goal.owner != caller {
                 panic!("Batch validation failed");
             }
-            goal.current_amount = match goal
-                .current_amount
-                .checked_add(item.amount) {
-                    Some(v) => v,
-                    None => panic!("overflow"),
-                };
+            goal.current_amount = match goal.current_amount.checked_add(item.amount) {
+                Some(v) => v,
+                None => panic!("overflow"),
+            };
             let new_total = goal.current_amount;
             let was_completed = new_total >= goal.target_amount;
             let previously_completed = (new_total - item.amount) >= goal.target_amount;
@@ -1132,7 +1154,9 @@ impl SavingsGoalContract {
 
         let mut result = Vec::new(&env);
         for i in start_index..end_index {
-            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Pagination index out of sync"));
+            let goal_id = ids
+                .get(i)
+                .unwrap_or_else(|| panic!("Pagination index out of sync"));
             let goal = goals
                 .get(goal_id)
                 .unwrap_or_else(|| panic!("Pagination index out of sync"));
@@ -1655,12 +1679,10 @@ impl SavingsGoalContract {
             }
 
             if let Some(mut goal) = goals.get(schedule.goal_id) {
-                goal.current_amount = match goal
-                    .current_amount
-                    .checked_add(schedule.amount) {
-                        Some(v) => v,
-                        None => panic!("overflow"),
-                    };
+                goal.current_amount = match goal.current_amount.checked_add(schedule.amount) {
+                    Some(v) => v,
+                    None => panic!("overflow"),
+                };
 
                 let is_completed = goal.current_amount >= goal.target_amount;
                 goals.set(schedule.goal_id, goal.clone());

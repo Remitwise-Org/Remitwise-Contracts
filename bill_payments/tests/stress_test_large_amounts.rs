@@ -49,6 +49,7 @@ fn test_create_bill_near_max_i128() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -75,6 +76,7 @@ fn test_pay_bill_with_large_amount() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -104,6 +106,7 @@ fn test_recurring_bill_with_large_amount() {
         &1000000,
         &true,
         &30,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -140,6 +143,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -151,6 +155,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -178,6 +183,7 @@ fn test_get_total_unpaid_overflow_panics() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -189,6 +195,7 @@ fn test_get_total_unpaid_overflow_panics() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -216,6 +223,7 @@ fn test_multiple_large_bills_different_owners() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -227,6 +235,7 @@ fn test_multiple_large_bills_different_owners() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -257,6 +266,7 @@ fn test_archive_large_amount_bill() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -292,6 +302,7 @@ fn test_batch_pay_large_bills() {
             &1000000,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
         bill_ids.push_back(bill_id);
@@ -358,6 +369,7 @@ fn test_edge_case_i128_max_minus_one() {
         &1000000,
         &false,
         &0,
+        &None,
         &String::from_str(&env, "XLM"),
     );
 
@@ -385,6 +397,7 @@ fn test_pagination_with_large_amounts() {
             &1000000,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();

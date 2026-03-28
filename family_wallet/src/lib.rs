@@ -15,8 +15,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280;
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 
-// Signature expiration time (24 hours in seconds)
-const SIGNATURE_EXPIRATION: u64 = 86400;
+// Signature expiration time constants
+const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
+const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -78,6 +79,7 @@ pub struct EmergencyConfig {
     pub max_amount: i128,
     pub cooldown: u64,
     pub min_balance: i128,
+    pub daily_limit: i128,
 }
 
 #[contracttype]
@@ -139,6 +141,9 @@ pub struct AccessAuditEntry {
 const CONTRACT_VERSION: u32 = 1;
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
 const MAX_BATCH_MEMBERS: u32 = 30;
+const MAX_SIGNERS: u32 = 100;
+const MIN_THRESHOLD: u32 = 1;
+const MAX_THRESHOLD: u32 = 100;
 
 #[contracttype]
 #[derive(Clone)]
@@ -192,8 +197,19 @@ pub struct PrecisionSpendingLimit {
 pub enum ArchiveEvent {
     TransactionsArchived,
     ExpiredCleaned,
+    TransactionCancelled,
 }
 
+/// @title Family Wallet Multisig Proposal Expiry
+/// @notice Manages the lifecycle of multisig proposals with deterministic expiry.
+///
+/// Security Assumptions:
+/// 1. Proposer Authorization: Only authenticated family members can propose.
+/// 2. Deterministic Expiry: Expiry is set at proposal time based on contract configuration.
+/// 3. Signer Authorization: Only designated signers for a transaction type can sign.
+/// 4. Cancellation Safety: Proposers can cancel their own proposals; Admins can cancel any.
+/// 5. Expiry Enforcement: Expired proposals cannot be signed or executed.
+/// 6. Storage Bounds: Expired proposals can be pruned by Admins to manage storage costs.
 #[contract]
 pub struct FamilyWallet;
 
@@ -214,16 +230,12 @@ pub enum Error {
     MemberNotFound = 11,
     TransactionAlreadyExecuted = 12,
     InvalidSpendingLimit = 13,
-    /// Amount below minimum precision threshold
-    AmountBelowPrecision = 14,
-    /// Single transaction exceeds maximum allowed
-    ExceedsMaxSingleTx = 15,
-    /// Cumulative spending would exceed period limit
-    ExceedsPeriodLimit = 16,
-    /// Period rollover validation failed
-    RolloverValidationFailed = 17,
-    /// Invalid precision configuration
-    InvalidPrecisionConfig = 18,
+    ThresholdBelowMinimum = 14,
+    ThresholdAboveMaximum = 15,
+    SignersListEmpty = 16,
+    SignerNotMember = 17,
+    DuplicateSigner = 18,
+    TooManySigners = 19,
 }
 
 #[contractimpl]
@@ -303,22 +315,26 @@ impl FamilyWallet {
             .set(&symbol_short!("NEXT_TX"), &1u64);
 
         let em_config = EmergencyConfig {
-            max_amount: 1000_0000000,
+            max_amount: 10000_0000000,
             cooldown: 3600,
             min_balance: 0,
+            daily_limit: 100000_0000000,
         };
         env.storage()
             .instance()
             .set(&symbol_short!("EM_CONF"), &em_config);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_MODE"), &false);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &0u64);
 
         true
     }
+
 
     pub fn add_member(
         env: Env,
@@ -481,264 +497,15 @@ impl FamilyWallet {
         amount <= member.spending_limit
     }
 
-    /// Configure precision spending limit for a member
-    /// 
-    /// # Arguments
-    /// * `caller` - Must be Owner or Admin
-    /// * `member_address` - Target member to configure
-    /// * `precision_limit` - New precision limit configuration
-    /// 
-    /// # Security Assumptions
-    /// - Validates precision parameters to prevent overflow/underflow
-    /// - Ensures minimum precision is positive and reasonable
-    /// - Validates period configuration for rollover behavior
-    pub fn set_precision_spending_limit(
-        env: Env,
-        caller: Address,
-        member_address: Address,
-        precision_limit: PrecisionSpendingLimit,
-    ) -> Result<bool, Error> {
-        caller.require_auth();
-        Self::require_not_paused(&env);
-
-        if !Self::is_owner_or_admin(&env, &caller) {
-            return Err(Error::Unauthorized);
-        }
-
-        // Validate precision configuration
-        if precision_limit.limit < 0 {
-            return Err(Error::InvalidPrecisionConfig);
-        }
-        if precision_limit.min_precision <= 0 {
-            return Err(Error::InvalidPrecisionConfig);
-        }
-        if precision_limit.max_single_tx <= 0 || precision_limit.max_single_tx > precision_limit.limit {
-            return Err(Error::InvalidPrecisionConfig);
-        }
-
-        let mut members: Map<Address, FamilyMember> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("MEMBERS"))
-            .unwrap_or_else(|| panic!("Wallet not initialized"));
-
-        let mut member = members
-            .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)?;
-
-        member.precision_limit = Some(precision_limit);
-        members.set(member_address.clone(), member);
-
-        Self::extend_instance_ttl(&env);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("MEMBERS"), &members);
-
-        Ok(true)
-    }
-
-    /// Enhanced spending validation with precision and rollover checks
-    /// 
-    /// # Arguments
-    /// * `caller` - Address attempting to spend
-    /// * `amount` - Amount to spend (in stroops)
-    /// 
-    /// # Returns
-    /// * `Ok(())` if spending is allowed
-    /// * `Err(Error)` with specific validation failure
-    /// 
-    /// # Security Assumptions
-    /// - Prevents precision attacks via minimum precision validation
-    /// - Enforces single transaction limits to prevent large withdrawals
-    /// - Validates cumulative spending against period limits
-    /// - Handles period rollover with proper boundary validation
-    pub fn validate_precision_spending(
-        env: Env,
-        caller: Address,
-        amount: i128,
-    ) -> Result<(), Error> {
-        if amount <= 0 {
-            return Err(Error::InvalidAmount);
-        }
-
-        let members: Map<Address, FamilyMember> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("MEMBERS"))
-            .ok_or(Error::MemberNotFound)?;
-
-        let member = members.get(caller.clone()).ok_or(Error::MemberNotFound)?;
-
-        // Check role expiry
-        if Self::role_has_expired(&env, &member.address) {
-            return Err(Error::Unauthorized);
-        }
-
-        // Owner and Admin bypass precision checks
-        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
-            return Ok(());
-        }
-
-        // If no precision limit configured, fall back to legacy check
-        let precision_limit = match &member.precision_limit {
-            Some(limit) => limit,
-            None => {
-                // Legacy behavior: check basic spending limit
-                if member.spending_limit == 0 || amount <= member.spending_limit {
-                    return Ok(());
-                } else {
-                    return Err(Error::ExceedsPeriodLimit);
-                }
-            }
-        };
-
-        // Precision validation: prevent dust attacks
-        if amount < precision_limit.min_precision {
-            return Err(Error::AmountBelowPrecision);
-        }
-
-        // Single transaction limit validation
-        if amount > precision_limit.max_single_tx {
-            return Err(Error::ExceedsMaxSingleTx);
-        }
-
-        // If rollover is disabled, only check single transaction limits
-        if !precision_limit.enable_rollover {
-            return Ok(());
-        }
-
-        // Get or initialize spending tracker
-        let tracker_key = symbol_short!("TRACKER");
-        let mut spending_trackers: Map<Address, SpendingTracker> = env
-            .storage()
-            .instance()
-            .get(&tracker_key)
-            .unwrap_or_else(|| Map::new(&env));
-
-        let current_time = env.ledger().timestamp();
-        let mut tracker = spending_trackers.get(caller.clone()).unwrap_or_else(|| {
-            // Initialize new tracker with current period
-            SpendingTracker {
-                current_spent: 0,
-                last_tx_timestamp: current_time,
-                tx_count: 0,
-                period: Self::get_current_period(current_time),
-            }
-        });
-
-        // Check if we need to roll over to a new period
-        if Self::should_rollover_period(&tracker.period, current_time) {
-            tracker = Self::rollover_spending_period(tracker, current_time)?;
-        }
-
-        // Validate cumulative spending limit
-        let new_total = tracker.current_spent.saturating_add(amount);
-        if new_total > precision_limit.limit {
-            return Err(Error::ExceedsPeriodLimit);
-        }
-
-        // Update tracker
-        tracker.current_spent = new_total;
-        tracker.last_tx_timestamp = current_time;
-        tracker.tx_count = tracker.tx_count.saturating_add(1);
-
-        // Save updated tracker
-        spending_trackers.set(caller, tracker);
-        env.storage().instance().set(&tracker_key, &spending_trackers);
-
-        Ok(())
-    }
-
-    /// Get current spending period configuration
-    /// 
-    /// # Arguments
-    /// * `timestamp` - Current timestamp to align period
-    /// 
-    /// # Returns
-    /// * `SpendingPeriod` aligned to daily boundary (00:00 UTC)
-    /// 
-    /// # Security Assumptions
-    /// - Uses daily periods (86400 seconds) for consistent rollover
-    /// - Aligns to UTC midnight to prevent timezone manipulation
-    /// - Handles timestamp overflow gracefully
-    fn get_current_period(timestamp: u64) -> SpendingPeriod {
-        const DAILY_SECONDS: u64 = 86400; // 24 hours
-        
-        // Align to daily boundary (00:00 UTC)
-        let period_start = (timestamp / DAILY_SECONDS) * DAILY_SECONDS;
-        
-        SpendingPeriod {
-            period_type: 0, // Daily
-            period_start,
-            period_duration: DAILY_SECONDS,
-        }
-    }
-
-    /// Check if spending period should rollover
-    /// 
-    /// # Arguments
-    /// * `period` - Current period configuration
-    /// * `current_time` - Current timestamp
-    /// 
-    /// # Returns
-    /// * `true` if period has expired and should rollover
-    /// 
-    /// # Security Assumptions
-    /// - Uses inclusive boundary check to prevent edge case exploits
-    /// - Handles timestamp overflow gracefully
-    fn should_rollover_period(period: &SpendingPeriod, current_time: u64) -> bool {
-        current_time >= period.period_start.saturating_add(period.period_duration)
-    }
-
-    /// Rollover spending period and reset counters
-    /// 
-    /// # Arguments
-    /// * `old_tracker` - Previous period tracker
-    /// * `current_time` - Current timestamp for new period
-    /// 
-    /// # Returns
-    /// * `Result<SpendingTracker, Error>` with new period configuration
-    /// 
-    /// # Security Assumptions
-    /// - Resets spending counters to prevent carryover attacks
-    /// - Validates new period alignment
-    /// - Preserves audit trail via transaction count reset
-    fn rollover_spending_period(
-        old_tracker: SpendingTracker,
-        current_time: u64,
-    ) -> Result<SpendingTracker, Error> {
-        let new_period = Self::get_current_period(current_time);
-        
-        // Validate rollover is legitimate (prevent manipulation)
-        if current_time < old_tracker.period.period_start.saturating_add(old_tracker.period.period_duration) {
-            return Err(Error::RolloverValidationFailed);
-        }
-
-        Ok(SpendingTracker {
-            current_spent: 0, // Reset spending for new period
-            last_tx_timestamp: current_time,
-            tx_count: 0, // Reset transaction count
-            period: new_period,
-        })
-    }
-
-    /// Get spending tracker for a member (read-only)
-    /// 
-    /// # Arguments
-    /// * `member_address` - Address to get tracker for
-    /// 
-    /// # Returns
-    /// * `Option<SpendingTracker>` if tracker exists
-    pub fn get_spending_tracker(env: Env, member_address: Address) -> Option<SpendingTracker> {
-        let tracker_key = symbol_short!("TRACKER");
-        let spending_trackers: Map<Address, SpendingTracker> = env
-            .storage()
-            .instance()
-            .get(&tracker_key)?;
-        
-        spending_trackers.get(member_address)
-    }
-
+    /// @notice Configure multisig parameters for a given transaction type.
+    /// @dev Validates threshold bounds, signer membership, and uniqueness.
+    ///      Returns `Result<bool, Error>` instead of panicking on invalid input.
+    /// @param caller Owner or Admin authorizing the configuration.
+    /// @param tx_type The transaction type to configure.
+    /// @param threshold Number of signatures required (MIN_THRESHOLD..=min(MAX_THRESHOLD, signer_count)).
+    /// @param signers List of authorized signers (must be family members, no duplicates).
+    /// @param spending_limit Non-negative spending cap for the configuration.
+    /// @return Ok(true) on success, or a specific Error variant on failure.
     pub fn configure_multisig(
         env: Env,
         caller: Address,
@@ -746,7 +513,7 @@ impl FamilyWallet {
         threshold: u32,
         signers: Vec<Address>,
         spending_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -757,23 +524,45 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         if !Self::is_owner_or_admin_in_members(&env, &members, &caller) {
-            panic!("Only Owner or Admin can configure multi-sig");
+            return Err(Error::Unauthorized);
         }
 
-        // Validate threshold
         let signer_count = signers.len();
-        if threshold == 0 || threshold > signer_count {
-            panic!("Invalid threshold");
+
+        if signer_count == 0 {
+            return Err(Error::SignersListEmpty);
         }
 
+        if signer_count > MAX_SIGNERS {
+            return Err(Error::TooManySigners);
+        }
+
+        if threshold < MIN_THRESHOLD {
+            return Err(Error::ThresholdBelowMinimum);
+        }
+
+        if threshold > MAX_THRESHOLD {
+            return Err(Error::ThresholdAboveMaximum);
+        }
+
+        if threshold > signer_count {
+            return Err(Error::InvalidThreshold);
+        }
+
+        // Check signer membership and uniqueness in a single pass
+        let mut checked: Map<Address, bool> = Map::new(&env);
         for signer in signers.iter() {
             if members.get(signer.clone()).is_none() {
-                panic!("Signer must be a family member");
+                return Err(Error::SignerNotMember);
             }
+            if checked.get(signer.clone()).is_some() {
+                return Err(Error::DuplicateSigner);
+            }
+            checked.set(signer.clone(), true);
         }
 
         if spending_limit < 0 {
-            panic!("Spending limit must be non-negative");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         Self::extend_instance_ttl(&env);
@@ -788,7 +577,7 @@ impl FamilyWallet {
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
 
-        true
+        Ok(true)
     }
 
     pub fn propose_transaction(
@@ -850,13 +639,19 @@ impl FamilyWallet {
         let mut signatures = Vec::new(&env);
         signatures.push_back(proposer.clone());
 
+        let expiry_duration: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
+
         let pending_tx = PendingTransaction {
             tx_id,
             tx_type,
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
-            expires_at: timestamp + SIGNATURE_EXPIRATION,
+            expires_at: timestamp + expiry_duration,
             data: data.clone(),
         };
 
@@ -891,7 +686,9 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs.get(tx_id).unwrap_or_else(|| panic!("Transaction not found"));
+        let mut pending_tx = pending_txs
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"));
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -1103,6 +900,7 @@ impl FamilyWallet {
         max_amount: i128,
         cooldown: u64,
         min_balance: i128,
+        daily_limit: i128,
     ) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -1125,6 +923,7 @@ impl FamilyWallet {
                 max_amount,
                 cooldown,
                 min_balance,
+                daily_limit,
             },
         );
 
@@ -1532,42 +1331,42 @@ impl FamilyWallet {
     }
 
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - Only wallet owners can set or transfer upgrade admin role
     /// - Caller must be authenticated via require_auth()
     /// - Caller must have at least Owner role in the family wallet
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `true` on successful admin transfer
-    /// 
+    ///
     /// # Panics
     /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
-            (current_upgrade_admin, new_admin.clone()),
+            (current_upgrade_admin.clone(), new_admin.clone()),
         );
-        
+
         true
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -1741,6 +1540,22 @@ impl FamilyWallet {
             panic!("Emergency transfer cooldown period not elapsed");
         }
 
+        // Daily Rate Limit Enforcement
+        let day_in_seconds = 86400u64;
+        let mut daily_usage: (i128, u64) = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_VOL"))
+            .unwrap_or((0i128, 0u64));
+
+        if now >= daily_usage.1.saturating_add(day_in_seconds) {
+            daily_usage = (0i128, now);
+        }
+
+        if daily_usage.0.saturating_add(amount) > config.daily_limit {
+            panic!("Emergency daily limit exceeded");
+        }
+
         let token_client = TokenClient::new(&env, &token);
         let current_balance = token_client.balance(&proposer);
         if current_balance - amount < config.min_balance {
@@ -1765,6 +1580,11 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
+
+        daily_usage.0 = daily_usage.0.saturating_add(amount);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_VOL"), &daily_usage);
 
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),
@@ -1910,7 +1730,9 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
-        let member = members.get(caller.clone()).unwrap_or_else(|| panic!("Not a family member"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
         }

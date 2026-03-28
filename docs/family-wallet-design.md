@@ -1,27 +1,122 @@
-# Family Wallet - Spending Limit Precision and Rollover Validation
+# Family Wallet Design (As Implemented)
 
-## Overview
+This document describes the current `family_wallet` contract behavior as implemented in `family_wallet/src/lib.rs`.
 
-This document describes the enhanced spending limit system implemented in the `family_wallet` contract, focusing on precision handling and rollover behavior to prevent over-withdrawal due to precision or period reset edge cases.
+## Purpose
 
-## Enhanced Features
+`family_wallet` provides policy controls for shared-family spending:
 
-### 1. Precision Spending Limits
+- Role-based access control (`Owner`, `Admin`, `Member`, `Viewer`)
+- Per-transaction spending limits
+- Multi-signature approval flows for high-risk actions
+- Emergency transfer mode with guardrails
+- Pause, upgrade-admin, and audit utilities
 
-The contract now supports enhanced precision controls beyond basic per-transaction limits:
+The contract is policy and execution oriented; token transfers are executed from a proposer address to a recipient via Soroban token contract calls.
 
-```rust
-/// Enhanced spending limit with precision controls
-pub struct PrecisionSpendingLimit {
-    /// Base spending limit per period (in stroops)
-    pub limit: i128,
-    /// Minimum precision unit - prevents dust attacks (in stroops)  
-    pub min_precision: i128,
-    /// Maximum single transaction amount (in stroops)
-    pub max_single_tx: i128,
-    /// Enable rollover validation and cumulative tracking
-    pub enable_rollover: bool,
-}
+## Role Model
+
+Role order is numeric and used for `require_role_at_least` checks:
+
+- `Owner` (`1`)
+- `Admin` (`2`)
+- `Member` (`3`)
+- `Viewer` (`4`)
+
+Lower numeric value is higher privilege.
+
+### Role Expiry
+
+- Optional role expiry per member is stored in `ROLE_EXP`.
+- A role is considered expired when `ledger.timestamp() >= expires_at` (inclusive boundary).
+- Expired roles fail `require_role_at_least` checks (`"Role has expired"` panic).
+- Expired roles are also treated as **not privileged** for `Owner`/`Admin` helper checks used by permissioned methods (e.g. emergency config, cleanup, archiving).
+- Expiry is set/cleared via `set_role_expiry` and only applies to existing family members (non-members are rejected).
+
+## Permissions Matrix
+
+| Operation | Methods | Allowed caller | Key guards |
+|---|---|---|---|
+| Initialize wallet | `init` | Owner address passed to `init` | One-time only (`"Wallet already initialized"` panic) |
+| Add member (strict) | `add_member` | Owner or Admin | Role cannot be `Owner`; rejects duplicates; spending limit must be `>= 0`; returns `Result` |
+| Add member (legacy overwrite path) | `add_family_member` | Owner or Admin | Role cannot be `Owner`; overwrites existing member record; limit forced to `0` |
+| Remove member | `remove_family_member` | Owner only | Cannot remove owner |
+| Update per-member spending limit | `update_spending_limit` | Owner or Admin | Member must exist; new limit must be `>= 0`; returns `Result` |
+| Configure multisig | `configure_multisig` | Owner or Admin | `Result<bool, Error>` return; validates: `signers.len() > 0`; `MIN_THRESHOLD <= threshold <= MAX_THRESHOLD`; `threshold <= signers.len()`; all signers must be family members; spending limit must be `>= 0`; blocked when paused |
+| Propose transaction | `propose_transaction` and wrappers (`withdraw`, `propose_*`) | `Member` or higher | Caller must be family member; blocked when paused |
+| Sign transaction | `sign_transaction` | `Member` or higher | Must be in configured signer list for tx type; no duplicate signature; not expired |
+| Emergency config and mode | `configure_emergency`, `set_emergency_mode` | Owner or Admin | Emergency max amount `> 0`; min balance `>= 0` |
+| Pause controls | `pause`, `unpause`, `set_pause_admin` | Pause admin (pause/unpause), Owner (`set_pause_admin`) | Default pause admin is owner unless overridden |
+| Upgrade controls | `set_upgrade_admin`, `set_version` | Owner (`set_upgrade_admin`), upgrade admin (`set_version`) | Emits upgrade event on version change |
+| Batch member operations | `batch_add_family_members`, `batch_remove_family_members` | Admin+ for add, Owner for remove | Max batch size enforced; cannot add/remove owner |
+| Storage cleanup | `archive_old_transactions`, `cleanup_expired_pending` | Owner or Admin | Blocked when paused |
+| Reads | `get_*`, `is_*` | Any caller | Read-only |
+
+## Limits and Policy Rules
+
+### Constants
+
+| Name | Value | Meaning |
+|---|---|---|
+| `SIGNATURE_EXPIRATION` | `86400` seconds | Pending multisig transaction expiry (24h) |
+| `MAX_BATCH_MEMBERS` | `30` | Maximum add/remove batch size |
+| `MAX_ACCESS_AUDIT_ENTRIES` | `100` | Access audit ring size (last 100 retained) |
+| `MAX_SIGNERS` | `100` | Maximum number of authorized signers per multisig config |
+| `MIN_THRESHOLD` | `1` | Minimum valid threshold value |
+| `MAX_THRESHOLD` | `100` | Maximum valid threshold value |
+| `INSTANCE_BUMP_AMOUNT` | `518400` ledgers | Active-instance TTL extension target |
+| `ARCHIVE_BUMP_AMOUNT` | `2592000` ledgers | Archive TTL extension target |
+
+### Default Configs Set During `init`
+
+- Multisig configs for `LargeWithdrawal`, `SplitConfigChange`, `RoleChange`, `EmergencyTransfer`, `PolicyCancellation`:
+  - `threshold = 2`
+  - `signers = []`
+  - `spending_limit = 1000_0000000`
+- Emergency config:
+  - `max_amount = 1000_0000000`
+  - `cooldown = 3600`
+  - `min_balance = 0`
+- Emergency mode disabled by default.
+
+### Spending Limit Semantics
+
+- `check_spending_limit`:
+  - Unknown caller or negative amount => `false`
+  - Owner/Admin => always `true`
+  - Member/Viewer with limit `0` => unlimited (`true`)
+  - Positive limit => `amount <= spending_limit`
+- `withdraw` thresholding uses **multisig config for `LargeWithdrawal`**:
+  - `amount <= spending_limit` => `RegularWithdrawal` immediate path
+  - `amount > spending_limit` => `LargeWithdrawal` multisig path
+
+## Key Flows
+
+### 1. Withdrawal Flow
+
+```mermaid
+sequenceDiagram
+    participant U as Proposer
+    participant C as FamilyWallet
+    participant T as Token
+    participant S as Authorized Signer
+
+    U->>C: withdraw(token, recipient, amount)
+    C->>C: load LargeWithdrawal config
+    alt amount <= config.spending_limit
+        C->>T: transfer(proposer -> recipient, amount)
+        C-->>U: tx_id = 0 (executed)
+    else amount > config.spending_limit
+        C->>C: create pending tx (auto-add proposer signature)
+        C-->>U: tx_id > 0
+        S->>C: sign_transaction(tx_id)
+        alt signatures >= threshold
+            C->>T: transfer(proposer -> recipient, amount)
+            C->>C: remove pending; mark executed
+        else waiting for more signatures
+            C->>C: store updated pending signatures
+        end
+    end
 ```
 
 **Key Security Features:**
@@ -302,4 +397,43 @@ Key benefits:
 - **Backward compatible** with existing configurations
 - **Well-documented** security assumptions and validation logic
 
-This implementation ensures that family wallet spending limits are enforced securely and precisely, preventing both accidental and malicious attempts to bypass spending controls.
+- `add_member` is strict (duplicate-safe and limit-aware), while `add_family_member`/batch add overwrite records and force spending limit to `0`.
+- `archive_old_transactions` archives all `EXEC_TXS` entries currently present; `before_timestamp` is written into archived metadata but not used as a filter.
+- `SplitConfigChange` and `PolicyCancellation` transaction execution paths currently complete without cross-contract side effects.
+- Token-transfer execution from `sign_transaction` path calls `proposer.require_auth()` for transfer types, so proposer authorization is required at execution time.
+
+## Error Codes
+
+The contract uses a comprehensive error code system for validation failures:
+
+| Code | Value | Condition |
+|---|---|---|
+| `Unauthorized` | 1 | Caller lacks required role/permission |
+| `InvalidThreshold` | 2 | Threshold exceeds number of signers |
+| `InvalidSigner` | 3 | Signer validation failure |
+| `TransactionNotFound` | 4 | Pending transaction not found |
+| `TransactionExpired` | 5 | Pending transaction has expired |
+| `InsufficientSignatures` | 6 | Not enough signatures collected |
+| `DuplicateSignature` | 7 | Signer already signed this transaction |
+| `InvalidTransactionType` | 8 | Unknown transaction type |
+| `InvalidAmount` | 9 | Amount validation failure |
+| `InvalidRole` | 10 | Role validation failure |
+| `MemberNotFound` | 11 | Family member not found |
+| `TransactionAlreadyExecuted` | 12 | Transaction was already executed |
+| `InvalidSpendingLimit` | 13 | Spending limit must be >= 0 |
+| `ThresholdBelowMinimum` | 14 | Threshold < MIN_THRESHOLD (1) |
+| `ThresholdAboveMaximum` | 15 | Threshold > MAX_THRESHOLD (100) |
+| `SignersListEmpty` | 16 | Signers list is empty |
+| `SignerNotMember` | 17 | Signer is not a family member |
+
+### Multisig Threshold Bounds Security
+
+The `configure_multisig` function enforces strict bounds validation to prevent invalid execution policy states:
+
+- **Minimum threshold**: `MIN_THRESHOLD = 1` - At least one signature required
+- **Maximum threshold**: `MAX_THRESHOLD = 100` - Prevents unreasonably high requirements
+- **Consistency check**: `threshold <= signers.len()` - Threshold cannot exceed available signers
+- **Signer validation**: All signers must be existing family members
+- **Empty list rejection**: At least one signer required
+
+These bounds prevent configuration errors that could lock the wallet (threshold > signers) or render it unusable (empty signers or zero threshold).

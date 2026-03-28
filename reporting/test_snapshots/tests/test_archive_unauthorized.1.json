@@ -26,14 +26,14 @@
     []
   ],
   "ledger": {
-    "protocol_version": 20,
-    "sequence_number": 1,
-    "timestamp": 1704067200,
+    "protocol_version": 21,
+    "sequence_number": 0,
+    "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 10,
-    "min_persistent_entry_ttl": 10,
-    "min_temp_entry_ttl": 10,
-    "max_entry_ttl": 3110400,
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
     "ledger_entries": [
       [
         {
@@ -73,7 +73,7 @@
             },
             "ext": "v0"
           },
-          518401
+          518400
         ]
       ],
       [
@@ -106,7 +106,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          6311999
         ]
       ],
       [
@@ -127,7 +127,7 @@
             },
             "ext": "v0"
           },
-          518401
+          518400
         ]
       ]
     ]
@@ -222,21 +222,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "log"
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "archive_old_reports"
               }
             ],
             "data": {
-              "vec": [
-                {
-                  "string": "caught panic 'Only admin can archive reports' from contract function 'Symbol(obj#15)'"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "u64": 2000000000
-                }
-              ]
+              "error": {
+                "contract": 6
+              }
             }
           }
         }
@@ -256,12 +251,12 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 6
                 }
               }
             ],
             "data": {
-              "string": "caught error from function"
+              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
             }
           }
         }
@@ -281,14 +276,14 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 6
                 }
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "contract call failed"
+                  "string": "contract try_call failed"
                 },
                 {
                   "symbol": "archive_old_reports"
@@ -304,31 +299,6 @@
                   ]
                 }
               ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "error"
-              },
-              {
-                "error": {
-                  "wasm_vm": "invalid_action"
-                }
-              }
-            ],
-            "data": {
-              "string": "escalating error to panic"
             }
           }
         }

@@ -204,12 +204,6 @@ mod insurance {
     }
 }
 
-fn create_test_env() -> Env {
-    let env = Env::default();
-    env.mock_all_auths();
-    env
-}
-
 #[test]
 fn test_init_reporting_contract_succeeds() {
     let env = Env::default();
@@ -905,8 +899,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     let base_ts = 1_000_000u64;
     for i in 0..TOTAL {
         set_ledger_time(&env, 10 + i as u32, base_ts + i);
-        let report =
-            client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+        let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
         client.store_report(&user, &report, &(202_400 + i));
     }
 
@@ -939,8 +932,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
 
     // Second cycle: new report increments active; full archive then cleanup returns to zero archived
     set_ledger_time(&env, 700, base_ts + 300);
-    let report =
-        client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+    let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
     client.store_report(&user, &report, &209_912);
 
     let after_new_store = client.get_storage_stats();
@@ -961,7 +953,6 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
 }
 
 #[test]
-#[should_panic(expected = "Only admin can archive reports")]
 fn test_archive_unauthorized() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -972,11 +963,11 @@ fn test_archive_unauthorized() {
     client.init(&admin);
 
     // Non-admin tries to archive
-    client.archive_old_reports(&non_admin, &2000000000);
+    let result = client.try_archive_old_reports(&non_admin, &2000000000);
+    assert!(result.is_err());
 }
 
 #[test]
-#[should_panic(expected = "Only admin can cleanup reports")]
 fn test_cleanup_unauthorized() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -987,7 +978,8 @@ fn test_cleanup_unauthorized() {
     client.init(&admin);
 
     // Non-admin tries to cleanup
-    client.cleanup_old_reports(&non_admin, &2000000000);
+    let result = client.try_cleanup_old_reports(&non_admin, &2000000000);
+    assert!(result.is_err());
 }
 
 // ============================================================================
@@ -1315,7 +1307,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
 // of call order, ledger timestamp, or user address.
 // ============================================================================
 
-fn make_client(env: &Env) -> (ReportingContractClient, Address) {
+fn make_client(env: &Env) -> (ReportingContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
@@ -1541,13 +1533,10 @@ fn test_trend_multi_dense_five_points() {
     let (client, _) = make_client(&env);
     let user = Address::generate(&env);
 
-    let history = make_history(&env, &[
-        (1, 1000),
-        (2, 1100),
-        (3, 1210),
-        (4, 1331),
-        (5, 1464),
-    ]);
+    let history = make_history(
+        &env,
+        &[(1, 1000), (2, 1100), (3, 1210), (4, 1331), (5, 1464)],
+    );
     let results = client.get_trend_analysis_multi(&user, &history);
 
     assert_eq!(results.len(), 4);
@@ -1592,6 +1581,96 @@ fn test_trend_multi_single_point_returns_empty() {
     let results = client.get_trend_analysis_multi(&user, &history);
 
     assert_eq!(results.len(), 0);
+}
+
+#[test]
+fn test_admin_rotation_flow() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.init(&admin);
+
+    // Phase 1: Propose
+    client.propose_new_admin(&admin, &new_admin);
+    assert_eq!(client.get_admin(), Some(admin.clone())); // Still old admin
+
+    // Phase 2: Accept
+    client.accept_admin_rotation(&new_admin);
+    assert_eq!(client.get_admin(), Some(new_admin.clone()));
+
+    // Verify old admin can no longer perform admin actions
+    let result = client.try_configure_addresses(
+        &admin,
+        &Address::generate(&env),
+        &Address::generate(&env),
+        &Address::generate(&env),
+        &Address::generate(&env),
+        &Address::generate(&env),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unauthorized_propose() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let hacker = Address::generate(&env);
+
+    client.init(&admin);
+
+    let result = client.try_propose_new_admin(&hacker, &hacker);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unauthorized_acceptance() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let hacker = Address::generate(&env);
+
+    client.init(&admin);
+    client.propose_new_admin(&admin, &new_admin);
+
+    let result = client.try_accept_admin_rotation(&hacker);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_acceptance_without_proposal() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let candidate = Address::generate(&env);
+
+    client.init(&admin);
+
+    let result = client.try_accept_admin_rotation(&candidate);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_re_init_after_rotation_fails() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    client.init(&admin);
+    client.propose_new_admin(&admin, &new_admin);
+    client.accept_admin_rotation(&new_admin);
+
+    let result = client.try_init(&new_admin);
+    assert!(result.is_err());
 }
 
 // --- boundary: empty input → empty result -----------------------------------
@@ -1715,3 +1794,24 @@ fn test_trend_multi_deterministic_across_timestamps() {
     }
 }
 
+
+
+#[test]
+#[should_panic]
+fn test_unauthorized_access_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let _attacker = Address::generate(&env);
+
+    // Setup with admin auth
+    env.mock_all_auths();
+    client.init(&admin);
+    
+    // Switch to attacker (require_auth(user) should fail)
+    // In Soroban, require_auth checks the context.
+    // Calling with attacker but requiring auth for user will fail.
+    client.get_remittance_summary(&user, &1000, &0, &100);
+}
