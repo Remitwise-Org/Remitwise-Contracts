@@ -2,7 +2,10 @@
 
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
+use soroban_sdk::IntoVal;
 use soroban_sdk::{
+    testutils::{Address as AddressTrait, Events as _, Ledger, LedgerInfo},
+    Address, Env, String, Symbol, TryFromVal,
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
     Address, Env, IntoVal, String, Symbol, TryFromVal,
 };
@@ -152,6 +155,7 @@ fn test_next_id_increments_sequentially() {
     for (i, &id) in ids.iter().enumerate() {
         let goal = client.get_goal(&id).unwrap();
         assert_eq!(goal.id, id);
+        let expected_name = match i { 0 => String::from_str(&env, "G1"), 1 => String::from_str(&env, "G2"), _ => String::from_str(&env, "G3") };
         let expected_name = String::from_str(&env, expected_names[i]);
         assert_eq!(goal.name, expected_name);
     }
@@ -409,6 +413,7 @@ fn test_withdraw_from_goal_unauthorized() {
 }
 
 #[test]
+#[should_panic(expected = "HostError")]
 fn test_withdraw_from_goal_zero_amount_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -426,6 +431,7 @@ fn test_withdraw_from_goal_zero_amount_panics() {
 }
 
 #[test]
+#[should_panic(expected = "HostError")]
 fn test_withdraw_from_goal_nonexistent_goal_panics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -892,7 +898,7 @@ fn test_create_goal_emits_event() {
     );
     assert_eq!(goal_id, 1);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_created_struct = false;
     let mut found_created_enum = false;
 
@@ -948,7 +954,7 @@ fn test_add_to_goal_emits_event() {
     let new_amount = client.add_to_goal(&user, &goal_id, &1000);
     assert_eq!(new_amount, 1000);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_added_struct = false;
     let mut found_added_enum = false;
 
@@ -1001,7 +1007,7 @@ fn test_goal_completed_emits_event() {
     // Add funds to complete the goal
     client.add_to_goal(&user, &goal_id, &1000);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_completed_struct = false;
     let mut found_completed_enum = false;
 
@@ -1056,7 +1062,7 @@ fn test_withdraw_from_goal_emits_event() {
     client.add_to_goal(&user, &goal_id, &1500);
     client.withdraw_from_goal(&user, &goal_id, &600);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_withdrawn_enum = false;
 
     for event in events.iter() {
@@ -1096,7 +1102,7 @@ fn test_lock_goal_emits_event() {
     client.unlock_goal(&user, &goal_id);
     client.lock_goal(&user, &goal_id);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_locked_enum = false;
 
     for event in events.iter() {
@@ -1135,7 +1141,7 @@ fn test_unlock_goal_emits_event() {
     );
     client.unlock_goal(&user, &goal_id);
 
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     let mut found_unlocked_enum = false;
 
     for event in events.iter() {
@@ -1172,7 +1178,7 @@ fn test_multiple_goals_emit_separate_events() {
     client.create_goal(&user, &String::from_str(&env, "Goal 3"), &3000, &1735689600);
 
     // Should have 3 * 2 events = 6 events
-    let events = env.events().all();
+    let events = soroban_sdk::testutils::Events::all(&env.events());
     assert_eq!(events.len(), 6);
 }
 
@@ -1827,6 +1833,10 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_a are correct
+    let goal_a_ids: soroban_sdk::Vec<u32> = { let mut v = soroban_sdk::Vec::new(&env); for g in goals_a.iter() { v.push_back(g.id); } v };
+    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
+    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
+    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
     assert!(goals_a.iter().any(|g| g.id == goal_a1), "Goals for A should contain goal_a1");
     assert!(goals_a.iter().any(|g| g.id == goal_a2), "Goals for A should contain goal_a2");
     assert!(goals_a.iter().any(|g| g.id == goal_a3), "Goals for A should contain goal_a3");
@@ -1845,6 +1855,9 @@ fn test_get_all_goals_filters_by_owner() {
     }
 
     // Verify goal IDs for owner_b are correct
+    let goal_b_ids: soroban_sdk::Vec<u32> = { let mut v = soroban_sdk::Vec::new(&env); for g in goals_b.iter() { v.push_back(g.id); } v };
+    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
+    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
     assert!(goals_b.iter().any(|g| g.id == goal_b1), "Goals for B should contain goal_b1");
     assert!(goals_b.iter().any(|g| g.id == goal_b2), "Goals for B should contain goal_b2");
 
@@ -1857,6 +1870,129 @@ fn test_get_all_goals_filters_by_owner() {
     }
 }
 
+    // Verify owner_a's goals do not appear in owner_b's goals and vice versa
+    for goal_a_id in goal_a_ids {
+        for goal in goals_b.iter() {
+            assert_ne!(
+                goal.id, goal_a_id,
+                "Owner B's goal list should not contain owner A's goals"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lock_goal_idempotent_already_locked() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Idempotent Lock"), &1000, &2000000000);
+        assert!(client.get_goal(&id).unwrap().locked);
+        let result = client.lock_goal(&user, &id);
+        assert!(result);
+        assert!(client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_lock_goal_idempotent_no_duplicate_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "No Dup Lock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        client.lock_goal(&user, &id);
+        let events_after_first_lock = env.events().all().len();
+        client.lock_goal(&user, &id);
+        let events_after_second_lock = env.events().all().len();
+        assert_eq!(events_after_first_lock, events_after_second_lock);
+    }
+
+    #[test]
+    fn test_unlock_goal_idempotent_already_unlocked() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Idempotent Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        assert!(!client.get_goal(&id).unwrap().locked);
+        let result = client.unlock_goal(&user, &id);
+        assert!(result);
+        assert!(!client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_unlock_goal_idempotent_no_duplicate_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "No Dup Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        let events_after_first_unlock = env.events().all().len();
+        client.unlock_goal(&user, &id);
+        let events_after_second_unlock = env.events().all().len();
+        assert_eq!(events_after_first_unlock, events_after_second_unlock);
+    }
+
+    #[test]
+    fn test_lock_goal_many_repeated_calls_safe() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Repeat Lock"), &1000, &2000000000);
+        for _ in 0..5 {
+            let result = client.lock_goal(&user, &id);
+            assert!(result);
+        }
+        assert!(client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_unlock_goal_many_repeated_calls_safe() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Repeat Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        for _ in 0..5 {
+            let result = client.unlock_goal(&user, &id);
+            assert!(result);
+        }
+        assert!(!client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_idempotent_unlock_does_not_bypass_time_lock() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        env.mock_all_auths();
+        set_ledger_time(&env, 1, 1000);
+        let id = client.create_goal(&owner, &String::from_str(&env, "TimeLock"), &10000, &5000);
+        client.add_to_goal(&owner, &id, &5000);
+        client.unlock_goal(&owner, &id);
+        client.set_time_lock(&owner, &id, &10000);
+        client.unlock_goal(&owner, &id);
+        let result = client.try_withdraw_from_goal(&owner, &id, &1000);
+        assert!(result.is_err());
+    }
 // ============================================================================
 // Snapshot schema version tests
 //

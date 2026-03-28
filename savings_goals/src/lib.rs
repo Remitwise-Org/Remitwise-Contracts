@@ -88,6 +88,7 @@ pub struct SavingsSchedule {
 }
 
 #[contracttype]
+#[derive(Clone, Copy, Debug)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavingsGoalsError {
     InvalidAmount = 1,

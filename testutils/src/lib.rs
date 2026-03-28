@@ -30,6 +30,7 @@ macro_rules! setup_test_env {
         let $env = Env::default();
         $env.mock_all_auths();
         let contract_id = $env.register_contract(None, $contract);
+        let $client = SavingsGoalContractClient::new(&$env, &contract_id);
         let $client = $client_struct::new(&$env, &contract_id);
         let $owner = $crate::generate_test_address(&$env);
     };
