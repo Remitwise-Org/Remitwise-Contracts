@@ -41,6 +41,7 @@ fn test_end_to_end_flow() {
 
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
+    let usdc_id = Address::generate(&env);
 
     // 2. Initialize
     reporting_client.init(&admin);
@@ -58,7 +59,7 @@ fn test_end_to_end_flow() {
 
     // 3. Configure Split
     let nonce = 0;
-    split_client.initialize_split(&user, &nonce, &50, &30, &15, &5);
+    split_client.initialize_split(&user, &nonce, &usdc_id, &50, &30, &15, &5);
 
     // Assuming we do an "allocate into goals/bills/insurance"
     // We create a sample goal
