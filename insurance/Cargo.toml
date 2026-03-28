@@ -8,9 +8,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "21.0.0"
+remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+testutils = { path = "../testutils" }
+proptest = "1.4.0"
 
 [profile.release]
 opt-level = "z"

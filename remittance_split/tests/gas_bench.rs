@@ -92,8 +92,8 @@ fn bench_create_remittance_schedule() {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
     
-    assert!(result.is_ok());
-    let schedule_id = result.unwrap();
+    
+    let schedule_id = result;
     assert_eq!(schedule_id, 1);
 
     println!(
@@ -118,8 +118,7 @@ fn bench_create_multiple_schedules() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
         
-        let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-        assert!(result.is_ok());
+        let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
     // Measure the 11th schedule creation (worst case with existing schedules)
@@ -131,7 +130,7 @@ fn bench_create_multiple_schedules() {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
     
-    assert!(result.is_ok());
+    let _result = result;
 
     println!(
         r#"{{"contract":"remittance_split","method":"create_remittance_schedule","scenario":"11th_schedule_with_existing","cpu":{},"mem":{}}}"#,
@@ -153,8 +152,7 @@ fn bench_modify_remittance_schedule() {
     let interval = 2_592_000u64;
 
     // Create initial schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .unwrap();
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Modify the schedule
     let new_amount = 2_000i128;
@@ -165,9 +163,7 @@ fn bench_modify_remittance_schedule() {
         client.modify_remittance_schedule(&owner, &schedule_id, &new_amount, &new_next_due, &new_interval)
     });
     
-    assert!(result.is_ok());
-    assert!(result.unwrap());
-
+    assert!(result);
     println!(
         r#"{{"contract":"remittance_split","method":"modify_remittance_schedule","scenario":"single_schedule_modification","cpu":{},"mem":{}}}"#,
         cpu, mem
@@ -188,16 +184,13 @@ fn bench_cancel_remittance_schedule() {
     let interval = 2_592_000u64;
 
     // Create initial schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .unwrap();
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     let (cpu, mem, result) = measure(&env, || {
         client.cancel_remittance_schedule(&owner, &schedule_id)
     });
     
-    assert!(result.is_ok());
-    assert!(result.unwrap());
-
+    assert!(result);
     println!(
         r#"{{"contract":"remittance_split","method":"cancel_remittance_schedule","scenario":"single_schedule_cancellation","cpu":{},"mem":{}}}"#,
         cpu, mem
@@ -243,8 +236,7 @@ fn bench_get_remittance_schedules_with_data() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
         
-        let result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
-        assert!(result.is_ok());
+        let _result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
     }
 
     // Create 3 schedules for owner2 (should not be returned for owner1)
@@ -253,8 +245,7 @@ fn bench_get_remittance_schedules_with_data() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 604_800u64;
         
-        let result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
-        assert!(result.is_ok());
+        let _result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
     }
 
     let (cpu, mem, schedules) = measure(&env, || {
@@ -284,8 +275,7 @@ fn bench_get_remittance_schedule_single() {
     let interval = 2_592_000u64;
 
     // Create schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .unwrap();
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     let (cpu, mem, schedule) = measure(&env, || {
         client.get_remittance_schedule(&schedule_id)
@@ -318,8 +308,7 @@ fn bench_schedule_operations_worst_case() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
         
-        let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-        assert!(result.is_ok());
+        let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
     // Measure query performance with 50 schedules

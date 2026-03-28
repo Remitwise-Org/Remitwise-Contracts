@@ -96,6 +96,12 @@
                     "hi": 0,
                     "lo": 0
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -293,6 +299,17 @@
                             },
                             {
                               "key": {
+                                "symbol": "daily_limit"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 50000000000
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_amount"
                               },
                               "val": {
@@ -330,6 +347,24 @@
                         },
                         "val": {
                           "bool": true
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "EM_VOL"
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 10000000000
+                              }
+                            },
+                            {
+                              "u64": 0
+                            }
+                          ]
                         }
                       },
                       {
@@ -1356,6 +1391,12 @@
                     "hi": 0,
                     "lo": 0
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -1816,7 +1857,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#495)'"
+                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#507)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

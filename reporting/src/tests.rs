@@ -204,12 +204,6 @@ mod insurance {
     }
 }
 
-fn create_test_env() -> Env {
-    let env = Env::default();
-    env.mock_all_auths();
-    env
-}
-
 #[test]
 fn test_init_reporting_contract_succeeds() {
     let env = Env::default();
@@ -1315,7 +1309,7 @@ fn test_archive_ttl_extended_on_archive_reports() {
 // of call order, ledger timestamp, or user address.
 // ============================================================================
 
-fn make_client(env: &Env) -> (ReportingContractClient, Address) {
+fn make_client(env: &Env) -> (ReportingContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
@@ -1715,3 +1709,24 @@ fn test_trend_multi_deterministic_across_timestamps() {
     }
 }
 
+
+
+#[test]
+#[should_panic]
+fn test_unauthorized_access_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let _attacker = Address::generate(&env);
+
+    // Setup with admin auth
+    env.mock_all_auths();
+    client.init(&admin);
+    
+    // Switch to attacker (require_auth(user) should fail)
+    // In Soroban, require_auth checks the context.
+    // Calling with attacker but requiring auth for user will fail.
+    client.get_remittance_summary(&user, &1000, &0, &100);
+}

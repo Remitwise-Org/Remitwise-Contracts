@@ -117,6 +117,7 @@ pub struct ExportSnapshot {
     pub schema_version: u32,
     pub checksum: u64,
     pub config: SplitConfig,
+    pub schedules: Vec<RemittanceSchedule>,
 }
 
 /// Audit log entry for security and compliance.
@@ -162,6 +163,12 @@ const SCHEMA_VERSION: u32 = 1;
 const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
 const MAX_AUDIT_ENTRIES: u32 = 100;
 const CONTRACT_VERSION: u32 = 1;
+
+#[contracttype]
+pub enum DataKey {
+    Schedule(u32),
+    OwnerSchedules(Address),
+}
 
 #[contract]
 pub struct RemittanceSplit;
@@ -285,7 +292,7 @@ impl RemittanceSplit {
         // Authorization logic:
         // 1. If no upgrade admin exists, only contract owner can set initial admin
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match &current_upgrade_admin {
             None => {
                 // Initial admin setup - only owner can set
                 if config.owner != caller {
@@ -294,7 +301,7 @@ impl RemittanceSplit {
             }
             Some(current_admin) => {
                 // Admin transfer - only current admin can transfer
-                if current_admin != caller {
+                if *current_admin != caller {
                     return Err(RemittanceSplitError::Unauthorized);
                 }
             }
@@ -714,7 +721,8 @@ impl RemittanceSplit {
         if config.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
         }
-        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config);
+        let schedules = Self::get_remittance_schedules(env.clone(), caller.clone());
+        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config, &schedules);
         env.events().publish(
             (symbol_short!("split"), symbol_short!("snap_exp")),
             SCHEMA_VERSION,
@@ -723,6 +731,7 @@ impl RemittanceSplit {
             schema_version: SCHEMA_VERSION,
             checksum,
             config,
+            schedules,
         }))
     }
 
@@ -742,7 +751,7 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
-        let expected = Self::compute_checksum(snapshot.schema_version, &snapshot.config);
+        let expected = Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules);
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ChecksumMismatch);
@@ -781,6 +790,28 @@ impl RemittanceSplit {
                 snapshot.config.insurance_percent,
             ],
         );
+
+        // Import schedules to new storage
+        for schedule in snapshot.schedules.iter() {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Schedule(schedule.id), &schedule);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Schedule(schedule.id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        }
+
+        // Reconstruct owner index
+        let mut owner_ids = Vec::new(&env);
+        for schedule in snapshot.schedules.iter() {
+            owner_ids.push_back(schedule.id);
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::OwnerSchedules(caller.clone()), &owner_ids);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::OwnerSchedules(caller.clone()), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
@@ -834,16 +865,19 @@ impl RemittanceSplit {
         Ok(())
     }
 
-    fn compute_checksum(version: u32, config: &SplitConfig) -> u64 {
+    fn compute_checksum(version: u32, config: &SplitConfig, schedules: &Vec<RemittanceSchedule>) -> u64 {
         let v = version as u64;
         let s = config.spending_percent as u64;
         let g = config.savings_percent as u64;
         let b = config.bills_percent as u64;
         let i = config.insurance_percent as u64;
+        let sc_count = schedules.len() as u64;
+
         v.wrapping_add(s)
             .wrapping_add(g)
             .wrapping_add(b)
             .wrapping_add(i)
+            .wrapping_add(sc_count)
             .wrapping_mul(31)
     }
 
@@ -957,14 +991,6 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        Self::extend_instance_ttl(&env);
-
-        let mut schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
         let next_schedule_id = env
             .storage()
             .instance()
@@ -985,10 +1011,28 @@ impl RemittanceSplit {
             missed_count: 0,
         };
 
-        schedules.set(next_schedule_id, schedule);
+        // 1. Save individual schedule to persistent storage
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&DataKey::Schedule(next_schedule_id), &schedule);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Schedule(next_schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
+        // 2. Update owner's schedule index
+        let mut owner_schedules: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OwnerSchedules(owner.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        owner_schedules.push_back(next_schedule_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::OwnerSchedules(owner.clone()), &owner_schedules);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::OwnerSchedules(owner.clone()), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_RSCH"), &next_schedule_id);
@@ -1020,16 +1064,10 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        Self::extend_instance_ttl(&env);
-
-        let mut schedules: Map<u32, RemittanceSchedule> = env
+        let mut schedule: RemittanceSchedule = env
             .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
+            .persistent()
+            .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
@@ -1041,10 +1079,12 @@ impl RemittanceSplit {
         schedule.interval = interval;
         schedule.recurring = interval > 0;
 
-        schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&DataKey::Schedule(schedule_id), &schedule);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         env.events().publish(
             (symbol_short!("schedule"), ScheduleEvent::Modified),
@@ -1061,16 +1101,10 @@ impl RemittanceSplit {
     ) -> Result<bool, RemittanceSplitError> {
         caller.require_auth();
 
-        Self::extend_instance_ttl(&env);
-
-        let mut schedules: Map<u32, RemittanceSchedule> = env
+        let mut schedule: RemittanceSchedule = env
             .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut schedule = schedules
-            .get(schedule_id)
+            .persistent()
+            .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
         if schedule.owner != caller {
@@ -1079,10 +1113,12 @@ impl RemittanceSplit {
 
         schedule.active = false;
 
-        schedules.set(schedule_id, schedule);
         env.storage()
-            .instance()
-            .set(&symbol_short!("REM_SCH"), &schedules);
+            .persistent()
+            .set(&DataKey::Schedule(schedule_id), &schedule);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         env.events().publish(
             (symbol_short!("schedule"), ScheduleEvent::Cancelled),
@@ -1093,15 +1129,15 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
+        let schedule_ids: Vec<u32> = env
             .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
+            .persistent()
+            .get(&DataKey::OwnerSchedules(owner.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
 
         let mut result = Vec::new(&env);
-        for (_, schedule) in schedules.iter() {
-            if schedule.owner == owner {
+        for id in schedule_ids.iter() {
+            if let Some(schedule) = env.storage().persistent().get(&DataKey::Schedule(id)) {
                 result.push_back(schedule);
             }
         }
@@ -1109,13 +1145,7 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedule(env: Env, schedule_id: u32) -> Option<RemittanceSchedule> {
-        let schedules: Map<u32, RemittanceSchedule> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("REM_SCH"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        schedules.get(schedule_id)
+        env.storage().persistent().get(&DataKey::Schedule(schedule_id))
     }
 }
 

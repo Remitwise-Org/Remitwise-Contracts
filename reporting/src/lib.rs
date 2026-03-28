@@ -393,7 +393,17 @@ impl ReportingContract {
     /// Generate remittance summary report
     pub fn get_remittance_summary(
         env: Env,
-        _user: Address,
+        user: Address,
+        total_amount: i128,
+        period_start: u64,
+        period_end: u64,
+    ) -> RemittanceSummary {
+        user.require_auth();
+        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
+    }
+
+    fn get_remittance_summary_internal(
+        env: &Env,
         total_amount: i128,
         period_start: u64,
         period_end: u64,
@@ -404,11 +414,11 @@ impl ReportingContract {
             .get(&symbol_short!("ADDRS"))
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
-        let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
+        let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let split_percentages = split_client.get_split();
         let split_amounts = split_client.calculate_split(&total_amount);
 
-        let mut breakdown = Vec::new(&env);
+        let mut breakdown = Vec::new(env);
         let categories = [
             Category::Spending,
             Category::Savings,
@@ -440,13 +450,23 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> SavingsReport {
+        user.require_auth();
+        Self::get_savings_report_internal(&env, user, period_start, period_end)
+    }
+
+    fn get_savings_report_internal(
+        env: &Env,
+        user: Address,
+        period_start: u64,
+        period_end: u64,
+    ) -> SavingsReport {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
-        let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
+        let savings_client = SavingsGoalsClient::new(env, &addresses.savings_goals);
         let goals = savings_client.get_all_goals(&user);
 
         let mut total_target = 0i128;
@@ -486,13 +506,23 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> BillComplianceReport {
+        user.require_auth();
+        Self::get_bill_compliance_report_internal(&env, user, period_start, period_end)
+    }
+
+    fn get_bill_compliance_report_internal(
+        env: &Env,
+        user: Address,
+        period_start: u64,
+        period_end: u64,
+    ) -> BillComplianceReport {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
-        let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
+        let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
         let page = bill_client.get_all_bills_for_owner(&user, &0u32, &50u32);
         let all_bills = page.items;
 
@@ -554,13 +584,23 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> InsuranceReport {
+        user.require_auth();
+        Self::get_insurance_report_internal(&env, user, period_start, period_end)
+    }
+
+    fn get_insurance_report_internal(
+        env: &Env,
+        user: Address,
+        period_start: u64,
+        period_end: u64,
+    ) -> InsuranceReport {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
-        let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
+        let insurance_client = InsuranceClient::new(env, &addresses.insurance);
         let policy_page = insurance_client.get_active_policies(&user, &0, &50);
         let policies = policy_page.items;
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
@@ -591,7 +631,16 @@ impl ReportingContract {
     }
 
     /// Calculate financial health score
-    pub fn calculate_health_score(env: Env, user: Address, _total_remittance: i128) -> HealthScore {
+    pub fn calculate_health_score(env: Env, user: Address, total_remittance: i128) -> HealthScore {
+        user.require_auth();
+        Self::calculate_health_score_internal(&env, user, total_remittance)
+    }
+
+    fn calculate_health_score_internal(
+        env: &Env,
+        user: Address,
+        _total_remittance: i128,
+    ) -> HealthScore {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -658,21 +707,17 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> FinancialHealthReport {
+        user.require_auth();
         let health_score =
-            Self::calculate_health_score(env.clone(), user.clone(), total_remittance);
-        let remittance_summary = Self::get_remittance_summary(
-            env.clone(),
-            user.clone(),
-            total_remittance,
-            period_start,
-            period_end,
-        );
+            Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
+        let remittance_summary =
+            Self::get_remittance_summary_internal(&env, total_remittance, period_start, period_end);
         let savings_report =
-            Self::get_savings_report(env.clone(), user.clone(), period_start, period_end);
+            Self::get_savings_report_internal(&env, user.clone(), period_start, period_end);
         let bill_compliance =
-            Self::get_bill_compliance_report(env.clone(), user.clone(), period_start, period_end);
+            Self::get_bill_compliance_report_internal(&env, user.clone(), period_start, period_end);
         let insurance_report =
-            Self::get_insurance_report(env.clone(), user, period_start, period_end);
+            Self::get_insurance_report_internal(&env, user, period_start, period_end);
 
         let generated_at = env.ledger().timestamp();
 
@@ -798,6 +843,7 @@ impl ReportingContract {
         user: Address,
         period_key: u64,
     ) -> Option<FinancialHealthReport> {
+        user.require_auth();
         let reports: Map<(Address, u64), FinancialHealthReport> = env
             .storage()
             .instance()
@@ -903,6 +949,7 @@ impl ReportingContract {
     /// # Returns
     /// Vec of ArchivedReport structs
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
+        user.require_auth();
         let archived: Map<(Address, u64), ArchivedReport> = env
             .storage()
             .instance()

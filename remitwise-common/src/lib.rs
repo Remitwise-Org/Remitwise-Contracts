@@ -74,10 +74,6 @@ impl EventPriority {
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
 pub const MAX_PAGE_LIMIT: u32 = 50;
 
-/// Storage TTL constants for active data
-pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-pub const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-
 /// Storage TTL constants for archived data
 pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)

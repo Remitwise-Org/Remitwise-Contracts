@@ -385,7 +385,7 @@ fn test_role_expiry_boundary_allows_before_expiry() {
 
     // At `expiry - 1` the role is still active.
     set_ledger_time(&env, 101, expiry - 1);
-    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0));
+    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000));
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn test_role_expiry_boundary_revokes_at_expiry_timestamp() {
 
     // At `expiry` the role is expired (inclusive boundary).
     set_ledger_time(&env, 101, expiry);
-    client.configure_emergency(&admin, &1000_0000000, &3600, &0);
+    client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000);
 }
 
 #[test]
@@ -441,7 +441,7 @@ fn test_role_expiry_renewal_restores_permissions() {
     assert_eq!(client.get_role_expiry_public(&admin), Some(renewed_to));
 
     // Permissions are restored immediately after renewal.
-    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0));
+    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000));
 }
 
 #[test]
@@ -573,7 +573,7 @@ fn test_emergency_mode_direct_transfer_within_limits() {
     let total = 5000_0000000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
 
-    client.configure_emergency(&owner, &2000_0000000, &3600u64, &1000_0000000);
+    client.configure_emergency(&owner, &2000_0000000, &3600u64, &1000_0000000, &5000_0000000);
     client.set_emergency_mode(&owner, &true);
     assert!(client.is_emergency_mode());
 
@@ -608,7 +608,7 @@ fn test_emergency_transfer_exceeds_limit() {
 
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
 
-    client.configure_emergency(&owner, &1000_0000000, &3600u64, &0);
+    client.configure_emergency(&owner, &1000_0000000, &3600u64, &0, &5000_0000000);
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);
@@ -633,7 +633,7 @@ fn test_emergency_transfer_cooldown_enforced() {
 
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
 
-    client.configure_emergency(&owner, &2000_0000000, &3600u64, &0);
+    client.configure_emergency(&owner, &2000_0000000, &3600u64, &0, &5000_0000000);
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);
@@ -665,7 +665,7 @@ fn test_emergency_transfer_min_balance_enforced() {
     let total = 3000_0000000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
 
-    client.configure_emergency(&owner, &2000_0000000, &0u64, &2500_0000000);
+    client.configure_emergency(&owner, &2000_0000000, &0u64, &2500_0000000, &5000_0000000);
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);

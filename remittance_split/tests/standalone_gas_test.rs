@@ -65,8 +65,7 @@ fn test_create_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
-    assert!(result.is_ok(), "Schedule creation should succeed");
-    let schedule_id = result.unwrap();
+    let schedule_id = result;
     assert_eq!(schedule_id, 1, "First schedule should have ID 1");
 
     // Validate gas measurements are reasonable
@@ -91,8 +90,7 @@ fn test_modify_schedule_gas_measurement() {
     let interval = 2_592_000u64;
 
     // Create initial schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .expect("Initial schedule creation should succeed");
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure modification
     let new_amount = 2_000i128;
@@ -104,8 +102,7 @@ fn test_modify_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
-    assert!(result.is_ok(), "Schedule modification should succeed");
-    assert!(result.unwrap(), "Modification should return true");
+    assert!(result, "Modification should return true");
 
     // Validate gas measurements
     assert!(cpu > 0, "CPU cost should be measured");
@@ -129,8 +126,7 @@ fn test_cancel_schedule_gas_measurement() {
     let interval = 2_592_000u64;
 
     // Create initial schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .expect("Initial schedule creation should succeed");
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure cancellation
     let (cpu, mem, result) = measure_gas(&env, || {
@@ -138,8 +134,7 @@ fn test_cancel_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
-    assert!(result.is_ok(), "Schedule cancellation should succeed");
-    assert!(result.unwrap(), "Cancellation should return true");
+    assert!(result, "Cancellation should return true");
 
     // Validate gas measurements
     assert!(cpu > 0, "CPU cost should be measured");
@@ -191,7 +186,6 @@ fn test_query_schedules_with_data_gas_measurement() {
         let interval = 2_592_000u64;
         
         let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-        assert!(result.is_ok(), "Schedule {} creation should succeed", i);
     }
 
     // Measure query with data
@@ -224,8 +218,7 @@ fn test_query_single_schedule_gas_measurement() {
     let interval = 2_592_000u64;
 
     // Create schedule
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
-        .expect("Schedule creation should succeed");
+    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure single lookup
     let (cpu, mem, schedule) = measure_gas(&env, || {
@@ -262,8 +255,7 @@ fn test_gas_scaling_with_multiple_schedules() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
         
-        let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-        assert!(result.is_ok(), "Schedule {} creation should succeed", i);
+        let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
     // Measure creating the 11th schedule (with existing storage)
@@ -276,8 +268,7 @@ fn test_gas_scaling_with_multiple_schedules() {
     });
 
     // Validate the operation succeeded
-    assert!(result.is_ok(), "11th schedule creation should succeed");
-    let schedule_id = result.unwrap();
+    let schedule_id = result;
     assert_eq!(schedule_id, 11, "Should be the 11th schedule");
 
     // Validate gas measurements show reasonable scaling
@@ -305,8 +296,7 @@ fn test_data_isolation_security() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
         
-        let result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
-        assert!(result.is_ok(), "Owner1 schedule {} creation should succeed", i);
+        let _result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
     }
 
     // Create schedules for owner2
@@ -315,8 +305,7 @@ fn test_data_isolation_security() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 604_800u64;
         
-        let result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
-        assert!(result.is_ok(), "Owner2 schedule {} creation should succeed", i);
+        let _result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
     }
 
     // Validate data isolation
@@ -348,7 +337,7 @@ fn test_input_validation_security() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     // Test invalid amount (zero)
-    let result = client.create_remittance_schedule(
+    let result = client.try_create_remittance_schedule(
         &owner, 
         &0i128, // Invalid: zero amount
         &(env.ledger().timestamp() + 86400), 
@@ -357,7 +346,7 @@ fn test_input_validation_security() {
     assert!(result.is_err(), "Zero amount should be rejected");
 
     // Test invalid amount (negative)
-    let result = client.create_remittance_schedule(
+    let result = client.try_create_remittance_schedule(
         &owner, 
         &(-1000i128), // Invalid: negative amount
         &(env.ledger().timestamp() + 86400), 
@@ -366,10 +355,10 @@ fn test_input_validation_security() {
     assert!(result.is_err(), "Negative amount should be rejected");
 
     // Test invalid due date (past)
-    let result = client.create_remittance_schedule(
+    let result = client.try_create_remittance_schedule(
         &owner, 
         &1000i128, 
-        &(env.ledger().timestamp() - 86400), // Invalid: past date
+        &(env.ledger().timestamp() - 10), // Invalid: past due date
         &2_592_000u64
     );
     assert!(result.is_err(), "Past due date should be rejected");
@@ -381,7 +370,7 @@ fn test_input_validation_security() {
         &(env.ledger().timestamp() + 86400), 
         &2_592_000u64
     );
-    assert!(result.is_ok(), "Valid parameters should succeed");
+    assert!(result > 0, "Valid parameters should succeed");
 
     println!("✅ Input validation security verified");
 }
@@ -404,8 +393,7 @@ fn test_complete_schedule_lifecycle() {
     let (create_cpu, create_mem, schedule_id) = measure_gas(&env, || {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
-    assert!(schedule_id.is_ok(), "Schedule creation should succeed");
-    let schedule_id = schedule_id.unwrap();
+    let schedule_id = schedule_id;
     println!("   Create - CPU: {}, Memory: {}", create_cpu, create_mem);
 
     // 2. Query single schedule
@@ -430,14 +418,14 @@ fn test_complete_schedule_lifecycle() {
     let (modify_cpu, modify_mem, modified) = measure_gas(&env, || {
         client.modify_remittance_schedule(&owner, &schedule_id, &new_amount, &new_next_due, &new_interval)
     });
-    assert!(modified.is_ok() && modified.unwrap(), "Schedule modification should succeed");
+    assert!(modified, "Schedule modification should succeed");
     println!("   Modify - CPU: {}, Memory: {}", modify_cpu, modify_mem);
 
     // 5. Cancel schedule
     let (cancel_cpu, cancel_mem, cancelled) = measure_gas(&env, || {
         client.cancel_remittance_schedule(&owner, &schedule_id)
     });
-    assert!(cancelled.is_ok() && cancelled.unwrap(), "Schedule cancellation should succeed");
+    assert!(cancelled, "Schedule cancellation should succeed");
     println!("   Cancel - CPU: {}, Memory: {}", cancel_cpu, cancel_mem);
 
     // 6. Verify cancellation
@@ -471,9 +459,8 @@ fn test_performance_stress() {
         let interval = 2_592_000u64;
         
         let result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-        assert!(result.is_ok(), "Schedule {} creation should succeed", i);
+        let _result = (result, "Schedule {} creation should succeed", i);
     }
-
     // Measure query performance with 20 schedules
     let (cpu, mem, schedules) = measure_gas(&env, || {
         client.get_remittance_schedules(&owner)

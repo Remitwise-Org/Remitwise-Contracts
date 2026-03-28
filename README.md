@@ -35,6 +35,28 @@ A common crate containing shared types, enums, and constants used across multipl
 - `clamp_limit()`: Helper for pagination limit validation
 - `RemitwiseEvents`: Standardized event emission with `emit()` and `emit_batch()` methods
 
+## Shared Enums & Constants Stability Coverage
+
+This project now includes dedicated compatibility guards in `remitwise-common` to prevent breaking changes across dependent contracts.
+
+- invariant tests for enum discriminants and event tags
+- ordering assumptions verified for role and coverage definitions
+- round-trip serialization via `soroban_sdk::IntoVal`/`TryFromVal`
+- event topic and payload serialization checks for `RemitwiseEvents`
+- pagination and TTL constant stability assertions
+
+### Running the new coverage
+
+```bash
+cargo test -p remitwise-common
+```
+
+### Security notes
+
+- Enums are `#[repr(u32)]` and are asserted in tests, reducing risk of contract integration drift
+- Shared constants used for pagination, batch size, storage TTL, and signature timeout are locked with stability checks
+- `clamp_limit()` now has explicit tests for overflow, underflow, and boundary conditions
+
 ## CLI Tool
 
 A custom Rust CLI is provided for interacting with the contracts without a UI.
