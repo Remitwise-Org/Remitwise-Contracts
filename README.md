@@ -456,6 +456,35 @@ Run tests for all contracts:
 cargo test
 ```
 
+### Encrypted migration payload decode safety
+
+The `data_migration` crate supports an **opaque encrypted payload** transport format for off-chain migration tooling.
+
+**Format contract**
+
+- `enc:v1:<base64>`
+
+Where:
+
+- `enc:v1:` is a strict marker prefix.
+- `<base64>` is the base64-encoded ciphertext blob.
+
+**Security assumptions and notes**
+
+- `data_migration` does **not** perform cryptographic encryption/decryption; it only transports bytes.
+- The marker prefix prevents accidental decoding of non-encrypted migration strings as ciphertext.
+- Import is strict and must **fail closed** (return an error) for:
+  - missing/incorrect marker
+  - unsupported marker version
+  - empty ciphertext
+  - invalid/truncated base64
+
+Run tests for this crate:
+
+```bash
+cargo test -p data_migration
+```
+
 Run tests for a specific contract:
 
 ```bash
