@@ -5,7 +5,7 @@ use soroban_sdk::{
     token::{StellarAssetClient, TokenClient},
     vec, Env,
 };
-use testutils::set_ledger_time;
+use testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_initialize_wallet_succeeds() {

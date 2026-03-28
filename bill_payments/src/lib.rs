@@ -1547,6 +1547,7 @@ impl BillPayments {
 mod test {
     use super::*;
     use proptest::prelude::*;
+    use remitwise_common::MAX_PAGE_LIMIT;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
         Env, String,
@@ -1573,6 +1574,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(env, "XLM"),
             );
             ids.push_back(id);
@@ -1807,6 +1809,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
             client.create_bill(
@@ -1816,6 +1819,7 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -1889,6 +1893,7 @@ mod test {
                 &due_date, // 20000
                 &false,
                 &0,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
         }
@@ -2005,6 +2010,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &1,    // frequency_days = 1
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2039,6 +2045,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2076,6 +2083,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &365,  // frequency_days = 365
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2117,6 +2125,7 @@ mod test {
             &base_due_date,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2148,6 +2157,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2197,6 +2207,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2243,6 +2254,7 @@ mod test {
             &base_due_date,
             &true, // recurring
             &30,   // frequency_days = 30
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2281,6 +2293,7 @@ mod test {
             &1_000_000,
             &true,
             &frequency,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2317,6 +2330,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2352,6 +2366,7 @@ mod test {
             &1_000_000,
             &true,
             &30,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2392,6 +2407,7 @@ mod test {
             &base_due,
             &true,
             &freq,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2432,6 +2448,7 @@ mod test {
                     &(now - 1 - i as u64),
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
@@ -2445,6 +2462,7 @@ mod test {
                     &(now + 1 + i as u64),
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
@@ -2479,6 +2497,7 @@ mod test {
                     &(now + i as u64), // due_date >= now — strict less-than is required to be overdue
                     &false,
                     &0,
+                    &None,
                     &String::from_str(&env, "XLM"),
                 );
             }
@@ -2517,6 +2536,7 @@ mod test {
                 &base_due,
                 &true,
                 &freq_days,
+                &None,
                 &String::from_str(&env, "XLM"),
             );
 
@@ -2562,10 +2582,10 @@ mod test {
         // 3. Execution: Attempt to create bills with invalid dates
         // Added '&currency' as the final argument to both calls
         let result_past =
-            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &currency);
+            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &None, &currency);
 
         let result_zero =
-            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &currency);
+            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &None, &currency);
 
         // 4. Assertions
         assert!(
@@ -2617,6 +2637,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2646,6 +2667,7 @@ mod test {
             &due_date,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2681,6 +2703,7 @@ mod test {
             &overdue_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
@@ -2693,6 +2716,7 @@ mod test {
             &due_now_target,
             &false,
             &0,
+            &None,
             &String::from_str(&env, "XLM"),
         );
 
