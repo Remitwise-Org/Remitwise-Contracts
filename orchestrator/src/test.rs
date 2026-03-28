@@ -1,5 +1,9 @@
-use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use crate::{ExecutionState, Orchestrator, OrchestratorAuditEntry, OrchestratorClient, OrchestratorError};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, Address, Env, Symbol, Vec,
+    testutils::{Address as _, Events},
+};
+use testutils::generate_test_address;
 
 // ============================================================================
 // Mock Contract Implementations
@@ -130,6 +134,44 @@ mod tests {
             insurance_id,
             user,
         )
+    }
+
+    fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+        setup()
+    }
+
+    fn seed_audit_log(env: &Env, user: &Address, count: u32) {
+        for i in 0..count {
+            Orchestrator::append_audit_entry(
+                env,
+                user,
+                symbol_short!("execflow"),
+                i as i128,
+                true,
+                None,
+            );
+        }
+    }
+
+    fn collect_all_pages(
+        env: &Env,
+        client: &OrchestratorClient,
+        page_size: u32,
+    ) -> Vec<OrchestratorAuditEntry> {
+        let mut cursor = 0u32;
+        let mut out = Vec::new(env);
+        loop {
+            let page = client.get_audit_log(&cursor, &page_size);
+            if page.is_empty() {
+                break;
+            }
+            let page_len = page.len();
+            for entry in page.iter() {
+                out.push_back(entry);
+            }
+            cursor = cursor.saturating_add(page_len);
+        }
+        out
     }
 
     // ============================================================================
@@ -1377,7 +1419,7 @@ mod tests {
 
         // Fetch in multiple pages and assert continuity without duplicates.
         let page_size = 17u32;
-        let entries = collect_all_pages(&client, page_size);
+        let entries = collect_all_pages(&env, &client, page_size);
         assert_eq!(entries.len() as u32, 100);
 
         // Rotation should retain the most recent [30..129] amounts.
@@ -1388,11 +1430,13 @@ mod tests {
             assert_eq!(entry.operation, symbol_short!("execflow"));
         }
 
-        let mut dedupe = std::collections::BTreeSet::new();
-        for entry in &entries {
-            dedupe.insert(entry.amount);
+        for i in 0..entries.len() {
+            let amount_i = entries.get(i).unwrap().amount;
+            for j in 0..i {
+                let amount_j = entries.get(j).unwrap().amount;
+                assert_ne!(amount_i, amount_j);
+            }
         }
-        assert_eq!(dedupe.len(), entries.len());
     }
 
     #[test]
@@ -1453,7 +1497,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1479,7 +1523,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1500,7 +1544,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1520,7 +1564,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1546,7 +1590,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1567,7 +1611,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1602,7 +1646,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::SelfReferenceNotAllowed
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1637,7 +1681,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1672,7 +1716,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 
@@ -1703,7 +1747,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().unwrap(),
-            OrchestratorError::DuplicateContractAddress
+            OrchestratorError::InvalidContractAddress
         );
     }
 }

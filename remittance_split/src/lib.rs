@@ -1133,12 +1133,16 @@ mod test {
     use soroban_sdk::TryFromVal;
     use testutils::setup_test_env;
 
+    fn fake_token(env: &Env) -> Address {
+        Address::generate(env)
+    }
+
     #[test]
     fn test_initialize_split_emits_event() {
         setup_test_env!(env, RemittanceSplit, client, owner, RemittanceSplitClient);
 
         // Initialize split
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Verify event was emitted
@@ -1155,7 +1159,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Initialize split first
-        client.initialize_split(&owner, &0, &40, &30, &20, &10);
+        client.initialize_split(&owner, &0, &fake_token(&env), &40, &30, &20, &10);
 
         // Get events before calculating
         let events_before = env.events().all().len();
@@ -1182,7 +1186,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Initialize split
-        client.initialize_split(&owner, &0, &50, &25, &15, &10);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &25, &15, &10);
 
         // Calculate split twice
         client.calculate_split(&2000);
@@ -1231,7 +1235,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // initialize_split calls extend_instance_ttl
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
         assert!(result);
 
         // Inspect instance TTL — must be at least INSTANCE_BUMP_AMOUNT
@@ -1267,7 +1271,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // Advance ledger so TTL drops below threshold (17,280)
         // After init: live_until = 518,500. At seq 510,000: TTL = 8,500
@@ -1317,7 +1321,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Phase 1: Initialize at seq 100. live_until = 518,500
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
         env.ledger().set(LedgerInfo {
@@ -1382,7 +1386,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        let result = client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        let result = client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
         assert!(result, "initialize_split should return true on success");
 
         let config = client
@@ -1408,7 +1412,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Should panic because owner has not authorized
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
     }
 
     /// ### 3. test_initialize_split_percentages_must_sum_to_100
@@ -1422,14 +1426,14 @@ mod test {
         let owner = Address::generate(&env);
 
         // 40 + 30 + 15 + 5 = 90, not 100
-        let result = client.try_initialize_split(&owner, &0, &40, &30, &15, &5);
+        let result = client.try_initialize_split(&owner, &0, &fake_token(&env), &40, &30, &15, &5);
         assert_eq!(
             result,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
         );
 
         // 50 + 50 + 10 + 0 = 110, not 100
-        let result2 = client.try_initialize_split(&owner, &0, &50, &50, &10, &0);
+        let result2 = client.try_initialize_split(&owner, &0, &fake_token(&env), &50, &50, &10, &0);
         assert_eq!(
             result2,
             Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
@@ -1447,10 +1451,10 @@ mod test {
         let owner = Address::generate(&env);
 
         // First init succeeds
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // Second init must fail with AlreadyInitialized
-        let result = client.try_initialize_split(&owner, &1, &50, &30, &15, &5);
+        let result = client.try_initialize_split(&owner, &1, &fake_token(&env), &50, &30, &15, &5);
         assert_eq!(result, Err(Ok(RemittanceSplitError::AlreadyInitialized)));
     }
 
@@ -1465,7 +1469,7 @@ mod test {
         let owner = Address::generate(&env);
         let other = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // other address is not the owner — must fail
         let result = client.try_update_split(&other, &0, &40, &40, &10, &10);
@@ -1486,7 +1490,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // 60 + 30 + 15 + 5 = 110 — invalid
         let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
@@ -1542,7 +1546,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         let config = client.get_config();
         assert!(config.is_some(), "get_config should be Some after init");
@@ -1569,7 +1573,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // 50 / 30 / 15 / 5
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         let amounts = client.calculate_split(&1000);
         assert_eq!(amounts.len(), 4);
@@ -1593,7 +1597,7 @@ mod test {
         let client = RemittanceSplitClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         // Zero
         let result_zero = client.try_calculate_split(&0);
@@ -1623,7 +1627,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // Use percentages that cause integer division remainders: 33/33/33/1
-        client.initialize_split(&owner, &0, &33, &33, &33, &1);
+        client.initialize_split(&owner, &0, &fake_token(&env), &33, &33, &33, &1);
 
         // total = 100: 33+33+33 = 99, insurance gets remainder = 1
         let amounts = client.calculate_split(&100);
@@ -1652,7 +1656,7 @@ mod test {
         let owner = Address::generate(&env);
 
         // --- initialize_split event ---
-        client.initialize_split(&owner, &0, &50, &30, &15, &5);
+        client.initialize_split(&owner, &0, &fake_token(&env), &50, &30, &15, &5);
 
         let events_after_init = env.events().all();
         assert!(
