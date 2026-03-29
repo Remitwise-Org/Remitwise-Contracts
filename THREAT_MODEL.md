@@ -1506,22 +1506,33 @@ By addressing these issues systematically, the Remitwise platform can achieve a 
 An attacker who captures a valid signed orchestrator command payload can resubmit it to trigger the same operation multiple times (replay attack).
 
 ### Mitigation
-All single-operation entry points (`execute_savings_deposit`, `execute_bill_payment`, `execute_insurance_payment`) now require a caller-supplied `nonce: u64` parameter.
+Contracts that accept replayable user actions adopt a canonical nonce model:
 
-The nonce is bound to a composite key of `(caller, command_type, nonce)` stored in persistent contract storage. Once consumed, the key is permanently recorded and any attempt to reuse it returns `OrchestratorError::NonceAlreadyUsed`.
+- **Per-caller sequential nonce**: each caller address has a single monotonic `u64` nonce stream.
+- **Canonical storage keys**: `NONCES` stores the current nonce per caller; `USED_N` stores a bounded per-caller log of already-consumed nonces.
+- **Two-phase semantics**:
+  1. **Read/validate**: entrypoints require `nonce == get_nonce(caller)` before doing work.
+  2. **Update**: on success, the contract records the nonce as consumed and increments to `nonce + 1`.
+
+This strategy is applied consistently across:
+- `orchestrator`: `execute_savings_deposit`, `execute_bill_payment`, `execute_insurance_payment`
+- `savings_goals`: snapshot `import_snapshot`
+- `remittance_split`: mutating entrypoints that already require nonces (with additional hardening for signed requests)
 
 ### Security Properties
 - **Caller-scoped**: the same nonce value is valid for different callers.
-- **Command-scoped**: the same nonce value is valid across different command types.
-- **Permanent**: consumed nonces never expire — there is no time window for replay.
-- **Atomic**: nonce consumption happens before any state changes; a failed call does not consume the nonce if it fails before the consume step is reached; if it fails after, the nonce is consumed and the operation must be retried with a fresh nonce.
+- **Simple coordination**: all replayable entrypoints in a contract share the same nonce stream per caller (no per-command nonce domains).
+- **Fail-closed**: if nonce validation fails, the entrypoint performs no state changes.
+- **Deterministic update**: successful calls advance the nonce by exactly 1; failed calls do not advance it.
+- **Counter-reset defense-in-depth**: the `USED_N` log prevents reusing an already-consumed nonce even if a counter is accidentally reset during upgrades/migrations.
 
 ### Error Codes
 | Code | Name | Description |
 |------|------|-------------|
-| 11 | SelfReferenceNotAllowed | A contract address references the orchestrator itself |
-| 12 | DuplicateContractAddress | Two or more contract addresses are identical |
-| 13 | NonceAlreadyUsed | Nonce has already been consumed for this caller/command pair |
+| 13 | SelfReferenceNotAllowed | A contract address references the orchestrator itself |
+| 14 | InvalidNonce | Supplied nonce does not equal the current caller nonce |
+| 15 | NonceAlreadyUsed | Supplied nonce was already consumed for this caller |
+| 16 | NonceOverflow | Nonce counter overflowed when advancing |
 
 ### Test Coverage
-Six dedicated nonce tests cover: replay rejection per command type, nonce isolation per caller, nonce isolation across command types, and sequential unique nonce acceptance.
+Integration tests cover: sequential nonce advancement across orchestrator entrypoints, replay rejection, wrong-nonce rejection, and snapshot nonce replay protection in savings_goals.

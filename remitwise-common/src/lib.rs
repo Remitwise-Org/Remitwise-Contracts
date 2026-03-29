@@ -205,3 +205,107 @@ pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
 
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
 pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
+
+pub mod nonce {
+    use soroban_sdk::{symbol_short, Address, Env, Map, Symbol, Vec};
+
+    /// @notice Errors returned by canonical nonce operations.
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum NonceError {
+        /// @notice The supplied nonce does not equal the current nonce.
+        InvalidNonce = 1,
+        /// @notice The nonce has already been consumed for this address.
+        NonceAlreadyUsed = 2,
+        /// @notice Nonce increment overflowed.
+        Overflow = 3,
+    }
+
+    const NONCES_KEY: Symbol = symbol_short!("NONCES");
+    const USED_NONCES_KEY: Symbol = symbol_short!("USED_N");
+    const MAX_USED_NONCES_PER_ADDR: u32 = 256;
+
+    /// @notice Returns the current sequential nonce for `address`.
+    pub fn get(env: &Env, address: &Address) -> u64 {
+        let nonces: Option<Map<Address, u64>> = env.storage().instance().get(&NONCES_KEY);
+        nonces
+            .as_ref()
+            .and_then(|m| m.get(address.clone()))
+            .unwrap_or(0)
+    }
+
+    /// @notice Returns true if `nonce` is recorded as consumed for `address`.
+    pub fn is_used(env: &Env, address: &Address, nonce: u64) -> bool {
+        let map: Option<Map<Address, Vec<u64>>> = env.storage().instance().get(&USED_NONCES_KEY);
+        match map {
+            None => false,
+            Some(m) => match m.get(address.clone()) {
+                None => false,
+                Some(used) => used.contains(nonce),
+            },
+        }
+    }
+
+    /// @notice Validates that `expected` equals the current nonce for `address`.
+    pub fn require_current(env: &Env, address: &Address, expected: u64) -> Result<(), NonceError> {
+        let current = get(env, address);
+        if expected != current {
+            return Err(NonceError::InvalidNonce);
+        }
+        Ok(())
+    }
+
+    /// @notice Marks the current nonce as consumed and increments the stored counter.
+    ///
+    /// @dev Call only after all state changes for the signed/replayable action have succeeded.
+    pub fn increment(env: &Env, address: &Address) -> Result<u64, NonceError> {
+        let current = get(env, address);
+        if is_used(env, address, current) {
+            return Err(NonceError::NonceAlreadyUsed);
+        }
+        mark_used(env, address, current);
+        let next = current.checked_add(1).ok_or(NonceError::Overflow)?;
+
+        let mut nonces: Map<Address, u64> = env
+            .storage()
+            .instance()
+            .get(&NONCES_KEY)
+            .unwrap_or_else(|| Map::new(env));
+        nonces.set(address.clone(), next);
+        env.storage().instance().set(&NONCES_KEY, &nonces);
+
+        Ok(next)
+    }
+
+    /// @notice Validates the nonce and, on success, records it as consumed and increments.
+    ///
+    /// @dev Prefer `require_current` + `increment` so nonce updates only happen after success.
+    pub fn consume(env: &Env, address: &Address, expected: u64) -> Result<u64, NonceError> {
+        require_current(env, address, expected)?;
+        increment(env, address)
+    }
+
+    fn mark_used(env: &Env, address: &Address, nonce: u64) {
+        let mut map: Map<Address, Vec<u64>> = env
+            .storage()
+            .instance()
+            .get(&USED_NONCES_KEY)
+            .unwrap_or_else(|| Map::new(env));
+
+        let mut used: Vec<u64> = map.get(address.clone()).unwrap_or_else(|| Vec::new(env));
+
+        if used.len() >= MAX_USED_NONCES_PER_ADDR {
+            let mut trimmed = Vec::new(env);
+            for i in 1..used.len() {
+                if let Some(v) = used.get(i) {
+                    trimmed.push_back(v);
+                }
+            }
+            used = trimmed;
+        }
+
+        used.push_back(nonce);
+        map.set(address.clone(), used);
+        env.storage().instance().set(&USED_NONCES_KEY, &map);
+    }
+}

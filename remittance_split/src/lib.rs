@@ -69,8 +69,9 @@ pub struct AccountGroup {
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-/// Key for the per-address used-nonce bitmap (Map<Address, Vec<u64>>).
-const USED_NONCES_KEY: &str = "USED_N";
+const NONCES_KEY: Symbol = symbol_short!("NONCES");
+/// Key for the per-address used-nonce log (Map<Address, Vec<u64>>).
+const USED_NONCES_KEY: Symbol = symbol_short!("USED_N");
 /// Maximum number of used nonces tracked per address before the oldest are pruned.
 const MAX_USED_NONCES_PER_ADDR: u32 = 256;
 /// Maximum ledger seconds a signed request may remain valid after creation.
@@ -854,13 +855,13 @@ impl RemittanceSplit {
         Ok(result)
     }
 
+    /// @notice Returns the current sequential nonce for `address`.
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         Self::get_nonce_value(&env, &address)
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {
-        let nonces: Option<Map<Address, u64>> =
-            env.storage().instance().get(&symbol_short!("NONCES"));
+        let nonces: Option<Map<Address, u64>> = env.storage().instance().get(&NONCES_KEY);
         nonces
             .as_ref()
             .and_then(|m: &Map<Address, u64>| m.get(address.clone()))
@@ -1215,8 +1216,7 @@ impl RemittanceSplit {
 
     /// Returns true if `nonce` has already been consumed for `address`.
     fn is_nonce_used(env: &Env, address: &Address, nonce: u64) -> bool {
-        let key = symbol_short!("USED_N");
-        let map: Option<Map<Address, Vec<u64>>> = env.storage().instance().get(&key);
+        let map: Option<Map<Address, Vec<u64>>> = env.storage().instance().get(&USED_NONCES_KEY);
         match map {
             None => false,
             Some(m) => match m.get(address.clone()) {
@@ -1227,11 +1227,10 @@ impl RemittanceSplit {
     }
 
     fn mark_nonce_used(env: &Env, address: &Address, nonce: u64) {
-        let key = symbol_short!("USED_N");
         let mut map: Map<Address, Vec<u64>> = env
             .storage()
             .instance()
-            .get(&key)
+            .get(&USED_NONCES_KEY)
             .unwrap_or_else(|| Map::new(env));
 
         let mut used: Vec<u64> = map.get(address.clone()).unwrap_or_else(|| Vec::new(env));
@@ -1249,7 +1248,7 @@ impl RemittanceSplit {
 
         used.push_back(nonce);
         map.set(address.clone(), used);
-        env.storage().instance().set(&key, &map);
+        env.storage().instance().set(&USED_NONCES_KEY, &map);
     }
 
     /// Compute a deterministic u64 request fingerprint.
@@ -1294,12 +1293,10 @@ impl RemittanceSplit {
         let mut nonces: Map<Address, u64> = env
             .storage()
             .instance()
-            .get(&symbol_short!("NONCES"))
+            .get(&NONCES_KEY)
             .unwrap_or_else(|| Map::new(env));
         nonces.set(address.clone(), next);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("NONCES"), &nonces);
+        env.storage().instance().set(&NONCES_KEY, &nonces);
         Ok(())
     }
 

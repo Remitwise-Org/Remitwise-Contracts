@@ -4,7 +4,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
@@ -223,6 +223,12 @@ pub enum SavingsGoalError {
     UnsupportedVersion = 6,
     /// Snapshot checksum does not match the recomputed digest.
     ChecksumMismatch = 7,
+    /// @notice The supplied nonce does not equal the current nonce.
+    InvalidNonce = 8,
+    /// @notice The supplied nonce has already been consumed.
+    NonceAlreadyUsed = 9,
+    /// @notice Nonce increment overflowed.
+    NonceOverflow = 10,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -1251,12 +1257,7 @@ impl SavingsGoalContract {
     // -----------------------------------------------------------------------
 
     pub fn get_nonce(env: Env, address: Address) -> u64 {
-        let nonces: Option<Map<Address, u64>> =
-            env.storage().instance().get(&symbol_short!("NONCES"));
-        nonces
-            .as_ref()
-            .and_then(|m: &Map<Address, u64>| m.get(address))
-            .unwrap_or(0)
+        nonce::get(&env, &address)
     }
 
     pub fn export_snapshot(env: Env, caller: Address) -> GoalsExportSnapshot {
@@ -1297,7 +1298,7 @@ impl SavingsGoalContract {
         snapshot: GoalsExportSnapshot,
     ) -> Result<bool, SavingsGoalError> {
         caller.require_auth();
-        Self::require_nonce(&env, &caller, nonce);
+        Self::require_nonce(&env, &caller, nonce)?;
 
         // Accept any schema_version within the supported range for backward/forward compat.
         if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
@@ -1337,7 +1338,7 @@ impl SavingsGoalContract {
             .instance()
             .set(&Self::STORAGE_OWNER_GOAL_IDS, &owner_goal_ids);
 
-        Self::increment_nonce(&env, &caller);
+        Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
         Ok(true)
     }
@@ -1360,28 +1361,26 @@ impl SavingsGoalContract {
         out
     }
 
-    fn require_nonce(env: &Env, address: &Address, expected: u64) {
-        let current = Self::get_nonce(env.clone(), address.clone());
-        if expected != current {
-            panic!("Invalid nonce: expected {}, got {}", current, expected);
+    fn require_nonce(env: &Env, address: &Address, expected: u64) -> Result<(), SavingsGoalError> {
+        nonce::require_current(env, address, expected).map_err(|e| match e {
+            nonce::NonceError::InvalidNonce => SavingsGoalError::InvalidNonce,
+            nonce::NonceError::NonceAlreadyUsed => SavingsGoalError::NonceAlreadyUsed,
+            nonce::NonceError::Overflow => SavingsGoalError::NonceOverflow,
+        })?;
+        if nonce::is_used(env, address, expected) {
+            return Err(SavingsGoalError::NonceAlreadyUsed);
         }
+        Ok(())
     }
 
-    fn increment_nonce(env: &Env, address: &Address) {
-        let current = Self::get_nonce(env.clone(), address.clone());
-        let next = match current.checked_add(1) {
-            Some(v) => v,
-            None => panic!("nonce overflow"),
-        };
-        let mut nonces: Map<Address, u64> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("NONCES"))
-            .unwrap_or_else(|| Map::new(env));
-        nonces.set(address.clone(), next);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("NONCES"), &nonces);
+    fn increment_nonce(env: &Env, address: &Address) -> Result<(), SavingsGoalError> {
+        nonce::increment(env, address)
+            .map(|_| ())
+            .map_err(|e| match e {
+                nonce::NonceError::InvalidNonce => SavingsGoalError::InvalidNonce,
+                nonce::NonceError::NonceAlreadyUsed => SavingsGoalError::NonceAlreadyUsed,
+                nonce::NonceError::Overflow => SavingsGoalError::NonceOverflow,
+            })
     }
 
     fn compute_goals_checksum(version: u32, next_id: u32, goals: &Vec<SavingsGoal>) -> u64 {

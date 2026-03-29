@@ -14,7 +14,7 @@ use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
     symbol_short, Address, Env, Symbol, Vec,
 };
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 
 #[cfg(test)]
 mod test;
@@ -69,6 +69,12 @@ pub enum OrchestratorError {
     DuplicateContractAddress = 11,
     ContractNotConfigured = 12,
     SelfReferenceNotAllowed = 13,
+    /// @notice The supplied nonce does not equal the current nonce.
+    InvalidNonce = 14,
+    /// @notice The supplied nonce has already been consumed.
+    NonceAlreadyUsed = 15,
+    /// @notice Nonce increment overflowed.
+    NonceOverflow = 16,
 }
 
 #[contracttype]
@@ -263,21 +269,12 @@ impl Orchestrator {
     ) -> Result<(), OrchestratorError> {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
-        let timestamp = env.ledger().timestamp();
-        // Address validation
-        Self::validate_two_addresses(&env, &family_wallet_addr, &savings_addr).map_err(|e| {
-            Self::release_execution_lock(&env);
-            e
-        })?;
-        // Nonce / replay protection
-        Self::consume_nonce(&env, &caller, symbol_short!("exec_sav"), nonce).map_err(|e| {
-            Self::release_execution_lock(&env);
-            e
-        })?;
-
         let result = (|| {
+            Self::validate_two_addresses(&env, &family_wallet_addr, &savings_addr)?;
+            Self::require_nonce(&env, &caller, nonce)?;
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
             Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, amount)?;
+            Self::increment_nonce(&env, &caller)?;
             Ok(())
         })();
 
@@ -297,8 +294,11 @@ impl Orchestrator {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
         let result = (|| {
+            Self::validate_two_addresses(&env, &family_wallet_addr, &bills_addr)?;
+            Self::require_nonce(&env, &caller, nonce)?;
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
             Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)?;
+            Self::increment_nonce(&env, &caller)?;
             Ok(())
         })();
         Self::release_execution_lock(&env);
@@ -317,8 +317,11 @@ impl Orchestrator {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
         let result = (|| {
+            Self::validate_two_addresses(&env, &family_wallet_addr, &insurance_addr)?;
+            Self::require_nonce(&env, &caller, nonce)?;
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
             Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)?;
+            Self::increment_nonce(&env, &caller)?;
             Ok(())
         })();
         Self::release_execution_lock(&env);
@@ -380,6 +383,44 @@ impl Orchestrator {
             return Err(OrchestratorError::DuplicateContractAddress);
         }
         Ok(())
+    }
+
+    fn validate_two_addresses(env: &Env, a: &Address, b: &Address) -> Result<(), OrchestratorError> {
+        let current = env.current_contract_address();
+        if a == &current || b == &current {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if a == b {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
+    /// @notice Returns the current sequential nonce for `caller`.
+    pub fn get_nonce(env: Env, caller: Address) -> u64 {
+        nonce::get(&env, &caller)
+    }
+
+    fn require_nonce(env: &Env, caller: &Address, expected: u64) -> Result<(), OrchestratorError> {
+        nonce::require_current(env, caller, expected).map_err(|e| match e {
+            nonce::NonceError::InvalidNonce => OrchestratorError::InvalidNonce,
+            nonce::NonceError::NonceAlreadyUsed => OrchestratorError::NonceAlreadyUsed,
+            nonce::NonceError::Overflow => OrchestratorError::NonceOverflow,
+        })?;
+        if nonce::is_used(env, caller, expected) {
+            return Err(OrchestratorError::NonceAlreadyUsed);
+        }
+        Ok(())
+    }
+
+    fn increment_nonce(env: &Env, caller: &Address) -> Result<(), OrchestratorError> {
+        nonce::increment(env, caller)
+            .map(|_| ())
+            .map_err(|e| match e {
+                nonce::NonceError::InvalidNonce => OrchestratorError::InvalidNonce,
+                nonce::NonceError::NonceAlreadyUsed => OrchestratorError::NonceAlreadyUsed,
+                nonce::NonceError::Overflow => OrchestratorError::NonceOverflow,
+            })
     }
 
     fn emit_success_event(env: &Env, caller: &Address, total: i128, allocations: &Vec<i128>, timestamp: u64) {

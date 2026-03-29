@@ -14,7 +14,6 @@ remitwise-common = { path = "../remitwise-common" }
 proptest = "1.10.0"
 soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 testutils = { path = "../testutils" }
-proptest = "1.4.0"
 
 [profile.release]
 opt-level = "z"
