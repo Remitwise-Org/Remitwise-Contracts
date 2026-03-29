@@ -6,9 +6,6 @@ use soroban_sdk::{
 };
 use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 
-// Event topics
-const GOAL_CREATED: Symbol = symbol_short!("created");
-const FUNDS_ADDED: Symbol = symbol_short!("added");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
 
 #[derive(Clone)]

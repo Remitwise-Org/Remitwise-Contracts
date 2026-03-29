@@ -68,8 +68,9 @@ pub struct FamilyMember {
     pub role: FamilyRole,
     /// Legacy per-transaction cap in stroops. 0 = unlimited.
     pub spending_limit: i128,
-    /// Enhanced precision spending limit (optional)
-    pub precision_limit: Option<PrecisionSpendingLimit>,
+    /// Enhanced precision spending limit.
+    /// Zeroed values indicate "disabled" (legacy behavior).
+    pub precision_limit: PrecisionSpendingLimit,
     pub added_at: u64,
 }
 
@@ -192,6 +193,21 @@ pub struct PrecisionSpendingLimit {
     pub enable_rollover: bool,
 }
 
+impl PrecisionSpendingLimit {
+    fn disabled() -> Self {
+        Self {
+            limit: 0,
+            min_precision: 0,
+            max_single_tx: 0,
+            enable_rollover: false,
+        }
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.limit == 0 && self.min_precision == 0 && self.max_single_tx == 0 && !self.enable_rollover
+    }
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum ArchiveEvent {
@@ -263,7 +279,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
-                precision_limit: None,
+                precision_limit: PrecisionSpendingLimit::disabled(),
                 added_at: timestamp,
             },
         );
@@ -275,7 +291,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
-                    precision_limit: None,
+                    precision_limit: PrecisionSpendingLimit::disabled(),
                     added_at: timestamp,
                 },
             );
@@ -377,7 +393,7 @@ impl FamilyWallet {
                 address: member_address.clone(),
                 role,
                 spending_limit,
-                precision_limit: None, // Default to legacy behavior
+                precision_limit: PrecisionSpendingLimit::disabled(),
                 added_at: now,
             },
         );
@@ -537,7 +553,8 @@ impl FamilyWallet {
 
         let member = members.get(caller).ok_or(Error::MemberNotFound)?;
 
-        if let Some(limit) = member.precision_limit {
+        let limit = member.precision_limit;
+        if !limit.is_disabled() {
             if limit.min_precision > 0 && amount % limit.min_precision != 0 {
                 return Err(Error::InvalidAmount);
             }
@@ -1040,7 +1057,7 @@ impl FamilyWallet {
                 address: member.clone(),
                 role,
                 spending_limit: 0,
-                precision_limit: None, // Default to legacy behavior
+                precision_limit: PrecisionSpendingLimit::disabled(),
                 added_at: timestamp,
             },
         );
@@ -1514,7 +1531,7 @@ impl FamilyWallet {
                     address: item.address.clone(),
                     role: item.role,
                     spending_limit: 0,
-                    precision_limit: None, // Default to legacy behavior
+                    precision_limit: PrecisionSpendingLimit::disabled(),
                     added_at: timestamp,
                 },
             );

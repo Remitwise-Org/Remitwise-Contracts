@@ -11,7 +11,6 @@ use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvent
 
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
-const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
 
 // Event data structures
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -217,8 +216,6 @@ const SCHEMA_VERSION: u32 = 2;
 /// Oldest snapshot schema version this contract can import. Enables backward compat.
 const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 2;
 const MAX_AUDIT_ENTRIES: u32 = 100;
-const DEFAULT_PAGE_LIMIT: u32 = 20;
-const MAX_PAGE_LIMIT: u32 = 50;
 const CONTRACT_VERSION: u32 = 1;
 
 #[contracttype]
@@ -1132,7 +1129,7 @@ impl RemittanceSplit {
     /// # Parameters
     /// - `from_index`: zero-based starting index (pass 0 for the first page,
     ///   then use the returned `next_cursor` for subsequent pages).
-    /// - `limit`: maximum entries to return; clamped to `[DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT]`.
+    /// - `limit`: maximum entries to return; clamped by `remitwise_common::clamp_limit`.
     ///
     /// # Pagination contract
     /// - Entries are returned oldest-to-newest within the rotating log window.
