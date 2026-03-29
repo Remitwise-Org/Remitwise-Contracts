@@ -419,3 +419,98 @@ fn test_pagination_with_large_amounts() {
         assert_eq!(bill.amount, large_amount);
     }
 }
+
+#[test]
+fn test_recurring_bill_max_frequency() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    // Use the maximum allowed frequency (36500 days = 100 years)
+    let max_freq = 36500; 
+
+    let bill_id = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Max Freq Bill"),
+        &100,
+        &1000000,
+        &true,
+        &max_freq,
+        &None, // external_ref
+        &String::from_str(&env, "XLM"),
+    );
+
+    let bill = client.get_bill(&bill_id).unwrap();
+    assert_eq!(bill.frequency_days, max_freq);
+
+    // Pay it and verify next bill
+    env.mock_all_auths();
+    client.pay_bill(&owner, &bill_id);
+
+    let next_bill = client.get_bill(&2).unwrap();
+    let expected_due = 1000000u64 + (max_freq as u64 * 86400);
+    assert_eq!(next_bill.due_date, expected_due);
+}
+
+#[test]
+fn test_recurring_bill_frequency_overflow_protection() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    // Try to create a bill with a frequency that exceeds MAX_FREQUENCY_DAYS
+    let result = client.try_create_bill(
+        &owner,
+        &String::from_str(&env, "Too High Freq"),
+        &100,
+        &1000000,
+        &true,
+        &40000, // Greater than 36500
+        &None, // external_ref
+        &String::from_str(&env, "XLM"),
+    );
+
+    // Should fail with InvalidFrequency
+    use bill_payments::Error;
+    assert_eq!(result, Err(Ok(Error::InvalidFrequency)));
+}
+
+#[test]
+fn test_recurring_bill_date_overflow_protection() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create a bill with a due date very close to u64::MAX
+    let near_max_due = u64::MAX - 86400; 
+    
+    // First, we need to set the ledger time to something before due_date so create_bill succeeds
+    set_time(&env, near_max_due - 1000);
+
+    let bill_id = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Near Max Due"),
+        &100,
+        &near_max_due,
+        &true,
+        &30, // 30 days will definitely overflow if added to near_max_due
+        &None, // external_ref
+        &String::from_str(&env, "XLM"),
+    );
+
+    // Paying this should fail due to date overflow
+    env.mock_all_auths();
+    let result = client.try_pay_bill(&owner, &bill_id);
+    
+    use bill_payments::Error;
+    assert_eq!(result, Err(Ok(Error::InvalidDueDate)));
+}

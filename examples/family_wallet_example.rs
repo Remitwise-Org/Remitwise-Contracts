@@ -1,6 +1,5 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
-use family_wallet::{FamilyWallet, FamilyWalletClient};
-use remitwise_common::FamilyRole;
+use family_wallet::{FamilyRole, FamilyWallet, FamilyWalletClient};
+use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -21,27 +20,27 @@ fn main() {
     // 4. [Write] Initialize the wallet. Do not include `owner` in `initial_members`
     // (the contract rejects that to preserve FamilyRole::Owner).
     println!("Initializing wallet with owner: {:?}", owner);
-    let initial_members = soroban_sdk::vec![&env, member1.clone()];
+    let mut initial_members = Vec::new(&env);
+    initial_members.push_back(owner.clone());
+    initial_members.push_back(member1.clone());
 
-    match client.try_init(&owner, &initial_members) {
-        Ok(Ok(true)) => println!("Wallet initialized successfully!"),
-        Ok(Ok(_)) => eprintln!("init returned unexpected success value"),
-        Ok(Err(e)) => panic!("init failed: {:?}", e),
-        Err(e) => panic!("host error on init: {:?}", e),
-    }
+    client.init(&owner, &initial_members);
+    println!("Wallet initialized successfully!");
 
     // 5. [Read] Check roles of members
     let owner_member = client.get_member(&owner).unwrap();
     println!("\nOwner Role: {:?}", owner_member.role);
-    
+
     let m1_member = client.get_member(&member1).unwrap();
     println!("Member 1 Role: {:?}", m1_member.role);
 
     // 6. [Write] Add a new family member with a specific role and spending limit
     println!("\nAdding new member: {:?}", member2);
-    let spending_limit = 500_0000000; // 500 tokens
-    client.add_member(&owner, &member2, &FamilyRole::Member, &spending_limit);
-    println!("Member added successfully.");
+    let spending_limit = 1000i128;
+    client
+        .add_member(&owner, &member2, &FamilyRole::Member, &spending_limit)
+        .unwrap();
+    println!("Member added successfully!");
 
     // 7. [Read] Verify the new member
     let m2_member = client.get_member(&member2).unwrap();

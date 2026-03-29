@@ -35,72 +35,72 @@
     "contract": "remittance_split",
     "method": "distribute_usdc",
     "scenario": "4_recipients_all_nonzero",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 708193,
+    "mem": 100165,
     "description": "Distribute USDC to 4 recipients with non-zero amounts"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "single_recurring_schedule",
-    "cpu": 145230,
-    "mem": 28456,
+    "cpu": 46579,
+    "mem": 6979,
     "description": "Create a single recurring remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "11th_schedule_with_existing",
-    "cpu": 167890,
-    "mem": 32145,
+    "cpu": 372595,
+    "mem": 99899,
     "description": "Create schedule when 10 existing schedules are present"
   },
   {
     "contract": "remittance_split",
     "method": "modify_remittance_schedule",
     "scenario": "single_schedule_modification",
-    "cpu": 134567,
-    "mem": 26789,
+    "cpu": 84477,
+    "mem": 15636,
     "description": "Modify an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "cancel_remittance_schedule",
     "scenario": "single_schedule_cancellation",
-    "cpu": 123456,
-    "mem": 24567,
+    "cpu": 84459,
+    "mem": 15564,
     "description": "Cancel an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "empty_schedules",
-    "cpu": 45678,
-    "mem": 12345,
+    "cpu": 13847,
+    "mem": 1456,
     "description": "Query schedules when none exist for owner"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "5_schedules_with_isolation",
-    "cpu": 234567,
-    "mem": 45678,
+    "cpu": 197774,
+    "mem": 38351,
     "description": "Query 5 schedules with data isolation validation"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedule",
     "scenario": "single_schedule_lookup",
-    "cpu": 67890,
-    "mem": 15432,
+    "cpu": 42932,
+    "mem": 6847,
     "description": "Retrieve a single schedule by ID"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "50_schedules_worst_case",
-    "cpu": 1234567,
-    "mem": 234567,
+    "cpu": 1251484,
+    "mem": 250040,
     "description": "Query schedules in worst-case scenario with 50 schedules"
   }
 ]

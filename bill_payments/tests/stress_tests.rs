@@ -84,7 +84,11 @@ fn stress_200_bills_single_user() {
 
     // Verify aggregate total
     let total = client.get_total_unpaid(&owner);
-    assert_eq!(total, 200 * 100i128, "get_total_unpaid must sum all 200 bills");
+    assert_eq!(
+        total,
+        200 * 100i128,
+        "get_total_unpaid must sum all 200 bills"
+    );
 
     // Exhaust all pages with MAX_PAGE_LIMIT (50) — should take exactly 4 pages
     let mut collected = 0u32;
@@ -328,8 +332,14 @@ fn stress_archive_100_paid_bills() {
 
     // Verify storage stats
     let stats = client.get_storage_stats();
-    assert_eq!(stats.active_bills, 0, "No active bills should remain after full archive");
-    assert_eq!(stats.archived_bills, 100, "Storage stats must show 100 archived bills");
+    assert_eq!(
+        stats.active_bills, 0,
+        "No active bills should remain after full archive"
+    );
+    assert_eq!(
+        stats.archived_bills, 100,
+        "Storage stats must show 100 archived bills"
+    );
 
     // Verify paginated access to archived bills
     let mut archived_seen = 0u32;
@@ -487,8 +497,9 @@ fn bench_archive_paid_bills_100() {
         client.pay_bill(&owner, &id);
     }
 
-    let (cpu, mem, result) =
-        measure(&env, || client.archive_paid_bills(&owner, &2_000_000_000u64));
+    let (cpu, mem, result) = measure(&env, || {
+        client.archive_paid_bills(&owner, &2_000_000_000u64)
+    });
     assert_eq!(result, 100);
 
     println!(
@@ -520,4 +531,59 @@ fn bench_get_total_unpaid_200_bills() {
         r#"{{"contract":"bill_payments","method":"get_total_unpaid","scenario":"200_bills","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
+}
+
+/// Stress test for `batch_pay_bills` with a large mixed batch (valid + invalid).
+#[test]
+fn stress_batch_pay_mixed_50() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    let name = String::from_str(&env, "BatchStress");
+    let due_date = 2_000_000_000u64;
+
+    // Create 30 valid bills for owner
+    let mut valid_ids = soroban_sdk::Vec::new(&env);
+    for _ in 0..30 {
+        valid_ids.push_back(client.create_bill(&owner, &name, &100i128, &due_date, &false, &0u32));
+    }
+
+    // Create 10 bills for 'other' (invalid for 'owner' to pay in batch)
+    let mut other_ids = soroban_sdk::Vec::new(&env);
+    for _ in 0..10 {
+        other_ids.push_back(client.create_bill(&other, &name, &100i128, &due_date, &false, &0u32));
+    }
+
+    // Mix them up with some non-existent IDs (total 50)
+    let mut batch = soroban_sdk::Vec::new(&env);
+    for id in valid_ids.iter() {
+        batch.push_back(id);
+    } // 30
+    for id in other_ids.iter() {
+        batch.push_back(id);
+    } // 10
+    for i in 0..10 {
+        batch.push_back(9990 + i);
+    } // 10 non-existent
+
+    assert_eq!(batch.len(), 50);
+
+    // Measure and execute
+    let (cpu, mem, success_count) = measure(&env, || client.batch_pay_bills(&owner, &batch));
+
+    // Only the 30 valid IDs should succeed
+    assert_eq!(success_count, 30);
+
+    println!(
+        r#"{{"contract":"bill_payments","method":"batch_pay_bills","scenario":"mixed_batch_50","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+
+    // Verify all 30 are indeed paid
+    for id in valid_ids.iter() {
+        assert!(client.get_bill(&id).unwrap().paid);
+    }
 }

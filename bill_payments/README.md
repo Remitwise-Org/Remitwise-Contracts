@@ -109,12 +109,12 @@ Creates a new bill with currency specification.
 - `amount`: Payment amount (must be positive)
 - `due_date`: Due date as Unix timestamp
 - `recurring`: Whether this is a recurring bill
-- `frequency_days`: Frequency in days for recurring bills (> 0 if recurring)
+- `frequency_days`: Frequency in days for recurring bills (0 < frequency_days <= 36500)
 - `currency`: Currency code (e.g., "XLM", "USDC", "NGN"). Case-insensitive, whitespace trimmed, defaults to "XLM" if empty.
 
 **Returns:** Bill ID on success
 
-**Errors:** InvalidAmount, InvalidFrequency, InvalidCurrency
+**Errors:** InvalidAmount, InvalidFrequency (if 0 or > 36500), InvalidCurrency, InvalidDueDate (if arithmetic overflows on recurrence)
 
 **Currency Normalization:**
 - Converts to uppercase (e.g., "usdc" → "USDC")
@@ -132,6 +132,24 @@ Marks a bill as paid.
 **Returns:** Ok(()) on success
 
 **Errors:** BillNotFound, BillAlreadyPaid, Unauthorized
+
+#### `batch_pay_bills(env, caller, bill_ids) -> Result<u32, Error>`
+Pays multiple bills in a single batch with deterministic partial success reporting.
+
+**Semantics:**
+- **Partial Success**: If a bill is invalid (not found, unauthorized, or already paid), it is skipped and an error event is emitted. Valid bills are still processed.
+- **Atomic Validation**: Initial checks like `BatchTooLarge` or `ContractPaused` still revert the entire batch.
+
+**Parameters:**
+- `caller`: Address of the bill owner (must authorize)
+- `bill_ids`: Vector of bill IDs to pay
+
+**Returns:** Number of successfully paid bills.
+
+**Events:**
+- `paid`: Per-bill success event.
+- `f_pay_*`: Per-bill failure events (e.g., `f_pay_id`, `f_pay_auth`, `f_pay_pd`).
+- `batch_res`: Final summary with `(success_count, failure_count)`.
 
 #### `get_bill(env, bill_id) -> Option<Bill>`
 Retrieves a bill by ID.
@@ -339,3 +357,39 @@ Bills can represent insurance premiums, working alongside the insurance contract
 - Owners can only manage their own bills
 - Input validation prevents invalid states
 - Storage TTL is managed to prevent bloat
+## Pause & Security Controls
+
+The Bill Payments contract includes advanced pause controls for operational security and maintenance.
+
+### Global Pause
+Pausing the entire contract blocks all state-changing operations:
+- `pause(env, admin)`: Freezes all contract activities.
+- `unpause(env, admin)`: Resumes contract operations.
+
+### Function-Level Granularity
+Individual functions can be paused without affecting the rest of the contract:
+- `pause_function(env, admin, func_symbol)`: Pauses a specific function (e.g., `CREATE_BILL`).
+- `unpause_function(env, admin, func_symbol)`: Unpauses a specific function.
+
+**Supported Function Symbols:**
+- `CREATE_BILL`: `symbol_short!("crt_bill")`
+- `PAY_BILL`: `symbol_short!("pay_bill")`
+- `CANCEL_BILL`: `symbol_short!("can_bill")`
+- `ARCHIVE`: `symbol_short!("archive")`
+- `RESTORE`: `symbol_short!("restore")`
+
+### Emergency Controls
+- `emergency_pause_all(env, admin)`: Pauses both the global contract and all individual functions simultaneously.
+
+### Scheduled Unpause
+- `schedule_unpause(env, admin, at_timestamp)`: Sets a future timestamp for when the contract can be unpaused, providing a security time-lock.
+
+### Administrative Roles
+- `set_pause_admin(env, caller, new_admin)`: Sets or transfers the administrative role responsible for pause controls.
+- `set_upgrade_admin(env, caller, new_admin)`: Sets or transfers the administrative role responsible for contract upgrades.
+
+### Security Notes
+- Global pause blocks all state-changing methods; read-only queries remain available.
+- Function-level pause blocks only the specified symbol, leaving other functions operational.
+- Scheduled unpause requires a future timestamp; unpause attempts before that time are rejected.
+- Pause admin keys should be secured (multisig or cold storage recommended).

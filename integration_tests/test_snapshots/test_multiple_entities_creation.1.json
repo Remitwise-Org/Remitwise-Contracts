@@ -201,7 +201,7 @@
                   "string": "Emergency Coverage"
                 },
                 {
-                  "u32": 1
+                  "u32": 5
                 },
                 {
                   "i128": {
@@ -1014,7 +1014,7 @@
                       },
                       {
                         "key": {
-                          "symbol": "POLICY"
+                          "symbol": "POLS"
                         },
                         "val": {
                           "map": [
@@ -1127,7 +1127,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "u32": 1
+                                      "u32": 5
                                     }
                                   },
                                   {
@@ -1186,7 +1186,7 @@
             },
             "ext": "v0"
           },
-          518400
+          4095
         ]
       ],
       [
@@ -1264,6 +1264,15 @@
           "v0": {
             "topics": [
               {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
                 "symbol": "created"
               }
             ],
@@ -1328,14 +1337,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "savings"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "GoalCreated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "goal_new"
               }
             ],
             "data": {
@@ -1427,6 +1438,15 @@
           "v0": {
             "topics": [
               {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
                 "symbol": "created"
               }
             ],
@@ -1491,14 +1511,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "savings"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "GoalCreated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "goal_new"
               }
             ],
             "data": {
@@ -1831,6 +1853,48 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000004",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 150
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000004",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -1877,7 +1941,7 @@
                   "string": "Emergency Coverage"
                 },
                 {
-                  "u32": 1
+                  "u32": 5
                 },
                 {
                   "i128": {
@@ -1889,6 +1953,48 @@
                   "i128": {
                     "hi": 0,
                     "lo": 10000
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000004",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 2
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50
                   }
                 }
               ]

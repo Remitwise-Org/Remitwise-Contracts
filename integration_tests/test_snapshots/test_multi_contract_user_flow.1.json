@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 5,
+    "address": 6,
     "nonce": 0
   },
   "auth": [
@@ -20,7 +20,7 @@
                   "u64": 0
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
                   "u32": 40
@@ -429,7 +429,7 @@
                                 "symbol": "usdc_contract"
                               },
                               "val": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                               }
                             }
                           ]
@@ -860,7 +860,7 @@
                       },
                       {
                         "key": {
-                          "symbol": "POLICY"
+                          "symbol": "POLS"
                         },
                         "val": {
                           "map": [
@@ -953,7 +953,7 @@
             },
             "ext": "v0"
           },
-          518400
+          4095
         ]
       ],
       [
@@ -1007,7 +1007,7 @@
                   "u64": 0
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
                   "u32": 40
@@ -1037,14 +1037,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "Initialized"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "init"
               }
             ],
             "data": {
@@ -1129,6 +1131,15 @@
           "v0": {
             "topics": [
               {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
                 "symbol": "created"
               }
             ],
@@ -1193,14 +1204,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "savings"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "GoalCreated"
-                  }
-                ]
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "goal_new"
               }
             ],
             "data": {
@@ -1413,6 +1426,48 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000005",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 1
+              },
+              {
+                "u32": 1
+              },
+              {
+                "symbol": "created"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "u32": 1
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 200
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000005",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -1469,6 +1524,15 @@
         "body": {
           "v0": {
             "topics": [
+              {
+                "symbol": "Remitwise"
+              },
+              {
+                "u32": 0
+              },
+              {
+                "u32": 0
+              },
               {
                 "symbol": "calc"
               }
@@ -1554,14 +1618,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "split"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "Calculated"
-                  }
-                ]
+                "u32": 0
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "calc_raw"
               }
             ],
             "data": {

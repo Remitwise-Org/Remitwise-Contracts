@@ -1,15 +1,3 @@
 [
-  {"contract":"bill_payments","method":"get_total_unpaid","scenario":"100_bills_50_cancelled","cpu":1077221,"mem":235460},
-  {"contract":"savings_goals","method":"get_all_goals","scenario":"100_goals_single_owner","cpu":2661552,"mem":480721},
-  {"contract":"insurance","method":"get_total_monthly_premium","scenario":"100_active_policies","cpu":2373104,"mem":427575},
-  {"contract":"family_wallet","method":"configure_multisig","scenario":"9_signers_threshold_all","cpu":342677,"mem":69106},
-  {"contract":"remittance_split","method":"distribute_usdc","scenario":"4_recipients_all_nonzero","cpu":654751,"mem":86208},
-  {"contract":"remittance_split","method":"create_remittance_schedule","scenario":"single_recurring_schedule","cpu":145230,"mem":28456},
-  {"contract":"remittance_split","method":"create_remittance_schedule","scenario":"11th_schedule_with_existing","cpu":167890,"mem":32145},
-  {"contract":"remittance_split","method":"modify_remittance_schedule","scenario":"single_schedule_modification","cpu":134567,"mem":26789},
-  {"contract":"remittance_split","method":"cancel_remittance_schedule","scenario":"single_schedule_cancellation","cpu":123456,"mem":24567},
-  {"contract":"remittance_split","method":"get_remittance_schedules","scenario":"empty_schedules","cpu":45678,"mem":12345},
-  {"contract":"remittance_split","method":"get_remittance_schedules","scenario":"5_schedules_with_isolation","cpu":234567,"mem":45678},
-  {"contract":"remittance_split","method":"get_remittance_schedule","scenario":"single_schedule_lookup","cpu":67890,"mem":15432},
-  {"contract":"remittance_split","method":"get_remittance_schedules","scenario":"50_schedules_worst_case","cpu":1234567,"mem":234567}
+  {"contract":"family_wallet","method":"configure_multisig","scenario":"9_signers_threshold_all","cpu":343463,"mem":69170}
 ]

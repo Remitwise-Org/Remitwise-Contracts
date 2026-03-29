@@ -84,12 +84,23 @@
                             },
                             {
                               "key": {
+                                "symbol": "daily_limit"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 1000000000000
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_amount"
                               },
                               "val": {
                                 "i128": {
                                   "hi": 0,
-                                  "lo": 10000000000
+                                  "lo": 100000000000
                                 }
                               }
                             },
@@ -667,13 +678,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "log"
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "configure_multisig"
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Only Owner or Admin can configure multi-sig' from contract function 'Symbol(obj#73)'"
+                  "string": "caught panic 'Only Owner or Admin can configure multi-sig' from contract function 'Symbol(obj#75)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -720,12 +734,12 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 1
                 }
               }
             ],
             "data": {
-              "string": "caught error from function"
+              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
             }
           }
         }
@@ -745,14 +759,14 @@
               },
               {
                 "error": {
-                  "wasm_vm": "invalid_action"
+                  "contract": 1
                 }
               }
             ],
             "data": {
               "vec": [
                 {
-                  "string": "contract call failed"
+                  "string": "contract try_call failed"
                 },
                 {
                   "symbol": "configure_multisig"
@@ -787,31 +801,6 @@
                   ]
                 }
               ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "error"
-              },
-              {
-                "error": {
-                  "wasm_vm": "invalid_action"
-                }
-              }
-            ],
-            "data": {
-              "string": "escalating error to panic"
             }
           }
         }
