@@ -650,7 +650,8 @@ mod tests {
     fn test_algorithm_field_roundtrips_json() {
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
         let bytes = export_to_json(&snapshot).unwrap();
-        let loaded = import_from_json(&bytes).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let loaded = import_from_json(&bytes, &mut tracker, 0).unwrap();
         assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Sha256);
     }
 
@@ -658,7 +659,8 @@ mod tests {
     fn test_algorithm_field_roundtrips_binary() {
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
         let bytes = export_to_binary(&snapshot).unwrap();
-        let loaded = import_from_binary(&bytes).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let loaded = import_from_binary(&bytes, &mut tracker, 0).unwrap();
         assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Sha256);
     }
 
