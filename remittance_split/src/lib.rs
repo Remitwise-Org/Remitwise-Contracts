@@ -134,6 +134,7 @@ pub struct ExportSnapshot {
     pub checksum: u64,
     pub config: SplitConfig,
     pub schedules: Vec<RemittanceSchedule>,
+    pub exported_at: u64,
 }
 
 /// Audit log entry for security and compliance.
@@ -191,7 +192,43 @@ pub enum ScheduleEvent {
 /// Current snapshot schema version. Bumped to 2 for FNV-1a checksum + exported_at field.
 const SCHEMA_VERSION: u32 = 2;
 /// Oldest snapshot schema version this contract can import. Enables backward compat.
-const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
+
+/// Domain-separated payload for split initialization.
+/// Binds technical context (network, contract) with business parameters
+/// to prevent relay/replay attacks across different deployments or networks.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SplitAuthPayload {
+    /// Domain identifier for functional separation (e.g. symbol_short!("init"))
+    pub domain_id: Symbol,
+    /// Network ID to prevent replay across different Stellar networks
+    pub network_id: BytesN<32>,
+    /// Contract address to prevent replay across different contract instances
+    pub contract_addr: Address,
+    /// Owner address who is authorizing the initialization
+    pub owner_addr: Address,
+    /// Per-address nonce for sequential replay protection
+    pub nonce_val: u64,
+    /// USDC token contract address
+    pub usdc_contract: Address,
+    /// Percentage for precision spending
+    pub spending_percent: u32,
+    /// Percentage for savings goals
+    pub savings_percent: u32,
+    /// Percentage for bill payments
+    pub bills_percent: u32,
+    /// Percentage for insurance premiums
+    pub insurance_percent: u32,
+}
+
+fn clamp_limit(limit: u32) -> u32 {
+    if limit == 0 || limit > MAX_PAGE_LIMIT {
+        MAX_PAGE_LIMIT
+    } else {
+        limit
+    }
+}
 const MAX_AUDIT_ENTRIES: u32 = 100;
 const DEFAULT_PAGE_LIMIT: u32 = 20;
 const MAX_PAGE_LIMIT: u32 = 50;
@@ -445,11 +482,11 @@ impl RemittanceSplit {
     /// their sum equals exactly 100.
     ///
     /// Enforced invariants (checked in order):
-    /// 1. Each bucket must be <= 100 (`PercentageOutOfRange`).
+    /// 1. Each bucket must be <= 100 (`InvalidPercentages`).
     /// 2. The four buckets must sum to exactly 100 (`PercentagesDoNotSumTo100`).
     ///
     /// Separating the two checks gives callers a precise error code:
-    /// a value like 110/0/0/0 produces `PercentageOutOfRange`, not a misleading
+    /// a value like 110/0/0/0 produces `InvalidPercentages`, not a misleading
     /// "doesn't sum to 100" message.
     fn validate_percentages(
         spending_percent: u32,
@@ -463,7 +500,7 @@ impl RemittanceSplit {
             || bills_percent > 100
             || insurance_percent > 100
         {
-            return Err(RemittanceSplitError::PercentageOutOfRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
         // Global sum invariant.
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
@@ -956,7 +993,7 @@ impl RemittanceSplit {
             || snapshot.config.insurance_percent > 100
         {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentageRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         // 5. Sum constraint
@@ -1455,16 +1492,7 @@ impl RemittanceSplit {
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
-            .unwrap_or(0u32);
-            
-        let next_schedule_id = current_max_id
-            .checked_add(1)
-            .ok_or(RemittanceSplitError::Overflow)?;
-
-        // Explicit uniqueness check to prevent any potential storage collisions
-        if schedules.contains_key(next_schedule_id) {
-            return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
-        }
+            .unwrap_or(0u32) + 1;
 
         let schedule = RemittanceSchedule {
             id: next_schedule_id,

@@ -542,7 +542,7 @@ impl ReportingContract {
             category_breakdown: breakdown,
             period_start,
             period_end,
-            data_DataAvailability::Complete: DataAvailability::Complete,
+            data_availability: DataAvailability::Complete,
         }
     }
 
