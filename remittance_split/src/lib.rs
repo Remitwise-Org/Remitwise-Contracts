@@ -653,33 +653,11 @@ impl RemittanceSplit {
         env: Env,
         total_amount: i128,
     ) -> Result<Vec<i128>, RemittanceSplitError> {
-        if total_amount <= 0 {
-            return Err(RemittanceSplitError::InvalidAmount);
-        }
-
-        let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
-
-        let spending = total_amount
-            .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let savings = total_amount
-            .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let bills = total_amount
-            .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        // Insurance gets the remainder to handle rounding
-        let insurance = total_amount
-            .checked_sub(spending)
-            .and_then(|n| n.checked_sub(savings))
-            .and_then(|n| n.checked_sub(bills))
-            .ok_or(RemittanceSplitError::Overflow)?;
+        let amounts = Self::compute_split_amounts(&env, total_amount)?;
+        let spending = amounts[0];
+        let savings = amounts[1];
+        let bills = amounts[2];
+        let insurance = amounts[3];
 
         // Emit SplitCalculated event
 
@@ -1349,6 +1327,38 @@ impl RemittanceSplit {
         total_amount: i128,
         emit_events: bool,
     ) -> Result<[i128; 4], RemittanceSplitError> {
+        let amounts = Self::compute_split_amounts(env, total_amount)?;
+        let spending = amounts[0];
+        let savings = amounts[1];
+        let bills = amounts[2];
+        let insurance = amounts[3];
+
+        if emit_events {
+            let event = SplitCalculatedEvent {
+                total_amount,
+                spending_amount: spending,
+                savings_amount: savings,
+                bills_amount: bills,
+                insurance_amount: insurance,
+                timestamp: env.ledger().timestamp(),
+            };
+            env.events().publish((SPLIT_CALCULATED,), event);
+            env.events().publish(
+                (symbol_short!("split"), SplitEvent::Calculated),
+                total_amount,
+            );
+        }
+
+        Ok([spending, savings, bills, insurance])
+    }
+
+    /// @notice Compute deterministic split amounts with fair remainder distribution.
+    /// @dev Uses the largest-remainder method with a fixed tie-break order:
+    /// spending, savings, bills, then insurance. Ensures sum == total_amount.
+    fn compute_split_amounts(
+        env: &Env,
+        total_amount: i128,
+    ) -> Result<[i128; 4], RemittanceSplitError> {
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1366,24 +1376,39 @@ impl RemittanceSplit {
             Some(v) => v as i128,
             None => return Err(RemittanceSplitError::Overflow),
         };
+        let s3 = match split.get(3) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
 
-        let spending = total_amount
-            .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
+        let percents = [s0, s1, s2, s3];
+        let mut base = [0i128; 4];
+        let mut remainders = [0i128; 4];
+        let mut base_sum: i128 = 0;
+
+        for i in 0..4 {
+            let raw = total_amount
+                .checked_mul(percents[i])
+                .ok_or(RemittanceSplitError::Overflow)?;
+            let portion = raw
+                .checked_div(100)
+                .ok_or(RemittanceSplitError::Overflow)?;
+            let remainder = raw
+                .checked_rem(100)
+                .ok_or(RemittanceSplitError::Overflow)?;
+            base[i] = portion;
+            remainders[i] = remainder;
+            base_sum = base_sum
+                .checked_add(portion)
+                .ok_or(RemittanceSplitError::Overflow)?;
+        }
+
+        let mut remainder_units = total_amount
+            .checked_sub(base_sum)
             .ok_or(RemittanceSplitError::Overflow)?;
-        let savings = total_amount
-            .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let bills = total_amount
-            .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let insurance = total_amount
-            .checked_sub(spending)
-            .and_then(|n| n.checked_sub(savings))
-            .and_then(|n| n.checked_sub(bills))
-            .ok_or(RemittanceSplitError::Overflow)?;
+        if remainder_units < 0 || remainder_units > 4 {
+            return Err(RemittanceSplitError::Overflow);
+        }
 
         if emit_events {
             let event = SplitCalculatedEvent {
@@ -1410,7 +1435,16 @@ impl RemittanceSplit {
             );
         }
 
-        Ok([spending, savings, bills, insurance])
+        let total = out[0]
+            .checked_add(out[1])
+            .and_then(|n| n.checked_add(out[2]))
+            .and_then(|n| n.checked_add(out[3]))
+            .ok_or(RemittanceSplitError::Overflow)?;
+        if total != total_amount {
+            return Err(RemittanceSplitError::Overflow);
+        }
+
+        Ok(out)
     }
 
     /// Extend the TTL of instance storage

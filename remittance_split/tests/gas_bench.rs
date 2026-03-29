@@ -192,7 +192,7 @@ fn bench_cancel_remittance_schedule() {
     // Create initial schedule
     let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
-    let (cpu, mem, result) = measure(&env, || {
+    let (cpu, mem, cancelled) = measure(&env, || {
         client.cancel_remittance_schedule(&owner, &schedule_id)
     });
     

@@ -135,7 +135,7 @@ fn test_cancel_schedule_gas_measurement() {
     let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Measure cancellation
-    let (cpu, mem, result) = measure_gas(&env, || {
+    let (cpu, mem, cancelled) = measure_gas(&env, || {
         client.cancel_remittance_schedule(&owner, &schedule_id)
     });
 
