@@ -1,9 +1,16 @@
-pub fn pay_premium(env: Env, policy_id: BytesN<32>) {
-    let killswitch_id = get_killswitch_id(&env);
-    let is_paused: bool = env.invoke_contract(&killswitch_id, &symbol_short!("is_paused"), vec![&env, Symbol::new(&env, "insurance")].into());
-    
-    if is_paused {
-        panic!("Contract is currently paused for emergency maintenance.");
+#![no_std]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
+use soroban_sdk::{contract, contractimpl, Address, Env};
+
+#[contract]
+pub struct Insurance;
+
+#[contractimpl]
+impl Insurance {
+    pub fn pay_premium(_env: Env, caller: Address, _policy_id: u32) -> bool {
+        caller.require_auth();
+        // Placeholder for premium payment logic
+        true
     }
-    // ... rest of the logic
 }

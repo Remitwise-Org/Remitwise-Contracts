@@ -311,9 +311,51 @@ let overdue = bill_payments::get_overdue_bills(env, user_address);
 
 ## Events
 
-The contract emits events for audit trails:
-- `BillEvent::Created`: When a bill is created
-- `BillEvent::Paid`: When a bill is paid
+The contract emits **typed, versioned events** using the `RemitwiseEvents` helper from `remitwise-common`. Every event follows a standardized schema to ensure downstream indexers and consumers can reliably decode event data across contract upgrades.
+
+### Topic Convention
+
+All events use a 4-topic tuple:
+
+```text
+("Remitwise", category: u32, priority: u32, action: Symbol)
+```
+
+| Position | Field      | Description                                        |
+|----------|------------|----------------------------------------------------|
+| 0        | Namespace  | Always `"Remitwise"` — immutable across versions  |
+| 1        | Category   | `0`=Transaction, `1`=State, `3`=System             |
+| 2        | Priority   | `0`=Low, `1`=Medium, `2`=High                     |
+| 3        | Action     | Short symbol: `"created"`, `"paid"`, `"canceled"`, etc |
+
+### Event Types
+
+| Operation              | Event Struct          | Action Symbol | Category    | Priority |
+|------------------------|-----------------------|---------------|-------------|----------|
+| `create_bill`          | `BillCreatedEvent`    | `"created"`   | State       | Medium   |
+| `pay_bill`             | `BillPaidEvent`       | `"paid"`      | Transaction | High     |
+| `cancel_bill`          | `BillCancelledEvent`  | `"canceled"`  | State       | Medium   |
+| `archive_paid_bills`   | `BillsArchivedEvent`  | `"archived"`  | System      | Low      |
+| `restore_bill`         | `BillRestoredEvent`   | `"restored"`  | State       | Medium   |
+| `set_version`          | `VersionUpgradeEvent` | `"upgraded"`  | System      | High     |
+| `batch_pay_bills`      | `BillPaidEvent` × N   | `"paid"`      | Transaction | High     |
+| `pause`                | `()`                  | `"paused"`    | System      | High     |
+| `unpause`              | `()`                  | `"unpaused"`  | System      | High     |
+
+### Schema Versioning & Backward Compatibility
+
+Every event struct includes a `schema_version` field (currently `1`) that:
+
+1. Allows downstream consumers to branch decoding logic per version.
+2. Guarantees that **field ordering is append-only** — new fields are always added at the end.
+3. Is enforced at **compile time** via `assert_min_fields!` macros in `events.rs`.
+
+**Guarantees:**
+- Topic symbols (e.g., `"created"`, `"paid"`) are **never renamed** across versions.
+- The 4-topic structure `(Namespace, Category, Priority, Action)` is **immutable**.
+- Existing fields are **never removed or reordered** — only new optional fields may be appended.
+- All events are **deterministically reproducible** from the same contract state.
+
 
 ## Integration Patterns
 
@@ -335,7 +377,11 @@ Bills can represent insurance premiums, working alongside the insurance contract
 
 ## Security Considerations
 
-- All functions require proper authorization
-- Owners can only manage their own bills
-- Input validation prevents invalid states
+- All functions require proper authorization (`require_auth()`)
+- Owners can only manage their own bills (enforced by explicit owner check)
+- Input validation prevents invalid states (amount, frequency, due_date, currency)
+- Currency codes are validated (1-12 alphanumeric chars) and normalized
+- Event payloads contain only bill metadata — no sensitive data leakage
 - Storage TTL is managed to prevent bloat
+- Schema version in events prevents silent breaking changes to consumers
+- Compile-time `assert_min_fields!` macros catch accidental field-count regressions

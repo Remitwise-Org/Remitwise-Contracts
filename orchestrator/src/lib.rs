@@ -224,7 +224,7 @@ pub enum OrchestratorError {
 /// At most one execution can be active at any time. Any attempt to enter
 /// `Executing` state while already executing returns `ReentrancyDetected`.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     /// No execution in progress; entry points may be called
@@ -1065,6 +1065,27 @@ impl Orchestrator {
     /// 8. Pay insurance premium
     /// 9. Build and return result
     /// 10. On error, emit error event and return error
+    fn validate_remittance_flow_addresses(
+        env: &Env,
+        addr1: &Address,
+        addr2: &Address,
+        addr3: &Address,
+        addr4: &Address,
+        addr5: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let self_addr = env.current_contract_address();
+        if addr1 == &self_addr || addr2 == &self_addr || addr3 == &self_addr || addr4 == &self_addr || addr5 == &self_addr {
+            return Err(OrchestratorError::InvalidContractAddress);
+        }
+        if addr1 == addr2 || addr1 == addr3 || addr1 == addr4 || addr1 == addr5 ||
+           addr2 == addr3 || addr2 == addr4 || addr2 == addr5 ||
+           addr3 == addr4 || addr3 == addr5 ||
+           addr4 == addr5 {
+            return Err(OrchestratorError::InvalidContractAddress);
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn execute_remittance_flow(
         env: Env,
