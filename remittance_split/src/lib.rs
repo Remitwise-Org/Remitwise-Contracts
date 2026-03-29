@@ -1037,9 +1037,6 @@ impl RemittanceSplit {
             env.storage()
                 .persistent()
                 .set(&DataKey::Schedule(schedule.id), &schedule);
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::Schedule(schedule.id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
         }
 
         // Reconstruct owner index
@@ -1048,11 +1045,8 @@ impl RemittanceSplit {
             owner_ids.push_back(schedule.id);
         }
         env.storage()
-            .persistent()
+            .instance()
             .set(&DataKey::OwnerSchedules(caller.clone()), &owner_ids);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::OwnerSchedules(caller.clone()), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
@@ -1428,13 +1422,6 @@ impl RemittanceSplit {
                 symbol_short!("calc"),
                 event,
             );
-            RemitwiseEvents::emit(
-                &env,
-                EventCategory::Transaction,
-                EventPriority::Low,
-                symbol_short!("calc_raw"),
-                total_amount,
-            );
         }
 
         Ok([spending, savings, bills, insurance])
@@ -1504,23 +1491,17 @@ impl RemittanceSplit {
         env.storage()
             .persistent()
             .set(&DataKey::Schedule(next_schedule_id), &schedule);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Schedule(next_schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         // 2. Update owner's schedule index
         let mut owner_schedules: Vec<u32> = env
             .storage()
-            .persistent()
+            .instance()
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
         owner_schedules.push_back(next_schedule_id);
         env.storage()
-            .persistent()
+            .instance()
             .set(&DataKey::OwnerSchedules(owner.clone()), &owner_schedules);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::OwnerSchedules(owner.clone()), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         env.storage()
             .instance()
@@ -1589,9 +1570,6 @@ impl RemittanceSplit {
         env.storage()
             .persistent()
             .set(&DataKey::Schedule(schedule_id), &schedule);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         RemitwiseEvents::emit(
             &env,
@@ -1636,9 +1614,6 @@ impl RemittanceSplit {
         env.storage()
             .persistent()
             .set(&DataKey::Schedule(schedule_id), &schedule);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         RemitwiseEvents::emit(
             &env,
@@ -1654,7 +1629,7 @@ impl RemittanceSplit {
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let schedule_ids: Vec<u32> = env
             .storage()
-            .persistent()
+            .instance()
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
 

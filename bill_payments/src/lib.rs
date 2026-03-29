@@ -58,7 +58,7 @@ pub mod pause_functions {
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
 const SECONDS_PER_DAY: u64 = 86400;
-const MAX_FREQUENCY_DAYS: u32 = 3650;
+const MAX_FREQUENCY_DAYS: u32 = 36500;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
