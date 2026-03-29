@@ -3107,7 +3107,12 @@ mod test {
 
         // Alice tries to batch pay both, but one is Bob's
         let result = client.try_batch_pay_bills(&alice, &ids);
-        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+        assert_eq!(result, Ok(Ok(1)));
+
+        let alice_paid = client.get_bill(&alice_bill).unwrap();
+        assert!(alice_paid.paid);
+        let bob_unpaid = client.get_bill(&bob_bill).unwrap();
+        assert!(!bob_unpaid.paid);
     }
 
     #[test]
