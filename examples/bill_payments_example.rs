@@ -21,12 +21,17 @@ fn main() {
     let due_date = env.ledger().timestamp() + 604800; // 1 week from now
     let currency = String::from_str(&env, "USD");
 
-    println!("Creating bill: '{}' for {} {}", bill_name, amount, currency);
-    let bill_id = client
-        .create_bill(
-            &owner, &bill_name, &amount, &due_date, &false, &0, &currency,
-        )
-        .unwrap();
+    println!("Creating bill: {:?} for {} {:?}", bill_name, amount, currency);
+    let bill_id = client.create_bill(
+        &owner,
+        &bill_name,
+        &amount,
+        &due_date,
+        &false,
+        &0,
+        &None,
+        &currency,
+    );
     println!("Bill created successfully with ID: {}", bill_id);
 
     // 5. [Read] List unpaid bills
@@ -34,14 +39,14 @@ fn main() {
     println!("\nUnpaid Bills for {:?}:", owner);
     for bill in bill_page.items.iter() {
         println!(
-            "  ID: {}, Name: {}, Amount: {} {}",
+            "  ID: {}, Name: {:?}, Amount: {} {:?}",
             bill.id, bill.name, bill.amount, bill.currency
         );
     }
 
     // 6. [Write] Pay the bill
     println!("\nPaying bill with ID: {}...", bill_id);
-    client.pay_bill(&owner, &bill_id).unwrap();
+    client.pay_bill(&owner, &bill_id);
     println!("Bill paid successfully!");
 
     // 7. [Read] Verify bill is no longer in unpaid list

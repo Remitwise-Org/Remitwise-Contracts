@@ -316,7 +316,7 @@ fn stress_batch_add_to_goals_at_max_batch_size() {
         });
     }
 
-    let processed = client.batch_add_to_goals(&owner, &contributions).unwrap();
+    let processed = client.batch_add_to_goals(&owner, &contributions);
     assert_eq!(
         processed, BATCH_SIZE,
         "batch_add_to_goals must process all {} contributions",

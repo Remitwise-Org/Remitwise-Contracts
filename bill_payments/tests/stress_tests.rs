@@ -548,13 +548,31 @@ fn stress_batch_pay_mixed_50() {
     // Create 30 valid bills for owner
     let mut valid_ids = soroban_sdk::Vec::new(&env);
     for _ in 0..30 {
-        valid_ids.push_back(client.create_bill(&owner, &name, &100i128, &due_date, &false, &0u32));
+        valid_ids.push_back(client.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+        ));
     }
 
     // Create 10 bills for 'other' (invalid for 'owner' to pay in batch)
     let mut other_ids = soroban_sdk::Vec::new(&env);
     for _ in 0..10 {
-        other_ids.push_back(client.create_bill(&other, &name, &100i128, &due_date, &false, &0u32));
+        other_ids.push_back(client.create_bill(
+            &other,
+            &name,
+            &100i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+        ));
     }
 
     // Mix them up with some non-existent IDs (total 50)

@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 soroban-sdk = "21.0.0"
+remitwise-common = { path = "../remitwise-common" }
 remittance_split = { path = "../remittance_split" }
 savings_goals = { path = "../savings_goals" }
 bill_payments = { path = "../bill_payments" }

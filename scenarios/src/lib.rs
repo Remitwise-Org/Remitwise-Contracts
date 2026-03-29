@@ -1,4 +1,5 @@
 pub mod tests {
+    use soroban_sdk::Env;
     use soroban_sdk::testutils::{Ledger, LedgerInfo};
 
     pub fn setup_env() -> Env {

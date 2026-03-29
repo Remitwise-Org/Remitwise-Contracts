@@ -2648,7 +2648,7 @@ mod test {
         /// when payment is made.
         #[test]
         fn prop_recurring_next_bill_due_date_follows_original(
-            base_due in 1_000_000u64..5_000_000u64,
+            _base_due in 1_000_000u64..5_000_000u64,
             base_due_offset in 1_000_000u64..5_000_000u64,
             pay_offset in 1u64..100_000u64,
             freq_days in 1u32..366u32,

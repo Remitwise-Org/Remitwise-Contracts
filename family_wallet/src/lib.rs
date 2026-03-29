@@ -18,6 +18,8 @@ const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 // Signature expiration time constants
 const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
 const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
+const SECONDS_PER_DAY: u64 = 86400;
+const SPENDING_TRACKERS_KEY: Symbol = symbol_short!("SP_TRK");
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -252,6 +254,7 @@ pub enum Error {
     SignerNotMember = 17,
     DuplicateSigner = 18,
     TooManySigners = 19,
+    InvalidPrecisionConfig = 20,
 }
 
 #[contractimpl]
@@ -351,6 +354,32 @@ impl FamilyWallet {
             .set(&symbol_short!("EM_LAST"), &0u64);
 
         true
+    }
+
+    pub fn set_proposal_expiry(env: Env, caller: Address, expiry_seconds: u64) -> bool {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        if !Self::is_owner_or_admin(&env, &caller) {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        if expiry_seconds == 0 || expiry_seconds > MAX_PROPOSAL_EXPIRY {
+            panic_with_error!(&env, Error::ThresholdAboveMaximum);
+        }
+
+        Self::extend_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &expiry_seconds);
+        true
+    }
+
+    pub fn get_proposal_expiry_public(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY)
     }
 
 
@@ -553,20 +582,150 @@ impl FamilyWallet {
 
         let member = members.get(caller).ok_or(Error::MemberNotFound)?;
 
-        let limit = member.precision_limit;
-        if !limit.is_disabled() {
-            if limit.min_precision > 0 && amount % limit.min_precision != 0 {
-                return Err(Error::InvalidAmount);
-            }
-            if limit.max_single_tx > 0 && amount > limit.max_single_tx {
-                return Err(Error::InvalidAmount);
-            }
-            if limit.limit > 0 && amount > limit.limit {
-                return Err(Error::InvalidAmount);
-            }
+        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
+            return Ok(());
         }
 
+        let limit = member.precision_limit;
+        if limit.is_disabled() {
+            if member.spending_limit == 0 {
+                return Ok(());
+            }
+            if amount > member.spending_limit {
+                return Err(Error::InvalidAmount);
+            }
+            return Ok(());
+        }
+
+        if amount % limit.min_precision != 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if amount > limit.max_single_tx {
+            return Err(Error::InvalidAmount);
+        }
+
+        if !limit.enable_rollover {
+            return Ok(());
+        }
+
+        let now = env.ledger().timestamp();
+        let aligned_start = (now / SECONDS_PER_DAY) * SECONDS_PER_DAY;
+
+        let mut trackers: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&SPENDING_TRACKERS_KEY)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut tracker = trackers.get(member.address.clone()).unwrap_or_else(|| SpendingTracker {
+            current_spent: 0,
+            last_tx_timestamp: 0,
+            tx_count: 0,
+            period: SpendingPeriod {
+                period_type: 0,
+                period_start: aligned_start,
+                period_duration: SECONDS_PER_DAY,
+            },
+        });
+
+        if tracker.period.period_start != aligned_start {
+            tracker.current_spent = 0;
+            tracker.tx_count = 0;
+            tracker.period = SpendingPeriod {
+                period_type: 0,
+                period_start: aligned_start,
+                period_duration: SECONDS_PER_DAY,
+            };
+        }
+
+        let new_total = tracker
+            .current_spent
+            .checked_add(amount)
+            .ok_or(Error::InvalidAmount)?;
+
+        if new_total > limit.limit {
+            return Err(Error::InvalidAmount);
+        }
+
+        tracker.current_spent = new_total;
+        tracker.last_tx_timestamp = now;
+        tracker.tx_count = tracker.tx_count.saturating_add(1);
+        trackers.set(member.address.clone(), tracker);
+        env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+
         Ok(())
+    }
+
+    pub fn set_precision_spending_limit(
+        env: Env,
+        caller: Address,
+        member: Address,
+        precision_limit: PrecisionSpendingLimit,
+    ) -> Result<bool, Error> {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        if !Self::is_owner_or_admin(&env, &caller) {
+            return Err(Error::Unauthorized);
+        }
+
+        if precision_limit.limit <= 0
+            || precision_limit.min_precision <= 0
+            || precision_limit.max_single_tx <= 0
+            || precision_limit.max_single_tx > precision_limit.limit
+        {
+            return Err(Error::InvalidPrecisionConfig);
+        }
+
+        let mut members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        let mut record = members.get(member.clone()).ok_or(Error::MemberNotFound)?;
+        record.precision_limit = precision_limit.clone();
+        members.set(member.clone(), record);
+        env.storage().instance().set(&symbol_short!("MEMBERS"), &members);
+
+        if precision_limit.enable_rollover {
+            let now = env.ledger().timestamp();
+            let aligned_start = (now / SECONDS_PER_DAY) * SECONDS_PER_DAY;
+            let tracker = SpendingTracker {
+                current_spent: 0,
+                last_tx_timestamp: now,
+                tx_count: 0,
+                period: SpendingPeriod {
+                    period_type: 0,
+                    period_start: aligned_start,
+                    period_duration: SECONDS_PER_DAY,
+                },
+            };
+
+            let mut trackers: Map<Address, SpendingTracker> = env
+                .storage()
+                .instance()
+                .get(&SPENDING_TRACKERS_KEY)
+                .unwrap_or_else(|| Map::new(&env));
+            trackers.set(member, tracker);
+            env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+        } else {
+            let mut trackers: Map<Address, SpendingTracker> = env
+                .storage()
+                .instance()
+                .get(&SPENDING_TRACKERS_KEY)
+                .unwrap_or_else(|| Map::new(&env));
+            trackers.remove(member);
+            env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+        }
+
+        Ok(true)
+    }
+
+    pub fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker> {
+        let trackers: Option<Map<Address, SpendingTracker>> =
+            env.storage().instance().get(&SPENDING_TRACKERS_KEY);
+        trackers.and_then(|m| m.get(member))
     }
 
     /// @notice Configure multisig parameters for a given transaction type.
@@ -824,6 +983,40 @@ impl FamilyWallet {
         }
 
         pending_txs.set(tx_id, pending_tx);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PEND_TXS"), &pending_txs);
+
+        true
+    }
+
+    pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+        Self::require_role_at_least(&env, &caller, FamilyRole::Member);
+
+        Self::extend_instance_ttl(&env);
+
+        let mut pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
+
+        let pending_tx = pending_txs.get(tx_id).ok_or(Error::TransactionNotFound);
+        let pending_tx = match pending_tx {
+            Ok(v) => v,
+            Err(e) => {
+                panic_with_error!(&env, e);
+            }
+        };
+
+        let is_admin = Self::is_owner_or_admin(&env, &caller);
+        if !is_admin && pending_tx.proposer != caller {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        pending_txs.remove(tx_id);
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);

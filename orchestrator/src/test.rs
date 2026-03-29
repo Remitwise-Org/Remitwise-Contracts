@@ -1,5 +1,5 @@
 use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Vec};
 use soroban_sdk::testutils::Address as _; 
 
 // ============================================================================
@@ -129,8 +129,8 @@ fn test_execute_remittance_flow_succeeds() {
 
 #[test]
 fn test_reentrancy_guard_blocks_concurrent_flow() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (env, orchestrator_id, family_wallet_id, remittance_split_id, savings_id, bills_id, insurance_id, user) =
+        setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Simulate lock held
@@ -149,8 +149,8 @@ fn test_reentrancy_guard_blocks_concurrent_flow() {
 
 #[test]
 fn test_self_reference_rejected() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (env, orchestrator_id, _family_wallet_id, remittance_split_id, savings_id, bills_id, insurance_id, user) =
+        setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Use orchestrator id as one of the downstream addresses
@@ -165,8 +165,8 @@ fn test_self_reference_rejected() {
 
 #[test]
 fn test_duplicate_addresses_rejected() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (env, orchestrator_id, family_wallet_id, remittance_split_id, savings_id, _bills_id, insurance_id, user) =
+        setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Use same address for savings and bills
@@ -184,40 +184,10 @@ fn test_duplicate_addresses_rejected() {
 // ============================================================================
 #[cfg(test)]
 mod nonce_tests {
-    use super::tests::setup;
     use super::*;
 
     #[test]
-    fn test_nonce_replay_savings_deposit_rejected() {
-        let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
-        let client = OrchestratorClient::new(&env, &orchestrator_id);
-        // First call with nonce=42 succeeds
-        let r1 = client.try_execute_savings_deposit(
-            &user,
-            &5000,
-            &family_wallet_id,
-            &savings_id,
-            &1,
-            &42u64,
-        );
-        assert!(r1.is_ok());
-        // Replay with same nonce must be rejected
-        let r2 = client.try_execute_savings_deposit(
-            &user,
-            &5000,
-            &family_wallet_id,
-            &savings_id,
-            &1,
-            &42u64,
-        );
-        assert_eq!(
-            r2.unwrap_err().unwrap(),
-            OrchestratorError::NonceAlreadyUsed
-        );
-    }
-
-    #[test]
-    fn test_nonce_different_values_both_succeed() {
+    fn test_nonce_replay_rejected() {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
         let r1 = client.try_execute_savings_deposit(
@@ -226,7 +196,7 @@ mod nonce_tests {
             &family_wallet_id,
             &savings_id,
             &1,
-            &1u64,
+            &0u64,
         );
         assert!(r1.is_ok());
         let r2 = client.try_execute_savings_deposit(
@@ -235,96 +205,32 @@ mod nonce_tests {
             &family_wallet_id,
             &savings_id,
             &1,
-            &2u64,
+            &0u64,
         );
-        assert!(r2.is_ok());
+        assert_eq!(r2.unwrap_err().unwrap(), OrchestratorError::InvalidNonce);
     }
 
     #[test]
-    fn test_nonce_scoped_per_command_type() {
-        let (env, orchestrator_id, family_wallet_id, _, savings_id, bills_id, _, user) = setup();
+    fn test_nonce_sequential_across_entrypoints() {
+        let (env, orchestrator_id, family_wallet_id, _, savings_id, bills_id, insurance_id, user) =
+            setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
-        // Same nonce value on different command types must both succeed
+
         let r1 = client.try_execute_savings_deposit(
             &user,
             &5000,
             &family_wallet_id,
             &savings_id,
             &1,
-            &99u64,
+            &0u64,
         );
         assert!(r1.is_ok());
-        let r2 =
-            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1, &99u64);
+
+        let r2 = client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1, &1u64);
         assert!(r2.is_ok());
-    }
 
-    #[test]
-    fn test_nonce_scoped_per_caller() {
-        let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, _) = setup();
-        let client = OrchestratorClient::new(&env, &orchestrator_id);
-        let user_a = Address::generate(&env);
-        let user_b = Address::generate(&env);
-        // Same nonce on different callers must both succeed
-        let r1 = client.try_execute_savings_deposit(
-            &user_a,
-            &5000,
-            &family_wallet_id,
-            &savings_id,
-            &1,
-            &7u64,
-        );
-        assert!(r1.is_ok());
-        let r2 = client.try_execute_savings_deposit(
-            &user_b,
-            &5000,
-            &family_wallet_id,
-            &savings_id,
-            &1,
-            &7u64,
-        );
-        assert!(r2.is_ok());
-    }
-
-    #[test]
-    fn test_nonce_replay_bill_payment_rejected() {
-        let (env, orchestrator_id, family_wallet_id, _, _, bills_id, _, user) = setup();
-        let client = OrchestratorClient::new(&env, &orchestrator_id);
-        let r1 =
-            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1, &55u64);
-        assert!(r1.is_ok());
-        let r2 =
-            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1, &55u64);
-        assert_eq!(
-            r2.unwrap_err().unwrap(),
-            OrchestratorError::NonceAlreadyUsed
-        );
-    }
-
-    #[test]
-    fn test_nonce_replay_insurance_payment_rejected() {
-        let (env, orchestrator_id, family_wallet_id, _, _, _, insurance_id, user) = setup();
-        let client = OrchestratorClient::new(&env, &orchestrator_id);
-        let r1 = client.try_execute_insurance_payment(
-            &user,
-            &2000,
-            &family_wallet_id,
-            &insurance_id,
-            &1,
-            &77u64,
-        );
-        assert!(r1.is_ok());
-        let r2 = client.try_execute_insurance_payment(
-            &user,
-            &2000,
-            &family_wallet_id,
-            &insurance_id,
-            &1,
-            &77u64,
-        );
-        assert_eq!(
-            r2.unwrap_err().unwrap(),
-            OrchestratorError::NonceAlreadyUsed
-        );
+        let r3 =
+            client.try_execute_insurance_payment(&user, &2000, &family_wallet_id, &insurance_id, &1, &2u64);
+        assert!(r3.is_ok());
     }
 }

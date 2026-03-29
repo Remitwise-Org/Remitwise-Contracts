@@ -36,6 +36,7 @@ resolver = "2"
 
 [dependencies]
 soroban-sdk = "=21.7.7"
+remitwise-common = { path = "./remitwise-common" }
 remittance_split = { path = "./remittance_split" }
 savings_goals = { path = "./savings_goals" }
 bill_payments = { path = "./bill_payments" }
