@@ -96,6 +96,12 @@
                     "hi": 0,
                     "lo": 25000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -234,6 +240,17 @@
                               },
                               "val": {
                                 "u64": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "daily_limit"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 50000000000
+                                }
                               }
                             },
                             {
@@ -1195,6 +1212,12 @@
                     "hi": 0,
                     "lo": 25000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -1418,7 +1441,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer would violate minimum balance requirement' from contract function 'Symbol(obj#337)'"
+                  "string": "caught panic 'Emergency transfer would violate minimum balance requirement' from contract function 'Symbol(obj#345)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

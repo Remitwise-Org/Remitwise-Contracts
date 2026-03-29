@@ -157,51 +157,6 @@
                     "storage": [
                       {
                         "key": {
-                          "symbol": "AUDIT"
-                        },
-                        "val": {
-                          "vec": [
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "caller"
-                                  },
-                                  "val": {
-                                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "operation"
-                                  },
-                                  "val": {
-                                    "symbol": "lock"
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "success"
-                                  },
-                                  "val": {
-                                    "bool": true
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "timestamp"
-                                  },
-                                  "val": {
-                                    "u64": 510000
-                                  }
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
                           "symbol": "GOALS"
                         },
                         "val": {
@@ -656,40 +611,6 @@
                 },
                 {
                   "u32": 1
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "savings"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "GoalLocked"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }

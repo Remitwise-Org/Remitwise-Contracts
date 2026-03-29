@@ -36,4 +36,3 @@ Returns an empty Vec when fewer than two points are supplied.
 **Determinism guarantee**: identical `history` input always produces identical
 output regardless of call order, ledger state, or caller identity.
 
-## Running Tests

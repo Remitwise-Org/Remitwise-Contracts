@@ -23,7 +23,75 @@ cargo test -p integration_tests
 cargo test -p orchestrator && cargo test -p integration_tests
 ```
 
+test/orchestrator-insurance-payment-failure-paths
+Contact
+- For modifications to the canonical schema, update `remitwise-common/src/lib.rs`
+  and coordinate with indexers consuming events.
+
+## Orchestrator Insurance Failure Safety
+
+### What was added
+- `test_orchestrator_flow_inactive_policy_reverts_downstream_state`
+- `test_orchestrator_flow_missing_policy_reverts_downstream_state`
+
+### Security assumptions validated
+- Orchestrated remittance flow is fail-closed for insurance failure paths.
+- If insurance payment fails (inactive or missing policy), prior downstream calls
+  (savings deposit and bill payment) do not leave persistent state mutations.
+- No hidden state mutation survives transaction failure in tested paths.
+
+### Notes for reviewers
+- Tests intentionally use deterministic split and permission mocks so assertions
+  focus only on orchestrator failure semantics and atomicity.
+- Existing multi-contract tests remain unchanged and continue to verify baseline
+  cross-contract behavior.
+# Integration Tests
+
+This module contains integration tests that verify the interaction between multiple RemitWise contracts.
+
+## Overview
+
+The integration tests simulate real-world user flows by deploying multiple contracts in a test environment and executing operations across them in sequence.
+
+## Test Coverage
+
+### `test_multi_contract_user_flow`
+
+Simulates a complete user journey:
+
+1. **Deploy Contracts**: Deploys all four core contracts (remittance_split, savings_goals, bill_payments, insurance)
+2. **Initialize Split**: Configures remittance allocation (40% spending, 30% savings, 20% bills, 10% insurance)
+3. **Create Entities**:
+   - Creates a savings goal (Education Fund: 10,000 target)
+   - Creates a recurring bill (Electricity: 500/month)
+   - Creates an insurance policy (Health: 200/month premium, 50,000 coverage)
+4. **Calculate Split**: Processes a 10,000 remittance and verifies allocation
+5. **Verify Amounts**: Ensures calculated amounts match expected percentages and sum to total
+
+### `test_split_with_rounding`
+
+Tests edge cases with rounding:
+
+- Uses percentages that don't divide evenly (33%, 33%, 17%, 17%)
+- Verifies that the insurance category receives the remainder to ensure total equals original amount
+- Confirms no funds are lost or created due to rounding
+
+### `test_multiple_entities_creation`
+
+Tests creating multiple entities across contracts:
+
+- Creates 2 savings goals (Emergency Fund, Vacation)
+- Creates 2 recurring bills (Rent, Internet)
+- Creates 2 insurance policies (Life, Emergency Coverage)
+- Verifies all entities are created successfully with unique IDs
+
+## Running the Tests
+
+From the workspace root:
+
+
 ### Run a specific test by name
+main
 ```bash
 cargo test -p orchestrator test_rollback_bills_leg_bill_not_found
 cargo test -p integration_tests test_integration_rollback_insurance_leg

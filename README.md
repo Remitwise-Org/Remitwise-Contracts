@@ -35,6 +35,28 @@ A common crate containing shared types, enums, and constants used across multipl
 - `clamp_limit()`: Helper for pagination limit validation
 - `RemitwiseEvents`: Standardized event emission with `emit()` and `emit_batch()` methods
 
+## Shared Enums & Constants Stability Coverage
+
+This project now includes dedicated compatibility guards in `remitwise-common` to prevent breaking changes across dependent contracts.
+
+- invariant tests for enum discriminants and event tags
+- ordering assumptions verified for role and coverage definitions
+- round-trip serialization via `soroban_sdk::IntoVal`/`TryFromVal`
+- event topic and payload serialization checks for `RemitwiseEvents`
+- pagination and TTL constant stability assertions
+
+### Running the new coverage
+
+```bash
+cargo test -p remitwise-common
+```
+
+### Security notes
+
+- Enums are `#[repr(u32)]` and are asserted in tests, reducing risk of contract integration drift
+- Shared constants used for pagination, batch size, storage TTL, and signature timeout are locked with stability checks
+- `clamp_limit()` now has explicit tests for overflow, underflow, and boundary conditions
+
 ## CLI Tool
 
 A custom Rust CLI is provided for interacting with the contracts without a UI.
@@ -387,6 +409,15 @@ Bill and insurance events include `external_ref` where applicable for off-chain 
 
 Bill and insurance events include `external_ref` where applicable for off-chain linking.
 
+### Reporting
+
+Provides summarized views of user financial data across all ecosystem contracts.
+
+**Key Features:**
+
+- `get_remittance_summary`: Aggregates split, savings, bills, and insurance data into a single summary
+- **Graceful Degradation**: Implements a `DataAvailability` indicator (`Complete`, `Partial`, `Missing`) ensuring summary queries return available data without a hard panic if upstream contracts are unresponsive, unconfigured, or fail.
+
 ### Family Wallet
 
 Manages family roles, spending controls, multisig approvals, and emergency transfer policies.
@@ -432,6 +463,35 @@ Run tests for all contracts:
 
 ```bash
 cargo test
+```
+
+### Encrypted migration payload decode safety
+
+The `data_migration` crate supports an **opaque encrypted payload** transport format for off-chain migration tooling.
+
+**Format contract**
+
+- `enc:v1:<base64>`
+
+Where:
+
+- `enc:v1:` is a strict marker prefix.
+- `<base64>` is the base64-encoded ciphertext blob.
+
+**Security assumptions and notes**
+
+- `data_migration` does **not** perform cryptographic encryption/decryption; it only transports bytes.
+- The marker prefix prevents accidental decoding of non-encrypted migration strings as ciphertext.
+- Import is strict and must **fail closed** (return an error) for:
+  - missing/incorrect marker
+  - unsupported marker version
+  - empty ciphertext
+  - invalid/truncated base64
+
+Run tests for this crate:
+
+```bash
+cargo test -p data_migration
 ```
 
 Run tests for a specific contract:
@@ -627,6 +687,17 @@ soroban contract deploy \
   --source <your-key> \
   --network testnet
 ```
+
+## Data Migration
+
+The `data_migration` payload library provides format-agnostic snapshot export/import capabilities across all contracts.
+
+### Import Replay Protection
+
+When importing payloads, the contracts use a `MigrationTracker` to prevent duplicate imports and replay attacks.
+- Payload Identity is cryptographically bound to a `(checksum, version)` tuple.
+- The state tracker persists this tuple alongside the ingestion `timestamp_ms` to outright reject replayed or copied payloads using `MigrationError::DuplicateImport`.
+- Restores are safely guarded against double spending or overriding the active state multiple times.
 
 ## Operational Limits
 

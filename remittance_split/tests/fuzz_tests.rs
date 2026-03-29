@@ -81,7 +81,11 @@ fn fuzz_calculate_split_sum_preservation() {
 
         let amounts = client.calculate_split(&total_amount);
         let sum: i128 = amounts.iter().sum();
-        assert_eq!(sum, total_amount, "Sum mismatch for percentages {}%/{}%/{}%/{}%", sp, sg, sb, si);
+        assert_eq!(
+            sum, total_amount,
+            "Sum mismatch for percentages {}%/{}%/{}%/{}%",
+            sp, sg, sb, si
+        );
         assert!(amounts.iter().all(|a| a >= 0), "Negative amount detected");
     }
 }
@@ -126,7 +130,11 @@ fn fuzz_rounding_behavior() {
         for amount in &[100i128, 1000, 9999, 123456] {
             let amounts = client.calculate_split(amount);
             let sum: i128 = amounts.iter().sum();
-            assert_eq!(sum, *amount, "Rounding error for amount {} with {}%/{}%/{}%/{}%", amount, sp, sg, sb, si);
+            assert_eq!(
+                sum, *amount,
+                "Rounding error for amount {} with {}%/{}%/{}%/{}%",
+                amount, sp, sg, sb, si
+            );
         }
     }
 }
@@ -167,7 +175,11 @@ fn fuzz_invalid_percentages() {
         let total = sp + sg + sb + si;
         let result = try_init(&client, &env, &owner, sp, sg, sb, si);
         if total != 100 {
-            assert!(result.is_err(), "Expected error for percentages summing to {}", total);
+            assert!(
+                result.is_err(),
+                "Expected error for percentages summing to {}",
+                total
+            );
         }
     }
 }
@@ -182,7 +194,12 @@ fn fuzz_large_amounts() {
 
     init(&client, &env, &owner, 25, 25, 25, 25);
 
-    for amount in &[i128::MAX / 1000, i128::MAX / 100, 1_000_000_000_000i128, 999_999_999_999i128] {
+    for amount in &[
+        i128::MAX / 1000,
+        i128::MAX / 100,
+        1_000_000_000_000i128,
+        999_999_999_999i128,
+    ] {
         if let Ok(_) = client.try_calculate_split(amount) {
             let amounts = client.calculate_split(amount);
             let sum: i128 = amounts.iter().sum();
@@ -213,9 +230,17 @@ fn fuzz_single_category_splits() {
         let sum: i128 = amounts.iter().sum();
         assert_eq!(sum, 1000);
 
-        if sp == 100 { assert_eq!(amounts.get(0).unwrap(), 1000); }
-        if sg == 100 { assert_eq!(amounts.get(1).unwrap(), 1000); }
-        if sb == 100 { assert_eq!(amounts.get(2).unwrap(), 1000); }
-        if si == 100 { assert_eq!(amounts.get(3).unwrap(), 1000); }
+        if sp == 100 {
+            assert_eq!(amounts.get(0).unwrap(), 1000);
+        }
+        if sg == 100 {
+            assert_eq!(amounts.get(1).unwrap(), 1000);
+        }
+        if sb == 100 {
+            assert_eq!(amounts.get(2).unwrap(), 1000);
+        }
+        if si == 100 {
+            assert_eq!(amounts.get(3).unwrap(), 1000);
+        }
     }
 }
