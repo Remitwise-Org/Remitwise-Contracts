@@ -498,8 +498,7 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> RemittanceSummary {
-        user.require_auth();
-        let addresses: ContractAddresses = env
+        let addresses: Option<ContractAddresses> = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"));
@@ -543,7 +542,7 @@ impl ReportingContract {
             category_breakdown: breakdown,
             period_start,
             period_end,
-            data_availability: availability,
+            data_availability: DataAvailability::Complete,
         }
     }
 

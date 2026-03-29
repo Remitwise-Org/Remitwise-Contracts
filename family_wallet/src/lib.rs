@@ -1,8 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, Address,
-    Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
 use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
@@ -263,6 +263,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
+                precision_limit: None,
                 added_at: timestamp,
             },
         );
@@ -274,6 +275,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
+                    precision_limit: None,
                     added_at: timestamp,
                 },
             );
@@ -520,6 +522,34 @@ impl FamilyWallet {
         }
 
         amount <= member.spending_limit
+    }
+
+    fn validate_precision_spending(env: Env, caller: Address, amount: i128) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        let member = members.get(caller).ok_or(Error::MemberNotFound)?;
+
+        if let Some(limit) = member.precision_limit {
+            if limit.min_precision > 0 && amount % limit.min_precision != 0 {
+                return Err(Error::InvalidAmount);
+            }
+            if limit.max_single_tx > 0 && amount > limit.max_single_tx {
+                return Err(Error::InvalidAmount);
+            }
+            if limit.limit > 0 && amount > limit.limit {
+                return Err(Error::InvalidAmount);
+            }
+        }
+
+        Ok(())
     }
 
     /// @notice Configure multisig parameters for a given transaction type.

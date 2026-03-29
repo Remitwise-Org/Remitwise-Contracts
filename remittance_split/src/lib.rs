@@ -7,7 +7,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
@@ -48,6 +48,13 @@ pub enum RemittanceSplitError {
     RequestHashMismatch = 15,
 
     NonceAlreadyUsed = 16,
+
+    PercentageOutOfRange = 17,
+    PercentagesDoNotSumTo100 = 18,
+    SnapshotNotInitialized = 19,
+    InvalidPercentageRange = 20,
+    FutureTimestamp = 21,
+    OwnerMismatch = 22,
 }
 
 #[derive(Clone)]
@@ -93,6 +100,21 @@ pub struct SplitConfig {
     pub usdc_contract: Address,
 }
 
+#[derive(Clone)]
+#[contracttype]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct SplitCalculatedEvent {
@@ -133,6 +155,7 @@ pub struct ExportSnapshot {
     /// Supported range: MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION.
     pub schema_version: u32,
     pub checksum: u64,
+    pub exported_at: u64,
     pub config: SplitConfig,
     pub schedules: Vec<RemittanceSchedule>,
 }
@@ -529,7 +552,7 @@ impl RemittanceSplit {
 
         if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(e);
         }
 
         Self::extend_instance_ttl(&env);
@@ -598,7 +621,7 @@ impl RemittanceSplit {
 
         if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
             Self::append_audit(&env, symbol_short!("update"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(e);
         }
 
         Self::extend_instance_ttl(&env);
@@ -892,7 +915,8 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
         let schedules = Self::get_remittance_schedules(env.clone(), caller.clone());
-        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config, &schedules);
+        let exported_at = env.ledger().timestamp();
+        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config, &schedules, exported_at);
         env.events().publish(
             (symbol_short!("split"), symbol_short!("snap_exp")),
             SCHEMA_VERSION,
@@ -900,6 +924,7 @@ impl RemittanceSplit {
         Ok(Some(ExportSnapshot {
             schema_version: SCHEMA_VERSION,
             checksum,
+            exported_at,
             config,
             schedules,
         }))
@@ -936,7 +961,8 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
-        let expected = Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules);
+        let expected =
+            Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules, snapshot.exported_at);
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ChecksumMismatch);
@@ -1063,11 +1089,8 @@ impl RemittanceSplit {
         }
 
         // 2. Checksum
-        let expected = Self::compute_checksum(
-            snapshot.schema_version,
-            &snapshot.config,
-            snapshot.exported_at,
-        );
+        let expected =
+            Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules, snapshot.exported_at);
         if snapshot.checksum != expected {
             return Err(RemittanceSplitError::ChecksumMismatch);
         }
@@ -1300,19 +1323,29 @@ impl RemittanceSplit {
         Ok(())
     }
 
-    fn compute_checksum(version: u32, config: &SplitConfig, schedules: &Vec<RemittanceSchedule>) -> u64 {
+    fn compute_checksum(
+        version: u32,
+        config: &SplitConfig,
+        schedules: &Vec<RemittanceSchedule>,
+        exported_at: u64,
+    ) -> u64 {
         let v = version as u64;
         let s = config.spending_percent as u64;
         let g = config.savings_percent as u64;
         let b = config.bills_percent as u64;
         let i = config.insurance_percent as u64;
         let sc_count = schedules.len() as u64;
+        let ts = config.timestamp;
+        let init = if config.initialized { 1u64 } else { 0u64 };
 
         v.wrapping_add(s)
             .wrapping_add(g)
             .wrapping_add(b)
             .wrapping_add(i)
             .wrapping_add(sc_count)
+            .wrapping_add(ts)
+            .wrapping_add(exported_at)
+            .wrapping_add(init)
             .wrapping_mul(31)
     }
 
@@ -1448,20 +1481,14 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        let next_schedule_id = env
+        let current_max_id: u32 = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
             .unwrap_or(0u32);
-            
         let next_schedule_id = current_max_id
             .checked_add(1)
             .ok_or(RemittanceSplitError::Overflow)?;
-
-        // Explicit uniqueness check to prevent any potential storage collisions
-        if schedules.contains_key(next_schedule_id) {
-            return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
-        }
 
         let schedule = RemittanceSchedule {
             id: next_schedule_id,
