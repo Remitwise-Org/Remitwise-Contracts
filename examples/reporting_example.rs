@@ -1,4 +1,4 @@
-use reporting::{Category, ReportingClient};
+use remitwise_common::Category;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 // Mock contracts for the reporting example
@@ -11,8 +11,9 @@ fn main() {
     env.mock_all_auths();
 
     // 2. Register the Reporting contract
-    let contract_id = env.register_contract(None, reporting::Reporting);
-    let client = ReportingClient::new(&env, &contract_id);
+    let reporting_contract = reporting::ReportingContract;
+    let contract_id = env.register_contract(None, reporting_contract);
+    let client = reporting::ReportingContractClient::new(&env, &contract_id);
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
