@@ -5,7 +5,8 @@ use soroban_sdk::{
     token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
-use remitwise_common::{EventCategory, EventPriority, FamilyRole, RemitwiseEvents};
+pub use remitwise_common::FamilyRole;
+use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
