@@ -21,7 +21,7 @@ fn main() {
     let target_date = env.ledger().timestamp() + 31536000; // 1 year from now
 
     println!(
-        "Creating savings goal: '{}' with target: {}",
+        "Creating savings goal: '{:?}' with target: {}",
         goal_name, target_amount
     );
     let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date);
