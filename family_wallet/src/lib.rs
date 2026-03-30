@@ -1,8 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, Address,
-    Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
 use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
@@ -236,6 +236,11 @@ pub enum Error {
     SignerNotMember = 17,
     DuplicateSigner = 18,
     TooManySigners = 19,
+    AlreadyInitialized = 20,
+    OwnerInInitialMembers = 21,
+    DuplicateInitialMember = 22,
+    PrecisionBelowMinimum = 23,
+    ExceedsSingleTxLimit = 24,
 }
 
 #[contractimpl]
@@ -312,6 +317,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
+                precision_limit: None,
                 added_at: timestamp,
             },
         );
@@ -323,6 +329,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
+                    precision_limit: None,
                     added_at: timestamp,
                 },
             );
@@ -1897,6 +1904,35 @@ impl FamilyWallet {
         if Self::get_global_paused(env) {
             panic!("Contract is paused");
         }
+    }
+
+    /// Validate a spending amount against the member's precision spending limit.
+    ///
+    /// Returns `Ok(())` if the amount passes all precision checks, or an
+    /// appropriate `Error` variant if it violates a constraint.
+    fn validate_precision_spending(
+        env: Env,
+        member: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let family_member = members.get(member).ok_or(Error::MemberNotFound)?;
+
+        if let Some(precision) = family_member.precision_limit {
+            if amount < precision.min_precision {
+                return Err(Error::PrecisionBelowMinimum);
+            }
+            if amount > precision.max_single_tx {
+                return Err(Error::ExceedsSingleTxLimit);
+            }
+        }
+
+        Ok(())
     }
 
     fn extend_instance_ttl(env: &Env) {

@@ -74,10 +74,6 @@ impl EventPriority {
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
 pub const MAX_PAGE_LIMIT: u32 = 50;
 
-/// Storage TTL constants for archived data
-pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-pub const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
-
 /// Signature expiration time (24 hours in seconds)
 pub const SIGNATURE_EXPIRATION: u64 = 86400;
 
@@ -203,5 +199,13 @@ pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
 pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
 pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
 
+pub const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
+
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
 pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
+
+/// Maximum frequency for recurring bills in days
+pub const MAX_FREQUENCY_DAYS: u32 = 365;
+/// Seconds per day
+pub const SECONDS_PER_DAY: u64 = 86400;

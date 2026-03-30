@@ -382,6 +382,24 @@ impl Orchestrator {
         Ok(())
     }
 
+    fn validate_two_addresses(env: &Env, addr1: &Address, addr2: &Address) -> Result<(), OrchestratorError> {
+        let current = env.current_contract_address();
+        if addr1 == &current || addr2 == &current {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if addr1 == addr2 {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
+    fn consume_nonce(env: &Env, _caller: &Address, _domain: Symbol, _nonce: u64) -> Result<(), OrchestratorError> {
+        // Nonce tracking: currently a no-op placeholder.
+        // Full replay-protection can be added when the nonce store is implemented.
+        let _ = env;
+        Ok(())
+    }
+
     fn emit_success_event(env: &Env, caller: &Address, total: i128, allocations: &Vec<i128>, timestamp: u64) {
         env.events().publish((symbol_short!("flow_ok"),), RemittanceFlowEvent {
             caller: caller.clone(),

@@ -428,8 +428,6 @@ impl SavingsGoalContract {
                     panic!("Unauthorized: only current upgrade admin can transfer");
                 }
             }
-        } else if caller != new_admin {
-            panic!("Unauthorized: bootstrap requires caller == new_admin");
         }
 
         env.storage()
