@@ -279,6 +279,56 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "map": [
+                                        {
+                                          "key": {
+                                            "symbol": "enable_rollover"
+                                          },
+                                          "val": {
+                                            "bool": false
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "limit"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "max_single_tx"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "min_precision"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -323,6 +373,56 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "map": [
+                                        {
+                                          "key": {
+                                            "symbol": "enable_rollover"
+                                          },
+                                          "val": {
+                                            "bool": false
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "limit"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "max_single_tx"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "min_precision"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -363,6 +463,56 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "map": [
+                                        {
+                                          "key": {
+                                            "symbol": "enable_rollover"
+                                          },
+                                          "val": {
+                                            "bool": false
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "limit"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "max_single_tx"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "key": {
+                                            "symbol": "min_precision"
+                                          },
+                                          "val": {
+                                            "i128": {
+                                              "hi": 0,
+                                              "lo": 0
+                                            }
+                                          }
+                                        }
+                                      ]
                                     }
                                   },
                                   {

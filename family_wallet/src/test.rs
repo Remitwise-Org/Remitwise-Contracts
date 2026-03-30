@@ -2146,10 +2146,15 @@ fn test_cumulative_spending_within_period_limit() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,          // 1000 XLM per day
@@ -2186,10 +2191,15 @@ fn test_spending_period_rollover_resets_limits() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,          // 1000 XLM per day
@@ -2234,10 +2244,15 @@ fn test_spending_tracker_persistence() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,
@@ -2308,10 +2323,15 @@ fn test_legacy_spending_limit_fallback() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &500_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     // No precision limit set, should use legacy behavior
     
@@ -2334,10 +2354,15 @@ fn test_precision_validation_edge_cases() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,
@@ -2376,9 +2401,16 @@ fn test_rollover_validation_prevents_manipulation() {
     
     let owner = Address::generate(&env);
     let member = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,
@@ -2415,10 +2447,15 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
     let member = Address::generate(&env);
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
     let recipient = Address::generate(&env);
     
     client.init(&owner, &vec![&env]);
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    
+    // Mint tokens to owner and transfer to member
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+    token_client.transfer(&owner, &member, &5000_0000000);
     
     let precision_limit = PrecisionSpendingLimit {
         limit: 500_0000000,           // 500 XLM period limit
