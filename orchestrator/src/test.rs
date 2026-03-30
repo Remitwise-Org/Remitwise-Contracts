@@ -1,6 +1,6 @@
 use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Vec};
 
 // ============================================================================
 // Mock Contract Implementations
@@ -292,7 +292,7 @@ fn test_duplicate_addresses_rejected() {
 // ============================================================================
 #[cfg(test)]
 mod nonce_tests {
-    use super::tests::setup;
+    use super::setup;
     use super::*;
 
     #[test]

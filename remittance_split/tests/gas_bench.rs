@@ -1,7 +1,7 @@
 use remittance_split::{AccountGroup, RemittanceSplit, RemittanceSplitClient};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::token::StellarAssetClient;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{symbol_short, Address, Env};
 
 fn bench_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {
@@ -64,8 +64,16 @@ fn bench_distribute_usdc_worst_case() {
 
     // nonce after initialize_split = 1
     let nonce = 1u64;
+    let deadline = env.ledger().timestamp() + 1800; // 30 min from now
+    let request_hash = RemittanceSplit::compute_request_hash(
+        symbol_short!("distrib"),
+        payer.clone(),
+        nonce,
+        amount,
+        deadline,
+    );
     let (cpu, mem, distributed) = measure(&env, || {
-        client.distribute_usdc(&token_addr, &payer, &nonce, &accounts, &amount)
+        client.distribute_usdc(&token_addr, &payer, &nonce, &deadline, &request_hash, &accounts, &amount)
     });
     assert!(distributed);
 
@@ -92,7 +100,6 @@ fn bench_create_remittance_schedule() {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
 
-    let schedule_id = result;
     assert_eq!(schedule_id, 1);
 
     println!(
@@ -128,8 +135,6 @@ fn bench_create_multiple_schedules() {
     let (cpu, mem, _schedule_id) = measure(&env, || {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
-
-    let _result = result;
 
     println!(
         r#"{{"contract":"remittance_split","method":"create_remittance_schedule","scenario":"11th_schedule_with_existing","cpu":{},"mem":{}}}"#,

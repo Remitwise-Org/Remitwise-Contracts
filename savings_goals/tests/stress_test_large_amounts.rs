@@ -144,7 +144,7 @@ fn test_add_to_goal_overflow_returns_error() {
     let result = client.try_add_to_goal(&owner, &goal_id, &overflow_amount);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(err, SavingsGoalsError::Overflow);
+    assert_eq!(err, Ok(SavingsGoalsError::Overflow));
 }
 
 #[test]
@@ -178,10 +178,10 @@ fn test_batch_add_to_goals_overflow_returns_error() {
     });
 
     env.mock_all_auths();
-    let result = client.batch_add_to_goals(&owner, &contributions);
+    let result = client.try_batch_add_to_goals(&owner, &contributions);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(err, SavingsGoalsError::Overflow);
+    assert_eq!(err, Ok(SavingsGoalsError::Overflow));
 }
 #[test]
 fn test_withdraw_from_goal_with_large_amount() {
@@ -335,7 +335,7 @@ fn test_batch_add_with_large_amounts() {
     });
 
     env.mock_all_auths();
-    let count = client.batch_add_to_goals(&owner, &contributions).unwrap();
+    let count = client.batch_add_to_goals(&owner, &contributions);
 
     assert_eq!(count, 3);
 
