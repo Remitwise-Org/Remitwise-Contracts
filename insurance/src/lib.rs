@@ -393,7 +393,7 @@ impl Insurance {
         caller: Address,
         policy_id: u32,
         tags: Vec<String>,
-    ) {
+    ) -> Result<(), InsuranceError> {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -404,10 +404,10 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).expect("Policy not found");
+        let mut policy = policies.get(policy_id).ok_or(InsuranceError::PolicyNotFound)?;
 
         if policy.owner != caller {
-            panic!("Only the policy owner can add tags");
+            return Err(InsuranceError::Unauthorized);
         }
 
         for tag in tags.iter() {
@@ -423,6 +423,7 @@ impl Insurance {
             (symbol_short!("insure"), symbol_short!("tags_add")),
             (policy_id, caller, tags),
         );
+        Ok(())
     }
 
     pub fn remove_tags_from_policy(
@@ -430,7 +431,7 @@ impl Insurance {
         caller: Address,
         policy_id: u32,
         tags: Vec<String>,
-    ) {
+    ) -> Result<(), InsuranceError> {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -441,10 +442,10 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).expect("Policy not found");
+        let mut policy = policies.get(policy_id).ok_or(InsuranceError::PolicyNotFound)?;
 
         if policy.owner != caller {
-            panic!("Only the policy owner can remove tags");
+            return Err(InsuranceError::Unauthorized);
         }
 
         let mut new_tags = Vec::new(&env);
@@ -471,6 +472,7 @@ impl Insurance {
             (symbol_short!("insure"), symbol_short!("tags_rem")),
             (policy_id, caller, tags),
         );
+        Ok(())
     }
 
 
@@ -724,15 +726,15 @@ impl Insurance {
     ///
     /// # Returns
     /// InsurancePolicy struct or None if not found
-    pub fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
-        Self::require_initialized(&env).unwrap();
+    pub fn get_policy(env: Env, policy_id: u32) -> Result<Option<InsurancePolicy>, InsuranceError> {
+        Self::require_initialized(&env)?;
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
             .instance()
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        policies.get(policy_id)
+        Ok(policies.get(policy_id))
     }
 
     /// Get active policies for a specific owner with pagination
@@ -744,8 +746,8 @@ impl Insurance {
     ///
     /// # Returns
     /// PolicyPage { items, next_cursor, count }
-    pub fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage {
-        Self::require_initialized(&env).unwrap();
+    pub fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> Result<PolicyPage, InsuranceError> {
+        Self::require_initialized(&env)?;
         let policies: Map<u32, InsurancePolicy> = env
             .storage()
             .instance()
@@ -782,11 +784,11 @@ impl Insurance {
             }
         }
 
-        PolicyPage {
+        Ok(PolicyPage {
             items,
             next_cursor,
             count,
-        }
+        })
     }
 
     /// Get total monthly premium for all active policies of an owner
@@ -796,11 +798,11 @@ impl Insurance {
     ///
     /// # Returns
     /// Total monthly premium amount for the owner's active policies
-    pub fn get_total_monthly_premium(env: Env, owner: Address) -> i128 {
-        Self::require_initialized(&env).unwrap();
+    pub fn get_total_monthly_premium(env: Env, owner: Address) -> Result<i128, InsuranceError> {
+        Self::require_initialized(&env)?;
         if let Some(totals) = Self::get_active_premium_totals_map(&env) {
             if let Some(total) = totals.get(owner.clone()) {
-                return total;
+                return Ok(total);
             }
         }
 
@@ -816,7 +818,7 @@ impl Insurance {
                 total += policy.monthly_premium;
             }
         }
-        total
+        Ok(total)
     }
 
     /// Deactivate a policy

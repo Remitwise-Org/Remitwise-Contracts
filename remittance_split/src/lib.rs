@@ -688,9 +688,9 @@ impl RemittanceSplit {
         }
 
         let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
+        let s0 = split.get(0).ok_or(RemittanceSplitError::NotInitialized)? as i128;
+        let s1 = split.get(1).ok_or(RemittanceSplitError::NotInitialized)? as i128;
+        let s2 = split.get(2).ok_or(RemittanceSplitError::NotInitialized)? as i128;
 
         let spending = total_amount
             .checked_mul(s0)

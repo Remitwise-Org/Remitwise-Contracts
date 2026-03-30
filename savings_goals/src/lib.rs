@@ -506,7 +506,7 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         tags: Vec<String>,
-    ) {
+    ) -> Result<(), SavingsGoalError> {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -517,11 +517,11 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = goals.get(goal_id).ok_or(SavingsGoalError::GoalNotFound)?;
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
-            panic!("Only the goal owner can add tags");
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         for tag in tags.iter() {
@@ -542,6 +542,7 @@ impl SavingsGoalContract {
         );
 
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
+        Ok(())
     }
 
     /// Removes tags from a goal's metadata.
@@ -558,7 +559,7 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         tags: Vec<String>,
-    ) {
+    ) -> Result<(), SavingsGoalError> {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -569,11 +570,11 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = goals.get(goal_id).ok_or(SavingsGoalError::GoalNotFound)?;
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
-            panic!("Only the goal owner can remove tags");
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         let mut new_tags = Vec::new(&env);
@@ -605,6 +606,7 @@ impl SavingsGoalContract {
         );
 
         Self::append_audit(&env, symbol_short!("rem_tags"), &caller, true);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -1594,7 +1596,7 @@ impl SavingsGoalContract {
         amount: i128,
         next_due: u64,
         interval: u64,
-    ) -> bool {
+    ) -> Result<bool, SavingsGoalError> {
         caller.require_auth();
 
         if amount <= 0 {
@@ -1614,7 +1616,7 @@ impl SavingsGoalContract {
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = schedules.get(schedule_id).ok_or(SavingsGoalError::GoalNotFound)?;
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can modify it");
@@ -1635,10 +1637,10 @@ impl SavingsGoalContract {
             (schedule_id, caller),
         );
 
-        true
+        Ok(true)
     }
 
-    pub fn cancel_savings_schedule(env: Env, caller: Address, schedule_id: u32) -> bool {
+    pub fn cancel_savings_schedule(env: Env, caller: Address, schedule_id: u32) -> Result<bool, SavingsGoalError> {
         caller.require_auth();
 
         Self::extend_instance_ttl(&env);
@@ -1649,7 +1651,7 @@ impl SavingsGoalContract {
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = schedules.get(schedule_id).ok_or(SavingsGoalError::GoalNotFound)?;
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can cancel it");
@@ -1667,7 +1669,7 @@ impl SavingsGoalContract {
             (schedule_id, caller),
         );
 
-        true
+        Ok(true)
     }
 
     /// Executes all savings schedules whose `next_due` timestamp is at or before
