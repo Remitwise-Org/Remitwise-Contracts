@@ -5,7 +5,7 @@ use soroban_sdk::{
     Env, Map, Symbol, Vec,
 };
 
-use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{EventCategory, EventPriority, FamilyRole, RemitwiseEvents};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -334,7 +334,6 @@ impl FamilyWallet {
 
         true
     }
-
 
     pub fn add_member(
         env: Env,
@@ -796,7 +795,8 @@ impl FamilyWallet {
         }
 
         // Enhanced precision and rollover validation
-        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount) {
+        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount)
+        {
             panic_with_error!(&env, error);
         }
 

@@ -1,7 +1,9 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, IntoVal, Symbol, Val};
 use soroban_sdk::testutils::Events;
+use soroban_sdk::{
+    testutils::Address as _, Address, Env, IntoVal, String as SorobanString, Symbol, Val,
+};
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
@@ -14,7 +16,7 @@ use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
 // Mock Contracts for Orchestrator Integration Tests
 // ============================================================================
 
-use soroban_sdk::{contract, contractimpl, Vec as SorobanVec, vec as soroban_vec};
+use soroban_sdk::{contract, contractimpl, vec as soroban_vec, Vec as SorobanVec};
 
 /// Mock Family Wallet — approves any amount <= 100_000
 #[contract]
@@ -969,7 +971,13 @@ fn test_event_topic_compliance_across_contracts() {
     );
 
     let policy_name = SorobanString::from_str(&env, "Compliance Policy");
-    let _ = insurance_client.create_policy(&user, &policy_name, &CoverageType::Health, &50i128, &1000i128);
+    let _ = insurance_client.create_policy(
+        &user,
+        &policy_name,
+        &CoverageType::Health,
+        &50i128,
+        &1000i128,
+    );
 
     // Collect published events
     let events = env.events().all();
@@ -988,12 +996,15 @@ fn test_event_topic_compliance_across_contracts() {
             && topics.get(0).unwrap() == symbol_short!("Remitwise").into_val(&env);
         if !ok {
             non_compliant.push_back(ev.clone());
-            eprintln!("Non-compliant event found: Topics={:?}, Data={:?}", topics, ev.2);
+            eprintln!(
+                "Non-compliant event found: Topics={:?}, Data={:?}",
+                topics, ev.2
+            );
         }
     }
 
     // Fail if any non-compliant events found, listing one example for debugging
-        assert_eq!(non_compliant.len(), 0u32, "Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.");
+    assert_eq!(non_compliant.len(), 0u32, "Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.");
 }
 
 // ============================================================================
@@ -1005,8 +1016,17 @@ fn test_event_topic_compliance_across_contracts() {
 /// in a single transaction without exceeding gas limits.
 #[test]
 fn test_integration_stress_high_volume_batch_success() {
-    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
-         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+    let (
+        env,
+        _,
+        mock_savings_id,
+        mock_bills_id,
+        mock_insurance_id,
+        orchestrator_id,
+        mock_family_wallet_id,
+        mock_split_id,
+        user,
+    ) = setup_full_env();
 
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1043,8 +1063,17 @@ fn test_integration_stress_high_volume_batch_success() {
 /// (e.g., due to invalid IDs or spending limits).
 #[test]
 fn test_integration_stress_mixed_batch() {
-    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
-         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+    let (
+        env,
+        _,
+        mock_savings_id,
+        mock_bills_id,
+        mock_insurance_id,
+        orchestrator_id,
+        mock_family_wallet_id,
+        mock_split_id,
+        user,
+    ) = setup_full_env();
 
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1108,10 +1137,22 @@ fn test_integration_stress_mixed_batch() {
     let batch_results = result.unwrap().unwrap();
     assert_eq!(batch_results.len(), 4);
 
-    assert!(batch_results.get(0).unwrap().is_ok(), "Flow 1 should succeed");
-    assert!(batch_results.get(1).unwrap().is_err(), "Flow 2 should fail (savings)");
-    assert!(batch_results.get(2).unwrap().is_err(), "Flow 3 should fail (limit)");
-    assert!(batch_results.get(3).unwrap().is_ok(),  "Flow 4 should succeed");
+    assert!(
+        batch_results.get(0).unwrap().is_ok(),
+        "Flow 1 should succeed"
+    );
+    assert!(
+        batch_results.get(1).unwrap().is_err(),
+        "Flow 2 should fail (savings)"
+    );
+    assert!(
+        batch_results.get(2).unwrap().is_err(),
+        "Flow 3 should fail (limit)"
+    );
+    assert!(
+        batch_results.get(3).unwrap().is_ok(),
+        "Flow 4 should succeed"
+    );
 
     // Type hint for Result
     let _: Result<RemittanceFlowResult, OrchestratorError> = batch_results.get(0).unwrap();
@@ -1124,8 +1165,17 @@ fn test_integration_stress_mixed_batch() {
 /// or unexpected gas escalations.
 #[test]
 fn test_integration_stress_repeated_batches() {
-    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
-         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+    let (
+        env,
+        _,
+        mock_savings_id,
+        mock_bills_id,
+        mock_insurance_id,
+        orchestrator_id,
+        mock_family_wallet_id,
+        mock_split_id,
+        user,
+    ) = setup_full_env();
 
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
@@ -1215,7 +1265,10 @@ fn test_orchestrator_flow_inactive_policy_reverts_downstream_state() {
     assert!(result.is_err());
 
     let goal_after = savings_client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after.current_amount, 0, "Savings mutation must rollback");
+    assert_eq!(
+        goal_after.current_amount, 0,
+        "Savings mutation must rollback"
+    );
 
     let bill_after = bills_client.get_bill(&bill_id).unwrap();
     assert!(!bill_after.paid, "Bill payment mutation must rollback");
@@ -1272,7 +1325,10 @@ fn test_orchestrator_flow_missing_policy_reverts_downstream_state() {
     assert!(result.is_err());
 
     let goal_after = savings_client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after.current_amount, 0, "Savings mutation must rollback");
+    assert_eq!(
+        goal_after.current_amount, 0,
+        "Savings mutation must rollback"
+    );
 
     let bill_after = bills_client.get_bill(&bill_id).unwrap();
     assert!(!bill_after.paid, "Bill payment mutation must rollback");

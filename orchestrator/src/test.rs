@@ -1,6 +1,6 @@
 use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec, symbol_short};
-use soroban_sdk::testutils::Address as _; 
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
 
 // ============================================================================
 // Mock Contract Implementations
@@ -42,9 +42,15 @@ pub struct SavingsState {
 #[contractimpl]
 impl MockSavingsGoals {
     pub fn add_to_goal(_env: Env, _caller: Address, goal_id: u32, amount: i128) -> i128 {
-        if goal_id == 999 { panic!("Goal not found"); }
-        if goal_id == 998 { panic!("Goal already completed"); }
-        if amount <= 0 { panic!("Amount must be positive"); }
+        if goal_id == 999 {
+            panic!("Goal not found");
+        }
+        if goal_id == 998 {
+            panic!("Goal already completed");
+        }
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
         amount
     }
 }
@@ -61,8 +67,12 @@ pub struct BillsState {
 #[contractimpl]
 impl MockBillPayments {
     pub fn pay_bill(_env: Env, _caller: Address, bill_id: u32) {
-        if bill_id == 999 { panic!("Bill not found"); }
-        if bill_id == 998 { panic!("Bill already paid"); }
+        if bill_id == 999 {
+            panic!("Bill not found");
+        }
+        if bill_id == 998 {
+            panic!("Bill already paid");
+        }
     }
 }
 
@@ -72,7 +82,9 @@ pub struct MockInsurance;
 #[contractimpl]
 impl MockInsurance {
     pub fn pay_premium(_env: Env, _caller: Address, policy_id: u32) -> bool {
-        if policy_id == 999 { panic!("Policy not found"); }
+        if policy_id == 999 {
+            panic!("Policy not found");
+        }
         policy_id != 998
     }
 }
@@ -81,7 +93,16 @@ impl MockInsurance {
 // Test Functions
 // ============================================================================
 
-fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+fn setup_test_env() -> (
+    Env,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -94,10 +115,28 @@ fn setup_test_env() -> (Env, Address, Address, Address, Address, Address, Addres
 
     let user = Address::generate(&env);
 
-    (env, orchestrator_id, family_wallet_id, remittance_split_id, savings_id, bills_id, insurance_id, user)
+    (
+        env,
+        orchestrator_id,
+        family_wallet_id,
+        remittance_split_id,
+        savings_id,
+        bills_id,
+        insurance_id,
+        user,
+    )
 }
 
-fn setup() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+fn setup() -> (
+    Env,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+    Address,
+) {
     setup_test_env()
 }
 
@@ -107,19 +146,38 @@ fn generate_test_address(env: &Env) -> Address {
 
 fn seed_audit_log(_env: &Env, _user: &Address, _count: u32) {}
 
-fn collect_all_pages(client: &OrchestratorClient, _page_size: u32) -> Vec<crate::OrchestratorAuditEntry> {
+fn collect_all_pages(
+    client: &OrchestratorClient,
+    _page_size: u32,
+) -> Vec<crate::OrchestratorAuditEntry> {
     client.get_audit_log(&0, &100)
 }
 
 #[test]
 fn test_execute_remittance_flow_succeeds() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (
+        env,
+        orchestrator_id,
+        family_wallet_id,
+        remittance_split_id,
+        savings_id,
+        bills_id,
+        insurance_id,
+        user,
+    ) = setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     let result = client.try_execute_remittance_flow(
-        &user, &10000, &family_wallet_id, &remittance_split_id,
-        &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+        &user,
+        &10000,
+        &family_wallet_id,
+        &remittance_split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &1,
+        &1,
+        &1,
     );
 
     assert!(result.is_ok());
@@ -129,18 +187,36 @@ fn test_execute_remittance_flow_succeeds() {
 
 #[test]
 fn test_reentrancy_guard_blocks_concurrent_flow() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (
+        env,
+        orchestrator_id,
+        family_wallet_id,
+        remittance_split_id,
+        savings_id,
+        bills_id,
+        insurance_id,
+        user,
+    ) = setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Simulate lock held
     env.as_contract(&orchestrator_id, || {
-        env.storage().instance().set(&symbol_short!("EXEC_ST"), &ExecutionState::Executing);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EXEC_ST"), &ExecutionState::Executing);
     });
 
     let result = client.try_execute_remittance_flow(
-        &user, &10000, &family_wallet_id, &remittance_split_id,
-        &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+        &user,
+        &10000,
+        &family_wallet_id,
+        &remittance_split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &1,
+        &1,
+        &1,
     );
 
     assert!(result.is_err());
@@ -149,14 +225,30 @@ fn test_reentrancy_guard_blocks_concurrent_flow() {
 
 #[test]
 fn test_self_reference_rejected() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (
+        env,
+        orchestrator_id,
+        family_wallet_id,
+        remittance_split_id,
+        savings_id,
+        bills_id,
+        insurance_id,
+        user,
+    ) = setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Use orchestrator id as one of the downstream addresses
     let result = client.try_execute_remittance_flow(
-        &user, &10000, &orchestrator_id, &remittance_split_id,
-        &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+        &user,
+        &10000,
+        &orchestrator_id,
+        &remittance_split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &1,
+        &1,
+        &1,
     );
 
     assert!(result.is_err());
@@ -165,14 +257,30 @@ fn test_self_reference_rejected() {
 
 #[test]
 fn test_duplicate_addresses_rejected() {
-    let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-         savings_id, bills_id, insurance_id, user) = setup_test_env();
+    let (
+        env,
+        orchestrator_id,
+        family_wallet_id,
+        remittance_split_id,
+        savings_id,
+        bills_id,
+        insurance_id,
+        user,
+    ) = setup_test_env();
     let client = OrchestratorClient::new(&env, &orchestrator_id);
 
     // Use same address for savings and bills
     let result = client.try_execute_remittance_flow(
-        &user, &10000, &family_wallet_id, &remittance_split_id,
-        &savings_id, &savings_id, &insurance_id, &1, &1, &1,
+        &user,
+        &10000,
+        &family_wallet_id,
+        &remittance_split_id,
+        &savings_id,
+        &savings_id,
+        &insurance_id,
+        &1,
+        &1,
+        &1,
     );
 
     assert!(result.is_err());

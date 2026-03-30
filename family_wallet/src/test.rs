@@ -711,9 +711,9 @@ fn test_propose_emergency_transfer() {
     assert!(tx_id > 0);
 
     client.sign_transaction(&member1, &tx_id);
-    
+
     assert!(client.get_pending_transaction(&tx_id).is_some());
-    
+
     client.sign_transaction(&member2, &tx_id);
 
     assert_eq!(token_client.balance(&recipient), transfer_amount);
@@ -741,7 +741,13 @@ fn test_emergency_mode_direct_transfer_within_limits() {
     let total = 5000_0000000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
 
-    client.configure_emergency(&owner, &2000_0000000, &3600u64, &1000_0000000, &5000_0000000);
+    client.configure_emergency(
+        &owner,
+        &2000_0000000,
+        &3600u64,
+        &1000_0000000,
+        &5000_0000000,
+    );
     client.set_emergency_mode(&owner, &true);
     assert!(client.is_emergency_mode());
 

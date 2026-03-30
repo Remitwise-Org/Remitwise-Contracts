@@ -3,13 +3,13 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+use remitwise_common::MAX_PAGE_LIMIT;
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
 };
-#[cfg(test)]
-use remitwise_common::MAX_PAGE_LIMIT;
 
 use alloc::vec::Vec as StdVec;
 use soroban_sdk::{
@@ -235,9 +235,9 @@ impl BillPayments {
 
         for i in 0..length as usize {
             let byte = buf[i];
-            let is_alphanumeric = (byte >= b'a' && byte <= b'z') ||
-                                  (byte >= b'A' && byte <= b'Z') ||
-                                  (byte >= b'0' && byte <= b'9');
+            let is_alphanumeric = (byte >= b'a' && byte <= b'z')
+                || (byte >= b'A' && byte <= b'Z')
+                || (byte >= b'0' && byte <= b'9');
             if !is_alphanumeric {
                 return Err(Error::InvalidCurrency);
             }
@@ -666,11 +666,12 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let next_due_date = bill.due_date
+            let next_due_date = bill
+                .due_date
                 .checked_add(
                     (bill.frequency_days as u64)
                         .checked_mul(SECONDS_PER_DAY)
-                        .ok_or(Error::InvalidFrequency)?
+                        .ok_or(Error::InvalidFrequency)?,
                 )
                 .ok_or(Error::InvalidDueDate)?;
             let next_id = env
@@ -946,7 +947,6 @@ impl BillPayments {
 
         Ok(())
     }
-
 
     // -----------------------------------------------------------------------
     // Backward-compat helpers
@@ -1341,11 +1341,12 @@ impl BillPayments {
 
             if bill.recurring {
                 next_id = next_id.saturating_add(1);
-                let next_due_date = bill.due_date
+                let next_due_date = bill
+                    .due_date
                     .checked_add(
                         (bill.frequency_days as u64)
                             .checked_mul(SECONDS_PER_DAY)
-                            .ok_or(Error::InvalidFrequency)?
+                            .ok_or(Error::InvalidFrequency)?,
                     )
                     .ok_or(Error::InvalidDueDate)?;
                 let next_bill = Bill {
@@ -2721,11 +2722,27 @@ mod test {
 
         // 3. Execution: Attempt to create bills with invalid dates
         // Added '&currency' as the final argument to both calls
-        let result_past =
-            client.try_create_bill(&owner, &name, &1000, &past_due_date, &false, &0, &None, &currency);
+        let result_past = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &past_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
-        let result_zero =
-            client.try_create_bill(&owner, &name, &1000, &zero_due_date, &false, &0, &None, &currency);
+        let result_zero = client.try_create_bill(
+            &owner,
+            &name,
+            &1000,
+            &zero_due_date,
+            &false,
+            &0,
+            &None,
+            &currency,
+        );
 
         // 4. Assertions
         assert!(
@@ -2991,7 +3008,7 @@ mod test {
         // This will panic as expected because we are NOT mocking auths for this call
         // and 'owner.require_auth()' will fail.
         // We set mock_all_auths to false to disable the global mock.
-        env.set_auths(&[]); 
+        env.set_auths(&[]);
         client.pay_bill(&owner, &_bill_id);
     }
 

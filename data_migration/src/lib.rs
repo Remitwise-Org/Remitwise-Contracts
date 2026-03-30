@@ -32,10 +32,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
- /// Encrypted migration payload marker prefix.
- ///
- /// Format: `enc:v1:<base64>`
- const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
+/// Encrypted migration payload marker prefix.
+///
+/// Format: `enc:v1:<base64>`
+const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
 /// Current snapshot schema version for migration compatibility.
 ///
@@ -295,7 +295,11 @@ fn format_label(f: ExportFormat) -> String {
 /// Migration/import errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
-    IncompatibleVersion { found: u32, min: u32, max: u32 },
+    IncompatibleVersion {
+        found: u32,
+        min: u32,
+        max: u32,
+    },
     /// The stored checksum does not match the recomputed checksum.  This
     /// indicates the payload or a bound header field (version, format) was
     /// modified after the snapshot was created.
@@ -321,8 +325,14 @@ impl std::fmt::Display for MigrationError {
                     found, min, max
                 )
             }
-            MigrationError::ChecksumMismatch => write!(f, "checksum mismatch: snapshot integrity could not be verified"),
-            MigrationError::UnknownHashAlgorithm => write!(f, "unknown hash algorithm: cannot verify snapshot integrity"),
+            MigrationError::ChecksumMismatch => write!(
+                f,
+                "checksum mismatch: snapshot integrity could not be verified"
+            ),
+            MigrationError::UnknownHashAlgorithm => write!(
+                f,
+                "unknown hash algorithm: cannot verify snapshot integrity"
+            ),
             MigrationError::InvalidFormat(s) => write!(f, "invalid format: {}", s),
             MigrationError::ValidationFailed(s) => write!(f, "validation failed: {}", s),
             MigrationError::DeserializeError(s) => write!(f, "deserialize error: {}", s),
@@ -352,7 +362,11 @@ impl MigrationTracker {
 
     /// Mark a payload as imported.
     /// Returns an error if it was already imported, preventing replay attacks.
-    pub fn mark_imported(&mut self, snapshot: &ExportSnapshot, timestamp_ms: u64) -> Result<(), MigrationError> {
+    pub fn mark_imported(
+        &mut self,
+        snapshot: &ExportSnapshot,
+        timestamp_ms: u64,
+    ) -> Result<(), MigrationError> {
         let identity = (snapshot.header.checksum.clone(), snapshot.header.version);
         if self.imported_payloads.contains_key(&identity) {
             return Err(MigrationError::DuplicateImport);
@@ -419,7 +433,9 @@ pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> String {
 pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, MigrationError> {
     let rest = encoded
         .strip_prefix(ENCRYPTED_PAYLOAD_PREFIX_V1)
-        .ok_or_else(|| MigrationError::InvalidFormat("missing or invalid encrypted payload marker".into()))?;
+        .ok_or_else(|| {
+            MigrationError::InvalidFormat("missing or invalid encrypted payload marker".into())
+        })?;
 
     if rest.is_empty() {
         return Err(MigrationError::InvalidFormat(
@@ -559,7 +575,10 @@ mod tests {
     #[test]
     fn test_snapshot_checksum_roundtrip_succeeds() {
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
-        assert!(snapshot.verify_checksum(), "freshly built snapshot must verify");
+        assert!(
+            snapshot.verify_checksum(),
+            "freshly built snapshot must verify"
+        );
         assert!(snapshot.is_version_compatible());
         assert!(snapshot.validate_for_import().is_ok());
     }
@@ -596,13 +615,13 @@ mod tests {
         });
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
         let bytes = export_to_json(&snapshot).unwrap();
-        
+
         let mut tracker = MigrationTracker::new();
-        
+
         // First import should succeed
         let loaded1 = import_from_json(&bytes, &mut tracker, 1000).unwrap();
         assert!(tracker.is_imported(&loaded1));
-        
+
         // Second import of the exact same snapshot should fail
         let result2 = import_from_json(&bytes, &mut tracker, 2000);
         assert_eq!(result2.unwrap_err(), MigrationError::DuplicateImport);
@@ -761,13 +780,19 @@ mod tests {
 
     #[test]
     fn test_error_display_messages() {
-        assert!(MigrationError::ChecksumMismatch.to_string().contains("checksum mismatch"));
-        assert!(MigrationError::UnknownHashAlgorithm.to_string().contains("unknown hash algorithm"));
-        assert!(
-            MigrationError::IncompatibleVersion { found: 5, min: 1, max: 2 }
-                .to_string()
-                .contains("5")
-        );
+        assert!(MigrationError::ChecksumMismatch
+            .to_string()
+            .contains("checksum mismatch"));
+        assert!(MigrationError::UnknownHashAlgorithm
+            .to_string()
+            .contains("unknown hash algorithm"));
+        assert!(MigrationError::IncompatibleVersion {
+            found: 5,
+            min: 1,
+            max: 2
+        }
+        .to_string()
+        .contains("5"));
     }
 
     #[test]
@@ -820,9 +845,8 @@ mod tests {
     fn test_encrypted_payload_manipulated_ciphertext_fails() {
         let plain = b"abcdef".to_vec();
         let mut encoded = export_to_encrypted_payload(&plain);
-        let idx = encoded
-            .find(ENCRYPTED_PAYLOAD_PREFIX_V1)
-            .unwrap() + ENCRYPTED_PAYLOAD_PREFIX_V1.len();
+        let idx =
+            encoded.find(ENCRYPTED_PAYLOAD_PREFIX_V1).unwrap() + ENCRYPTED_PAYLOAD_PREFIX_V1.len();
 
         let mut bytes = encoded.into_bytes();
         bytes[idx] = b'!';

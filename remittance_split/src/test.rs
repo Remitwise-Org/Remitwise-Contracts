@@ -82,17 +82,17 @@ fn test_initialize_split_domain_separated_auth() {
     // Verify that the authorization includes the full domain-separated payload
     let auths = env.auths();
     assert_eq!(auths.len(), 1);
-    
+
     // The auths captured by mock_all_auths record what was authorized.
     // In our case, the contract calls owner.require_auth_for_args(payload).
     let (address, auth_invocation) = auths.get(0).unwrap();
     assert_eq!(address, owner);
-    
+
     // The top-level invocation from mock_all_auths for require_auth_for_args
     // will have the authorized arguments.
     let payload_val = auth_invocation.args.get(0).unwrap();
     let payload: SplitAuthPayload = payload_val.try_into_val(&env).unwrap();
-    
+
     assert_eq!(payload.domain_id, symbol_short!("init"));
     assert_eq!(payload.network_id, env.ledger().network_id());
     assert_eq!(payload.contract_addr, contract_id);
@@ -1301,10 +1301,7 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
 /// Helper: initialize + update N times to seed the audit log with entries.
 /// Each initialize produces 1 entry, each update produces 1 entry.
 /// Returns (client, owner) for further assertions.
-fn seed_audit_log(
-    env: &Env,
-    count: u32,
-) -> (RemittanceSplitClient<'_>, Address) {
+fn seed_audit_log(env: &Env, count: u32) -> (RemittanceSplitClient<'_>, Address) {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(env, &contract_id);
     let owner = Address::generate(env);
@@ -1325,7 +1322,10 @@ fn seed_audit_log(
 }
 
 /// Collect every audit entry by following next_cursor until it returns 0.
-fn collect_all_pages(client: &RemittanceSplitClient, page_size: u32) -> soroban_sdk::Vec<AuditEntry> {
+fn collect_all_pages(
+    client: &RemittanceSplitClient,
+    page_size: u32,
+) -> soroban_sdk::Vec<AuditEntry> {
     let env = client.env.clone();
     let mut all = soroban_sdk::Vec::new(&env);
     let mut cursor: u32 = 0;

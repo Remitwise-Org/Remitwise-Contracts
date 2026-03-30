@@ -351,7 +351,7 @@ fn test_get_remittance_summary_missing_addresses() {
     let user = soroban_sdk::Address::generate(&env);
 
     // Purposefully DO NOT call client.init() or client.configure_addresses()
-    
+
     let total_amount = 10000i128;
     let period_start = 1704067200u64;
     let period_end = 1706745600u64;
@@ -390,7 +390,8 @@ fn test_get_remittance_summary_partial_data() {
     client.init(&admin);
 
     // Register FAILING mock contract
-    let failing_split_id = env.register_contract(None, failing_remittance_split::FailingRemittanceSplit);
+    let failing_split_id =
+        env.register_contract(None, failing_remittance_split::FailingRemittanceSplit);
     let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
     let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
     let insurance_id = env.register_contract(None, insurance::Insurance);
@@ -1870,8 +1871,6 @@ fn test_trend_multi_deterministic_across_timestamps() {
     }
 }
 
-
-
 #[test]
 #[should_panic]
 fn test_unauthorized_access_fails() {
@@ -1885,7 +1884,7 @@ fn test_unauthorized_access_fails() {
     // Setup with admin auth
     env.mock_all_auths();
     client.init(&admin);
-    
+
     // Switch to attacker (require_auth(user) should fail)
     // In Soroban, require_auth checks the context.
     // Calling with attacker but requiring auth for user will fail.
