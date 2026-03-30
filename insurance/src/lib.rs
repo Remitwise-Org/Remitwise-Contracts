@@ -5,7 +5,8 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-use remitwise_common::{CoverageType, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
+pub use remitwise_common::CoverageType;
+use remitwise_common::{INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD};
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]

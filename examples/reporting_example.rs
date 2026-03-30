@@ -1,4 +1,3 @@
-use remitwise_common::Category;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 // Mock contracts for the reporting example
@@ -30,20 +29,18 @@ fn main() {
 
     // 4. [Write] Initialize the contract
     println!("Initializing Reporting contract with admin: {:?}", admin);
-    client.init(&admin).unwrap();
+    client.init(&admin);
 
     // 5. [Write] Configure contract addresses
     println!("Configuring dependency addresses...");
-    client
-        .configure_addresses(
-            &admin,
-            &split_addr,
-            &savings_addr,
-            &bills_addr,
-            &insurance_addr,
-            &family_addr,
-        )
-        .unwrap();
+    client.configure_addresses(
+        &admin,
+        &split_addr,
+        &savings_addr,
+        &bills_addr,
+        &insurance_addr,
+        &family_addr,
+    );
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report

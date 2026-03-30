@@ -17,7 +17,7 @@ fn main() {
 
     // 4. [Write] Create a new insurance policy
     let policy_name = String::from_str(&env, "Health Insurance");
-    let coverage_type = CoverageType::Hmo;
+    let coverage_type = CoverageType::Health;
     let monthly_premium = 200i128;
     let coverage_amount = 50000i128;
 
