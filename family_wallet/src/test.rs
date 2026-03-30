@@ -1036,3 +1036,562 @@ fn test_archive_ttl_extended_on_archive_transactions() {
         ttl
     );
 }
+
+// ============================================================================
+// Proposal Expiration Tests
+//
+// Verify that pending multisig proposals cannot be signed or executed after
+// their expiry window (SIGNATURE_EXPIRATION = 86,400 seconds / 24 hours),
+// and that cleanup correctly removes stale proposals.
+//
+// Key contract invariants:
+//   - sign_transaction panics "Transaction expired" when current_time > expires_at
+//   - sign_transaction allows signing when current_time == expires_at (strict >)
+//   - cleanup_expired_pending removes proposals where expires_at < current_time
+//   - cleanup is idempotent: second call returns 0 removals
+//   - cleanup only removes expired proposals, leaving active ones intact
+// ============================================================================
+
+/// Signing a proposal after SIGNATURE_EXPIRATION (86,400s) must panic.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_sign_after_expiry_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+    assert!(tx_id > 0);
+
+    // Advance ledger past the 24-hour expiry window
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Must panic with "Transaction expired"
+    client.sign_transaction(&member1, &tx_id);
+}
+
+/// Signing at exactly expires_at is allowed (contract uses strict > comparison).
+#[test]
+fn test_sign_at_exact_expiry_boundary_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+    assert!(tx_id > 0);
+
+    let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
+    let expires_at = pending_tx.expires_at;
+
+    // Advance ledger to exactly the expiry timestamp (not past it)
+    let mut ledger = env.ledger().get();
+    ledger.timestamp = expires_at;
+    env.ledger().set(ledger);
+
+    // Should succeed — contract rejects only when current_time > expires_at
+    let result = client.sign_transaction(&member1, &tx_id);
+    assert!(result);
+}
+
+/// Signing one second past expires_at must be rejected.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_sign_one_second_past_expiry_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
+
+    // Advance to exactly one second past expiry
+    let mut ledger = env.ledger().get();
+    ledger.timestamp = pending_tx.expires_at + 1;
+    env.ledger().set(ledger);
+
+    client.sign_transaction(&member1, &tx_id);
+}
+
+/// Cleanup is idempotent: calling twice returns 0 on the second call.
+#[test]
+fn test_cleanup_idempotency() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+    assert!(tx_id > 0);
+
+    // Advance past expiry
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // First cleanup removes the expired proposal
+    let removed = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed, 1);
+
+    // Second cleanup finds nothing to remove
+    let removed_again = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed_again, 0);
+}
+
+/// Cleanup with no pending transactions returns 0.
+#[test]
+fn test_cleanup_no_pending_returns_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone()];
+    client.init(&owner, &initial_members);
+
+    let removed = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed, 0);
+}
+
+/// Multiple expired proposals are all cleaned up in a single call.
+#[test]
+fn test_cleanup_multiple_expired_proposals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &10000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &3,
+        &signers,
+        &1000_0000000,
+    );
+
+    // Create three separate pending proposals
+    let recipient = Address::generate(&env);
+    let tx_id_1 = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+    let tx_id_2 = client.withdraw(&owner, &token_contract.address(), &recipient, &3000_0000000);
+    let tx_id_3 = client.withdraw(&owner, &token_contract.address(), &recipient, &1500_0000000);
+    assert!(tx_id_1 > 0);
+    assert!(tx_id_2 > 0);
+    assert!(tx_id_3 > 0);
+
+    // Advance past expiry
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Single cleanup should remove all three
+    let removed = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed, 3);
+
+    assert!(client.get_pending_transaction(&tx_id_1).is_none());
+    assert!(client.get_pending_transaction(&tx_id_2).is_none());
+    assert!(client.get_pending_transaction(&tx_id_3).is_none());
+}
+
+/// Cleanup only removes expired proposals; active ones remain.
+#[test]
+fn test_cleanup_preserves_active_proposals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &10000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &3,
+        &signers,
+        &1000_0000000,
+    );
+
+    // Create first proposal
+    let recipient = Address::generate(&env);
+    let tx_id_old = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    // Advance 12 hours (half the expiry window)
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 43200;
+    env.ledger().set(ledger);
+
+    // Create second proposal (created 12 hours later, still active for another 24h)
+    let tx_id_new = client.withdraw(&owner, &token_contract.address(), &recipient, &3000_0000000);
+
+    // Advance another 12+ hours — old proposal expires, new one still active
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 43201;
+    env.ledger().set(ledger);
+
+    let removed = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed, 1);
+
+    // Old proposal removed, new proposal still active
+    assert!(client.get_pending_transaction(&tx_id_old).is_none());
+    assert!(client.get_pending_transaction(&tx_id_new).is_some());
+}
+
+/// Partial signatures are collected then the proposal expires; further signing is rejected.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_partial_signatures_then_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![
+        &env,
+        owner.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+    ];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &4,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    // Collect one additional signature (2 of 4 threshold)
+    client.sign_transaction(&member1, &tx_id);
+
+    let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(pending_tx.signatures.len(), 2);
+
+    // Expire the proposal
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Third signature should be rejected — proposal expired
+    client.sign_transaction(&member2, &tx_id);
+}
+
+/// Proposal created_at and expires_at fields are set correctly at creation.
+#[test]
+fn test_proposal_expiry_fields_set_correctly() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let creation_timestamp = env.ledger().timestamp();
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(pending_tx.created_at, creation_timestamp);
+    assert_eq!(
+        pending_tx.expires_at,
+        creation_timestamp + 86400,
+        "expires_at must be created_at + SIGNATURE_EXPIRATION (86400)"
+    );
+}
+
+/// Non-withdrawal proposal types also expire: role change proposal expires after 24h.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_role_change_proposal_expires() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let signers = vec![&env, owner.clone(), member1.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    let tx_id = client.propose_role_change(&owner, &member2, &FamilyRole::Admin);
+    assert!(tx_id > 0);
+
+    // Advance past expiry
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Must panic — expired role change proposal
+    client.sign_transaction(&member1, &tx_id);
+}
+
+/// Split config change proposal expires after 24h.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_split_config_change_proposal_expires() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    let tx_id = client.propose_split_config_change(&owner, &40, &30, &20, &10);
+    assert!(tx_id > 0);
+
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    client.sign_transaction(&member1, &tx_id);
+}
+
+/// Expired proposal still exists (is retrievable) until cleanup removes it.
+#[test]
+fn test_expired_proposal_persists_until_cleanup() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    // Advance past expiry
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Expired but still present in storage
+    let pending_tx = client.get_pending_transaction(&tx_id);
+    assert!(
+        pending_tx.is_some(),
+        "Expired proposal should persist in storage until explicit cleanup"
+    );
+
+    // Cleanup removes it
+    let removed = client.cleanup_expired_pending(&owner);
+    assert_eq!(removed, 1);
+
+    let pending_tx = client.get_pending_transaction(&tx_id);
+    assert!(pending_tx.is_none(), "Proposal must be gone after cleanup");
+}
+
+/// Expired proposal cannot be executed even if threshold was met before expiry.
+/// Scenario: proposal gets enough signatures, then the final sign_transaction
+/// call happens after expiry — execution must be blocked.
+#[test]
+#[should_panic(expected = "Transaction expired")]
+fn test_expired_proposal_blocks_execution_at_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+    client.init(&owner, &initial_members);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &3,
+        &signers,
+        &1000_0000000,
+    );
+
+    let recipient = Address::generate(&env);
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
+
+    // Collect second signature (2 of 3 threshold) before expiry
+    client.sign_transaction(&member1, &tx_id);
+    assert_eq!(token_client.balance(&recipient), 0);
+
+    // Expire the proposal
+    let mut ledger = env.ledger().get();
+    ledger.timestamp += 86401;
+    env.ledger().set(ledger);
+
+    // Third signature would meet threshold but proposal is expired
+    client.sign_transaction(&member2, &tx_id);
+}
