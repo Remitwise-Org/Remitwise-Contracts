@@ -1,0 +1,106 @@
+[
+  {
+    "contract": "bill_payments",
+    "method": "get_total_unpaid",
+    "scenario": "100_bills_50_cancelled",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Worst-case scenario with 100 bills, 50 cancelled"
+  },
+  {
+    "contract": "savings_goals",
+    "method": "get_all_goals",
+    "scenario": "100_goals_single_owner",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Retrieve 100 goals for a single owner"
+  },
+  {
+    "contract": "insurance",
+    "method": "get_total_monthly_premium",
+    "scenario": "100_active_policies",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Calculate total premium for 100 active policies"
+  },
+  {
+    "contract": "family_wallet",
+    "method": "configure_multisig",
+    "scenario": "9_signers_threshold_all",
+    "cpu": 0,
+    "mem": 0,
+    "description": "Configure multisig with 9 signers requiring all signatures"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "distribute_usdc",
+    "scenario": "4_recipients_all_nonzero",
+    "cpu": 708193,
+    "mem": 100165,
+    "description": "Distribute USDC to 4 recipients with non-zero amounts"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "create_remittance_schedule",
+    "scenario": "single_recurring_schedule",
+    "cpu": 46579,
+    "mem": 6979,
+    "description": "Create a single recurring remittance schedule"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "create_remittance_schedule",
+    "scenario": "11th_schedule_with_existing",
+    "cpu": 372595,
+    "mem": 99899,
+    "description": "Create schedule when 10 existing schedules are present"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "modify_remittance_schedule",
+    "scenario": "single_schedule_modification",
+    "cpu": 84477,
+    "mem": 15636,
+    "description": "Modify an existing remittance schedule"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "cancel_remittance_schedule",
+    "scenario": "single_schedule_cancellation",
+    "cpu": 84459,
+    "mem": 15564,
+    "description": "Cancel an existing remittance schedule"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "empty_schedules",
+    "cpu": 13847,
+    "mem": 1456,
+    "description": "Query schedules when none exist for owner"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "5_schedules_with_isolation",
+    "cpu": 197774,
+    "mem": 38351,
+    "description": "Query 5 schedules with data isolation validation"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedule",
+    "scenario": "single_schedule_lookup",
+    "cpu": 42932,
+    "mem": 6847,
+    "description": "Retrieve a single schedule by ID"
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "50_schedules_worst_case",
+    "cpu": 1251484,
+    "mem": 250040,
+    "description": "Query schedules in worst-case scenario with 50 schedules"
+  }
+]

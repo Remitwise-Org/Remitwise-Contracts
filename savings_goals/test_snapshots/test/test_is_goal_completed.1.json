@@ -330,6 +330,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -365,6 +373,27 @@
                         },
                         "val": {
                           "u32": 1
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
@@ -1099,6 +1128,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "tags"
+                  },
+                  "val": {
+                    "vec": []
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "target_amount"
                   },
                   "val": {
@@ -1308,40 +1345,6 @@
                     "hi": 0,
                     "lo": 1
                   }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "savings"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "GoalCompleted"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }

@@ -57,7 +57,37 @@
         }
       ]
     ],
-    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "get_financial_health_report",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 10000
+                  }
+                },
+                {
+                  "u64": 1704067200
+                },
+                {
+                  "u64": 1706745600
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
@@ -83,7 +113,7 @@
                               "symbol": "compliance_percentage"
                             },
                             "val": {
-                              "u32": 100
+                              "u32": 50
                             }
                           },
                           {
@@ -101,7 +131,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 50
                               }
                             }
                           },
@@ -110,7 +140,7 @@
                               "symbol": "paid_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 1
                             }
                           },
                           {
@@ -136,7 +166,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 150
                               }
                             }
                           },
@@ -145,7 +175,7 @@
                               "symbol": "total_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 2
                             }
                           },
                           {
@@ -155,7 +185,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 100
                               }
                             }
                           },
@@ -164,7 +194,7 @@
                               "symbol": "unpaid_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 1
                             }
                           }
                         ]
@@ -434,6 +464,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "data_availability"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "period_end"
                             },
                             "val": {
@@ -556,7 +594,28 @@
         }
       ]
     ],
-    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "get_stored_report",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u64": 202401
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -579,18 +638,57 @@
         }
       ]
     ],
-    [],
-    []
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "get_stored_report",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u64": 202401
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "get_archived_reports",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ]
   ],
   "ledger": {
-    "protocol_version": 20,
+    "protocol_version": 21,
     "sequence_number": 1,
     "timestamp": 1704067200,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 10,
-    "min_persistent_entry_ttl": 10,
-    "min_temp_entry_ttl": 10,
-    "max_entry_ttl": 3110400,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -785,7 +883,7 @@
             },
             "ext": "v0"
           },
-          518401
+          100000
         ]
       ],
       [
@@ -818,7 +916,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          3000000
         ]
       ],
       [
@@ -827,7 +925,7 @@
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
               "ledger_key_nonce": {
-                "nonce": 4837995959683129791
+                "nonce": 4270020994084947596
               }
             },
             "durability": "temporary"
@@ -842,7 +940,7 @@
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
                   "ledger_key_nonce": {
-                    "nonce": 4837995959683129791
+                    "nonce": 4270020994084947596
                   }
                 },
                 "durability": "temporary",
@@ -851,7 +949,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          3000000
         ]
       ],
       [
@@ -884,7 +982,7 @@
             },
             "ext": "v0"
           },
-          3110400
+          3000000
         ]
       ],
       [
@@ -917,7 +1015,139 @@
             },
             "ext": "v0"
           },
-          3110400
+          3000000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 2032731177588607455
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 2032731177588607455
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3000000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 4837995959683129791
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 4837995959683129791
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3000000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 6277191135259896685
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 6277191135259896685
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3000000
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 8370022561469687789
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 8370022561469687789
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3000000
         ]
       ],
       [
@@ -949,7 +1179,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -981,7 +1211,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -1013,7 +1243,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -1045,7 +1275,7 @@
             },
             "ext": "v0"
           },
-          10
+          1
         ]
       ],
       [
@@ -1066,7 +1296,7 @@
             },
             "ext": "v0"
           },
-          518401
+          100000
         ]
       ]
     ]
@@ -1113,9 +1343,7 @@
                 "symbol": "init"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -1208,9 +1436,7 @@
                 "symbol": "configure_addresses"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
@@ -1364,6 +1590,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 },
@@ -1430,6 +1662,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 }
@@ -1459,7 +1697,17 @@
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 50
+                }
+              ]
             }
           }
         }
@@ -1482,91 +1730,130 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 100
-                        }
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 100
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "created_at"
+                            },
+                            "val": {
+                              "u64": 1704067200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "currency"
+                            },
+                            "val": {
+                              "string": "XLM"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "due_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "frequency_days"
+                            },
+                            "val": {
+                              "u32": 30
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 1
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Electricity"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid"
+                            },
+                            "val": {
+                              "bool": false
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid_at"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "recurring"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "created_at"
-                      },
-                      "val": {
-                        "u64": 1704067200
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "due_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "frequency_days"
-                      },
-                      "val": {
-                        "u32": 30
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 1
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Electricity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid"
-                      },
-                      "val": {
-                        "bool": false
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid_at"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "recurring"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    }
-                  ]
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -1594,7 +1881,17 @@
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 1
+                }
+              ]
             }
           }
         }
@@ -1617,80 +1914,111 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "active"
-                      },
-                      "val": {
-                        "bool": true
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "active"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "coverage_amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 50000
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "coverage_type"
+                            },
+                            "val": {
+                              "string": "health"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 1
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "monthly_premium"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 200
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Health Insurance"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "next_payment_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "coverage_amount"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 50000
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "coverage_type"
-                      },
-                      "val": {
-                        "string": "health"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 1
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "monthly_premium"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 200
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Health Insurance"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "next_payment_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    }
-                  ]
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -1942,6 +2270,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 },
@@ -2008,6 +2342,12 @@
                       "val": {
                         "u64": 1735689600
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "unlock_date"
+                      },
+                      "val": "void"
                     }
                   ]
                 }
@@ -2033,10 +2373,22 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000006"
               },
               {
-                "symbol": "get_all_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
-            "data": "void"
+            "data": {
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 50
+                }
+              ]
+            }
           }
         }
       },
@@ -2054,182 +2406,235 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_all_bills"
+                "symbol": "get_all_bills_for_owner"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 100
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "created_at"
-                      },
-                      "val": {
-                        "u64": 1704067200
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "due_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "frequency_days"
-                      },
-                      "val": {
-                        "u32": 30
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 1
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Electricity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid"
-                      },
-                      "val": {
-                        "bool": false
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid_at"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "recurring"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    }
-                  ]
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 2
+                  }
                 },
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "amount"
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 100
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "created_at"
+                            },
+                            "val": {
+                              "u64": 1704067200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "currency"
+                            },
+                            "val": {
+                              "string": "XLM"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "due_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "frequency_days"
+                            },
+                            "val": {
+                              "u32": 30
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 1
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Electricity"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid"
+                            },
+                            "val": {
+                              "bool": false
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid_at"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
+                              "symbol": "recurring"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 50
-                        }
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 50
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "created_at"
+                            },
+                            "val": {
+                              "u64": 1704067200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "currency"
+                            },
+                            "val": {
+                              "string": "XLM"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "due_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "frequency_days"
+                            },
+                            "val": {
+                              "u32": 30
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 2
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Water"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "paid_at"
+                            },
+                            "val": {
+                              "u64": 1704153600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "recurring"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "created_at"
-                      },
-                      "val": {
-                        "u64": 1704067200
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "due_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "frequency_days"
-                      },
-                      "val": {
-                        "u32": 30
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 2
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Water"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "paid_at"
-                      },
-                      "val": {
-                        "u64": 1704153600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "recurring"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    }
-                  ]
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -2257,7 +2662,17 @@
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 0
+                },
+                {
+                  "u32": 50
+                }
+              ]
             }
           }
         }
@@ -2280,80 +2695,111 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "active"
-                      },
-                      "val": {
-                        "bool": true
+                  "key": {
+                    "symbol": "count"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "items"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "active"
+                            },
+                            "val": {
+                              "bool": true
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "coverage_amount"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 50000
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "coverage_type"
+                            },
+                            "val": {
+                              "string": "health"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "id"
+                            },
+                            "val": {
+                              "u32": 1
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "monthly_premium"
+                            },
+                            "val": {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 200
+                              }
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "name"
+                            },
+                            "val": {
+                              "string": "Health Insurance"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "next_payment_date"
+                            },
+                            "val": {
+                              "u64": 1735689600
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "owner"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "schedule_id"
+                            },
+                            "val": "void"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "coverage_amount"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 50000
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "coverage_type"
-                      },
-                      "val": {
-                        "string": "health"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "id"
-                      },
-                      "val": {
-                        "u32": 1
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "monthly_premium"
-                      },
-                      "val": {
-                        "i128": {
-                          "hi": 0,
-                          "lo": 200
-                        }
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "name"
-                      },
-                      "val": {
-                        "string": "Health Insurance"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "next_payment_date"
-                      },
-                      "val": {
-                        "u64": 1735689600
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "owner"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    }
-                  ]
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_cursor"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
                 }
               ]
             }
@@ -2469,7 +2915,7 @@
                           "symbol": "compliance_percentage"
                         },
                         "val": {
-                          "u32": 100
+                          "u32": 50
                         }
                       },
                       {
@@ -2487,7 +2933,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 50
                           }
                         }
                       },
@@ -2496,7 +2942,7 @@
                           "symbol": "paid_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 1
                         }
                       },
                       {
@@ -2522,7 +2968,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 150
                           }
                         }
                       },
@@ -2531,7 +2977,7 @@
                           "symbol": "total_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 2
                         }
                       },
                       {
@@ -2541,7 +2987,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 100
                           }
                         }
                       },
@@ -2550,7 +2996,7 @@
                           "symbol": "unpaid_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 1
                         }
                       }
                     ]
@@ -2820,6 +3266,14 @@
                       },
                       {
                         "key": {
+                          "symbol": "data_availability"
+                        },
+                        "val": {
+                          "u32": 0
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "period_end"
                         },
                         "val": {
@@ -2973,7 +3427,7 @@
                               "symbol": "compliance_percentage"
                             },
                             "val": {
-                              "u32": 100
+                              "u32": 50
                             }
                           },
                           {
@@ -2991,7 +3445,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 50
                               }
                             }
                           },
@@ -3000,7 +3454,7 @@
                               "symbol": "paid_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 1
                             }
                           },
                           {
@@ -3026,7 +3480,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 150
                               }
                             }
                           },
@@ -3035,7 +3489,7 @@
                               "symbol": "total_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 2
                             }
                           },
                           {
@@ -3045,7 +3499,7 @@
                             "val": {
                               "i128": {
                                 "hi": 0,
-                                "lo": 0
+                                "lo": 100
                               }
                             }
                           },
@@ -3054,7 +3508,7 @@
                               "symbol": "unpaid_bills"
                             },
                             "val": {
-                              "u32": 0
+                              "u32": 1
                             }
                           }
                         ]
@@ -3324,6 +3778,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "data_availability"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "period_end"
                             },
                             "val": {
@@ -3564,7 +4026,7 @@
                           "symbol": "compliance_percentage"
                         },
                         "val": {
-                          "u32": 100
+                          "u32": 50
                         }
                       },
                       {
@@ -3582,7 +4044,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 50
                           }
                         }
                       },
@@ -3591,7 +4053,7 @@
                           "symbol": "paid_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 1
                         }
                       },
                       {
@@ -3617,7 +4079,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 150
                           }
                         }
                       },
@@ -3626,7 +4088,7 @@
                           "symbol": "total_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 2
                         }
                       },
                       {
@@ -3636,7 +4098,7 @@
                         "val": {
                           "i128": {
                             "hi": 0,
-                            "lo": 0
+                            "lo": 100
                           }
                         }
                       },
@@ -3645,7 +4107,7 @@
                           "symbol": "unpaid_bills"
                         },
                         "val": {
-                          "u32": 0
+                          "u32": 1
                         }
                       }
                     ]
@@ -3911,6 +4373,14 @@
                               ]
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "data_availability"
+                        },
+                        "val": {
+                          "u32": 0
                         }
                       },
                       {

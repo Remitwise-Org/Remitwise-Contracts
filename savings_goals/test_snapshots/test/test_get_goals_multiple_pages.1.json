@@ -4,6 +4,7 @@
     "nonce": 0
   },
   "auth": [
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -301,6 +302,68 @@
         {
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "symbol": "GOALS"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "symbol": "GOALS"
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": []
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "symbol": "NEXT_ID"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "symbol": "NEXT_ID"
+                },
+                "durability": "persistent",
+                "val": {
+                  "u32": 1
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
             "key": "ledger_key_contract_instance",
             "durability": "persistent"
           }
@@ -373,6 +436,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -454,6 +525,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -527,6 +606,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -608,6 +695,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -681,6 +776,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -762,6 +865,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -835,6 +946,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -916,6 +1035,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -993,6 +1120,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -1028,6 +1163,51 @@
                         },
                         "val": {
                           "u32": 9
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  },
+                                  {
+                                    "u32": 2
+                                  },
+                                  {
+                                    "u32": 3
+                                  },
+                                  {
+                                    "u32": 4
+                                  },
+                                  {
+                                    "u32": 5
+                                  },
+                                  {
+                                    "u32": 6
+                                  },
+                                  {
+                                    "u32": 7
+                                  },
+                                  {
+                                    "u32": 8
+                                  },
+                                  {
+                                    "u32": 9
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
@@ -1361,6 +1541,51 @@
     ]
   },
   "events": [
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+              },
+              {
+                "symbol": "init"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "init"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
     {
       "event": {
         "ext": "v0",
@@ -2942,6 +3167,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "target_amount"
                             },
                             "val": {
@@ -3010,6 +3243,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {
@@ -3086,6 +3327,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "target_amount"
                             },
                             "val": {
@@ -3154,6 +3403,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {
@@ -3315,6 +3572,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "target_amount"
                             },
                             "val": {
@@ -3383,6 +3648,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {
@@ -3459,6 +3732,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "target_amount"
                             },
                             "val": {
@@ -3527,6 +3808,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {
@@ -3684,6 +3973,14 @@
                             },
                             "val": {
                               "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "tags"
+                            },
+                            "val": {
+                              "vec": []
                             }
                           },
                           {

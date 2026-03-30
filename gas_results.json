@@ -1,0 +1,3 @@
+[
+  {"contract":"family_wallet","method":"configure_multisig","scenario":"9_signers_threshold_all","cpu":343463,"mem":69170}
+]

@@ -101,7 +101,7 @@
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 100000,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -183,6 +183,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -226,6 +234,27 @@
                         },
                         "val": {
                           "u32": 1
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       },
                       {
@@ -342,7 +371,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ],
       [
@@ -375,7 +404,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -408,7 +437,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -441,7 +470,7 @@
             },
             "ext": "v0"
           },
-          100000
+          3000000
         ]
       ],
       [
@@ -462,7 +491,7 @@
             },
             "ext": "v0"
           },
-          100000
+          518401
         ]
       ]
     ]

@@ -2,12 +2,34 @@
 
 This guide covers the deployment of the Remitwise Contracts suite to the Stellar network using Soroban.
 
+## Quick Start: Automated Bootstrap Deployment
+
+For the fastest deployment with sensible defaults, use the bootstrap script:
+
+```bash
+# Deploy to testnet
+./scripts/bootstrap_deploy.sh testnet deployer
+
+# Deploy to mainnet
+./scripts/bootstrap_deploy.sh mainnet deployer
+```
+
+The bootstrap script handles:
+- Building all WASM artifacts
+- Deploying all contracts in the correct order
+- Initializing contracts with sensible defaults
+- Outputting contract IDs to `deployed-contracts.json`
+
+See [Bootstrap Script Details](#bootstrap-script-details) below for more information.
+
 ## Prerequisites
 
-- Soroban CLI installed
+- Soroban CLI installed (version 21.0.0 or compatible)
 - Stellar account with sufficient XLM for deployment
 - Rust toolchain for contract compilation
 - Network access (Testnet or Mainnet)
+
+> **Note**: For detailed version compatibility information, see the [Compatibility section in README.md](README.md#compatibility) and the [Upgrade Guide](UPGRADE_GUIDE.md).
 
 ## Contracts Overview
 
@@ -23,9 +45,15 @@ The Remitwise Contracts suite consists of five main contracts:
 
 ### 1. Environment Setup
 
+> **Version Check**: Ensure you're using compatible versions. See [README Compatibility section](README.md#compatibility) for tested versions.
+
 ```bash
 # Install Soroban CLI (if not already installed)
-cargo install soroban-cli
+# Use version 21.0.0 or compatible
+cargo install --locked --version 21.0.0 soroban-cli
+
+# Verify installation
+soroban version
 
 # Configure network
 soroban config network add testnet \
@@ -208,6 +236,120 @@ soroban contract invoke \
 - RPC URL: `https://soroban-rpc.mainnet.stellar.org:443`
 - Network Passphrase: `Public Global Stellar Network ; September 2015`
 
+## Bootstrap Script Details
+
+The `bootstrap_deploy.sh` script provides an automated end-to-end deployment solution.
+
+### Usage
+
+```bash
+./scripts/bootstrap_deploy.sh [NETWORK] [SOURCE]
+```
+
+**Arguments:**
+- `NETWORK` - Network to deploy to (default: testnet, options: testnet, mainnet, standalone)
+- `SOURCE` - Source identity for deployment (default: deployer)
+
+**Environment Variables:**
+- `SKIP_BUILD` - Set to 1 to skip building contracts (default: 0)
+- `OUTPUT_FILE` - Path to output JSON file (default: ./deployed-contracts.json)
+
+### What It Does
+
+1. **Builds all contracts** - Compiles all WASM artifacts for deployment
+2. **Deploys contracts** - Deploys in dependency order:
+   - remittance_split
+   - savings_goals
+   - bill_payments
+   - insurance
+   - family_wallet
+   - reporting (configured with all contract addresses)
+   - orchestrator
+3. **Initializes contracts** - Sets up initial state and configurations
+4. **Creates sensible defaults**:
+   - Remittance split: 50% spending, 30% savings, 15% bills, 5% insurance
+   - Example savings goal: "Emergency Fund" with 5000 XLM target
+   - Example bill: "Monthly Utilities" (recurring, 150 XLM)
+   - Example insurance policy: "Health Insurance" (50 XLM/month premium)
+5. **Outputs JSON file** - Saves all contract IDs for easy integration
+
+### Output Format
+
+The script generates a JSON file (`deployed-contracts.json` by default) with the following structure:
+
+```json
+{
+  "network": "testnet",
+  "deployer": "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "deployed_at": "2024-01-15T10:30:00Z",
+  "contracts": {
+    "remittance_split": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "savings_goals": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "bill_payments": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "insurance": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "family_wallet": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "reporting": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "orchestrator": "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+This JSON file can be directly consumed by frontend and backend applications.
+
+### Examples
+
+```bash
+# Basic deployment to testnet
+./scripts/bootstrap_deploy.sh testnet deployer
+
+# Skip building (contracts already built)
+SKIP_BUILD=1 ./scripts/bootstrap_deploy.sh testnet deployer
+
+# Deploy to mainnet with custom output location
+OUTPUT_FILE=./production-contracts.json ./scripts/bootstrap_deploy.sh mainnet deployer
+
+# Deploy to standalone network for local testing
+./scripts/bootstrap_deploy.sh standalone deployer
+```
+
+### Prerequisites for Bootstrap Script
+
+Before running the bootstrap script:
+
+1. **Install Soroban CLI**:
+   ```bash
+   cargo install --locked --version 21.0.0 soroban-cli
+   ```
+
+2. **Create deployer identity** (if not exists):
+   ```bash
+   soroban keys generate deployer
+   ```
+
+3. **Fund deployer account**:
+   - Testnet: Use friendbot or Stellar Laboratory
+   - Mainnet: Fund with real XLM
+
+4. **Configure network** (if not already configured):
+   ```bash
+   soroban config network add testnet \
+     --rpc-url https://soroban-testnet.stellar.org:443 \
+     --network-passphrase "Test SDF Network ; September 2015"
+   ```
+
+## Network Configuration
+
+### Testnet Configuration
+
+- RPC URL: `https://soroban-testnet.stellar.org:443`
+- Network Passphrase: `Test SDF Network ; September 2015`
+- Friendbot: `https://friendbot.stellar.org`
+
+### Mainnet Configuration
+
+- RPC URL: `https://soroban-rpc.mainnet.stellar.org:443`
+- Network Passphrase: `Public Global Stellar Network ; September 2015`
+
 ## Contract Addresses
 
 After deployment, record the contract IDs:
@@ -334,11 +476,17 @@ Approximate deployment costs (Testnet):
 
 ### Upgrading Contracts
 
-1. Deploy new contract version
-2. Migrate data if needed
-3. Update client applications
-4. Test thoroughly
-5. Decommission old contract
+When upgrading to a new Soroban version:
+
+1. Review the [Upgrade Guide](UPGRADE_GUIDE.md) for detailed instructions
+2. Test on testnet with new SDK version
+3. Deploy new contract version
+4. Migrate data if needed (see [data_migration contract](data_migration/))
+5. Update client applications
+6. Test thoroughly before mainnet deployment
+7. Decommission old contract
+
+For breaking changes and version-specific migration steps, see [UPGRADE_GUIDE.md](UPGRADE_GUIDE.md#version-specific-migration-guides).
 
 ### Monitoring
 
@@ -346,3 +494,7 @@ Approximate deployment costs (Testnet):
 - Track function call volumes
 - Set up alerts for failures
 - Regular backup of contract states
+
+### Off-chain reconciliation
+
+To keep off-chain systems (databases, reporting, Anchor webhooks) aligned with on-chain state, follow the [Off-Chain Reconciliation Process](docs/off-chain-reconciliation.md). It covers data sources (events, webhooks, off-chain DB), a reconciliation checklist, and example flows for event-driven ingestion and periodic reconciliation.

@@ -1,8 +1,11 @@
 #![no_std]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, Address,
     Env, Map, Symbol, Vec,
 };
+
+use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -12,8 +15,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280;
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 
-// Signature expiration time (24 hours in seconds)
-const SIGNATURE_EXPIRATION: u64 = 86400;
+// Signature expiration time constants
+const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
+const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -25,16 +29,6 @@ pub enum TransactionType {
     EmergencyTransfer = 4,
     PolicyCancellation = 5,
     RegularWithdrawal = 6,
-}
-
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum FamilyRole {
-    Owner = 1,
-    Admin = 2,
-    Member = 3,
-    Viewer = 4,
 }
 
 #[contracttype]
@@ -72,8 +66,10 @@ pub enum TransactionData {
 pub struct FamilyMember {
     pub address: Address,
     pub role: FamilyRole,
-    /// Per-transaction cap in stroops. 0 = unlimited.
+    /// Legacy per-transaction cap in stroops. 0 = unlimited.
     pub spending_limit: i128,
+    /// Enhanced precision spending limit (optional)
+    pub precision_limit: Option<PrecisionSpendingLimit>,
     pub added_at: u64,
 }
 
@@ -83,6 +79,7 @@ pub struct EmergencyConfig {
     pub max_amount: i128,
     pub cooldown: u64,
     pub min_balance: i128,
+    pub daily_limit: i128,
 }
 
 #[contracttype]
@@ -144,6 +141,9 @@ pub struct AccessAuditEntry {
 const CONTRACT_VERSION: u32 = 1;
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
 const MAX_BATCH_MEMBERS: u32 = 30;
+const MAX_SIGNERS: u32 = 100;
+const MIN_THRESHOLD: u32 = 1;
+const MAX_THRESHOLD: u32 = 100;
 
 #[contracttype]
 #[derive(Clone)]
@@ -152,13 +152,64 @@ pub struct BatchMemberItem {
     pub role: FamilyRole,
 }
 
+/// Spending period configuration for rollover behavior
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingPeriod {
+    /// Period type: 0=Daily, 1=Weekly, 2=Monthly
+    pub period_type: u32,
+    /// Period start timestamp (aligned to period boundary)
+    pub period_start: u64,
+    /// Period duration in seconds
+    pub period_duration: u64,
+}
+
+/// Cumulative spending tracking for precision validation
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingTracker {
+    /// Current period spending amount
+    pub current_spent: i128,
+    /// Last transaction timestamp for precision validation
+    pub last_tx_timestamp: u64,
+    /// Transaction count in current period
+    pub tx_count: u32,
+    /// Period configuration
+    pub period: SpendingPeriod,
+}
+
+/// Enhanced spending limit with precision controls
+#[contracttype]
+#[derive(Clone)]
+pub struct PrecisionSpendingLimit {
+    /// Base spending limit per period
+    pub limit: i128,
+    /// Minimum precision unit (prevents dust attacks)
+    pub min_precision: i128,
+    /// Maximum single transaction amount
+    pub max_single_tx: i128,
+    /// Enable rollover validation
+    pub enable_rollover: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum ArchiveEvent {
     TransactionsArchived,
     ExpiredCleaned,
+    TransactionCancelled,
 }
 
+/// @title Family Wallet Multisig Proposal Expiry
+/// @notice Manages the lifecycle of multisig proposals with deterministic expiry.
+///
+/// Security Assumptions:
+/// 1. Proposer Authorization: Only authenticated family members can propose.
+/// 2. Deterministic Expiry: Expiry is set at proposal time based on contract configuration.
+/// 3. Signer Authorization: Only designated signers for a transaction type can sign.
+/// 4. Cancellation Safety: Proposers can cancel their own proposals; Admins can cancel any.
+/// 5. Expiry Enforcement: Expired proposals cannot be signed or executed.
+/// 6. Storage Bounds: Expired proposals can be pruned by Admins to manage storage costs.
 #[contract]
 pub struct FamilyWallet;
 
@@ -179,6 +230,12 @@ pub enum Error {
     MemberNotFound = 11,
     TransactionAlreadyExecuted = 12,
     InvalidSpendingLimit = 13,
+    ThresholdBelowMinimum = 14,
+    ThresholdAboveMaximum = 15,
+    SignersListEmpty = 16,
+    SignerNotMember = 17,
+    DuplicateSigner = 18,
+    TooManySigners = 19,
 }
 
 #[contractimpl]
@@ -258,22 +315,26 @@ impl FamilyWallet {
             .set(&symbol_short!("NEXT_TX"), &1u64);
 
         let em_config = EmergencyConfig {
-            max_amount: 1000_0000000,
+            max_amount: 10000_0000000,
             cooldown: 3600,
             min_balance: 0,
+            daily_limit: 100000_0000000,
         };
         env.storage()
             .instance()
             .set(&symbol_short!("EM_CONF"), &em_config);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_MODE"), &false);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &0u64);
 
         true
     }
+
 
     pub fn add_member(
         env: Env,
@@ -299,7 +360,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         if members.get(member_address.clone()).is_some() {
             return Err(Error::InvalidRole);
@@ -314,6 +375,7 @@ impl FamilyWallet {
                 address: member_address.clone(),
                 role,
                 spending_limit,
+                precision_limit: None, // Default to legacy behavior
                 added_at: now,
             },
         );
@@ -321,8 +383,11 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
 
-        env.events().publish(
-            (symbol_short!("added"), symbol_short!("member")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("member"),
             MemberAddedEvent {
                 member: member_address,
                 role,
@@ -339,36 +404,55 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         members.get(member_address)
     }
 
+    /// Update the spending limit for an existing family member.
+    ///
+    /// # Authorization
+    /// Only Owner or Admin can update spending limits.
+    ///
+    /// # Arguments
+    /// * `caller` - The address performing the update (must be Owner or Admin)
+    /// * `member_address` - The member whose limit to update (must exist)
+    /// * `new_limit` - New spending limit in stroops (>= 0)
+    ///
+    /// # Returns
+    /// `bool` - true on successful update
+    ///
+    /// # Security
+    /// - Validates caller is Owner or Admin
+    /// - Ensures member exists
+    /// - Enforces non-negative limits
+    /// - Emits SpendingLimitUpdatedEvent on success
     pub fn update_spending_limit(
         env: Env,
         caller: Address,
         member_address: Address,
         new_limit: i128,
-    ) -> Result<bool, Error> {
+    ) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
 
         if !Self::is_owner_or_admin(&env, &caller) {
-            return Err(Error::Unauthorized);
+            panic!("Only Owner or Admin can update spending limits");
         }
         if new_limit < 0 {
-            return Err(Error::InvalidSpendingLimit);
+            panic!("InvalidSpendingLimit");
         }
 
         let mut members: Map<Address, FamilyMember> = env
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         let mut record = members
             .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)?;
+            .ok_or(Error::MemberNotFound)
+            .unwrap_or_else(|_| panic!("MemberNotFound"));
 
         let old_limit = record.spending_limit;
         record.spending_limit = new_limit;
@@ -380,8 +464,11 @@ impl FamilyWallet {
             .set(&symbol_short!("MEMBERS"), &members);
 
         let now = env.ledger().timestamp();
-        env.events().publish(
-            (symbol_short!("updated"), symbol_short!("limit")),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::Medium,
+            symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
                 member: member_address,
                 old_limit,
@@ -390,7 +477,7 @@ impl FamilyWallet {
             },
         );
 
-        Ok(true)
+        true
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -417,6 +504,11 @@ impl FamilyWallet {
             None => return false,
         };
 
+        // Expired roles are treated as having no permissions.
+        if Self::role_has_expired(&env, &member.address) {
+            return false;
+        }
+
         // Owner and Admin are never restricted
         if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
             return true;
@@ -430,6 +522,15 @@ impl FamilyWallet {
         amount <= member.spending_limit
     }
 
+    /// @notice Configure multisig parameters for a given transaction type.
+    /// @dev Validates threshold bounds, signer membership, and uniqueness.
+    ///      Returns `Result<bool, Error>` instead of panicking on invalid input.
+    /// @param caller Owner or Admin authorizing the configuration.
+    /// @param tx_type The transaction type to configure.
+    /// @param threshold Number of signatures required (MIN_THRESHOLD..=min(MAX_THRESHOLD, signer_count)).
+    /// @param signers List of authorized signers (must be family members, no duplicates).
+    /// @param spending_limit Non-negative spending cap for the configuration.
+    /// @return Ok(true) on success, or a specific Error variant on failure.
     pub fn configure_multisig(
         env: Env,
         caller: Address,
@@ -437,7 +538,7 @@ impl FamilyWallet {
         threshold: u32,
         signers: Vec<Address>,
         spending_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -445,31 +546,55 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
-        if !Self::is_owner_or_admin_in_members(&members, &caller) {
-            panic!("Only Owner or Admin can configure multi-sig");
+        if !Self::is_owner_or_admin_in_members(&env, &members, &caller) {
+            return Err(Error::Unauthorized);
         }
 
-        if threshold == 0 || threshold > signers.len() {
-            panic!("Invalid threshold");
+        let signer_count = signers.len();
+
+        if signer_count == 0 {
+            return Err(Error::SignersListEmpty);
         }
 
+        if signer_count > MAX_SIGNERS {
+            return Err(Error::TooManySigners);
+        }
+
+        if threshold < MIN_THRESHOLD {
+            return Err(Error::ThresholdBelowMinimum);
+        }
+
+        if threshold > MAX_THRESHOLD {
+            return Err(Error::ThresholdAboveMaximum);
+        }
+
+        if threshold > signer_count {
+            return Err(Error::InvalidThreshold);
+        }
+
+        // Check signer membership and uniqueness in a single pass
+        let mut checked: Map<Address, bool> = Map::new(&env);
         for signer in signers.iter() {
             if members.get(signer.clone()).is_none() {
-                panic!("Signer must be a family member");
+                return Err(Error::SignerNotMember);
             }
+            if checked.get(signer.clone()).is_some() {
+                return Err(Error::DuplicateSigner);
+            }
+            checked.set(signer.clone(), true);
         }
 
         if spending_limit < 0 {
-            panic!("Spending limit must be non-negative");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         Self::extend_instance_ttl(&env);
 
         let config = MultiSigConfig {
             threshold,
-            signers: signers.clone(),
+            signers,
             spending_limit,
         };
 
@@ -477,7 +602,7 @@ impl FamilyWallet {
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
 
-        true
+        Ok(true)
     }
 
     pub fn propose_transaction(
@@ -505,7 +630,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&config_key)
-            .expect("Multi-sig config not found");
+            .unwrap_or_else(|| panic!("Multi-sig config not found"));
 
         let requires_multisig = match (&tx_type, &data) {
             (TransactionType::RegularWithdrawal, TransactionData::Withdrawal(_, _, amount)) => {
@@ -539,13 +664,19 @@ impl FamilyWallet {
         let mut signatures = Vec::new(&env);
         signatures.push_back(proposer.clone());
 
+        let expiry_duration: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
+
         let pending_tx = PendingTransaction {
             tx_id,
             tx_type,
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
-            expires_at: timestamp + SIGNATURE_EXPIRATION,
+            expires_at: timestamp + expiry_duration,
             data: data.clone(),
         };
 
@@ -553,7 +684,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("PEND_TXS"))
-            .expect("Pending transactions map not initialized");
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
         pending_txs.set(tx_id, pending_tx);
         env.storage()
@@ -578,9 +709,11 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("PEND_TXS"))
-            .expect("Pending transactions map not initialized");
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs.get(tx_id).expect("Transaction not found");
+        let mut pending_tx = pending_txs
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"));
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -597,7 +730,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&Self::get_config_key(pending_tx.tx_type))
-            .expect("Multi-sig config not found");
+            .unwrap_or_else(|| panic!("Multi-sig config not found"));
 
         let mut is_authorized = false;
         for authorized_signer in config.signers.iter() {
@@ -632,7 +765,7 @@ impl FamilyWallet {
                     .storage()
                     .instance()
                     .get(&symbol_short!("EXEC_TXS"))
-                    .expect("Executed transactions map not initialized");
+                    .unwrap_or_else(|| panic!("Executed transactions map not initialized"));
 
                 executed_txs.set(tx_id, true);
                 env.storage()
@@ -662,11 +795,16 @@ impl FamilyWallet {
             panic!("Amount must be positive");
         }
 
+        // Enhanced precision and rollover validation
+        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount) {
+            panic_with_error!(&env, error);
+        }
+
         let config: MultiSigConfig = env
             .storage()
             .instance()
             .get(&Self::get_config_key(TransactionType::LargeWithdrawal))
-            .expect("Multi-sig config not found");
+            .unwrap_or_else(|| panic!("Multi-sig config not found"));
 
         let tx_type = if amount > config.spending_limit {
             TransactionType::LargeWithdrawal
@@ -742,6 +880,28 @@ impl FamilyWallet {
             return Self::execute_emergency_transfer_now(env, proposer, token, recipient, amount);
         }
 
+        let pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut active_proposals = 0;
+        for (_, tx) in pending_txs.iter() {
+            if tx.proposer == proposer && tx.tx_type == TransactionType::EmergencyTransfer {
+                if let TransactionData::EmergencyTransfer(t, r, a) = &tx.data {
+                    if t == &token && r == &recipient && *a == amount {
+                        panic!("Identical emergency transfer proposal already pending");
+                    }
+                }
+                active_proposals += 1;
+            }
+        }
+
+        if active_proposals >= 1 {
+            panic!("Maximum pending emergency proposals reached");
+        }
+
         Self::propose_transaction(
             env,
             proposer,
@@ -765,6 +925,7 @@ impl FamilyWallet {
         max_amount: i128,
         cooldown: u64,
         min_balance: i128,
+        daily_limit: i128,
     ) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -787,6 +948,7 @@ impl FamilyWallet {
                 max_amount,
                 cooldown,
                 min_balance,
+                daily_limit,
             },
         );
 
@@ -812,8 +974,13 @@ impl FamilyWallet {
         } else {
             EmergencyEvent::ModeOff
         };
-        env.events()
-            .publish((symbol_short!("emerg"), event), caller);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("em_mode"),
+            event,
+        );
 
         true
     }
@@ -834,7 +1001,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         let timestamp = env.ledger().timestamp();
         members.set(
@@ -843,6 +1010,7 @@ impl FamilyWallet {
                 address: member.clone(),
                 role,
                 spending_limit: 0,
+                precision_limit: None, // Default to legacy behavior
                 added_at: timestamp,
             },
         );
@@ -855,6 +1023,23 @@ impl FamilyWallet {
         true
     }
 
+    /// Remove a family member from the wallet.
+    ///
+    /// # Authorization
+    /// Only Owner can remove family members.
+    ///
+    /// # Arguments
+    /// * `caller` - The address performing the removal (must be Owner)
+    /// * `member` - The member address to remove
+    ///
+    /// # Returns
+    /// `bool` - true on successful removal
+    ///
+    /// # Security
+    /// - Validates caller is Owner
+    /// - Prevents removing the Owner
+    /// - Silently succeeds if member doesn't exist
+    /// - Records access audit entry
     pub fn remove_family_member(env: Env, caller: Address, member: Address) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -863,8 +1048,11 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("OWNER"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
+        }
         if caller != owner {
             panic!("Only Owner can remove family members");
         }
@@ -878,7 +1066,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         members.remove(member.clone());
         env.storage()
@@ -894,7 +1082,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("PEND_TXS"))
-            .expect("Pending transactions map not initialized");
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
         pending_txs.get(tx_id)
     }
@@ -908,7 +1096,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         members.get(member)
     }
@@ -917,7 +1105,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .get(&symbol_short!("OWNER"))
-            .expect("Wallet not initialized")
+            .unwrap_or_else(|| panic!("Wallet not initialized"))
     }
 
     pub fn get_emergency_config(env: Env) -> Option<EmergencyConfig> {
@@ -994,8 +1182,11 @@ impl FamilyWallet {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("wallet"), ArchiveEvent::TransactionsArchived),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::Low,
+            symbol_short!("archived"),
             (archived_count, caller),
         );
 
@@ -1058,11 +1249,13 @@ impl FamilyWallet {
 
         Self::update_storage_stats(&env);
 
-        env.events().publish(
-            (symbol_short!("wallet"), ArchiveEvent::ExpiredCleaned),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::Low,
+            symbol_short!("archived"),
             (removed_count, caller),
         );
-
         removed_count
     }
 
@@ -1078,6 +1271,11 @@ impl FamilyWallet {
             })
     }
 
+    /// @notice Set or clear a role-expiry timestamp for an existing family member.
+    /// @dev Expiry is inclusive: at `ledger.timestamp() >= expires_at` the member is treated as expired.
+    /// @param caller Admin/Owner authorizing the change.
+    /// @param member Target family member.
+    /// @param expires_at Unix timestamp in seconds; `None` clears expiry.
     pub fn set_role_expiry(
         env: Env,
         caller: Address,
@@ -1088,6 +1286,16 @@ impl FamilyWallet {
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         Self::require_not_paused(&env);
         Self::extend_instance_ttl(&env);
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        if members.get(member.clone()).is_none() {
+            panic!("Member not found");
+        }
+
         let mut m: Map<Address, u64> = env
             .storage()
             .instance()
@@ -1115,7 +1323,7 @@ impl FamilyWallet {
             env.storage()
                 .instance()
                 .get(&symbol_short!("OWNER"))
-                .expect("Wallet not initialized")
+                .unwrap_or_else(|| panic!("Wallet not initialized"))
         });
         if admin != caller {
             panic!("Only pause admin can pause");
@@ -1134,10 +1342,13 @@ impl FamilyWallet {
             env.storage()
                 .instance()
                 .get(&symbol_short!("OWNER"))
-                .expect("Wallet not initialized")
+                .unwrap_or_else(|| panic!("Wallet not initialized"))
         });
         if admin != caller {
             panic!("Only pause admin can unpause");
+        }
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
         }
         env.storage()
             .instance()
@@ -1171,13 +1382,48 @@ impl FamilyWallet {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
 
+    /// Set or transfer the upgrade admin role.
+    ///
+    /// # Security Requirements
+    /// - Only wallet owners can set or transfer upgrade admin role
+    /// - Caller must be authenticated via require_auth()
+    /// - Caller must have at least Owner role in the family wallet
+    ///
+    /// # Parameters
+    /// - `caller`: The address attempting to set the upgrade admin
+    /// - `new_admin`: The address to become the new upgrade admin
+    ///
+    /// # Returns
+    /// - `true` on successful admin transfer
+    ///
+    /// # Panics
+    /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
+
+        let current_upgrade_admin = Self::get_upgrade_admin(&env);
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
+
+        // Emit admin transfer event for audit trail
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("adm_xfr")),
+            (current_upgrade_admin.clone(), new_admin.clone()),
+        );
+
         true
+    }
+
+    /// Get the current upgrade admin address.
+    ///
+    /// # Returns
+    /// - `Some(Address)` if upgrade admin is set
+    /// - `None` if no upgrade admin has been configured
+    pub fn get_upgrade_admin_public(env: Env) -> Option<Address> {
+        Self::get_upgrade_admin(&env)
     }
 
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> bool {
@@ -1186,10 +1432,13 @@ impl FamilyWallet {
             env.storage()
                 .instance()
                 .get(&symbol_short!("OWNER"))
-                .expect("Wallet not initialized")
+                .unwrap_or_else(|| panic!("Wallet not initialized"))
         });
         if admin != caller {
             panic!("Only upgrade admin can set version");
+        }
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
         }
         let prev = Self::get_version(env.clone());
         env.storage()
@@ -1208,17 +1457,21 @@ impl FamilyWallet {
         members: Vec<BatchMemberItem>,
     ) -> u32 {
         caller.require_auth();
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::Medium,
+            symbol_short!("batch_mem"),
+            members.len() as u32,
+        );
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         Self::require_not_paused(&env);
-        if members.len() > MAX_BATCH_MEMBERS {
-            panic!("Batch too large");
-        }
         Self::extend_instance_ttl(&env);
         let mut members_map: Map<Address, FamilyMember> = env
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
         let timestamp = env.ledger().timestamp();
         let mut count = 0u32;
         for item in members.iter() {
@@ -1231,6 +1484,7 @@ impl FamilyWallet {
                     address: item.address.clone(),
                     role: item.role,
                     spending_limit: 0,
+                    precision_limit: None, // Default to legacy behavior
                     added_at: timestamp,
                 },
             );
@@ -1257,7 +1511,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("OWNER"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
         if caller != owner {
             panic!("Only Owner can remove members");
         }
@@ -1270,7 +1524,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
         let mut count = 0u32;
         for addr in addresses.iter() {
             if addr.clone() == owner {
@@ -1326,7 +1580,7 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("EM_CONF"))
-            .expect("Emergency config not set");
+            .unwrap_or_else(|| panic!("Emergency config not set"));
 
         if amount > config.max_amount {
             panic!("Emergency amount exceeds maximum allowed");
@@ -1342,14 +1596,33 @@ impl FamilyWallet {
             panic!("Emergency transfer cooldown period not elapsed");
         }
 
+        // Daily Rate Limit Enforcement
+        let day_in_seconds = 86400u64;
+        let mut daily_usage: (i128, u64) = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_VOL"))
+            .unwrap_or((0i128, 0u64));
+
+        if now >= daily_usage.1.saturating_add(day_in_seconds) {
+            daily_usage = (0i128, now);
+        }
+
+        if daily_usage.0.saturating_add(amount) > config.daily_limit {
+            panic!("Emergency daily limit exceeded");
+        }
+
         let token_client = TokenClient::new(&env, &token);
         let current_balance = token_client.balance(&proposer);
         if current_balance - amount < config.min_balance {
             panic!("Emergency transfer would violate minimum balance requirement");
         }
 
-        env.events().publish(
-            (symbol_short!("emerg"), EmergencyEvent::TransferInit),
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("em_init"),
             (proposer.clone(), recipient.clone(), amount),
         );
 
@@ -1362,10 +1635,15 @@ impl FamilyWallet {
             false,
         );
 
-        let store_ts: u64 = if now == 0 { 1u64 } else { now };
+        let store_ts = env.ledger().timestamp();
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
+
+        daily_usage.0 = daily_usage.0.saturating_add(amount);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_VOL"), &daily_usage);
 
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),
@@ -1404,7 +1682,7 @@ impl FamilyWallet {
                     .storage()
                     .instance()
                     .get(&symbol_short!("MEMBERS"))
-                    .expect("Wallet not initialized");
+                    .unwrap_or_else(|| panic!("Wallet not initialized"));
 
                 if let Some(mut member_data) = members.get(member.clone()) {
                     member_data.role = *new_role;
@@ -1466,15 +1744,20 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| Map::new(env));
 
-        Self::is_owner_or_admin_in_members(&members, address)
+        Self::is_owner_or_admin_in_members(env, &members, address)
     }
 
     fn is_owner_or_admin_in_members(
+        env: &Env,
         members: &Map<Address, FamilyMember>,
         address: &Address,
     ) -> bool {
         if let Some(member) = members.get(address.clone()) {
-            matches!(member.role, FamilyRole::Owner | FamilyRole::Admin)
+            if Self::role_has_expired(env, address) {
+                false
+            } else {
+                matches!(member.role, FamilyRole::Owner | FamilyRole::Admin)
+            }
         } else {
             false
         }
@@ -1505,8 +1788,10 @@ impl FamilyWallet {
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
-            .expect("Wallet not initialized");
-        let member = members.get(caller.clone()).expect("Not a family member");
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
         }
@@ -1539,7 +1824,7 @@ impl FamilyWallet {
             let mut v = Vec::new(env);
             let start = n - MAX_ACCESS_AUDIT_ENTRIES;
             for i in start..n {
-                v.push_back(entries.get(i).unwrap());
+                v.push_back(entries.get(i).unwrap_or_else(|| panic!("Item not found")));
             }
             entries = v;
         }

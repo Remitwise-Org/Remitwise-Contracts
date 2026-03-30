@@ -1,4 +1,5 @@
 use insurance::{Insurance, InsuranceClient};
+use remitwise_common::CoverageType;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
 
@@ -42,11 +43,12 @@ fn bench_get_total_monthly_premium_worst_case() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    client.set_pause_admin(&owner, &owner);
 
     let name = String::from_str(&env, "BenchPolicy");
-    let coverage_type = String::from_str(&env, "health");
+    let coverage_type = CoverageType::Health;
     for _ in 0..100 {
-        client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128);
+        client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
     let expected_total = 100i128 * 100i128;

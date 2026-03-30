@@ -257,6 +257,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -292,6 +300,27 @@
                         },
                         "val": {
                           "u32": 1
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
@@ -734,16 +763,21 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "lock_goal"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 3
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Only the goal owner can lock this goal' from contract function 'Symbol(lock_goal)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u32": 1
+                }
+              ]
             }
           }
         }
@@ -763,12 +797,12 @@
               },
               {
                 "error": {
-                  "contract": 3
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -788,7 +822,7 @@
               },
               {
                 "error": {
-                  "contract": 3
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

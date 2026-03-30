@@ -222,16 +222,21 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "lock_goal"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 7
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Goal not found' from contract function 'Symbol(lock_goal)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 99
+                }
+              ]
             }
           }
         }
@@ -251,12 +256,12 @@
               },
               {
                 "error": {
-                  "contract": 7
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -276,7 +281,7 @@
               },
               {
                 "error": {
-                  "contract": 7
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

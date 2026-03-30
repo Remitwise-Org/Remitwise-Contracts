@@ -251,6 +251,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -324,6 +332,14 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
                                     }
                                   },
                                   {
@@ -405,6 +421,14 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "tags"
+                                    },
+                                    "val": {
+                                      "vec": []
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "target_amount"
                                     },
                                     "val": {
@@ -440,6 +464,33 @@
                         },
                         "val": {
                           "u32": 3
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "OWN_GOAL"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "u32": 1
+                                  },
+                                  {
+                                    "u32": 2
+                                  },
+                                  {
+                                    "u32": 3
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     ]

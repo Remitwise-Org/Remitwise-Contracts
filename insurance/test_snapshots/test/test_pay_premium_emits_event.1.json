@@ -17,21 +17,21 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Emergency Coverage"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "emergency"
+                  "string": "Health"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 75
+                    "lo": 100
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 25000
+                    "lo": 10000
                   }
                 }
               ]
@@ -132,7 +132,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 25000
+                                        "lo": 10000
                                       }
                                     }
                                   },
@@ -141,7 +141,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "emergency"
+                                      "string": "Health"
                                     }
                                   },
                                   {
@@ -159,7 +159,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 75
+                                        "lo": 100
                                       }
                                     }
                                   },
@@ -168,7 +168,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Emergency Coverage"
+                                      "string": "Health Policy"
                                     }
                                   },
                                   {
@@ -194,6 +194,26 @@
                                     "val": "void"
                                   }
                                 ]
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "PRM_TOT"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 100
+                                }
                               }
                             }
                           ]
@@ -323,21 +343,21 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Emergency Coverage"
+                  "string": "Health Policy"
                 },
                 {
-                  "string": "emergency"
+                  "string": "Health"
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 75
+                    "lo": 100
                   }
                 },
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 25000
+                    "lo": 10000
                   }
                 }
               ]
@@ -368,7 +388,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 25000
+                      "lo": 10000
                     }
                   }
                 },
@@ -377,7 +397,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "emergency"
+                    "string": "Health"
                   }
                 },
                 {
@@ -387,7 +407,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 75
+                      "lo": 100
                     }
                   }
                 },
@@ -396,7 +416,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Emergency Coverage"
+                    "string": "Health Policy"
                   }
                 },
                 {
@@ -533,7 +553,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 75
+                      "lo": 100
                     }
                   }
                 },
@@ -542,7 +562,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Emergency Coverage"
+                    "string": "Health Policy"
                   }
                 },
                 {
@@ -625,9 +645,7 @@
                 "symbol": "pay_premium"
               }
             ],
-            "data": {
-              "bool": true
-            }
+            "data": "void"
           }
         }
       },
