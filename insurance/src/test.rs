@@ -29,7 +29,11 @@ use ::testutils::{set_ledger_time, setup_test_env};
 
 #[test]
 fn test_create_policy_succeeds() {
-    setup_test_env!(env, Insurance, InsuranceClient, client, owner);
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
     client.initialize(&owner);
 
     let name = String::from_str(&env, "Health Policy");
@@ -41,7 +45,8 @@ fn test_create_policy_succeeds() {
         &coverage_type,
         &100,   // monthly_premium
         &10000, // coverage_amount
-    &None);
+        &None,
+    );
 
     assert_eq!(policy_id, 1);
 
@@ -97,6 +102,10 @@ fn test_create_policy_invalid_coverage() {
 
 #[test]
 fn test_create_premium_schedule_succeeds() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
     client.initialize(&owner);
     set_ledger_time(&env, 1, 1000);
 
@@ -106,7 +115,8 @@ fn test_create_premium_schedule_succeeds() {
         &CoverageType::Health,
         &500,
         &50000,
-     &None);
+        &None,
+    );
 
     let schedule_id = client.create_premium_schedule(&owner, &policy_id, &3000, &2592000);
     assert_eq!(schedule_id, 1);

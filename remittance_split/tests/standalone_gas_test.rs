@@ -65,7 +65,6 @@ fn test_create_schedule_gas_measurement() {
     });
 
     // Validate the operation succeeded
-    let schedule_id = result;
     assert_eq!(schedule_id, 1, "First schedule should have ID 1");
 
     // Validate gas measurements are reasonable
@@ -268,7 +267,6 @@ fn test_gas_scaling_with_multiple_schedules() {
     });
 
     // Validate the operation succeeded
-    let schedule_id = result;
     assert_eq!(schedule_id, 11, "Should be the 11th schedule");
 
     // Validate gas measurements show reasonable scaling
@@ -390,7 +388,7 @@ fn test_input_validation_security() {
     );
 
     // Test valid parameters work
-    client.create_remittance_schedule(
+    let result = client.create_remittance_schedule(
         &owner,
         &1000i128,
         &(env.ledger().timestamp() + 86400),
