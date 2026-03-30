@@ -2226,13 +2226,15 @@
                 "symbol": "fn_call"
               },
               {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
+                "bytes": "04cadb4a570fd2e4652e814101509912cce6c9a2325d6eec8d7100caf859f3e0"
               },
               {
-                "symbol": "get_last_emergency_at"
+                "symbol": "balance"
               }
             ],
-            "data": "void"
+            "data": {
+              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
+            }
           }
         }
       },
@@ -2241,7 +2243,7 @@
     {
       "event": {
         "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "contract_id": "04cadb4a570fd2e4652e814101509912cce6c9a2325d6eec8d7100caf859f3e0",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -2250,10 +2252,15 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "get_last_emergency_at"
+                "symbol": "balance"
               }
             ],
-            "data": "void"
+            "data": {
+              "i128": {
+                "hi": 0,
+                "lo": 15000000000
+              }
+            }
           }
         }
       },
