@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test;
 
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
@@ -48,6 +48,10 @@ pub enum RemittanceSplitError {
     RequestHashMismatch = 15,
 
     NonceAlreadyUsed = 16,
+    SnapshotNotInitialized = 17,
+    InvalidPercentageRange = 18,
+    FutureTimestamp = 19,
+    OwnerMismatch = 20,
 }
 
 #[derive(Clone)]
@@ -64,6 +68,21 @@ pub struct AccountGroup {
     pub savings: Address,
     pub bills: Address,
     pub insurance: Address,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
 }
 
 // Storage TTL constants
@@ -132,6 +151,7 @@ pub struct ExportSnapshot {
     /// Supported range: MIN_SUPPORTED_SCHEMA_VERSION..=SCHEMA_VERSION.
     pub schema_version: u32,
     pub checksum: u64,
+    pub exported_at: u64,
     pub config: SplitConfig,
     pub schedules: Vec<RemittanceSchedule>,
 }
@@ -463,12 +483,12 @@ impl RemittanceSplit {
             || bills_percent > 100
             || insurance_percent > 100
         {
-            return Err(RemittanceSplitError::PercentageOutOfRange);
+            return Err(RemittanceSplitError::InvalidPercentageRange);
         }
         // Global sum invariant.
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
         if total != 100 {
-            return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
         Ok(())
     }
@@ -901,7 +921,8 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
         let schedules = Self::get_remittance_schedules(env.clone(), caller.clone());
-        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config, &schedules);
+        let exported_at = env.ledger().timestamp();
+        let checksum = Self::compute_checksum(SCHEMA_VERSION, &config, &schedules, exported_at);
         env.events().publish(
             (symbol_short!("split"), symbol_short!("snap_exp")),
             SCHEMA_VERSION,
@@ -909,6 +930,7 @@ impl RemittanceSplit {
         Ok(Some(ExportSnapshot {
             schema_version: SCHEMA_VERSION,
             checksum,
+            exported_at,
             config,
             schedules,
         }))
@@ -949,6 +971,7 @@ impl RemittanceSplit {
             snapshot.schema_version,
             &snapshot.config,
             &snapshot.schedules,
+            snapshot.exported_at,
         );
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
@@ -1085,6 +1108,7 @@ impl RemittanceSplit {
         let expected = Self::compute_checksum(
             snapshot.schema_version,
             &snapshot.config,
+            &snapshot.schedules,
             snapshot.exported_at,
         );
         if snapshot.checksum != expected {
@@ -1327,19 +1351,23 @@ impl RemittanceSplit {
         version: u32,
         config: &SplitConfig,
         schedules: &Vec<RemittanceSchedule>,
+        exported_at: u64,
     ) -> u64 {
         let v = version as u64;
         let s = config.spending_percent as u64;
         let g = config.savings_percent as u64;
         let b = config.bills_percent as u64;
         let i = config.insurance_percent as u64;
+        let t = config.timestamp;
         let sc_count = schedules.len() as u64;
 
         v.wrapping_add(s)
             .wrapping_add(g)
             .wrapping_add(b)
             .wrapping_add(i)
+            .wrapping_add(t)
             .wrapping_add(sc_count)
+            .wrapping_add(exported_at)
             .wrapping_mul(31)
     }
 
@@ -1475,7 +1503,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        let next_schedule_id = env
+        let current_max_id = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
@@ -1486,7 +1514,11 @@ impl RemittanceSplit {
             .ok_or(RemittanceSplitError::Overflow)?;
 
         // Explicit uniqueness check to prevent any potential storage collisions
-        if schedules.contains_key(next_schedule_id) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Schedule(next_schedule_id))
+        {
             return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
         }
 

@@ -13,7 +13,7 @@
 use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
-    symbol_short, Address, Env, Symbol, Vec,
+    symbol_short, Address, Env, Map, Symbol, Vec,
 };
 
 #[cfg(test)]
@@ -69,6 +69,7 @@ pub enum OrchestratorError {
     DuplicateContractAddress = 11,
     ContractNotConfigured = 12,
     SelfReferenceNotAllowed = 13,
+    NonceAlreadyUsed = 14,
 }
 
 #[contracttype]
@@ -301,6 +302,14 @@ impl Orchestrator {
     ) -> Result<(), OrchestratorError> {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
+        Self::validate_two_addresses(&env, &family_wallet_addr, &bills_addr).map_err(|e| {
+            Self::release_execution_lock(&env);
+            e
+        })?;
+        Self::consume_nonce(&env, &caller, symbol_short!("exec_bill"), nonce).map_err(|e| {
+            Self::release_execution_lock(&env);
+            e
+        })?;
         let result = (|| {
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
             Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id)?;
@@ -321,6 +330,14 @@ impl Orchestrator {
     ) -> Result<(), OrchestratorError> {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
+        Self::validate_two_addresses(&env, &family_wallet_addr, &insurance_addr).map_err(|e| {
+            Self::release_execution_lock(&env);
+            e
+        })?;
+        Self::consume_nonce(&env, &caller, symbol_short!("exec_ins"), nonce).map_err(|e| {
+            Self::release_execution_lock(&env);
+            e
+        })?;
         let result = (|| {
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, amount)?;
             Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id)?;
@@ -421,6 +438,43 @@ impl Orchestrator {
         {
             return Err(OrchestratorError::DuplicateContractAddress);
         }
+        Ok(())
+    }
+
+    fn validate_two_addresses(
+        env: &Env,
+        left: &Address,
+        right: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let current = env.current_contract_address();
+        if left == &current || right == &current {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if left == right {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
+
+    fn consume_nonce(
+        env: &Env,
+        caller: &Address,
+        command: Symbol,
+        nonce: u64,
+    ) -> Result<(), OrchestratorError> {
+        let mut used: Map<(Address, Symbol, u64), bool> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NONCES"))
+            .unwrap_or_else(|| Map::new(env));
+
+        let nonce_key = (caller.clone(), command, nonce);
+        if used.get(nonce_key.clone()).unwrap_or(false) {
+            return Err(OrchestratorError::NonceAlreadyUsed);
+        }
+
+        used.set(nonce_key, true);
+        env.storage().instance().set(&symbol_short!("NONCES"), &used);
         Ok(())
     }
 

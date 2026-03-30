@@ -1,8 +1,6 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-extern crate alloc;
-
 #[cfg(test)]
 use remitwise_common::MAX_PAGE_LIMIT;
 use remitwise_common::{
@@ -11,11 +9,13 @@ use remitwise_common::{
     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
 };
 
-use alloc::vec::Vec as StdVec;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
+
+const SECONDS_PER_DAY: u64 = 86_400;
+const MAX_FREQUENCY_DAYS: u32 = 365;
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -1168,7 +1168,6 @@ impl BillPayments {
             id: archived_bill.id,
             owner: archived_bill.owner.clone(),
             name: archived_bill.name.clone(),
-            external_ref: archived_bill.external_ref.clone(),
             amount: archived_bill.amount,
             external_ref: None,
             due_date: env.ledger().timestamp() + 2592000,

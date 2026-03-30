@@ -74,10 +74,6 @@ impl EventPriority {
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
 pub const MAX_PAGE_LIMIT: u32 = 50;
 
-/// Storage TTL constants for archived data
-pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-pub const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
-
 /// Signature expiration time (24 hours in seconds)
 pub const SIGNATURE_EXPIRATION: u64 = 86400;
 
@@ -199,6 +195,9 @@ impl RemitwiseEvents {
 
 // Standardized TTL Constants (Ledger Counts)
 pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
+
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
+pub const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS; // 30 days
 
 pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
 pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days

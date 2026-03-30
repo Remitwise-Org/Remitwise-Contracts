@@ -1,8 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, Address,
-    Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
 use remitwise_common::{EventCategory, EventPriority, FamilyRole, RemitwiseEvents};
@@ -63,13 +63,20 @@ pub enum TransactionData {
 
 #[contracttype]
 #[derive(Clone)]
+pub enum PrecisionLimitOpt {
+    None,
+    Some(PrecisionSpendingLimit),
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct FamilyMember {
     pub address: Address,
     pub role: FamilyRole,
     /// Legacy per-transaction cap in stroops. 0 = unlimited.
     pub spending_limit: i128,
     /// Enhanced precision spending limit (optional)
-    pub precision_limit: Option<PrecisionSpendingLimit>,
+    pub precision_limit: PrecisionLimitOpt,
     pub added_at: u64,
 }
 
@@ -263,6 +270,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
+                precision_limit: PrecisionLimitOpt::None,
                 added_at: timestamp,
             },
         );
@@ -274,6 +282,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
+                    precision_limit: PrecisionLimitOpt::None,
                     added_at: timestamp,
                 },
             );
@@ -374,7 +383,7 @@ impl FamilyWallet {
                 address: member_address.clone(),
                 role,
                 spending_limit,
-                precision_limit: None, // Default to legacy behavior
+                precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                 added_at: now,
             },
         );
@@ -1010,7 +1019,7 @@ impl FamilyWallet {
                 address: member.clone(),
                 role,
                 spending_limit: 0,
-                precision_limit: None, // Default to legacy behavior
+                precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                 added_at: timestamp,
             },
         );
@@ -1484,7 +1493,7 @@ impl FamilyWallet {
                     address: item.address.clone(),
                     role: item.role,
                     spending_limit: 0,
-                    precision_limit: None, // Default to legacy behavior
+                    precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                     added_at: timestamp,
                 },
             );
@@ -1563,6 +1572,68 @@ impl FamilyWallet {
             }
         }
         out
+    }
+
+    pub fn set_proposal_expiry(env: Env, caller: Address, expiry_secs: u64) -> bool {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        if member.role != FamilyRole::Owner {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        if expiry_secs > MAX_PROPOSAL_EXPIRY {
+            panic_with_error!(&env, Error::ThresholdAboveMaximum);
+        }
+
+        Self::extend_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &expiry_secs);
+        true
+    }
+
+    pub fn get_proposal_expiry_public(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY)
+    }
+
+    pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+        Self::require_role_at_least(&env, &caller, FamilyRole::Member);
+        Self::extend_instance_ttl(&env);
+
+        let mut pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
+
+        let tx = match pending_txs.get(tx_id) {
+            Some(t) => t,
+            None => panic_with_error!(&env, Error::TransactionNotFound),
+        };
+
+        if tx.proposer != caller && !Self::is_owner_or_admin(&env, &caller) {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        pending_txs.remove(tx_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PEND_TXS"), &pending_txs);
+        true
     }
 
     // -----------------------------------------------------------------------
@@ -1651,6 +1722,46 @@ impl FamilyWallet {
         );
 
         0
+    }
+
+    fn validate_precision_spending(
+        env: Env,
+        caller: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .ok_or(Error::MemberNotFound)?;
+
+        let member = members.get(caller).ok_or(Error::MemberNotFound)?;
+
+        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
+            return Ok(());
+        }
+
+        if let PrecisionLimitOpt::Some(limit) = member.precision_limit {
+            if amount < limit.min_precision {
+                return Err(Error::InvalidAmount);
+            }
+            if limit.max_single_tx > 0 && amount > limit.max_single_tx {
+                return Err(Error::InvalidAmount);
+            }
+            if limit.limit > 0 && amount > limit.limit {
+                return Err(Error::InvalidSpendingLimit);
+            }
+        }
+
+        if member.spending_limit > 0 && amount > member.spending_limit {
+            return Err(Error::InvalidSpendingLimit);
+        }
+
+        Ok(())
     }
 
     fn execute_transaction_internal(
