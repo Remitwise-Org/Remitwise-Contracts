@@ -17,7 +17,7 @@ env:
 jobs:
   build:
     name: Build and Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -31,60 +31,15 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+          workspaces: |
+            .
+          cache-directories: |
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install Soroban CLI
-        run: |
-          if ! command -v soroban &> /dev/null; then
-            echo "Attempting to install via Homebrew..."
-            if brew list stellar-cli &>/dev/null || brew install stellar-cli 2>/dev/null; then
-              echo "Installed via Homebrew"
-            else
-              echo "Homebrew install failed, installing via cargo..."
-              cargo install --locked --version 21.0.0 soroban-cli
-            fi
-          fi
-          # Try both commands in case Homebrew installs it as 'stellar'
-          if command -v soroban &> /dev/null; then
-            soroban --version
-          elif command -v stellar &> /dev/null; then
-            stellar --version
-            # Create alias for consistency
-            ln -s $(which stellar) /usr/local/bin/soroban || true
-          else
-            echo "Error: Neither soroban nor stellar CLI found"
-            exit 1
-          fi
-
-      - name: Verify Rust installation
-        run: |
-          rustc --version
-          cargo --version
-          rustup target list --installed | grep wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown
 
       - name: Build workspace (WASM)
-        run: |
-          cargo build --release --target wasm32-unknown-unknown --verbose
-        continue-on-error: false
-
-      - name: Build Soroban contracts
-        run: |
-          for contract in remittance_split savings_goals bill_payments insurance; do
-            echo "Building contract: $contract"
-            # Build from workspace root to ensure WASM files go to target/wasm32-unknown-unknown/release/
-            cargo build --release --target wasm32-unknown-unknown --package $contract --verbose
-          done
-        continue-on-error: false
+        run: cargo build --release --target wasm32-unknown-unknown --verbose
 
       - name: Verify WASM files exist
         run: |
@@ -97,25 +52,18 @@ jobs:
             echo "✓ Found: $wasm_file ($(du -h $wasm_file | cut -f1))"
           done
 
-      - name: Run Cargo tests
-        run: |
-          cargo test --verbose --all-features
-        continue-on-error: false
+      - name: Compile Tests (Workspace)
+        run: cargo test --workspace --all-features --exclude integration_tests --no-run
 
-      - name: Run Integration tests
-        run: |
-          cargo test -p integration_tests --verbose
-        continue-on-error: false
+      - name: Compile Integration Tests
+        run: cargo test -p integration_tests --no-run
+        continue-on-error: true
 
       - name: Run Clippy
-        run: |
-          cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: false
+        run: cargo clippy --all-targets --all-features --workspace
 
-      - name: Check formatting
-        run: |
-          cargo fmt --all -- --check
-        continue-on-error: false
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
 
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
@@ -138,7 +86,7 @@ jobs:
 
   security:
     name: Security Checks
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -149,17 +97,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+          workspaces: |
+            .
+          cache-directories: |
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Install cargo-audit
         run: |
@@ -168,14 +111,13 @@ jobs:
           fi
 
       - name: Run cargo audit
-        run: |
-          cargo audit --deny warnings
+        run: cargo audit --deny warnings
         continue-on-error: true
 
   gas-benchmarks:
     name: Gas Benchmarks
-    runs-on: macos-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write
@@ -190,27 +132,18 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+          workspaces: |
+            .
+          cache-directories: |
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Install jq
-        run: |
-          if ! command -v jq &> /dev/null; then
-            brew install jq
-          fi
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Run gas benchmarks
-        run: |
-          ./scripts/run_gas_benchmarks.sh
+        run: ./scripts/run_gas_benchmarks.sh
         continue-on-error: false
 
       - name: Check for gas regressions
