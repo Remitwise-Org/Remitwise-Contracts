@@ -66,8 +66,13 @@ fn bench_distribute_usdc_worst_case() {
     let nonce = 1u64;
     let (cpu, mem, distributed) = measure(&env, || {
         let deadline = env.ledger().timestamp() + 60;
-        let request_hash =
-            client.compute_request_hash(&soroban_sdk::symbol_short!("distrib"), &payer, &nonce, &amount, &deadline);
+        let request_hash = client.compute_request_hash(
+            &soroban_sdk::symbol_short!("distrib"),
+            &payer,
+            &nonce,
+            &amount,
+            &deadline,
+        );
         client.distribute_usdc(
             &token_addr,
             &payer,
@@ -102,7 +107,7 @@ fn bench_create_remittance_schedule() {
     let (cpu, mem, schedule_id) = measure(&env, || {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
-    
+
     assert_eq!(schedule_id, 1);
 
     println!(
@@ -126,7 +131,7 @@ fn bench_create_multiple_schedules() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
-        
+
         let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
@@ -138,7 +143,7 @@ fn bench_create_multiple_schedules() {
     let (cpu, mem, _schedule_id) = measure(&env, || {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
-    
+
     println!(
         r#"{{"contract":"remittance_split","method":"create_remittance_schedule","scenario":"11th_schedule_with_existing","cpu":{},"mem":{}}}"#,
         cpu, mem
@@ -175,7 +180,7 @@ fn bench_modify_remittance_schedule() {
             &new_interval,
         )
     });
-    
+
     assert!(result);
     println!(
         r#"{{"contract":"remittance_split","method":"modify_remittance_schedule","scenario":"single_schedule_modification","cpu":{},"mem":{}}}"#,
@@ -202,7 +207,7 @@ fn bench_cancel_remittance_schedule() {
     let (cpu, mem, result) = measure(&env, || {
         client.cancel_remittance_schedule(&owner, &schedule_id)
     });
-    
+
     assert!(result);
     println!(
         r#"{{"contract":"remittance_split","method":"cancel_remittance_schedule","scenario":"single_schedule_cancellation","cpu":{},"mem":{}}}"#,
@@ -246,7 +251,7 @@ fn bench_get_remittance_schedules_with_data() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
-        
+
         let _result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
     }
 
@@ -255,7 +260,7 @@ fn bench_get_remittance_schedules_with_data() {
         let amount = 2_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 604_800u64;
-        
+
         let _result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
     }
 
@@ -314,7 +319,7 @@ fn bench_schedule_operations_worst_case() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
-        
+
         let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 

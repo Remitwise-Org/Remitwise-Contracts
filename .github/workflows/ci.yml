@@ -217,20 +217,12 @@ jobs:
         run: |
           if [ -f benchmarks/baseline.json ]; then
             echo "Comparing against baseline..."
-            # Only check regression if baseline has entries (not just newly added)
-            BASELINE_COUNT=$(jq length benchmarks/baseline.json)
-            if [ "$BASELINE_COUNT" -gt 1 ]; then
-              ./scripts/compare_gas_results.sh benchmarks/baseline.json gas_results.json || true
-              echo "⚠️  Gas regression check skipped - baseline needs update"
-            else
-              echo "⚠️  Baseline has only $BASELINE_COUNT entry(s). Skipping regression check."
-              echo "Run './scripts/update_baseline.sh' locally to create complete baseline."
-            fi
+            ./scripts/compare_gas_results.sh benchmarks/baseline.json gas_results.json
           else
             echo "⚠️  No baseline found. Skipping regression check."
             echo "Run './scripts/update_baseline.sh' locally to create initial baseline."
           fi
-        continue-on-error: true
+        continue-on-error: false
 
       - name: Upload gas benchmark results
         uses: actions/upload-artifact@v4

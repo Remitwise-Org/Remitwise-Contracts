@@ -498,11 +498,9 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> RemittanceSummary {
-        let addresses: Option<ContractAddresses> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ADDRS"));
-            
+        let addresses: Option<ContractAddresses> =
+            env.storage().instance().get(&symbol_short!("ADDRS"));
+
         if addresses.is_none() {
             return RemittanceSummary {
                 total_received: total_amount,
@@ -513,7 +511,7 @@ impl ReportingContract {
                 data_availability: DataAvailability::Missing,
             };
         }
-        
+
         let addresses = addresses.unwrap();
 
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);

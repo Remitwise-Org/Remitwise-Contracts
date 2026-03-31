@@ -33,16 +33,14 @@ fn main() {
 
     // 5. [Write] Configure contract addresses
     println!("Configuring dependency addresses...");
-    client
-        .configure_addresses(
-            &admin,
-            &split_addr,
-            &savings_addr,
-            &bills_addr,
-            &insurance_addr,
-            &family_addr,
-        )
-        ;
+    client.configure_addresses(
+        &admin,
+        &split_addr,
+        &savings_addr,
+        &bills_addr,
+        &insurance_addr,
+        &family_addr,
+    );
     println!("Addresses configured successfully!");
 
     // 6. [Read] Generate a mock report

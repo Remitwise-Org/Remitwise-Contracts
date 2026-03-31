@@ -1,13 +1,17 @@
 #![cfg(test)]
 
-use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, String as SorobanString, Vec};
+use soroban_sdk::{
+    contract, contractimpl, testutils::Address as _, Address, Env, String as SorobanString, Vec,
+};
 
 use bill_payments::{BillPayments, BillPaymentsClient};
 use insurance::{Insurance, InsuranceClient, InsuranceError};
 use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
-use remitwise_common::CoverageType;
 use remittance_split::{RemittanceSplit, RemittanceSplitClient, RemittanceSplitError};
-use savings_goals::{GoalsExportSnapshot, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalError};
+use remitwise_common::CoverageType;
+use savings_goals::{
+    GoalsExportSnapshot, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalError,
+};
 
 #[contract]
 pub struct MockFamilyWallet;
@@ -91,7 +95,15 @@ fn test_multi_contract_user_flow_smoke() {
     let insurance_client = InsuranceClient::new(&env, &insurance_id);
 
     remittance_client
-        .try_initialize_split(&user, &0u64, &Address::generate(&env), &40u32, &30u32, &20u32, &10u32)
+        .try_initialize_split(
+            &user,
+            &0u64,
+            &Address::generate(&env),
+            &40u32,
+            &30u32,
+            &20u32,
+            &10u32,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(remittance_client.get_nonce(&user), 1u64);
@@ -144,7 +156,10 @@ fn test_multi_contract_user_flow_smoke() {
     let bills_amount = amounts.get(2).unwrap();
     let insurance_amount = amounts.get(3).unwrap();
 
-    assert_eq!(spending_amount + savings_amount + bills_amount + insurance_amount, total_remittance);
+    assert_eq!(
+        spending_amount + savings_amount + bills_amount + insurance_amount,
+        total_remittance
+    );
 }
 
 #[test]
@@ -182,35 +197,20 @@ fn test_orchestrator_nonce_sequential_across_entrypoints() {
         .unwrap();
     assert_eq!(client.get_nonce(&user), 3u64);
 
-    let replay = client.try_execute_bill_payment(
-        &user,
-        &10i128,
-        &wallet_id,
-        &bills_id,
-        &1u32,
-        &1u64,
-    );
+    let replay =
+        client.try_execute_bill_payment(&user, &10i128, &wallet_id, &bills_id, &1u32, &1u64);
     assert_eq!(replay, Err(Ok(OrchestratorError::InvalidNonce)));
 
-    let bad_nonce = client.try_execute_savings_deposit(
-        &user,
-        &10i128,
-        &wallet_id,
-        &savings_id,
-        &1u32,
-        &999u64,
-    );
+    let bad_nonce =
+        client.try_execute_savings_deposit(&user, &10i128, &wallet_id, &savings_id, &1u32, &999u64);
     assert_eq!(bad_nonce, Err(Ok(OrchestratorError::InvalidNonce)));
 
-    let bad_address = client.try_execute_bill_payment(
-        &user,
-        &10i128,
-        &wallet_id,
-        &wallet_id,
-        &1u32,
-        &3u64,
+    let bad_address =
+        client.try_execute_bill_payment(&user, &10i128, &wallet_id, &wallet_id, &1u32, &3u64);
+    assert_eq!(
+        bad_address,
+        Err(Ok(OrchestratorError::DuplicateContractAddress))
     );
-    assert_eq!(bad_address, Err(Ok(OrchestratorError::DuplicateContractAddress)));
 
     let _ = split_id;
 }
@@ -282,6 +282,8 @@ fn test_insurance_try_create_policy_missing_initialize_errors() {
         &50_000i128,
         &None,
     );
-    assert!(matches!(result, Err(Ok(InsuranceError::Unauthorized)) | Err(Ok(InsuranceError::NotInitialized))));
+    assert!(matches!(
+        result,
+        Err(Ok(InsuranceError::Unauthorized)) | Err(Ok(InsuranceError::NotInitialized))
+    ));
 }
-

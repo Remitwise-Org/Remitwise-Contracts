@@ -1,10 +1,10 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
-use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 
 pub const GOAL_CREATED: Symbol = symbol_short!("created");
 pub const FUNDS_ADDED: Symbol = symbol_short!("added");
@@ -506,12 +506,7 @@ impl SavingsGoalContract {
     /// Notes:
     /// - Duplicate tags are preserved as provided.
     /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
-    pub fn add_tags_to_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -558,12 +553,7 @@ impl SavingsGoalContract {
     /// Notes:
     /// - Removing a tag that is not present is a no-op.
     /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
-    pub fn remove_tags_from_goal(
-        env: Env,
-        caller: Address,
-        goal_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -777,7 +767,13 @@ impl SavingsGoalContract {
             new_total,
             timestamp: env.ledger().timestamp(),
         };
-        RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::Medium, symbol_short!("funds_add"), funds_event);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("funds_add"),
+            funds_event,
+        );
 
         if was_completed && !previously_completed {
             let completed_event = GoalCompletedEvent {

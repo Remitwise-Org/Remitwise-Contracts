@@ -188,7 +188,7 @@ fn test_query_schedules_with_data_gas_measurement() {
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
 
-    let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+        let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
     // Measure query with data
@@ -253,7 +253,7 @@ fn test_gas_scaling_with_multiple_schedules() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
-        
+
         let _result = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     }
 
@@ -293,7 +293,7 @@ fn test_data_isolation_security() {
         let amount = 1_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 2_592_000u64;
-        
+
         let _result = client.create_remittance_schedule(&owner1, &amount, &next_due, &interval);
     }
 
@@ -302,7 +302,7 @@ fn test_data_isolation_security() {
         let amount = 2_000i128 * i as i128;
         let next_due = env.ledger().timestamp() + 86400 * i;
         let interval = 604_800u64;
-        
+
         let _result = client.create_remittance_schedule(&owner2, &amount, &next_due, &interval);
     }
 
@@ -350,37 +350,49 @@ fn test_input_validation_security() {
 
     // Test invalid amount (zero)
     let result = client.try_create_remittance_schedule(
-        &owner, 
+        &owner,
         &0i128, // Invalid: zero amount
         &(env.ledger().timestamp() + 86400),
-        &2_592_000u64
+        &2_592_000u64,
     );
-    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)), "Zero amount should be rejected");
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidAmount)),
+        "Zero amount should be rejected"
+    );
 
     // Test invalid amount (negative)
     let result = client.try_create_remittance_schedule(
-        &owner, 
+        &owner,
         &(-1000i128), // Invalid: negative amount
         &(env.ledger().timestamp() + 86400),
-        &2_592_000u64
+        &2_592_000u64,
     );
-    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)), "Negative amount should be rejected");
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidAmount)),
+        "Negative amount should be rejected"
+    );
 
     // Test invalid due date (past)
     let result = client.try_create_remittance_schedule(
-        &owner, 
-        &1000i128, 
+        &owner,
+        &1000i128,
         &(env.ledger().timestamp() - 10), // Invalid: past due date
-        &2_592_000u64
+        &2_592_000u64,
     );
-    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDueDate)), "Past due date should be rejected");
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidDueDate)),
+        "Past due date should be rejected"
+    );
 
     // Test valid parameters work
     let schedule_id = client.create_remittance_schedule(
         &owner,
         &1000i128,
         &(env.ledger().timestamp() + 86400),
-        &2_592_000u64
+        &2_592_000u64,
     );
     assert!(schedule_id > 0, "Valid parameters should succeed");
 
@@ -501,5 +513,8 @@ fn test_performance_stress() {
         "Memory cost should remain reasonable with 20 schedules"
     );
 
-    println!("✅ Stress test passed - 20 schedules query: CPU: {}, Memory: {}", cpu, mem);
+    println!(
+        "✅ Stress test passed - 20 schedules query: CPU: {}, Memory: {}",
+        cpu, mem
+    );
 }

@@ -10,11 +10,11 @@
 //! multiple Soroban smart contracts in the Remitwise ecosystem. It implements atomic,
 //! multi-contract operations with family wallet permission enforcement.
 
+use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
     symbol_short, Address, Env, Symbol, Vec,
 };
-use remitwise_common::{nonce, EventCategory, EventPriority, RemitwiseEvents};
 
 #[cfg(test)]
 mod test;
@@ -223,16 +223,21 @@ impl Orchestrator {
 
             Self::check_spending_limit(&env, &family_wallet_addr, &caller, total_amount)?;
 
-            let allocations = Self::extract_allocations(&env, &remittance_split_addr, total_amount)?;
+            let allocations =
+                Self::extract_allocations(&env, &remittance_split_addr, total_amount)?;
 
             let spending_amount = allocations.get(0).unwrap_or(0);
             let savings_amount = allocations.get(1).unwrap_or(0);
             let bills_amount = allocations.get(2).unwrap_or(0);
             let insurance_amount = allocations.get(3).unwrap_or(0);
 
-            let savings_success = Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount).is_ok();
-            let bills_success = Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id).is_ok();
-            let insurance_success = Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).is_ok();
+            let savings_success =
+                Self::deposit_to_savings(&env, &savings_addr, &caller, goal_id, savings_amount)
+                    .is_ok();
+            let bills_success =
+                Self::execute_bill_payment_internal(&env, &bills_addr, &caller, bill_id).is_ok();
+            let insurance_success =
+                Self::pay_insurance_premium(&env, &insurance_addr, &caller, policy_id).is_ok();
 
             let flow_result = RemittanceFlowResult {
                 total_amount,
@@ -251,7 +256,7 @@ impl Orchestrator {
         })();
 
         if let Err(e) = &res {
-             Self::emit_error_event(&env, &caller, symbol_short!("flow"), *e as u32, timestamp);
+            Self::emit_error_event(&env, &caller, symbol_short!("flow"), *e as u32, timestamp);
         }
 
         Self::release_execution_lock(&env);
@@ -332,7 +337,12 @@ impl Orchestrator {
     // Internal Helpers
     // -----------------------------------------------------------------------
 
-    fn check_spending_limit(env: &Env, family_wallet_addr: &Address, caller: &Address, amount: i128) -> Result<(), OrchestratorError> {
+    fn check_spending_limit(
+        env: &Env,
+        family_wallet_addr: &Address,
+        caller: &Address,
+        amount: i128,
+    ) -> Result<(), OrchestratorError> {
         let wallet_client = FamilyWalletClient::new(env, family_wallet_addr);
         if wallet_client.check_spending_limit(caller, &amount) {
             Ok(())
@@ -341,24 +351,44 @@ impl Orchestrator {
         }
     }
 
-    fn extract_allocations(env: &Env, split_addr: &Address, total: i128) -> Result<Vec<i128>, OrchestratorError> {
+    fn extract_allocations(
+        env: &Env,
+        split_addr: &Address,
+        total: i128,
+    ) -> Result<Vec<i128>, OrchestratorError> {
         let client = RemittanceSplitClient::new(env, split_addr);
         Ok(client.calculate_split(&total))
     }
 
-    fn deposit_to_savings(env: &Env, addr: &Address, caller: &Address, goal_id: u32, amount: i128) -> Result<(), OrchestratorError> {
+    fn deposit_to_savings(
+        env: &Env,
+        addr: &Address,
+        caller: &Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<(), OrchestratorError> {
         let client = SavingsGoalsClient::new(env, addr);
         client.add_to_goal(caller, &goal_id, &amount);
         Ok(())
     }
 
-    fn execute_bill_payment_internal(env: &Env, addr: &Address, caller: &Address, bill_id: u32) -> Result<(), OrchestratorError> {
+    fn execute_bill_payment_internal(
+        env: &Env,
+        addr: &Address,
+        caller: &Address,
+        bill_id: u32,
+    ) -> Result<(), OrchestratorError> {
         let client = BillPaymentsClient::new(env, addr);
         client.pay_bill(caller, &bill_id);
         Ok(())
     }
 
-    fn pay_insurance_premium(env: &Env, addr: &Address, caller: &Address, policy_id: u32) -> Result<(), OrchestratorError> {
+    fn pay_insurance_premium(
+        env: &Env,
+        addr: &Address,
+        caller: &Address,
+        policy_id: u32,
+    ) -> Result<(), OrchestratorError> {
         let client = InsuranceClient::new(env, addr);
         client.pay_premium(caller, &policy_id);
         Ok(())
@@ -373,19 +403,35 @@ impl Orchestrator {
         insurance: &Address,
     ) -> Result<(), OrchestratorError> {
         let current = env.current_contract_address();
-        if family == &current || split == &current || savings == &current || bills == &current || insurance == &current {
+        if family == &current
+            || split == &current
+            || savings == &current
+            || bills == &current
+            || insurance == &current
+        {
             return Err(OrchestratorError::SelfReferenceNotAllowed);
         }
-        if family == split || family == savings || family == bills || family == insurance ||
-           split == savings || split == bills || split == insurance ||
-           savings == bills || savings == insurance ||
-           bills == insurance {
+        if family == split
+            || family == savings
+            || family == bills
+            || family == insurance
+            || split == savings
+            || split == bills
+            || split == insurance
+            || savings == bills
+            || savings == insurance
+            || bills == insurance
+        {
             return Err(OrchestratorError::DuplicateContractAddress);
         }
         Ok(())
     }
 
-    fn validate_two_addresses(env: &Env, a: &Address, b: &Address) -> Result<(), OrchestratorError> {
+    fn validate_two_addresses(
+        env: &Env,
+        a: &Address,
+        b: &Address,
+    ) -> Result<(), OrchestratorError> {
         let current = env.current_contract_address();
         if a == &current || b == &current {
             return Err(OrchestratorError::SelfReferenceNotAllowed);
@@ -423,40 +469,61 @@ impl Orchestrator {
             })
     }
 
-    fn emit_success_event(env: &Env, caller: &Address, total: i128, allocations: &Vec<i128>, timestamp: u64) {
-        env.events().publish((symbol_short!("flow_ok"),), RemittanceFlowEvent {
-            caller: caller.clone(),
-            total_amount: total,
-            allocations: allocations.clone(),
-            timestamp,
-        });
+    fn emit_success_event(
+        env: &Env,
+        caller: &Address,
+        total: i128,
+        allocations: &Vec<i128>,
+        timestamp: u64,
+    ) {
+        env.events().publish(
+            (symbol_short!("flow_ok"),),
+            RemittanceFlowEvent {
+                caller: caller.clone(),
+                total_amount: total,
+                allocations: allocations.clone(),
+                timestamp,
+            },
+        );
     }
 
     fn emit_error_event(env: &Env, caller: &Address, step: Symbol, code: u32, timestamp: u64) {
-        env.events().publish((symbol_short!("flow_err"),), RemittanceFlowErrorEvent {
-            caller: caller.clone(),
-            failed_step: step,
-            error_code: code,
-            timestamp,
-        });
+        env.events().publish(
+            (symbol_short!("flow_err"),),
+            RemittanceFlowErrorEvent {
+                caller: caller.clone(),
+                failed_step: step,
+                error_code: code,
+                timestamp,
+            },
+        );
     }
 
     pub fn get_execution_stats(env: Env) -> ExecutionStats {
-        env.storage().instance().get(&symbol_short!("STATS")).unwrap_or(ExecutionStats {
-            total_flows_executed: 0,
-            total_flows_failed: 0,
-            total_amount_processed: 0,
-            last_execution: 0,
-        })
+        env.storage()
+            .instance()
+            .get(&symbol_short!("STATS"))
+            .unwrap_or(ExecutionStats {
+                total_flows_executed: 0,
+                total_flows_failed: 0,
+                total_amount_processed: 0,
+                last_execution: 0,
+            })
     }
 
     pub fn get_audit_log(env: Env, from_index: u32, limit: u32) -> Vec<OrchestratorAuditEntry> {
-        let log: Vec<OrchestratorAuditEntry> = env.storage().instance().get(&symbol_short!("AUDIT")).unwrap_or_else(|| Vec::new(&env));
+        let log: Vec<OrchestratorAuditEntry> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("AUDIT"))
+            .unwrap_or_else(|| Vec::new(&env));
         let mut out = Vec::new(&env);
         let len = log.len();
         let end = from_index.saturating_add(limit).min(len);
         for i in from_index..end {
-            if let Some(e) = log.get(i) { out.push_back(e); }
+            if let Some(e) = log.get(i) {
+                out.push_back(e);
+            }
         }
         out
     }

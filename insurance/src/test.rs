@@ -2,7 +2,10 @@
 
 use crate::{Insurance, InsuranceClient};
 use remitwise_common::CoverageType;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, String,
+};
 
 fn setup() -> (Env, Address) {
     let env = Env::default();
@@ -73,10 +76,10 @@ fn test_pay_premium_updates_next_payment_date() {
         .unwrap();
 
     let before = client.get_policy(&policy_id).unwrap().next_payment_date;
-    
+
     // Advance time by 1 day to ensure next_payment_date changes
     env.ledger().with_mut(|li| li.timestamp += 86400);
-    
+
     let ok = client.try_pay_premium(&owner, &policy_id);
     assert_eq!(ok, Ok(Ok(())));
     let after = client.get_policy(&policy_id).unwrap().next_payment_date;

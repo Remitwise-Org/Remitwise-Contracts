@@ -5,7 +5,7 @@ use soroban_sdk::{
     token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
-use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{EventCategory, EventPriority, FamilyRole, RemitwiseEvents};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -206,7 +206,10 @@ impl PrecisionSpendingLimit {
     }
 
     fn is_disabled(&self) -> bool {
-        self.limit == 0 && self.min_precision == 0 && self.max_single_tx == 0 && !self.enable_rollover
+        self.limit == 0
+            && self.min_precision == 0
+            && self.max_single_tx == 0
+            && !self.enable_rollover
     }
 }
 
@@ -381,7 +384,6 @@ impl FamilyWallet {
             .get(&symbol_short!("PROP_EXP"))
             .unwrap_or(DEFAULT_PROPOSAL_EXPIRY)
     }
-
 
     pub fn add_member(
         env: Env,
@@ -617,16 +619,18 @@ impl FamilyWallet {
             .get(&SPENDING_TRACKERS_KEY)
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut tracker = trackers.get(member.address.clone()).unwrap_or_else(|| SpendingTracker {
-            current_spent: 0,
-            last_tx_timestamp: 0,
-            tx_count: 0,
-            period: SpendingPeriod {
-                period_type: 0,
-                period_start: aligned_start,
-                period_duration: SECONDS_PER_DAY,
-            },
-        });
+        let mut tracker = trackers
+            .get(member.address.clone())
+            .unwrap_or_else(|| SpendingTracker {
+                current_spent: 0,
+                last_tx_timestamp: 0,
+                tx_count: 0,
+                period: SpendingPeriod {
+                    period_type: 0,
+                    period_start: aligned_start,
+                    period_duration: SECONDS_PER_DAY,
+                },
+            });
 
         if tracker.period.period_start != aligned_start {
             tracker.current_spent = 0;
@@ -651,7 +655,9 @@ impl FamilyWallet {
         tracker.last_tx_timestamp = now;
         tracker.tx_count = tracker.tx_count.saturating_add(1);
         trackers.set(member.address.clone(), tracker);
-        env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+        env.storage()
+            .instance()
+            .set(&SPENDING_TRACKERS_KEY, &trackers);
 
         Ok(())
     }
@@ -686,7 +692,9 @@ impl FamilyWallet {
         let mut record = members.get(member.clone()).ok_or(Error::MemberNotFound)?;
         record.precision_limit = precision_limit.clone();
         members.set(member.clone(), record);
-        env.storage().instance().set(&symbol_short!("MEMBERS"), &members);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("MEMBERS"), &members);
 
         if precision_limit.enable_rollover {
             let now = env.ledger().timestamp();
@@ -708,7 +716,9 @@ impl FamilyWallet {
                 .get(&SPENDING_TRACKERS_KEY)
                 .unwrap_or_else(|| Map::new(&env));
             trackers.set(member, tracker);
-            env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+            env.storage()
+                .instance()
+                .set(&SPENDING_TRACKERS_KEY, &trackers);
         } else {
             let mut trackers: Map<Address, SpendingTracker> = env
                 .storage()
@@ -716,7 +726,9 @@ impl FamilyWallet {
                 .get(&SPENDING_TRACKERS_KEY)
                 .unwrap_or_else(|| Map::new(&env));
             trackers.remove(member);
-            env.storage().instance().set(&SPENDING_TRACKERS_KEY, &trackers);
+            env.storage()
+                .instance()
+                .set(&SPENDING_TRACKERS_KEY, &trackers);
         }
 
         Ok(true)
@@ -1036,7 +1048,8 @@ impl FamilyWallet {
         }
 
         // Enhanced precision and rollover validation
-        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount) {
+        if let Err(error) = Self::validate_precision_spending(env.clone(), proposer.clone(), amount)
+        {
             panic_with_error!(&env, error);
         }
 

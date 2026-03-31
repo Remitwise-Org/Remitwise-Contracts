@@ -14,7 +14,9 @@
 //! - No explicit caps are imposed by the contract, but overflow/underflow will panic
 //! - batch_add_to_goals has same limitations as add_to_goal for each contribution
 
-use savings_goals::{ContributionItem, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalsError};
+use savings_goals::{
+    ContributionItem, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalsError,
+};
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
 use soroban_sdk::{Env, String, Vec};
 

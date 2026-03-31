@@ -21,16 +21,12 @@ fn main() {
     let due_date = env.ledger().timestamp() + 604800; // 1 week from now
     let currency = String::from_str(&env, "USD");
 
-    println!("Creating bill: {:?} for {} {:?}", bill_name, amount, currency);
+    println!(
+        "Creating bill: {:?} for {} {:?}",
+        bill_name, amount, currency
+    );
     let bill_id = client.create_bill(
-        &owner,
-        &bill_name,
-        &amount,
-        &due_date,
-        &false,
-        &0,
-        &None,
-        &currency,
+        &owner, &bill_name, &amount, &due_date, &false, &0, &None, &currency,
     );
     println!("Bill created successfully with ID: {}", bill_id);
 

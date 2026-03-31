@@ -43,6 +43,7 @@ fn bench_get_total_monthly_premium_worst_case() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    client.initialize(&owner);
     client.set_pause_admin(&owner, &owner);
 
     let name = String::from_str(&env, "BenchPolicy");

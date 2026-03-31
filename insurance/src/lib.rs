@@ -94,7 +94,6 @@ pub struct InsurancePolicy {
     pub tags: Vec<String>,
 }
 
-
 /// Paginated result for insurance policy queries
 #[contracttype]
 #[derive(Clone)]
@@ -387,12 +386,7 @@ impl Insurance {
         }
     }
 
-    pub fn add_tags_to_policy(
-        env: Env,
-        caller: Address,
-        policy_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn add_tags_to_policy(env: Env, caller: Address, policy_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -424,12 +418,7 @@ impl Insurance {
         );
     }
 
-    pub fn remove_tags_from_policy(
-        env: Env,
-        caller: Address,
-        policy_id: u32,
-        tags: Vec<String>,
-    ) {
+    pub fn remove_tags_from_policy(env: Env, caller: Address, policy_id: u32, tags: Vec<String>) {
         caller.require_auth();
         Self::validate_tags(&tags);
         Self::extend_instance_ttl(&env);
@@ -471,7 +460,6 @@ impl Insurance {
             (policy_id, caller, tags),
         );
     }
-
 
     /// Creates a new insurance policy for the owner.
     ///
@@ -520,14 +508,22 @@ impl Insurance {
         // Coverage type specific range checks (matching test expectations)
         match coverage_type {
             CoverageType::Health => {
-                if monthly_premium < 100 { return Err(InsuranceError::InvalidAmount); }
+                if monthly_premium < 100 {
+                    return Err(InsuranceError::InvalidAmount);
+                }
             }
             CoverageType::Life => {
-                if monthly_premium < 500 { return Err(InsuranceError::InvalidAmount); }
-                if coverage_amount < 10000 { return Err(InsuranceError::InvalidAmount); }
+                if monthly_premium < 500 {
+                    return Err(InsuranceError::InvalidAmount);
+                }
+                if coverage_amount < 10000 {
+                    return Err(InsuranceError::InvalidAmount);
+                }
             }
             CoverageType::Property => {
-                if monthly_premium < 200 { return Err(InsuranceError::InvalidAmount); }
+                if monthly_premium < 200 {
+                    return Err(InsuranceError::InvalidAmount);
+                }
             }
             _ => {}
         }
@@ -838,7 +834,11 @@ impl Insurance {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::DEACTIVATE)?;
 
-        let mut policies: Map<u32, InsurancePolicy> = env.storage().instance().get(&symbol_short!("POLICIES")).unwrap_or_else(|| Map::new(&env));
+        let mut policies: Map<u32, InsurancePolicy> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POLICIES"))
+            .unwrap_or_else(|| Map::new(&env));
         let mut policy = policies
             .get(policy_id)
             .ok_or(InsuranceError::PolicyNotFound)?;
@@ -901,7 +901,9 @@ impl Insurance {
             .get(&symbol_short!("POLICIES"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut policy = policies.get(policy_id).ok_or(InsuranceError::PolicyNotFound)?;
+        let mut policy = policies
+            .get(policy_id)
+            .ok_or(InsuranceError::PolicyNotFound)?;
         if policy.owner != caller {
             return Err(InsuranceError::Unauthorized);
         }
@@ -966,7 +968,11 @@ impl Insurance {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_SCHED)?;
 
-        let mut policies: Map<u32, InsurancePolicy> = env.storage().instance().get(&symbol_short!("POLICIES")).unwrap_or_else(|| Map::new(&env));
+        let mut policies: Map<u32, InsurancePolicy> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POLICIES"))
+            .unwrap_or_else(|| Map::new(&env));
 
         let mut policy = policies
             .get(policy_id)

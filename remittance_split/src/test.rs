@@ -60,7 +60,8 @@ fn distribute_usdc_ok(
     accounts: &AccountGroup,
     total_amount: i128,
 ) -> bool {
-    let (deadline, request_hash) = distrib_deadline_and_hash(env, client, from, nonce, total_amount);
+    let (deadline, request_hash) =
+        distrib_deadline_and_hash(env, client, from, nonce, total_amount);
     client.distribute_usdc(
         usdc_contract,
         from,
@@ -81,7 +82,8 @@ fn try_distribute_usdc(
     accounts: &AccountGroup,
     total_amount: i128,
 ) -> Result<Result<bool, ConversionError>, Result<RemittanceSplitError, InvokeError>> {
-    let (deadline, request_hash) = distrib_deadline_and_hash(env, client, from, nonce, total_amount);
+    let (deadline, request_hash) =
+        distrib_deadline_and_hash(env, client, from, nonce, total_amount);
     client.try_distribute_usdc(
         usdc_contract,
         from,
@@ -142,12 +144,12 @@ fn test_initialize_split_domain_separated_auth() {
     // Verify that the authorization includes the full domain-separated payload
     let auths = env.auths();
     assert_eq!(auths.len(), 1);
-    
+
     // The auths captured by mock_all_auths record what was authorized.
     // In our case, the contract calls owner.require_auth_for_args(payload).
     let (address, auth_invocation) = auths.get(0).unwrap();
     assert_eq!(address, &owner);
-    
+
     let payload: SplitAuthPayload = match &auth_invocation.function {
         AuthorizedFunction::Contract((contract, _, args)) => {
             assert_eq!(contract, &contract_id);
@@ -156,7 +158,7 @@ fn test_initialize_split_domain_separated_auth() {
         }
         _ => panic!("unexpected auth function"),
     };
-    
+
     assert_eq!(payload.domain_id, symbol_short!("init"));
     assert_eq!(payload.network_id, env.ledger().network_id());
     assert_eq!(payload.contract_addr, contract_id);
@@ -560,7 +562,9 @@ fn test_distribute_usdc_requires_auth() {
     let client2 = RemittanceSplitClient::new(&env2, &contract_id2);
     let accounts = make_accounts(&env2);
     // This should panic because owner has not authorized in env2
-    client2.distribute_usdc(&token_id, &owner, &0u64, &0u64, &0u64, &accounts, &1_000i128);
+    client2.distribute_usdc(
+        &token_id, &owner, &0u64, &0u64, &0u64, &accounts, &1_000i128,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -767,7 +771,9 @@ fn test_distribute_usdc_not_initialized_rejected() {
     let token_id = Address::generate(&env);
 
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&token_id, &owner, &0u64, &0u64, &0u64, &accounts, &1_000i128);
+    let result = client.try_distribute_usdc(
+        &token_id, &owner, &0u64, &0u64, &0u64, &accounts, &1_000i128,
+    );
     assert_eq!(result, Err(Ok(RemittanceSplitError::NotInitialized)));
 }
 
@@ -1365,10 +1371,7 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
 /// Helper: initialize + update N times to seed the audit log with entries.
 /// Each initialize produces 1 entry, each update produces 1 entry.
 /// Returns (client, owner) for further assertions.
-fn seed_audit_log(
-    env: &Env,
-    count: u32,
-) -> (RemittanceSplitClient<'_>, Address) {
+fn seed_audit_log(env: &Env, count: u32) -> (RemittanceSplitClient<'_>, Address) {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(env, &contract_id);
     let owner = Address::generate(env);
@@ -1389,7 +1392,10 @@ fn seed_audit_log(
 }
 
 /// Collect every audit entry by following next_cursor until it returns 0.
-fn collect_all_pages(client: &RemittanceSplitClient, page_size: u32) -> soroban_sdk::Vec<AuditEntry> {
+fn collect_all_pages(
+    client: &RemittanceSplitClient,
+    page_size: u32,
+) -> soroban_sdk::Vec<AuditEntry> {
     let env = client.env.clone();
     let mut all = soroban_sdk::Vec::new(&env);
     let mut cursor: u32 = 0;

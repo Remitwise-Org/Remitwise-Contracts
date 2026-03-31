@@ -3,11 +3,11 @@
 #[cfg(test)]
 mod test;
 
+use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
-use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
@@ -547,7 +547,12 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::AlreadyInitialized);
         }
 
-        if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
+        if let Err(e) = Self::validate_percentages(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
             return Err(e);
         }
@@ -616,7 +621,12 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
 
-        if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
+        if let Err(e) = Self::validate_percentages(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
             Self::append_audit(&env, symbol_short!("update"), &caller, false);
             return Err(e);
         }
@@ -958,8 +968,12 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
-        let expected =
-            Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules, snapshot.exported_at);
+        let expected = Self::compute_checksum(
+            snapshot.schema_version,
+            &snapshot.config,
+            &snapshot.schedules,
+            snapshot.exported_at,
+        );
         if snapshot.checksum != expected {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ChecksumMismatch);
@@ -1050,8 +1064,10 @@ impl RemittanceSplit {
 
         Self::increment_nonce(&env, &caller)?;
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
-        env.events()
-            .publish((symbol_short!("split"), SplitEvent::SnapshotImported), caller);
+        env.events().publish(
+            (symbol_short!("split"), SplitEvent::SnapshotImported),
+            caller,
+        );
         Ok(true)
     }
 
@@ -1080,8 +1096,12 @@ impl RemittanceSplit {
         }
 
         // 2. Checksum
-        let expected =
-            Self::compute_checksum(snapshot.schema_version, &snapshot.config, &snapshot.schedules, snapshot.exported_at);
+        let expected = Self::compute_checksum(
+            snapshot.schema_version,
+            &snapshot.config,
+            &snapshot.schedules,
+            snapshot.exported_at,
+        );
         if snapshot.checksum != expected {
             return Err(RemittanceSplitError::ChecksumMismatch);
         }
@@ -1643,7 +1663,8 @@ impl RemittanceSplit {
     }
 
     pub fn get_remittance_schedule(env: Env, schedule_id: u32) -> Option<RemittanceSchedule> {
-        env.storage().persistent().get(&DataKey::Schedule(schedule_id))
+        env.storage()
+            .persistent()
+            .get(&DataKey::Schedule(schedule_id))
     }
 }
-

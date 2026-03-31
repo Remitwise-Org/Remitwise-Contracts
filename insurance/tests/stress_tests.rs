@@ -72,6 +72,7 @@ fn stress_200_policies_single_user() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "StressPolicy");
     let coverage_type = CoverageType::Health;
@@ -129,6 +130,7 @@ fn stress_instance_ttl_valid_after_200_policies() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "TTLPolicy");
     let coverage_type = CoverageType::Life;
@@ -156,6 +158,8 @@ fn stress_policies_across_10_users() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
 
     const N_USERS: usize = 10;
     const POLICIES_PER_USER: u32 = 20;
@@ -172,7 +176,9 @@ fn stress_policies_across_10_users() {
                 &name,
                 &coverage_type,
                 &PREMIUM_PER_POLICY,
-                &50_000i128, &None);
+                &50_000i128,
+                &None,
+            );
         }
     }
 
@@ -219,6 +225,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "TTLStress");
     let coverage_type = CoverageType::Health;
@@ -273,13 +280,16 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let policy_id = client.create_policy(
         &owner,
         &String::from_str(&env, "PayTTL"),
         &CoverageType::Health,
         &200i128,
-        &20_000i128, &None);
+        &20_000i128,
+        &None,
+    );
 
     // Advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
@@ -316,6 +326,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     const BATCH_SIZE: u32 = 50; // MAX_BATCH_SIZE
     let name = String::from_str(&env, "BatchPolicy");
@@ -368,6 +379,7 @@ fn stress_deactivate_half_of_200_policies() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "DeactPolicy");
     let coverage_type = CoverageType::Life;
@@ -418,6 +430,7 @@ fn bench_get_active_policies_first_page_of_200() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "BenchPolicy");
     let coverage_type = CoverageType::Health;
@@ -442,6 +455,7 @@ fn bench_get_total_monthly_premium_200_policies() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "PremBench");
     let coverage_type = CoverageType::Health;
@@ -467,6 +481,7 @@ fn bench_batch_pay_premiums_50_policies() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "BatchBench");
     let coverage_type = CoverageType::Health;
@@ -497,19 +512,22 @@ fn stress_batch_pay_mixed_states() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    client.initialize(&owner);
 
     let name = String::from_str(&env, "MixedBatch");
     let coverage_type = CoverageType::Health;
-    
+
     let mut policy_ids = std::vec![];
     for i in 0..50 {
         if i % 2 == 0 {
             // Valid policy
-            let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+            let id =
+                client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
             policy_ids.push(id);
         } else {
             // Invalid policy: deactivated
-            let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+            let id =
+                client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
             client.deactivate_policy(&owner, &id);
             policy_ids.push(id);
         }

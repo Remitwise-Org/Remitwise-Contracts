@@ -430,7 +430,7 @@ fn test_recurring_bill_max_frequency() {
     env.mock_all_auths();
 
     // Use the maximum allowed frequency (36500 days = 100 years)
-    let max_freq = 36500; 
+    let max_freq = 36500;
 
     let bill_id = client.create_bill(
         &owner,
@@ -472,7 +472,7 @@ fn test_recurring_bill_frequency_overflow_protection() {
         &1000000,
         &true,
         &40000, // Greater than 36500
-        &None, // external_ref
+        &None,  // external_ref
         &String::from_str(&env, "XLM"),
     );
 
@@ -491,8 +491,8 @@ fn test_recurring_bill_date_overflow_protection() {
     env.mock_all_auths();
 
     // Create a bill with a due date very close to u64::MAX
-    let near_max_due = u64::MAX - 86400; 
-    
+    let near_max_due = u64::MAX - 86400;
+
     // First, we need to set the ledger time to something before due_date so create_bill succeeds
     set_time(&env, near_max_due - 1000);
 
@@ -502,7 +502,7 @@ fn test_recurring_bill_date_overflow_protection() {
         &100,
         &near_max_due,
         &true,
-        &30, // 30 days will definitely overflow if added to near_max_due
+        &30,   // 30 days will definitely overflow if added to near_max_due
         &None, // external_ref
         &String::from_str(&env, "XLM"),
     );
@@ -510,7 +510,7 @@ fn test_recurring_bill_date_overflow_protection() {
     // Paying this should fail due to date overflow
     env.mock_all_auths();
     let result = client.try_pay_bill(&owner, &bill_id);
-    
+
     use bill_payments::Error;
     assert_eq!(result, Err(Ok(Error::InvalidDueDate)));
 }
