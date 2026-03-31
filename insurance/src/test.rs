@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use crate::{Insurance, InsuranceClient, InsuranceError};
+use crate::{Insurance, InsuranceClient};
 use remitwise_common::CoverageType;
-use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Env, String};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
 fn setup() -> (Env, Address) {
     let env = Env::default();
