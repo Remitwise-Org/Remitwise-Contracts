@@ -54,7 +54,6 @@ fn test_create_policy_without_initialize_fails() {
 }
 
 #[test]
-#[should_panic]
 fn test_pay_premium_updates_next_payment_date() {
     let (env, contract_id) = setup();
     let client = InsuranceClient::new(&env, &contract_id);
