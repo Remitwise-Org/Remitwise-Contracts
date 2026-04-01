@@ -172,47 +172,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -266,47 +228,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -708,7 +632,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Only Owner or Admin can cleanup expired transactions' from contract function 'Symbol(obj#85)'"
+                  "string": "caught panic 'Only Owner or Admin can cleanup expired transactions' from contract function 'Symbol(obj#73)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"

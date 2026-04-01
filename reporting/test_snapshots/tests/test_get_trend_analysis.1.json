@@ -14,7 +14,7 @@
     "base_reserve": 10,
     "min_persistent_entry_ttl": 1,
     "min_temp_entry_ttl": 1,
-    "max_entry_ttl": 3000000,
+    "max_entry_ttl": 100000,
     "ledger_entries": [
       [
         {

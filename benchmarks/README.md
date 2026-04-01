@@ -38,6 +38,9 @@ RUST_TEST_THREADS=1 cargo test -p remittance_split --test gas_bench -- --nocaptu
 
 # Run bill_payments benchmarks
 RUST_TEST_THREADS=1 cargo test -p bill_payments --test gas_bench -- --nocapture
+
+# Run reporting aggregation benchmarks
+RUST_TEST_THREADS=1 cargo test -p reporting --test gas_bench -- --nocapture
 ```
 
 ### All Benchmarks
@@ -58,6 +61,12 @@ Each benchmark outputs JSON with the following structure:
   "mem": 6789
 }
 ```
+
+For CI parsing, gas suites may also emit lines prefixed with:
+- `GAS_BENCH_RESULT `: machine-readable benchmark result with baseline/threshold metadata
+- `cpu regression ...` / `mem regression ...`: assertion failures when thresholds are exceeded
+
+This keeps `--nocapture` logs easy to scrape in CI while preserving normal Rust test output.
 
 ## Remittance Split Schedule Operations
 
@@ -88,6 +97,20 @@ All benchmarks include security validations:
 3. **Input Validation**: Tests with valid parameters to ensure proper validation
 4. **Edge Cases**: Covers boundary conditions and error scenarios
 
+## Bill Payments Archive and Batch Suite
+
+`bill_payments/tests/gas_bench.rs` includes dedicated regression coverage for:
+- `archive_paid_bills/120_paid_1_unpaid_preserved`
+- `restore_bill/single_archived_owner_restore`
+- `bulk_cleanup_bills/mixed_age_20_of_30_deleted`
+- `batch_pay_bills/mixed_batch_50_partial_success`
+
+Security assumptions validated in these benches:
+- Archive and cleanup are maintenance operations over paid/archived data only
+- Restore is owner-only
+- Batch pay preserves owner isolation and deterministic partial success
+- Oversized batches are rejected (`BatchTooLarge`)
+
 ## Regression Detection
 
 The system automatically detects regressions by comparing current measurements against baselines:
@@ -95,6 +118,59 @@ The system automatically detects regressions by comparing current measurements a
 - **Green**: Within threshold (no action needed)
 - **Yellow**: Exceeds threshold but < 25% increase (review recommended)  
 - **Red**: > 25% increase (investigation required)
+
+## Reporting Aggregation Benchmarks
+
+The reporting contract benchmarks cover the three heavy aggregation paths
+identified in issue #317, each run at three data sizes (small/medium/large)
+to expose O(n) complexity growth.
+
+### get_remittance_summary
+
+| Scenario | Description |
+|----------|-------------|
+| `no_addresses_baseline` | Addresses not configured – O(1) storage miss, returns Missing |
+| `with_split_4_categories` | Two cross-contract calls + four-category breakdown loop |
+
+### get_trend_analysis_multi
+
+| Scenario | Items | Windows |
+|----------|-------|---------|
+| `5_periods` | 5 | 4 |
+| `25_periods` | 25 | 24 |
+| `50_periods` | 50 | 49 |
+
+Pure in-contract computation; no cross-contract calls.  Scales linearly with
+history length.
+
+### get_financial_health_report
+
+| Scenario | Goals | Bills | Policies |
+|----------|-------|-------|---------|
+| `small_5_items` | 5 | 5 | 5 |
+| `medium_25_items` | 25 | 25 | 25 |
+| `large_50_items` | 50 | 50 | 50 |
+
+Issues **nine** cross-contract calls per invocation:
+`get_all_goals` ×2, `get_unpaid_bills` ×1, `get_active_policies` ×2,
+`get_split` ×1, `calculate_split` ×1, `get_all_bills_for_owner` ×1,
+`get_total_monthly_premium` ×1.
+
+### archive_old_reports
+
+| Scenario | Stored reports |
+|----------|---------------|
+| `5_stored_reports` | 5 |
+| `25_stored_reports` | 25 |
+| `50_stored_reports` | 50 |
+
+Dual O(n) map iteration: first over `REPORTS` to find candidates, then over
+`to_remove` to delete them.
+
+### get_storage_stats
+
+`after_25_archived` – O(1) single instance-storage key read.  Used to confirm
+the stats endpoint stays flat regardless of archive depth.
 
 ## Adding New Benchmarks
 

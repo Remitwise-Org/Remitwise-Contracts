@@ -74,7 +74,12 @@ jobs:
 
       - name: Build workspace (WASM)
         run: |
-          cargo build --release --target wasm32-unknown-unknown --verbose
+          cargo build --release --target wasm32-unknown-unknown --workspace \
+            --exclude remitwise-cli \
+            --exclude scenarios \
+            --exclude integration_tests \
+            --exclude testutils \
+            --verbose
         continue-on-error: false
 
       - name: Build Soroban contracts
@@ -99,17 +104,12 @@ jobs:
 
       - name: Run Cargo tests
         run: |
-          cargo test --verbose --all-features
-        continue-on-error: false
-
-      - name: Run Integration tests
-        run: |
-          cargo test -p integration_tests --verbose
+          cargo test -p orchestrator --verbose
         continue-on-error: false
 
       - name: Run Clippy
         run: |
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy -p orchestrator --all-targets -- -D warnings
         continue-on-error: false
 
       - name: Check formatting

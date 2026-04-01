@@ -17,10 +17,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Policy"
+                  "string": "Health Insurance"
                 },
                 {
-                  "string": "Health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -31,7 +31,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 10000
+                    "lo": 50000
                   }
                 }
               ]
@@ -110,7 +110,7 @@
                                     "val": {
                                       "i128": {
                                         "hi": 0,
-                                        "lo": 10000
+                                        "lo": 50000
                                       }
                                     }
                                   },
@@ -119,7 +119,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "Health"
+                                      "u32": 1
                                     }
                                   },
                                   {
@@ -146,7 +146,7 @@
                                       "symbol": "name"
                                     },
                                     "val": {
-                                      "string": "Health Policy"
+                                      "string": "Health Insurance"
                                     }
                                   },
                                   {
@@ -172,26 +172,6 @@
                                     "val": "void"
                                   }
                                 ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "PRM_TOT"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 100
-                                }
                               }
                             }
                           ]
@@ -288,10 +268,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "string": "Health Policy"
+                  "string": "Health Insurance"
                 },
                 {
-                  "string": "Health"
+                  "u32": 1
                 },
                 {
                   "i128": {
@@ -302,7 +282,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 10000
+                    "lo": 50000
                   }
                 }
               ]
@@ -333,7 +313,7 @@
                   "val": {
                     "i128": {
                       "hi": 0,
-                      "lo": 10000
+                      "lo": 50000
                     }
                   }
                 },
@@ -342,7 +322,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "Health"
+                    "u32": 1
                   }
                 },
                 {
@@ -361,7 +341,7 @@
                     "symbol": "name"
                   },
                   "val": {
-                    "string": "Health Policy"
+                    "string": "Health Insurance"
                   }
                 },
                 {

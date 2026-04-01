@@ -37,6 +37,26 @@
       "mem_percent": 10,
       "description": "Higher CPU threshold for aggregation operations"
     },
+    "archive_paid_bills": {
+      "cpu_percent": 15,
+      "mem_percent": 12,
+      "description": "Archive scans bill storage and writes archive records"
+    },
+    "restore_bill": {
+      "cpu_percent": 12,
+      "mem_percent": 10,
+      "description": "Single-record restore with owner authorization checks"
+    },
+    "bulk_cleanup_bills": {
+      "cpu_percent": 15,
+      "mem_percent": 12,
+      "description": "Cleanup iterates archived records and removes matched entries"
+    },
+    "batch_pay_bills": {
+      "cpu_percent": 15,
+      "mem_percent": 12,
+      "description": "Mixed batch processing with per-item validation and partial success"
+    },
     "get_all_goals": {
       "cpu_percent": 12,
       "mem_percent": 12,
@@ -66,6 +86,31 @@
       "cpu_percent": 8,
       "mem_percent": 8,
       "description": "Lower thresholds for single schedule lookup"
+    },
+    "get_remittance_summary": {
+      "cpu_percent": 10,
+      "mem_percent": 10,
+      "description": "Standard thresholds for two-call split aggregation"
+    },
+    "get_trend_analysis_multi": {
+      "cpu_percent": 15,
+      "mem_percent": 15,
+      "description": "Higher thresholds: pure in-contract iteration over user-supplied history Vec"
+    },
+    "get_financial_health_report": {
+      "cpu_percent": 15,
+      "mem_percent": 15,
+      "description": "Higher thresholds: nine cross-contract calls with per-item iteration loops"
+    },
+    "archive_old_reports": {
+      "cpu_percent": 15,
+      "mem_percent": 15,
+      "description": "Higher thresholds: dual O(n) map iteration over active and archive storage"
+    },
+    "get_storage_stats": {
+      "cpu_percent": 8,
+      "mem_percent": 8,
+      "description": "Tight thresholds: O(1) single instance-storage key read"
     }
   }
 }

@@ -52,17 +52,38 @@
         }
       ]
     ],
-    []
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "get_archived_transactions",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 10
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ]
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 0,
+    "sequence_number": 100,
+    "timestamp": 2000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -186,7 +207,7 @@
                                       "symbol": "added_at"
                                     },
                                     "val": {
-                                      "u64": 0
+                                      "u64": 2000000
                                     }
                                   },
                                   {
@@ -202,47 +223,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -280,7 +263,7 @@
                                       "symbol": "added_at"
                                     },
                                     "val": {
-                                      "u64": 0
+                                      "u64": 2000000
                                     }
                                   },
                                   {
@@ -296,47 +279,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -589,7 +534,7 @@
                                 "symbol": "last_updated"
                               },
                               "val": {
-                                "u64": 0
+                                "u64": 2000000
                               }
                             },
                             {
@@ -618,7 +563,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518500
         ]
       ],
       [
@@ -651,7 +596,40 @@
             },
             "ext": "v0"
           },
-          6311999
+          3000099
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 1033654523790656264
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 1033654523790656264
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          3000099
         ]
       ],
       [
@@ -684,7 +662,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          3000099
         ]
       ],
       [
@@ -705,7 +683,7 @@
             },
             "ext": "v0"
           },
-          518400
+          518500
         ]
       ]
     ]
@@ -882,7 +860,14 @@
               }
             ],
             "data": {
-              "u32": 10
+              "vec": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 10
+                }
+              ]
             }
           }
         }

@@ -295,47 +295,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -389,47 +351,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -483,47 +407,9 @@
                                       "symbol": "precision_limit"
                                     },
                                     "val": {
-                                      "map": [
+                                      "vec": [
                                         {
-                                          "key": {
-                                            "symbol": "enable_rollover"
-                                          },
-                                          "val": {
-                                            "bool": false
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "limit"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "max_single_tx"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "key": {
-                                            "symbol": "min_precision"
-                                          },
-                                          "val": {
-                                            "i128": {
-                                              "hi": 0,
-                                              "lo": 0
-                                            }
-                                          }
+                                          "symbol": "None"
                                         }
                                       ]
                                     }
@@ -1155,47 +1041,9 @@
                     "symbol": "precision_limit"
                   },
                   "val": {
-                    "map": [
+                    "vec": [
                       {
-                        "key": {
-                          "symbol": "enable_rollover"
-                        },
-                        "val": {
-                          "bool": false
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "limit"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "max_single_tx"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "min_precision"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
+                        "symbol": "None"
                       }
                     ]
                   }
@@ -1290,47 +1138,9 @@
                     "symbol": "precision_limit"
                   },
                   "val": {
-                    "map": [
+                    "vec": [
                       {
-                        "key": {
-                          "symbol": "enable_rollover"
-                        },
-                        "val": {
-                          "bool": false
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "limit"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "max_single_tx"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "min_precision"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
+                        "symbol": "None"
                       }
                     ]
                   }
@@ -1425,47 +1235,9 @@
                     "symbol": "precision_limit"
                   },
                   "val": {
-                    "map": [
+                    "vec": [
                       {
-                        "key": {
-                          "symbol": "enable_rollover"
-                        },
-                        "val": {
-                          "bool": false
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "limit"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "max_single_tx"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "min_precision"
-                        },
-                        "val": {
-                          "i128": {
-                            "hi": 0,
-                            "lo": 0
-                          }
-                        }
+                        "symbol": "None"
                       }
                     ]
                   }

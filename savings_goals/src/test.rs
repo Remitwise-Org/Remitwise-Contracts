@@ -6,7 +6,7 @@ use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
-    Address, Env, IntoVal, String, Symbol, TryFromVal, Vec as SorobanVec,
+    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Vec as SorobanVec,
 };
 
 use testutils::set_ledger_time;
@@ -965,12 +965,15 @@ fn test_add_to_goal_emits_event() {
         let topics = event.1;
         let topic0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
 
-        if topic0 == FUNDS_ADDED {
-            let event_data: FundsAddedEvent =
-                FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
-            assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.amount, 1000);
-            found_added_struct = true;
+        if topic0 == symbol_short!("Remitwise") && topics.len() >= 4 {
+            let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+            if action == symbol_short!("funds_add") {
+                let event_data: FundsAddedEvent =
+                    FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
+                assert_eq!(event_data.goal_id, goal_id);
+                assert_eq!(event_data.amount, 1000);
+                found_added_struct = true;
+            }
         }
 
         if topic0 == symbol_short!("savings") && topics.len() > 1 {
@@ -1837,30 +1840,12 @@ fn test_get_all_goals_filters_by_owner() {
 
     // Verify goal IDs for owner_a are correct
     let goal_a_ids: std::vec::Vec<u32> = goals_a.iter().map(|g| g.id).collect();
-    assert!(
-        goal_a_ids.contains(&goal_a1),
-        "Goals for A should contain goal_a1"
-    );
-    assert!(
-        goal_a_ids.contains(&goal_a2),
-        "Goals for A should contain goal_a2"
-    );
-    assert!(
-        goal_a_ids.contains(&goal_a3),
-        "Goals for A should contain goal_a3"
-    );
-    assert!(
-        goals_a.iter().any(|g| g.id == goal_a1),
-        "Goals for A should contain goal_a1"
-    );
-    assert!(
-        goals_a.iter().any(|g| g.id == goal_a2),
-        "Goals for A should contain goal_a2"
-    );
-    assert!(
-        goals_a.iter().any(|g| g.id == goal_a3),
-        "Goals for A should contain goal_a3"
-    );
+    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
+    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
+    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
+    assert!(goals_a.iter().any(|g| g.id == goal_a1), "Goals for A should contain goal_a1");
+    assert!(goals_a.iter().any(|g| g.id == goal_a2), "Goals for A should contain goal_a2");
+    assert!(goals_a.iter().any(|g| g.id == goal_a3), "Goals for A should contain goal_a3");
 
     // Get all goals for owner_b
     let goals_b = client.get_all_goals(&owner_b);
@@ -1877,22 +1862,10 @@ fn test_get_all_goals_filters_by_owner() {
 
     // Verify goal IDs for owner_b are correct
     let goal_b_ids: std::vec::Vec<u32> = goals_b.iter().map(|g| g.id).collect();
-    assert!(
-        goal_b_ids.contains(&goal_b1),
-        "Goals for B should contain goal_b1"
-    );
-    assert!(
-        goal_b_ids.contains(&goal_b2),
-        "Goals for B should contain goal_b2"
-    );
-    assert!(
-        goals_b.iter().any(|g| g.id == goal_b1),
-        "Goals for B should contain goal_b1"
-    );
-    assert!(
-        goals_b.iter().any(|g| g.id == goal_b2),
-        "Goals for B should contain goal_b2"
-    );
+    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
+    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
+    assert!(goals_b.iter().any(|g| g.id == goal_b1), "Goals for B should contain goal_b1");
+    assert!(goals_b.iter().any(|g| g.id == goal_b2), "Goals for B should contain goal_b2");
 
     // Verify that goal IDs between owner_a and owner_b are disjoint
     for goal_a in goals_a.iter() {
@@ -1903,149 +1876,119 @@ fn test_get_all_goals_filters_by_owner() {
     }
 }
 
-#[test]
-fn test_lock_goal_idempotent_already_locked() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "Idempotent Lock"),
-        &1000,
-        &2000000000,
-    );
-    assert!(client.get_goal(&id).unwrap().locked);
-    let result = client.lock_goal(&user, &id);
-    assert!(result);
-    assert!(client.get_goal(&id).unwrap().locked);
-}
-
-#[test]
-fn test_lock_goal_idempotent_no_duplicate_event() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "No Dup Lock"),
-        &1000,
-        &2000000000,
-    );
-    client.unlock_goal(&user, &id);
-    client.lock_goal(&user, &id);
-    let events_after_first_lock = env.events().all().len();
-    client.lock_goal(&user, &id);
-    let events_after_second_lock = env.events().all().len();
-    assert_eq!(events_after_first_lock, events_after_second_lock);
-}
-
-#[test]
-fn test_unlock_goal_idempotent_already_unlocked() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "Idempotent Unlock"),
-        &1000,
-        &2000000000,
-    );
-    client.unlock_goal(&user, &id);
-    assert!(!client.get_goal(&id).unwrap().locked);
-    let result = client.unlock_goal(&user, &id);
-    assert!(result);
-    assert!(!client.get_goal(&id).unwrap().locked);
-}
-
-#[test]
-fn test_unlock_goal_idempotent_no_duplicate_event() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "No Dup Unlock"),
-        &1000,
-        &2000000000,
-    );
-    client.unlock_goal(&user, &id);
-    let events_after_first_unlock = env.events().all().len();
-    client.unlock_goal(&user, &id);
-    let events_after_second_unlock = env.events().all().len();
-    assert_eq!(events_after_first_unlock, events_after_second_unlock);
-}
-
-#[test]
-fn test_lock_goal_many_repeated_calls_safe() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "Repeat Lock"),
-        &1000,
-        &2000000000,
-    );
-    for _ in 0..5 {
+    #[test]
+    fn test_lock_goal_idempotent_already_locked() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Idempotent Lock"), &1000, &2000000000);
+        assert!(client.get_goal(&id).unwrap().locked);
         let result = client.lock_goal(&user, &id);
         assert!(result);
+        assert!(client.get_goal(&id).unwrap().locked);
     }
-    assert!(client.get_goal(&id).unwrap().locked);
-}
 
-#[test]
-fn test_unlock_goal_many_repeated_calls_safe() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    client.init();
-    env.mock_all_auths();
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "Repeat Unlock"),
-        &1000,
-        &2000000000,
-    );
-    client.unlock_goal(&user, &id);
-    for _ in 0..5 {
+    #[test]
+    fn test_lock_goal_idempotent_no_duplicate_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "No Dup Lock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        client.lock_goal(&user, &id);
+        let events_after_first_lock = env.events().all().len();
+        client.lock_goal(&user, &id);
+        let events_after_second_lock = env.events().all().len();
+        assert_eq!(events_after_first_lock, events_after_second_lock);
+    }
+
+    #[test]
+    fn test_unlock_goal_idempotent_already_unlocked() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Idempotent Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        assert!(!client.get_goal(&id).unwrap().locked);
         let result = client.unlock_goal(&user, &id);
         assert!(result);
+        assert!(!client.get_goal(&id).unwrap().locked);
     }
-    assert!(!client.get_goal(&id).unwrap().locked);
-}
 
-#[test]
-fn test_idempotent_unlock_does_not_bypass_time_lock() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let owner = Address::generate(&env);
-    env.mock_all_auths();
-    set_ledger_time(&env, 1, 1000);
-    let id = client.create_goal(&owner, &String::from_str(&env, "TimeLock"), &10000, &5000);
-    client.add_to_goal(&owner, &id, &5000);
-    client.unlock_goal(&owner, &id);
-    client.set_time_lock(&owner, &id, &10000);
-    client.unlock_goal(&owner, &id);
-    let result = client.try_withdraw_from_goal(&owner, &id, &1000);
-    assert!(result.is_err());
-}
+    #[test]
+    fn test_unlock_goal_idempotent_no_duplicate_event() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "No Dup Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        let events_after_first_unlock = env.events().all().len();
+        client.unlock_goal(&user, &id);
+        let events_after_second_unlock = env.events().all().len();
+        assert_eq!(events_after_first_unlock, events_after_second_unlock);
+    }
+
+    #[test]
+    fn test_lock_goal_many_repeated_calls_safe() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Repeat Lock"), &1000, &2000000000);
+        for _ in 0..5 {
+            let result = client.lock_goal(&user, &id);
+            assert!(result);
+        }
+        assert!(client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_unlock_goal_many_repeated_calls_safe() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+        client.init();
+        env.mock_all_auths();
+        let id = client.create_goal(&user, &String::from_str(&env, "Repeat Unlock"), &1000, &2000000000);
+        client.unlock_goal(&user, &id);
+        for _ in 0..5 {
+            let result = client.unlock_goal(&user, &id);
+            assert!(result);
+        }
+        assert!(!client.get_goal(&id).unwrap().locked);
+    }
+
+    #[test]
+    fn test_idempotent_unlock_does_not_bypass_time_lock() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        env.mock_all_auths();
+        set_ledger_time(&env, 1, 1000);
+        let id = client.create_goal(&owner, &String::from_str(&env, "TimeLock"), &10000, &5000);
+        client.add_to_goal(&owner, &id, &5000);
+        client.unlock_goal(&owner, &id);
+        client.set_time_lock(&owner, &id, &10000);
+        client.unlock_goal(&owner, &id);
+        let result = client.try_withdraw_from_goal(&owner, &id, &1000);
+        assert!(result.is_err());
+    }
 // ============================================================================
 // Snapshot schema version tests
 //
@@ -2285,12 +2228,7 @@ fn test_import_empty_snapshot_succeeds_and_clears_goals() {
     let owner = Address::generate(&env);
 
     client.init();
-    client.create_goal(
-        &owner,
-        &String::from_str(&env, "Old Goal"),
-        &5000,
-        &2000000000,
-    );
+    client.create_goal(&owner, &String::from_str(&env, "Old Goal"), &5000, &2000000000);
 
     // Build an empty snapshot manually with a valid checksum.
     // checksum = (version + next_id) * 31 = (1 + 0) * 31 = 31
@@ -2460,19 +2398,11 @@ fn test_import_snapshot_sequential_nonce_increments() {
 
     // Import 1: nonce 0 → nonce becomes 1
     assert!(client.import_snapshot(&owner, &0, &snapshot));
-    assert_eq!(
-        client.get_nonce(&owner),
-        1,
-        "nonce must be 1 after first import"
-    );
+    assert_eq!(client.get_nonce(&owner), 1, "nonce must be 1 after first import");
 
     // Import 2: nonce 1 → nonce becomes 2
     assert!(client.import_snapshot(&owner, &1, &snapshot));
-    assert_eq!(
-        client.get_nonce(&owner),
-        2,
-        "nonce must be 2 after second import"
-    );
+    assert_eq!(client.get_nonce(&owner), 2, "nonce must be 2 after second import");
 }
 
 /// Ownership remap: importing a snapshot whose goals are owned by a different
@@ -2526,18 +2456,8 @@ fn test_import_snapshot_multi_owner_goals_preserved() {
     let admin = Address::generate(&env);
 
     client.init();
-    let id_a = client.create_goal(
-        &owner_a,
-        &String::from_str(&env, "A Goal"),
-        &3000,
-        &2000000000,
-    );
-    let id_b = client.create_goal(
-        &owner_b,
-        &String::from_str(&env, "B Goal"),
-        &6000,
-        &2000000000,
-    );
+    let id_a = client.create_goal(&owner_a, &String::from_str(&env, "A Goal"), &3000, &2000000000);
+    let id_b = client.create_goal(&owner_b, &String::from_str(&env, "B Goal"), &6000, &2000000000);
 
     // Admin exports the full snapshot (all goals regardless of owner).
     let snapshot = client.export_snapshot(&admin);
@@ -2574,16 +2494,8 @@ fn test_import_snapshot_overwrites_existing_goals() {
     let snapshot = client.export_snapshot(&owner);
 
     // Create goal 2 after the snapshot was taken.
-    client.create_goal(
-        &owner,
-        &String::from_str(&env, "Discard"),
-        &2000,
-        &2000000000,
-    );
-    assert!(
-        client.get_goal(&2).is_some(),
-        "goal 2 must exist before import"
-    );
+    client.create_goal(&owner, &String::from_str(&env, "Discard"), &2000, &2000000000);
+    assert!(client.get_goal(&2).is_some(), "goal 2 must exist before import");
 
     // Import the earlier snapshot — goal 2 must be gone.
     let ok = client.import_snapshot(&owner, &0, &snapshot);
@@ -2616,7 +2528,7 @@ fn test_import_snapshot_appends_success_audit_entry() {
     client.import_snapshot(&owner, &0, &snapshot);
 
     let log = client.get_audit_log(&0, &10);
-    assert!(log.len() > 0, "audit log must not be empty after import");
+    assert!(!log.is_empty(), "audit log must not be empty after import");
 
     // The last entry must record a successful import.
     let last = log.get(log.len() - 1).expect("audit log must have entries");
@@ -2645,10 +2557,7 @@ fn test_import_snapshot_failed_checksum_appends_failure_audit_entry() {
     let _ = client.try_import_snapshot(&owner, &0, &snapshot);
 
     let log = client.get_audit_log(&0, &10);
-    assert!(
-        log.len() > 0,
-        "audit log must not be empty after failed import"
-    );
+    assert!(!log.is_empty(), "audit log must not be empty after failed import");
 
     let last = log.get(log.len() - 1).expect("audit log must have entries");
     assert!(!last.success, "last audit entry must record failure");
@@ -2719,12 +2628,7 @@ fn test_import_snapshot_preserves_locked_state() {
     let owner = Address::generate(&env);
 
     client.init();
-    let id = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Locked"),
-        &1000,
-        &2000000000,
-    );
+    let id = client.create_goal(&owner, &String::from_str(&env, "Locked"), &1000, &2000000000);
     // Goals are locked by default; verify before export.
     assert!(client.get_goal(&id).unwrap().locked);
 
@@ -2732,10 +2636,7 @@ fn test_import_snapshot_preserves_locked_state() {
     client.import_snapshot(&owner, &0, &snapshot);
 
     let restored = client.get_goal(&id).expect("goal must exist after import");
-    assert!(
-        restored.locked,
-        "locked state must be preserved through import"
-    );
+    assert!(restored.locked, "locked state must be preserved through import");
 }
 
 /// Round-trip with time-lock: unlock_date must survive export → import.
@@ -2814,17 +2715,12 @@ fn test_withdraw_time_lock_boundaries() {
 
     env.mock_all_auths();
     client.init();
-
+    
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
     let unlock_date = 5000;
-    let goal_id = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Time Lock Boundary"),
-        &10000,
-        &unlock_date,
-    );
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Time Lock Boundary"), &10000, &unlock_date);
 
     client.add_to_goal(&owner, &goal_id, &5000);
     client.unlock_goal(&owner, &goal_id);
@@ -2838,18 +2734,12 @@ fn test_withdraw_time_lock_boundaries() {
     // 2. Test withdrawal at unlock_date (should succeed)
     set_ledger_time(&env, 1, unlock_date);
     let new_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
-    assert_eq!(
-        new_amount, 4000,
-        "Withdrawal should succeed exactly at unlock_date"
-    );
+    assert_eq!(new_amount, 4000, "Withdrawal should succeed exactly at unlock_date");
 
     // 3. Test withdrawal at unlock_date + 1 (should succeed)
     set_ledger_time(&env, 1, unlock_date + 1);
     let final_amount = client.withdraw_from_goal(&owner, &goal_id, &1000);
-    assert_eq!(
-        final_amount, 3000,
-        "Withdrawal should succeed after unlock_date"
-    );
+    assert_eq!(final_amount, 3000, "Withdrawal should succeed after unlock_date");
 }
 
 #[test]
@@ -2861,54 +2751,39 @@ fn test_savings_schedule_drift_and_missed_intervals() {
 
     env.mock_all_auths();
     client.init();
-
+    
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
-    let goal_id = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Schedule Drift"),
-        &10000,
-        &5000,
-    );
-
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Schedule Drift"), &10000, &5000);
+    
     let amount = 500;
     let next_due = 3000;
     let interval = 86400; // 1 day
-    let schedule_id =
-        client.create_savings_schedule(&owner, &goal_id, &amount, &next_due, &interval);
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &amount, &next_due, &interval);
 
     // 1. Advance time past next_due + interval * 2 + 100 (simulating significant drift/delay)
     // 3000 + 172800 + 100 = 175900
     let current_time = next_due + interval * 2 + 100;
     set_ledger_time(&env, 1, current_time);
-
+    
     let executed_ids = client.execute_due_savings_schedules();
     assert_eq!(executed_ids.len(), 1);
     assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
 
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
     // It should have executed once (for the first due date) and missed 2 subsequent ones
-    assert_eq!(
-        schedule.missed_count, 2,
-        "Should have marked 2 intervals as missed"
-    );
-
+    assert_eq!(schedule.missed_count, 2, "Should have marked 2 intervals as missed");
+    
     // next_due should be set to the next FUTURE interval relative to current_time
     // Original: 3000
     // +1: 89400
     // +2: 175800
     // +3: 262200 (This is the next future one after 175900)
-    assert_eq!(
-        schedule.next_due, 262200,
-        "next_due should anchor to the next future interval"
-    );
+    assert_eq!(schedule.next_due, 262200, "next_due should anchor to the next future interval");
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(
-        goal.current_amount, amount,
-        "Only one execution should have happened"
-    );
+    assert_eq!(goal.current_amount, amount, "Only one execution should have happened");
 }
 
 #[test]
@@ -2920,41 +2795,199 @@ fn test_savings_schedule_exact_timestamp_execution() {
 
     env.mock_all_auths();
     client.init();
-
+    
     let base_time = 1000;
     set_ledger_time(&env, 1, base_time);
 
-    let goal_id = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Exact Schedule"),
-        &10000,
-        &5000,
-    );
-
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Exact Schedule"), &10000, &5000);
+    
     let next_due = 3000;
     let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &next_due, &0); // non-recurring
 
     // 1. Test at next_due - 1 (should NOT execute)
     set_ledger_time(&env, 1, next_due - 1);
     let executed_ids = client.execute_due_savings_schedules();
-    assert_eq!(
-        executed_ids.len(),
-        0,
-        "Schedule should not execute before next_due"
-    );
+    assert_eq!(executed_ids.len(), 0, "Schedule should not execute before next_due");
 
     // 2. Test at next_due (should execute)
     set_ledger_time(&env, 1, next_due);
     let executed_ids = client.execute_due_savings_schedules();
-    assert_eq!(
-        executed_ids.len(),
-        1,
-        "Schedule should execute exactly at next_due"
-    );
+    assert_eq!(executed_ids.len(), 1, "Schedule should execute exactly at next_due");
     assert_eq!(executed_ids.get(0).unwrap(), schedule_id);
 
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal.current_amount, 500);
+}
+
+// ============================================================================
+// Savings schedule duplicate-execution / idempotency tests
+//
+// These tests verify that execute_due_savings_schedules cannot credit a goal
+// more than once for the same due window, regardless of how many times the
+// function is invoked at the same ledger timestamp.
+// ============================================================================
+
+/// Calling execute_due_savings_schedules twice at the same ledger timestamp
+/// for a one-shot (non-recurring) schedule must credit the goal exactly once.
+///
+/// Security: a one-shot schedule is deactivated (`active = false`) after the
+/// first execution.  The second call must be a no-op and must not alter the
+/// goal balance.
+#[test]
+fn test_execute_oneshot_schedule_idempotent() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Emergency"), &5000, &9999);
+    // One-shot schedule: interval = 0
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &500, &3000, &0);
+
+    // Advance time past the due date; both calls share the same timestamp.
+    set_ledger_time(&env, 2, 3500);
+
+    let first = client.execute_due_savings_schedules();
+    let second = client.execute_due_savings_schedules();
+
+    // First call must have executed the schedule.
+    assert_eq!(first.len(), 1, "First call should execute one schedule");
+    assert_eq!(first.get(0).unwrap(), schedule_id);
+
+    // Second call must be a no-op (schedule is inactive after first execution).
+    assert_eq!(second.len(), 0, "Second call must not re-execute the schedule");
+
+    // Goal balance must reflect exactly one credit.
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 500, "Goal must be credited exactly once");
+
+    // Schedule must be inactive.
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    assert!(!schedule.active, "One-shot schedule must be inactive after execution");
+}
+
+/// Calling execute_due_savings_schedules twice at the same ledger timestamp
+/// for a recurring schedule must credit the goal exactly once per due window.
+///
+/// Security: after the first execution `next_due` is advanced past
+/// `current_time`, so the second call sees `next_due > current_time` and the
+/// idempotency guard (`last_executed >= next_due_original`) both independently
+/// prevent re-execution.  This test confirms neither protection is bypassed.
+#[test]
+fn test_execute_recurring_schedule_idempotent() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Vacation"), &10000, &99999);
+    // Recurring schedule with a 1-day interval.
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &200, &3000, &86400);
+
+    set_ledger_time(&env, 2, 3500);
+
+    let first = client.execute_due_savings_schedules();
+    let second = client.execute_due_savings_schedules();
+
+    // First call must execute once.
+    assert_eq!(first.len(), 1, "First call should execute one schedule");
+    assert_eq!(first.get(0).unwrap(), schedule_id);
+
+    // Second call must be a no-op.
+    assert_eq!(second.len(), 0, "Second call must not re-execute the schedule");
+
+    // Goal balance must reflect exactly one credit.
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 200, "Goal must be credited exactly once");
+
+    // Schedule must remain active with next_due advanced past current_time.
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    assert!(schedule.active, "Recurring schedule must stay active");
+    assert!(
+        schedule.next_due > 3500,
+        "next_due must be advanced past current_time after execution"
+    );
+    // last_executed must record when the schedule ran.
+    assert_eq!(
+        schedule.last_executed,
+        Some(3500),
+        "last_executed must be set to the execution timestamp"
+    );
+}
+
+/// Executing a schedule and then calling execute again at a later timestamp
+/// (within the next interval) must produce exactly one additional credit.
+///
+/// This confirms that after `next_due` is advanced the schedule correctly
+/// fires again in the following window and does not double-fire.
+#[test]
+fn test_execute_recurring_fires_again_next_window() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Pension"), &10000, &99999);
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &300, &3000, &1000);
+
+    // First window: execute at t=3500 (past due t=3000)
+    set_ledger_time(&env, 2, 3500);
+    let first = client.execute_due_savings_schedules();
+    assert_eq!(first.len(), 1);
+
+    // Goal has one credit.
+    let goal_after_first = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after_first.current_amount, 300);
+
+    // Second window: execute at t=4500 (past advanced next_due t=4000)
+    set_ledger_time(&env, 3, 4500);
+    let second = client.execute_due_savings_schedules();
+    assert_eq!(second.len(), 1, "Second window must execute once");
+    assert_eq!(second.get(0).unwrap(), schedule_id);
+
+    // Goal has two credits (not three or more).
+    let goal_after_second = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after_second.current_amount, 600, "Goal must have exactly two credits");
+}
+
+/// Verifies that `last_executed` is always set to the ledger timestamp at the
+/// moment of execution, not to `next_due` or any other derived value.
+///
+/// This is required for the idempotency guard (`last_executed >= next_due`) to
+/// function correctly when `current_time > next_due` (i.e. the execution was
+/// late).
+#[test]
+fn test_last_executed_set_to_current_time() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Housing"), &10000, &99999);
+    // Due at 3000, but we execute late at 5000.
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &100, &3000, &0);
+
+    set_ledger_time(&env, 2, 5000);
+    client.execute_due_savings_schedules();
+
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    assert_eq!(
+        schedule.last_executed,
+        Some(5000),
+        "last_executed must equal current_time (5000), not next_due (3000)"
+    );
 }
 
 #[test]
@@ -3085,12 +3118,7 @@ fn test_add_tags_to_goal_invalid_tag_length_panics() {
 
     client.init();
     env.mock_all_auths();
-    let goal_id = client.create_goal(
-        &user,
-        &String::from_str(&env, "InvalidTag"),
-        &1000,
-        &2000000000,
-    );
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "InvalidTag"), &1000, &2000000000);
 
     let mut tags = SorobanVec::new(&env);
     tags.push_back(String::from_str(
@@ -3170,14 +3198,8 @@ fn test_add_and_remove_tags_to_goal_success() {
 
     let goal_after_add = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal_after_add.tags.len(), 2);
-    assert_eq!(
-        goal_after_add.tags.get(0).unwrap(),
-        String::from_str(&env, "urgent")
-    );
-    assert_eq!(
-        goal_after_add.tags.get(1).unwrap(),
-        String::from_str(&env, "family")
-    );
+    assert_eq!(goal_after_add.tags.get(0).unwrap(), String::from_str(&env, "urgent"));
+    assert_eq!(goal_after_add.tags.get(1).unwrap(), String::from_str(&env, "family"));
 
     let mut remove_tags = SorobanVec::new(&env);
     remove_tags.push_back(String::from_str(&env, "urgent"));
@@ -3200,12 +3222,8 @@ fn test_add_tags_to_goal_duplicates_allowed() {
 
     client.init();
     env.mock_all_auths();
-    let goal_id = client.create_goal(
-        &user,
-        &String::from_str(&env, "DuplicateTags"),
-        &1000,
-        &2000000000,
-    );
+    let goal_id =
+        client.create_goal(&user, &String::from_str(&env, "DuplicateTags"), &1000, &2000000000);
 
     let mut tags = SorobanVec::new(&env);
     tags.push_back(String::from_str(&env, "duplicate"));
@@ -3332,25 +3350,15 @@ fn test_execute_oneshot_schedule_idempotent() {
     assert_eq!(first.get(0).unwrap(), schedule_id);
 
     // Second call must be a no-op (schedule is inactive after first execution).
-    assert_eq!(
-        second.len(),
-        0,
-        "Second call must not re-execute the schedule"
-    );
+    assert_eq!(second.len(), 0, "Second call must not re-execute the schedule");
 
     // Goal balance must reflect exactly one credit.
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(
-        goal.current_amount, 500,
-        "Goal must be credited exactly once"
-    );
+    assert_eq!(goal.current_amount, 500, "Goal must be credited exactly once");
 
     // Schedule must be inactive.
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
-    assert!(
-        !schedule.active,
-        "One-shot schedule must be inactive after execution"
-    );
+    assert!(!schedule.active, "One-shot schedule must be inactive after execution");
 }
 
 /// Calling execute_due_savings_schedules twice at the same ledger timestamp
@@ -3384,18 +3392,11 @@ fn test_execute_recurring_schedule_idempotent() {
     assert_eq!(first.get(0).unwrap(), schedule_id);
 
     // Second call must be a no-op.
-    assert_eq!(
-        second.len(),
-        0,
-        "Second call must not re-execute the schedule"
-    );
+    assert_eq!(second.len(), 0, "Second call must not re-execute the schedule");
 
     // Goal balance must reflect exactly one credit.
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(
-        goal.current_amount, 200,
-        "Goal must be credited exactly once"
-    );
+    assert_eq!(goal.current_amount, 200, "Goal must be credited exactly once");
 
     // Schedule must remain active with next_due advanced past current_time.
     let schedule = client.get_savings_schedule(&schedule_id).unwrap();
@@ -3447,10 +3448,7 @@ fn test_execute_recurring_fires_again_next_window() {
 
     // Goal has two credits (not three or more).
     let goal_after_second = client.get_goal(&goal_id).unwrap();
-    assert_eq!(
-        goal_after_second.current_amount, 600,
-        "Goal must have exactly two credits"
-    );
+    assert_eq!(goal_after_second.current_amount, 600, "Goal must have exactly two credits");
 }
 
 /// Verifies that `last_executed` is always set to the ledger timestamp at the
@@ -3482,4 +3480,545 @@ fn test_last_executed_set_to_current_time() {
         Some(5000),
         "last_executed must equal current_time (5000), not next_due (3000)"
     );
+}
+
+// ============================================================================
+// End-to-end migration compatibility tests — savings_goals ↔ data_migration
+//
+// These tests exercise the full export ↔ import pipeline across both
+// packages: the Soroban contract (savings_goals) and the off-chain migration
+// utilities (data_migration). All four format paths are covered.
+//
+// Approach:
+//   1. Use the Soroban test env to create real on-chain goal state.
+//   2. Call `export_snapshot()` to get a `GoalsExportSnapshot`.
+//   3. Convert to `data_migration::SavingsGoalsExport` (field mapping).
+//   4. Use `data_migration` helpers to serialize, deserialize, and validate.
+//   5. Assert field fidelity and security invariants.
+//
+// Security invariants validated:
+//   - Checksum integrity is preserved across all format paths.
+//   - Tampered checksums are rejected by `validate_for_import`.
+//   - Incompatible schema versions are rejected.
+//   - `locked` and `unlock_date` flags are faithfully exported.
+// ============================================================================
+#[cfg(test)]
+mod migration_e2e_tests {
+    use super::*;
+    use data_migration::{
+        build_savings_snapshot, export_to_binary, export_to_csv, export_to_encrypted_payload,
+        export_to_json, import_from_binary, import_from_encrypted_payload, import_from_json,
+        import_goals_from_csv, ExportFormat, MigrationError, SavingsGoalExport,
+        SavingsGoalsExport, SnapshotPayload, SCHEMA_VERSION,
+    };
+    use soroban_sdk::{testutils::Address as AddressTrait, Address, Env};
+    extern crate alloc;
+    use alloc::vec::Vec as StdVec;
+
+    // -------------------------------------------------------------------------
+    // Helper: convert an on-chain GoalsExportSnapshot into a data_migration export.
+    // -------------------------------------------------------------------------
+
+    /// Convert a `GoalsExportSnapshot` (from the contract) into a
+    /// `data_migration::SavingsGoalsExport` (for off-chain processing).
+    ///
+    /// The `owner` field in `SavingsGoal` is a `soroban_sdk::Address`; we
+    /// convert it to a hex string using its debug representation so the
+    /// off-chain struct can store it as a plain `String`.
+    fn to_migration_export(snapshot: &GoalsExportSnapshot, _env: &Env) -> SavingsGoalsExport {
+        let mut goals: StdVec<SavingsGoalExport> = StdVec::new();
+        for i in 0..snapshot.goals.len() {
+            if let Some(g) = snapshot.goals.get(i) {
+                // Convert soroban_sdk::String to alloc String via byte buffer.
+                let name_str: alloc::string::String = {
+                    let len = g.name.len() as usize;
+                    let mut buf = alloc::vec![0u8; len];
+                    g.name.copy_into_slice(&mut buf);
+                    alloc::string::String::from_utf8_lossy(&buf).into_owned()
+                };
+                goals.push(SavingsGoalExport {
+                    id: g.id,
+                    owner: alloc::format!("{:?}", g.owner),
+                    name: name_str,
+                    // SavingsGoal uses i128; data_migration stores i64.
+                    // Test amounts are small so the cast is safe.
+                    target_amount: g.target_amount as i64,
+                    current_amount: g.current_amount as i64,
+                    target_date: g.target_date,
+                    locked: g.locked,
+                });
+            }
+        }
+        SavingsGoalsExport {
+            next_id: snapshot.next_id,
+            goals,
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // JSON format
+    // -------------------------------------------------------------------------
+
+    /// E2E: export on-chain goals → data_migration JSON bytes → import → verify fields.
+    ///
+    /// Tests the complete pipeline: contract state → `export_snapshot` →
+    /// `SavingsGoalsExport` → `build_savings_snapshot` (JSON) →
+    /// `export_to_json` → `import_from_json` → field assertions.
+    #[test]
+    fn test_e2e_contract_export_import_json_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Vacation"),
+            &10_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner, &goal_id, &3_500i128);
+
+        // Export on-chain snapshot.
+        let snapshot = client.export_snapshot(&owner);
+        assert_eq!(snapshot.version, 1);
+        assert_eq!(snapshot.goals.len(), 1);
+
+        // Convert and build migration snapshot.
+        let migration_export = to_migration_export(&snapshot, &env);
+        assert_eq!(migration_export.next_id, 1);
+        assert_eq!(migration_export.goals.len(), 1);
+        let mig_goal = &migration_export.goals[0];
+        assert_eq!(mig_goal.id, 1);
+        assert_eq!(mig_goal.target_amount, 10_000);
+        assert_eq!(mig_goal.current_amount, 3_500);
+        assert_eq!(mig_goal.target_date, 2_000_000_000);
+
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+        assert!(mig_snapshot.verify_checksum());
+
+        // Serialize to JSON and reimport.
+        let bytes = export_to_json(&mig_snapshot).unwrap();
+        let loaded = import_from_json(&bytes).unwrap();
+        assert_eq!(loaded.header.version, SCHEMA_VERSION);
+        assert!(loaded.verify_checksum());
+
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert_eq!(g.goals.len(), 1);
+            assert_eq!(g.goals[0].target_amount, 10_000);
+            assert_eq!(g.goals[0].current_amount, 3_500);
+            assert_eq!(g.goals[0].target_date, 2_000_000_000);
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Binary format
+    // -------------------------------------------------------------------------
+
+    /// E2E: contract export → binary serialization → import → checksum verified.
+    #[test]
+    fn test_e2e_contract_export_import_binary_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Emergency"),
+            &20_000i128,
+            &1_900_000_000u64,
+        );
+        client.add_to_goal(&owner, &goal_id, &5_000i128);
+
+        let snapshot = client.export_snapshot(&owner);
+        let migration_export = to_migration_export(&snapshot, &env);
+
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Binary);
+        assert!(mig_snapshot.verify_checksum());
+
+        let bytes = export_to_binary(&mig_snapshot).unwrap();
+        assert!(!bytes.is_empty());
+
+        let loaded = import_from_binary(&bytes).unwrap();
+        assert_eq!(loaded.header.version, SCHEMA_VERSION);
+        assert_eq!(loaded.header.format, "binary");
+        assert!(loaded.verify_checksum());
+
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert_eq!(g.goals[0].target_amount, 20_000);
+            assert_eq!(g.goals[0].current_amount, 5_000);
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // CSV format
+    // -------------------------------------------------------------------------
+
+    /// E2E: multiple contract goals → CSV export → import → all records preserved.
+    #[test]
+    fn test_e2e_contract_export_import_csv_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let id1 = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Trip"),
+            &8_000i128,
+            &2_000_000_000u64,
+        );
+        let id2 = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Gadget"),
+            &3_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner, &id1, &2_000i128);
+        client.add_to_goal(&owner, &id2, &1_500i128);
+
+        let snapshot = client.export_snapshot(&owner);
+        assert_eq!(snapshot.goals.len(), 2);
+
+        let migration_export = to_migration_export(&snapshot, &env);
+        let csv_bytes = export_to_csv(&migration_export).unwrap();
+        assert!(!csv_bytes.is_empty());
+
+        let goals = import_goals_from_csv(&csv_bytes).unwrap();
+        assert_eq!(goals.len(), 2, "both goals must survive CSV roundtrip");
+
+        // Verify amounts are preserved.
+        let g1 = goals.iter().find(|g| g.id == 1).expect("goal 1 must be present");
+        let g2 = goals.iter().find(|g| g.id == 2).expect("goal 2 must be present");
+        assert_eq!(g1.target_amount, 8_000);
+        assert_eq!(g1.current_amount, 2_000);
+        assert_eq!(g2.target_amount, 3_000);
+        assert_eq!(g2.current_amount, 1_500);
+    }
+
+    // -------------------------------------------------------------------------
+    // Encrypted format
+    // -------------------------------------------------------------------------
+
+    /// E2E: contract export → JSON bytes → base64 wrap → decode → re-import.
+    ///
+    /// Simulates the encrypted-channel path: caller serialises to JSON, wraps
+    /// in base64 (as would an encryption layer), transmits, then decodes
+    /// and re-imports.
+    #[test]
+    fn test_e2e_contract_export_import_encrypted_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "House"),
+            &500_000i128,
+            &2_100_000_000u64,
+        );
+        client.add_to_goal(&owner, &goal_id, &100_000i128);
+
+        let snapshot = client.export_snapshot(&owner);
+        let migration_export = to_migration_export(&snapshot, &env);
+
+        // Build and serialize to JSON ("plaintext" before encryption).
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Encrypted);
+        assert!(mig_snapshot.verify_checksum());
+        let plain_bytes = export_to_json(&mig_snapshot).unwrap();
+
+        // Encrypt (base64 encode).
+        let encoded = export_to_encrypted_payload(&plain_bytes);
+        assert!(!encoded.is_empty());
+
+        // Decrypt (base64 decode).
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain_bytes);
+
+        // Re-import and validate.
+        let loaded = import_from_json(&decoded).unwrap();
+        assert!(loaded.verify_checksum());
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert_eq!(g.goals[0].target_amount, 500_000);
+            assert_eq!(g.goals[0].current_amount, 100_000);
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Security: tampered checksum rejected
+    // -------------------------------------------------------------------------
+
+    /// E2E: mutating the header checksum after export must fail import validation.
+    ///
+    /// Security invariant: any post-export mutation is detected by the SHA-256
+    /// checksum and causes `validate_for_import` to return `ChecksumMismatch`.
+    #[test]
+    fn test_e2e_tampered_checksum_fails_import() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        client.create_goal(
+            &owner,
+            &String::from_str(&env, "Security Test"),
+            &1_000i128,
+            &2_000_000_000u64,
+        );
+
+        let snapshot = client.export_snapshot(&owner);
+        let migration_export = to_migration_export(&snapshot, &env);
+        let mut mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+
+        assert!(mig_snapshot.verify_checksum(), "fresh snapshot must be valid");
+
+        // Tamper.
+        mig_snapshot.header.checksum = "00000000000000000000000000000000".into();
+
+        assert!(!mig_snapshot.verify_checksum());
+        assert_eq!(
+            mig_snapshot.validate_for_import(),
+            Err(MigrationError::ChecksumMismatch)
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Security: incompatible version rejected
+    // -------------------------------------------------------------------------
+
+    /// E2E: setting schema version below `MIN_SUPPORTED_VERSION` must cause
+    /// `validate_for_import` to return `IncompatibleVersion`.
+    #[test]
+    fn test_e2e_incompatible_version_fails_import() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        client.create_goal(
+            &owner,
+            &String::from_str(&env, "Version Test"),
+            &500i128,
+            &2_000_000_000u64,
+        );
+
+        let snapshot = client.export_snapshot(&owner);
+        let migration_export = to_migration_export(&snapshot, &env);
+        let mut mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+
+        mig_snapshot.header.version = 0; // unsupported
+
+        assert!(matches!(
+            mig_snapshot.validate_for_import(),
+            Err(MigrationError::IncompatibleVersion { found: 0, .. })
+        ));
+    }
+
+    // -------------------------------------------------------------------------
+    // Edge case: empty contract state
+    // -------------------------------------------------------------------------
+
+    /// E2E: exporting a contract with zero goals must produce a valid empty snapshot
+    /// that survives the JSON roundtrip.
+    #[test]
+    fn test_e2e_empty_contract_export_json_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+
+        // Export with no goals created.
+        let snapshot = client.export_snapshot(&owner);
+        assert_eq!(snapshot.goals.len(), 0);
+
+        let migration_export = to_migration_export(&snapshot, &env);
+        assert_eq!(migration_export.goals.len(), 0);
+
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+        assert!(mig_snapshot.verify_checksum());
+
+        let bytes = export_to_json(&mig_snapshot).unwrap();
+        let loaded = import_from_json(&bytes).unwrap();
+        assert!(loaded.verify_checksum());
+
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert_eq!(g.goals.len(), 0);
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Edge case: locked goal preserved through migration
+    // -------------------------------------------------------------------------
+
+    /// E2E: a goal with `locked: true` must have its locked flag faithfully
+    /// preserved through the full export → JSON → import pipeline.
+    ///
+    /// Validates that the `locked` field survives the contract-to-migration
+    /// struct conversion and the JSON serialization layer.
+    #[test]
+    fn test_e2e_locked_goal_preserved_through_migration() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Locked Goal"),
+            &10_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner, &goal_id, &5_000i128);
+        // Goal is created locked by default; verify it is still locked.
+        let goal = client.get_goal(&goal_id).unwrap();
+        assert!(goal.locked, "goal must be locked after create_goal");
+
+        // Export and convert.
+        let snapshot = client.export_snapshot(&owner);
+        let migration_export = to_migration_export(&snapshot, &env);
+        assert!(
+            migration_export.goals[0].locked,
+            "locked flag must survive contract → migration conversion"
+        );
+
+        // Roundtrip through JSON.
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+        let bytes = export_to_json(&mig_snapshot).unwrap();
+        let loaded = import_from_json(&bytes).unwrap();
+
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert!(
+                g.goals[0].locked,
+                "locked flag must be true after JSON roundtrip"
+            );
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Determinism: same state → same checksum
+    // -------------------------------------------------------------------------
+
+    /// E2E: exporting the same contract state twice and building migration
+    /// snapshots from both must yield identical checksums.
+    #[test]
+    fn test_e2e_snapshot_checksum_is_stable() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init();
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "Stable"),
+            &7_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner, &goal_id, &2_000i128);
+
+        // Export twice.
+        let snap_a = client.export_snapshot(&owner);
+        let snap_b = client.export_snapshot(&owner);
+
+        let mig_a = build_savings_snapshot(to_migration_export(&snap_a, &env), ExportFormat::Json);
+        let mig_b = build_savings_snapshot(to_migration_export(&snap_b, &env), ExportFormat::Json);
+
+        assert_eq!(
+            mig_a.header.checksum, mig_b.header.checksum,
+            "same contract state must produce deterministic checksums"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-goal, multi-owner export
+    // -------------------------------------------------------------------------
+
+    /// E2E: export goals from two separate contract owners, then roundtrip via
+    /// JSON — all goals and owner IDs must be preserved.
+    #[test]
+    fn test_e2e_multi_owner_export_import_json_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner_a = Address::generate(&env);
+        let owner_b = Address::generate(&env);
+
+        client.init();
+
+        // Create goals for owner A.
+        let a1 = client.create_goal(
+            &owner_a,
+            &String::from_str(&env, "A Car"),
+            &30_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner_a, &a1, &10_000i128);
+
+        // Create goals for owner B.
+        let b1 = client.create_goal(
+            &owner_b,
+            &String::from_str(&env, "B Education"),
+            &50_000i128,
+            &2_000_000_000u64,
+        );
+        client.add_to_goal(&owner_b, &b1, &15_000i128);
+
+        // Export full contract state via owner A's call.
+        // `export_snapshot` returns ALL goals (not filtered by caller).
+        let snapshot = client.export_snapshot(&owner_a);
+        assert_eq!(snapshot.goals.len(), 2, "both owners' goals must appear in snapshot");
+
+        let migration_export = to_migration_export(&snapshot, &env);
+        let mig_snapshot = build_savings_snapshot(migration_export, ExportFormat::Json);
+        assert!(mig_snapshot.verify_checksum());
+
+        let bytes = export_to_json(&mig_snapshot).unwrap();
+        let loaded = import_from_json(&bytes).unwrap();
+        assert!(loaded.verify_checksum());
+
+        if let SnapshotPayload::SavingsGoals(ref g) = loaded.payload {
+            assert_eq!(g.goals.len(), 2);
+
+            let ga = g.goals.iter().find(|g| g.id == 1).expect("goal 1");
+            let gb = g.goals.iter().find(|g| g.id == 2).expect("goal 2");
+
+            assert_eq!(ga.target_amount, 30_000);
+            assert_eq!(ga.current_amount, 10_000);
+            assert_eq!(gb.target_amount, 50_000);
+            assert_eq!(gb.current_amount, 15_000);
+        } else {
+            panic!("Expected SavingsGoals payload");
+        }
+    }
 }

@@ -444,3 +444,9 @@ composability and for frontends that need to display specific error messages.
 ```bash
 cargo test -p family_wallet
 ```
+
+## Transaction archive and pending cleanup (v2)
+
+Authoritative design notes for `archive_old_transactions`, `get_archived_transactions`, and `cleanup_expired_pending` (storage layout, retention cutoff, authorization, and integrity checks) live in the repository root document:
+
+- `docs/family-wallet-design.md` — section **Transaction archive and pending cleanup**
