@@ -26,6 +26,7 @@ in strict order before any token interaction occurs:
 7. **Replay protection** — nonce must equal `get_nonce(from)` and is incremented after success.
 8. **Audit + event** — a `DistributionCompleted` event is emitted on success for off-chain indexing.
 9. **Schedule ID Sequencing** — `create_remittance_schedule` generates strictly monotonic IDs using a synchronized counter (`NEXT_RSCH`), ensuring no collisions across high-volume operations.
+10. **Schedule Execution Guardrails** — Remittance schedules enforce minimum intervals (1 hour), maximum lead times (1 year), and strict owner-only modifications to prevent unsafe state transitions or accidental fund depletion.
 
 ## Features
 
@@ -289,6 +290,30 @@ Returns the current configuration, or `None` if not initialized.
 #### `get_nonce(env, address) -> u64`
 
 Returns the current nonce for `address`. Pass this value as the `nonce` argument on the next call.
+
+#### `create_remittance_schedule(env, owner, amount, next_due, interval) -> u32`
+
+Creates a recurring or one-time remittance schedule.
+- **Constraints:**
+  - `owner` must be the same address as the contract `config.owner`.
+  - `amount` must be > 0.
+  - `next_due` must be in the future and ≤ 1 year from now.
+  - `interval` must be ≥ 1 hour if recurring (> 0).
+
+#### `modify_remittance_schedule(env, caller, schedule_id, amount, next_due, interval) -> bool`
+
+Updates an existing schedule.
+- **Constraints:**
+  - `caller` must be the `config.owner`.
+  - Schedule must be `active`.
+  - All creation constraints apply to the new parameters.
+
+#### `cancel_remittance_schedule(env, caller, schedule_id) -> bool`
+
+Deactivates a schedule.
+- **Constraints:**
+  - `caller` must be the `config.owner`.
+  - Schedule must be `active`.
 
 ## Error Reference
 

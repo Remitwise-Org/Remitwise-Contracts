@@ -7,7 +7,6 @@ use soroban_sdk::{
 use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
-const GOAL_CREATED: Symbol = symbol_short!("created");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
 
 #[derive(Clone)]
@@ -632,7 +631,6 @@ impl SavingsGoalContract {
     ///   goals should validate this before invoking the contract.
     ///
     /// # Events
-    /// - Emits `GOAL_CREATED` with goal details.
     /// - Emits `SavingsEvent::GoalCreated`.
     pub fn create_goal(
         env: Env,

@@ -204,13 +204,14 @@ Calculates total amount of unpaid bills for an owner in a specific currency.
 
 **Currency Comparison:** Case-insensitive (e.g., "usdc", "USDC", "UsDc" all match)
 
-#### `get_overdue_bills(env, owner) -> Vec<Bill>`
-Gets all overdue unpaid bills for a specific owner.
+#### `get_overdue_bills(env, cursor, limit) -> BillPage`
+Gets a paginated list of overdue unpaid bills across all owners.
 
 **Parameters:**
-- `owner`: Address of the bill owner
+- `cursor`: Start after this bill ID (0 for first page)
+- `limit`: Maximum number of bills to return (1-100, defaults to 10)
 
-**Returns:** Vector of overdue Bill structs belonging to the owner
+**Returns:** Page struct with bills and next cursor
 
 #### `get_total_unpaid(env, owner) -> i128`
 Calculates total amount of unpaid bills for an owner.
@@ -323,8 +324,8 @@ let unpaid = bill_payments::get_unpaid_bills(env, user_address);
 // Get total unpaid amount
 let total = bill_payments::get_total_unpaid(env, user_address);
 
-// Check for overdue bills
-let overdue = bill_payments::get_overdue_bills(env, user_address);
+// Check for overdue bills (paginated across all owners)
+let overdue_page = bill_payments::get_overdue_bills(env, 0, 10);
 ```
 
 ## Events

@@ -382,7 +382,7 @@ fn test_input_validation_security() {
         &(env.ledger().timestamp() + 86400),
         &2_592_000u64
     );
-    assert!(ok_id > 0, "Valid parameters should succeed");
+    assert!(result.is_ok(), "Valid parameters should succeed");
 
     println!("✅ Input validation security verified");
 }

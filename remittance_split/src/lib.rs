@@ -48,14 +48,25 @@ pub enum RemittanceSplitError {
 
     RequestHashMismatch = 15,
 
+    PercentagesDoNotSumTo100 = 18,
+    FutureTimestamp = 19,
+    OwnerMismatch = 20,
     NonceAlreadyUsed = 16,
+    PercentageOutOfRange = 17,
 }
 
-#[derive(Clone)]
 #[contracttype]
-pub struct Allocation {
-    pub category: Symbol,
-    pub amount: i128,
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
 }
 
 #[derive(Clone)]
@@ -67,9 +78,8 @@ pub struct AccountGroup {
     pub insurance: Address,
 }
 
-/// Domain-separated payload for `require_auth_for_args` on split initialization.
-#[contracttype]
 #[derive(Clone)]
+#[contracttype]
 pub struct SplitAuthPayload {
     pub domain_id: Symbol,
     pub network_id: BytesN<32>,
@@ -90,6 +100,10 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 const MAX_USED_NONCES_PER_ADDR: u32 = 256;
 /// Maximum ledger seconds a signed request may remain valid after creation.
 const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour
+
+// Schedule guardrail constants
+const MIN_SCHEDULE_INTERVAL: u64 = 3600; // 1 hour
+const MAX_SCHEDULE_LEAD_TIME: u64 = 31536000; // 1 year (365 days)
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -149,6 +163,22 @@ pub struct ExportSnapshot {
     pub checksum: u64,
     pub config: SplitConfig,
     pub schedules: Vec<RemittanceSchedule>,
+    pub exported_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
 }
 
 /// Audit log entry for security and compliance.
@@ -203,10 +233,65 @@ pub enum ScheduleEvent {
     Cancelled,
 }
 
+/// Domain-separated authorization payload for split operations.
+///
+/// Includes the full set of initialization parameters so that the
+/// signer commits to the exact configuration being applied.
+#[contracttype]
+#[derive(Clone)]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+}
+
 /// Current snapshot schema version. Bumped to 2 for FNV-1a checksum + exported_at field.
 const SCHEMA_VERSION: u32 = 2;
 /// Oldest snapshot schema version this contract can import. Enables backward compat.
-const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
+
+/// Domain-separated payload for split initialization.
+/// Binds technical context (network, contract) with business parameters
+/// to prevent relay/replay attacks across different deployments or networks.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SplitAuthPayload {
+    /// Domain identifier for functional separation (e.g. symbol_short!("init"))
+    pub domain_id: Symbol,
+    /// Network ID to prevent replay across different Stellar networks
+    pub network_id: BytesN<32>,
+    /// Contract address to prevent replay across different contract instances
+    pub contract_addr: Address,
+    /// Owner address who is authorizing the initialization
+    pub owner_addr: Address,
+    /// Per-address nonce for sequential replay protection
+    pub nonce_val: u64,
+    /// USDC token contract address
+    pub usdc_contract: Address,
+    /// Percentage for precision spending
+    pub spending_percent: u32,
+    /// Percentage for savings goals
+    pub savings_percent: u32,
+    /// Percentage for bill payments
+    pub bills_percent: u32,
+    /// Percentage for insurance premiums
+    pub insurance_percent: u32,
+}
+
+fn clamp_limit(limit: u32) -> u32 {
+    if limit == 0 || limit > MAX_PAGE_LIMIT {
+        MAX_PAGE_LIMIT
+    } else {
+        limit
+    }
+}
 const MAX_AUDIT_ENTRIES: u32 = 100;
 const CONTRACT_VERSION: u32 = 1;
 
@@ -458,11 +543,11 @@ impl RemittanceSplit {
     /// their sum equals exactly 100.
     ///
     /// Enforced invariants (checked in order):
-    /// 1. Each bucket must be <= 100 (`PercentageOutOfRange`).
+    /// 1. Each bucket must be <= 100 (`InvalidPercentages`).
     /// 2. The four buckets must sum to exactly 100 (`PercentagesDoNotSumTo100`).
     ///
     /// Separating the two checks gives callers a precise error code:
-    /// a value like 110/0/0/0 produces `PercentageOutOfRange`, not a misleading
+    /// a value like 110/0/0/0 produces `InvalidPercentages`, not a misleading
     /// "doesn't sum to 100" message.
     fn validate_percentages(
         spending_percent: u32,
@@ -933,6 +1018,7 @@ impl RemittanceSplit {
             checksum,
             config,
             schedules,
+            exported_at: env.ledger().timestamp(),
         }))
     }
 
@@ -1129,7 +1215,7 @@ impl RemittanceSplit {
         // 6. Timestamp sanity
         let current_time = env.ledger().timestamp();
         if snapshot.config.timestamp > current_time {
-            return Err(RemittanceSplitError::InvalidDueDate);
+            return Err(RemittanceSplitError::FutureTimestamp);
         }
 
         Ok(true)
@@ -1474,6 +1560,16 @@ impl RemittanceSplit {
         owner.require_auth();
         Self::require_not_paused(&env)?;
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != owner {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1483,7 +1579,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        let current_max_id: u32 = env
+        let current_max_id = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
@@ -1492,6 +1588,15 @@ impl RemittanceSplit {
         let next_schedule_id = current_max_id
             .checked_add(1)
             .ok_or(RemittanceSplitError::Overflow)?;
+
+        // Explicit uniqueness check to prevent any potential storage collisions
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Schedule(next_schedule_id))
+        {
+            return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
+        }
 
         let schedule = RemittanceSchedule {
             id: next_schedule_id,
@@ -1568,6 +1673,16 @@ impl RemittanceSplit {
         caller.require_auth();
         Self::require_not_paused(&env)?;
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1582,6 +1697,10 @@ impl RemittanceSplit {
             .persistent()
             .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
@@ -1633,6 +1752,10 @@ impl RemittanceSplit {
             .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
+
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
         }
@@ -1677,4 +1800,3 @@ impl RemittanceSplit {
         env.storage().persistent().get(&DataKey::Schedule(schedule_id))
     }
 }
-

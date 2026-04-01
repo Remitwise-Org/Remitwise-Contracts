@@ -139,17 +139,19 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 
 #### T-UA-02: Cross-Contract Authorization Bypass
 **Severity:** MEDIUM
-**Description:** Orchestrator executes downstream operations without verifying caller owns the resources being manipulated.
+**Status:** PARTIALLY MITIGATED
+**Description:** Orchestrator entry points can become confused-deputy surfaces if they trust caller identity from arguments without constraining direct invocation.
 
 **Affected Functions:**
 - `orchestrator::execute_remittance_flow()`
 - `orchestrator::deposit_to_savings()`
+- `orchestrator::execute_bill_payment()`
 - `orchestrator::execute_bill_payment_internal()`
 
 **Attack Vector:**
-1. Attacker calls orchestrator with victim's goal/bill/policy IDs
-2. Orchestrator forwards calls to downstream contracts
-3. If orchestrator is trusted by downstream contracts, operations may succeed
+1. A non-owner or helper contract forwards a signed bill-payment request for a victim
+2. The orchestrator trusts the `caller` argument without confirming the caller is the stored family wallet owner
+3. Downstream execution proceeds unless another layer blocks it
 
 **Impact:** Unauthorized fund allocation, state manipulation
 
@@ -1521,7 +1523,38 @@ The nonce is bound to a composite key of `(caller, command_type, nonce)` stored 
 |------|------|-------------|
 | 11 | SelfReferenceNotAllowed | A contract address references the orchestrator itself |
 | 12 | DuplicateContractAddress | Two or more contract addresses are identical |
-| 13 | NonceAlreadyUsed | Nonce has already been consumed for this caller/command pair |
+| 14 | NonceAlreadyUsed | Nonce has already been consumed for this caller/command pair |
 
 ### Test Coverage
 Six dedicated nonce tests cover: replay rejection per command type, nonce isolation per caller, nonce isolation across command types, and sequential unique nonce acceptance.
+
+## Bill Payment Authorization Hardening (Issue #303)
+
+### Original Risk
+`orchestrator::execute_bill_payment()` accepted a user-supplied `caller` address and required that address to authorize, but it did not explicitly reject execution forwarded through another contract. That left room for confused-deputy behavior where a non-owner caller could attempt to relay a victim-approved authorization path.
+
+### Trust Boundary
+- The only trusted principal for `execute_bill_payment()` is the family wallet owner returned by `family_wallet_addr`.
+- The authenticated `caller` must match that stored owner before bill execution proceeds.
+- The downstream `bill_payments` contract still enforces bill ownership, but the orchestrator now rejects forwarded execution before reaching that layer.
+
+### Allowed Callers
+- Direct owner calls are allowed.
+- Non-owner forwarding through helper or proxy contracts is rejected because the forwarded `caller` still must equal the stored family wallet owner.
+- No general delegation model is supported for `execute_bill_payment()`.
+
+### Delegation Model
+Delegation is intentionally unsupported for this entry point. A non-owner cannot self-assert authority by:
+- passing an owner address in `caller`
+- forwarding a call as a non-owner through another contract
+- replaying a previously authorized payload with the same nonce
+
+### Mitigated Attack Scenarios
+- Non-owner forwarding: blocked by requiring `caller.require_auth()` and `caller == family_wallet.get_owner()`.
+- Argument spoofing: blocked because supplying another user's address without that user's direct authorization fails authentication.
+- Unauthorized delegated execution: blocked because there is no delegate allowlist and every caller must match the stored owner address.
+
+### Assumptions And Residual Risks
+- `bill_payments::pay_bill()` remains the source of truth for bill ownership and must continue rejecting non-owners.
+- The orchestrator does not support approved delegates for bill payment execution; adding one in the future would require explicit stored authorization state and new tests.
+- Replay safety depends on preserving the caller-scoped nonce record in persistent storage.

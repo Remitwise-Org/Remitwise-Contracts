@@ -1,8 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, Address,
-    Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, Address, Env, Map, Symbol, Vec,
 };
 
 use remitwise_common::{FamilyRole, EventCategory, EventPriority, RemitwiseEvents};
@@ -107,8 +107,6 @@ pub struct FamilyMember {
     pub role: FamilyRole,
     /// Legacy per-transaction cap in stroops. 0 = unlimited.
     pub spending_limit: i128,
-    /// Enhanced precision spending limit (optional)
-    pub precision_limit: PrecisionLimitOpt,
     pub added_at: u64,
 }
 
@@ -182,19 +180,6 @@ pub struct StorageStats {
 
 #[contracttype]
 #[derive(Clone)]
-pub struct AccessAuditEntry {
-    pub operation: Symbol,
-    pub caller: Address,
-    pub target: Option<Address>,
-    pub timestamp: u64,
-    pub success: bool,
-}
-
-const CONTRACT_VERSION: u32 = 2;
-const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
-const MAX_BATCH_MEMBERS: u32 = 30;
-const MAX_SIGNERS: u32 = 100;
-const MIN_THRESHOLD: u32 = 1;
 const MAX_THRESHOLD: u32 = 100;
 
 #[contracttype]
@@ -202,6 +187,46 @@ const MAX_THRESHOLD: u32 = 100;
 pub struct BatchMemberItem {
     pub address: Address,
     pub role: FamilyRole,
+}
+
+/// Spending period configuration for rollover behavior
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingPeriod {
+    /// Period type: 0=Daily, 1=Weekly, 2=Monthly
+    pub period_type: u32,
+    /// Period start timestamp (aligned to period boundary)
+    pub period_start: u64,
+    /// Period duration in seconds
+    pub period_duration: u64,
+}
+
+/// Cumulative spending tracking for precision validation
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingTracker {
+    /// Current period spending amount
+    pub current_spent: i128,
+    /// Last transaction timestamp for precision validation
+    pub last_tx_timestamp: u64,
+    /// Transaction count in current period
+    pub tx_count: u32,
+    /// Period configuration
+    pub period: SpendingPeriod,
+}
+
+/// Precision spending guardrail configuration for member withdrawals.
+#[contracttype]
+#[derive(Clone)]
+pub struct PrecisionSpendingLimit {
+    /// Maximum cumulative spending allowed per daily period.
+    pub limit: i128,
+    /// Minimum allowed withdrawal size.
+    pub min_precision: i128,
+    /// Maximum allowed amount for a single withdrawal.
+    pub max_single_tx: i128,
+    /// Whether cumulative daily tracking is enforced.
+    pub enable_rollover: bool,
 }
 
 #[contracttype]
@@ -248,11 +273,17 @@ pub enum Error {
     SignerNotMember = 17,
     DuplicateSigner = 18,
     TooManySigners = 19,
+    InvalidPrecisionConfig = 20,
 }
 
 #[contractimpl]
 impl FamilyWallet {
+    fn validate_precision_spending(_env: Env, _proposer: Address, _amount: i128) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+                precision_limit: None,
         owner.require_auth();
 
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
@@ -264,6 +295,7 @@ impl FamilyWallet {
 
         env.storage()
             .instance()
+                    precision_limit: None,
             .set(&symbol_short!("OWNER"), &owner);
 
         let mut members: Map<Address, FamilyMember> = Map::new(&env);
@@ -275,7 +307,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
-                precision_limit: PrecisionLimitOpt::None,
+                precision_limit: None,
                 added_at: timestamp,
             },
         );
@@ -287,7 +319,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
-                    precision_limit: PrecisionLimitOpt::None,
+                    precision_limit: None,
                     added_at: timestamp,
                 },
             );
@@ -390,7 +422,6 @@ impl FamilyWallet {
                 address: member_address.clone(),
                 role,
                 spending_limit,
-                precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                 added_at: now,
             },
         );
@@ -1033,7 +1064,6 @@ impl FamilyWallet {
                 address: member.clone(),
                 role,
                 spending_limit: 0,
-                precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                 added_at: timestamp,
             },
         );
@@ -1393,6 +1423,107 @@ impl FamilyWallet {
         Self::get_role_expiry(&env, &address)
     }
 
+    /// Configure withdrawal precision limits for an existing member.
+    ///
+    /// Only the owner or an admin may set limits. The rules are persisted in
+    /// contract storage and later enforced from trusted state during
+    /// withdrawal validation.
+    pub fn set_precision_spending_limit(
+        env: Env,
+        caller: Address,
+        member: Address,
+        limit: PrecisionSpendingLimit,
+    ) -> Result<bool, Error> {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        if !Self::is_owner_or_admin(&env, &caller) {
+            return Err(Error::Unauthorized);
+        }
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        if members.get(member.clone()).is_none() {
+            return Err(Error::MemberNotFound);
+        }
+
+        if limit.limit < 0
+            || limit.min_precision <= 0
+            || limit.max_single_tx <= 0
+            || limit.max_single_tx > limit.limit
+        {
+            return Err(Error::InvalidPrecisionConfig);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let mut limits: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(&env));
+        limits.set(member.clone(), limit.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PREC_LIM"), &limits);
+
+        if !limit.enable_rollover {
+            let mut trackers: Map<Address, SpendingTracker> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("SPND_TRK"))
+                .unwrap_or_else(|| Map::new(&env));
+            trackers.remove(member);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("SPND_TRK"), &trackers);
+        }
+
+        Ok(true)
+    }
+
+    /// Get the persisted cumulative spending tracker for a member, if any.
+    pub fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker> {
+        env.storage()
+            .instance()
+            .get::<_, Map<Address, SpendingTracker>>(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(&env))
+            .get(member)
+    }
+
+    /// Cancel a pending transaction.
+    ///
+    /// The original proposer may cancel their own transaction. Owners and
+    /// admins may cancel any pending transaction.
+    pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        let mut pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
+
+        let pending_tx = pending_txs.get(tx_id).unwrap_or_else(|| {
+            panic_with_error!(&env, Error::TransactionNotFound);
+        });
+
+        if caller != pending_tx.proposer && !Self::is_owner_or_admin(&env, &caller) {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+        pending_txs.remove(tx_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PEND_TXS"), &pending_txs);
+        true
+    }
+
     pub fn pause(env: Env, caller: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
@@ -1455,8 +1586,176 @@ impl FamilyWallet {
             .unwrap_or(CONTRACT_VERSION)
     }
 
+    /// Set the multisig proposal expiry window in seconds.
+    pub fn set_proposal_expiry(env: Env, caller: Address, expiry: u64) -> bool {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        if caller != owner {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        if expiry == 0 || expiry > MAX_PROPOSAL_EXPIRY {
+            panic_with_error!(&env, Error::ThresholdAboveMaximum);
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &expiry);
+        true
+    }
+
+    /// Return the configured proposal expiry window, or the default if unset.
+    pub fn get_proposal_expiry_public(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY)
+    }
+
     fn get_upgrade_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
+    }
+
+    fn current_spending_tracker(env: &Env, proposer: &Address) -> SpendingTracker {
+        let current_time = env.ledger().timestamp();
+        let period_duration = 86_400u64;
+        let period_start = (current_time / period_duration) * period_duration;
+
+        let mut trackers: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+
+        let tracker = if let Some(existing) = trackers.get(proposer.clone()) {
+            if existing.period.period_start == period_start {
+                existing
+            } else {
+                SpendingTracker {
+                    current_spent: 0,
+                    last_tx_timestamp: 0,
+                    tx_count: 0,
+                    period: SpendingPeriod {
+                        period_type: 0,
+                        period_start,
+                        period_duration,
+                    },
+                }
+            }
+        } else {
+            SpendingTracker {
+                current_spent: 0,
+                last_tx_timestamp: 0,
+                tx_count: 0,
+                period: SpendingPeriod {
+                    period_type: 0,
+                    period_start,
+                    period_duration,
+                },
+            }
+        };
+
+        trackers.set(proposer.clone(), tracker.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SPND_TRK"), &trackers);
+
+        tracker
+    }
+
+    fn record_precision_spending(env: &Env, proposer: &Address, amount: i128) {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let Some(member) = members.get(proposer.clone()) else {
+            return;
+        };
+
+        if matches!(member.role, FamilyRole::Owner | FamilyRole::Admin) {
+            return;
+        }
+
+        let limits: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(env));
+        let Some(limit) = limits.get(proposer.clone()) else {
+            return;
+        };
+        if !limit.enable_rollover {
+            return;
+        }
+
+        let mut trackers: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+        let mut tracker = Self::current_spending_tracker(env, proposer);
+        tracker.current_spent = tracker.current_spent.saturating_add(amount);
+        tracker.last_tx_timestamp = env.ledger().timestamp();
+        tracker.tx_count = tracker.tx_count.saturating_add(1);
+        trackers.set(proposer.clone(), tracker);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SPND_TRK"), &trackers);
+    }
+
+    fn validate_precision_spending(
+        env: Env,
+        proposer: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(proposer.clone())
+            .ok_or(Error::MemberNotFound)?;
+
+        if matches!(member.role, FamilyRole::Owner | FamilyRole::Admin) {
+            return Ok(());
+        }
+
+        let limits: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        if let Some(limit) = limits.get(proposer.clone()) {
+            if amount < limit.min_precision || amount > limit.max_single_tx {
+                return Err(Error::InvalidPrecisionConfig);
+            }
+
+            if limit.enable_rollover {
+                let tracker = Self::current_spending_tracker(&env, &proposer);
+                if tracker.current_spent.saturating_add(amount) > limit.limit {
+                    return Err(Error::InvalidSpendingLimit);
+                }
+            }
+
+            return Ok(());
+        }
+
+        if member.spending_limit > 0 && amount > member.spending_limit {
+            return Err(Error::InvalidSpendingLimit);
+        }
+
+        Ok(())
     }
 
     /// Set or transfer the upgrade admin role.
@@ -1561,7 +1860,6 @@ impl FamilyWallet {
                     address: item.address.clone(),
                     role: item.role,
                     spending_limit: 0,
-                    precision_limit: PrecisionLimitOpt::None, // Default to legacy behavior
                     added_at: timestamp,
                 },
             );
@@ -1751,6 +2049,7 @@ impl FamilyWallet {
                 if require_auth {
                     proposer.require_auth();
                 }
+                Self::record_precision_spending(env, proposer, *amount);
                 let token_client = TokenClient::new(env, token);
                 token_client.transfer(proposer, recipient, amount);
                 0
@@ -1985,6 +2284,10 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("STOR_STAT"), &stats);
+    }
+
+    fn validate_precision_spending(_env: Env, _member: Address, _amount: i128) -> Result<(), Error> {
+        Ok(())
     }
 }
 

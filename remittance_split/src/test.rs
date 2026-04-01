@@ -99,13 +99,12 @@ fn test_initialize_split_domain_separated_auth() {
     
     // The auths captured by mock_all_auths record what was authorized.
     // In our case, the contract calls owner.require_auth_for_args(payload).
-    let (address, auth_invocation) = auths.first().unwrap();
+    let (address, auth_invocation) = auths.get(0).unwrap();
     assert_eq!(*address, owner);
-
-    let AuthorizedFunction::Contract((_contract, _fn_name, args)) = &auth_invocation.function else {
-        panic!("expected contract authorization invocation");
-    };
-    let payload_val = args.get(0).unwrap();
+    
+    // The top-level invocation from mock_all_auths for require_auth_for_args
+    // will have the authorized arguments.
+    let payload_val = auth_invocation.args.get(0).unwrap();
     let payload: SplitAuthPayload = payload_val.try_into_val(&env).unwrap();
     
     assert_eq!(payload.domain_id, symbol_short!("init"));
