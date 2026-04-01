@@ -110,6 +110,7 @@ fn test_pay_premium() {
         &String::from_str(&env, "Policy"),
         &CoverageType::Health,
         &100,
+        &10000, &None);
         &10000,
     &None);
 
@@ -142,6 +143,7 @@ fn test_pay_premium_unauthorized() {
         &String::from_str(&env, "Policy"),
         &CoverageType::Health,
         &100,
+        &10000, &None);
         &10000,
     &None);
 
@@ -165,6 +167,7 @@ fn test_deactivate_policy() {
         &String::from_str(&env, "Policy"),
         &CoverageType::Health,
         &100,
+        &10000, &None);
         &10000,
     &None);
 
@@ -194,6 +197,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "P1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
         &1000,
     &None);
     let p2 = client.create_policy(
@@ -201,6 +205,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "P2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
     client.create_policy(
@@ -208,6 +213,7 @@ fn test_get_active_policies() {
         &String::from_str(&env, "P3"),
         &CoverageType::Property,
         &300,
+        &3000, &None);
         &3000,
     &None);
 
@@ -240,6 +246,8 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Policy 1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
+    let policy_id_2 = client.create_policy(
         &1000,
     &None);
     let policy_id2 = client.create_policy(
@@ -247,6 +255,7 @@ fn test_get_active_policies_excludes_deactivated() {
         &String::from_str(&env, "Policy 2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
 
@@ -284,6 +293,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "P1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
         &1000,
     &None);
     client.create_policy(
@@ -291,6 +301,7 @@ fn test_get_total_monthly_premium() {
         &String::from_str(&env, "P2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
 
@@ -336,6 +347,7 @@ fn test_get_total_monthly_premium_one_policy() {
         &String::from_str(&env, "Single Policy"),
         &CoverageType::Health,
         &500,
+        &10000, &None);
         &10000,
     &None);
 
@@ -360,6 +372,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "Policy 1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
         &1000,
     &None);
     client.create_policy(
@@ -367,6 +380,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "Policy 2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
     client.create_policy(
@@ -374,6 +388,7 @@ fn test_get_total_monthly_premium_multiple_active_policies() {
         &String::from_str(&env, "Policy 3"),
         &CoverageType::Auto,
         &300,
+        &3000, &None);
         &3000,
     &None);
 
@@ -398,6 +413,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
         &String::from_str(&env, "Policy 1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
         &1000,
     &None);
     let policy2 = client.create_policy(
@@ -405,6 +421,7 @@ fn test_get_total_monthly_premium_deactivated_policy_excluded() {
         &String::from_str(&env, "Policy 2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
 
@@ -445,6 +462,7 @@ fn test_remove_tag_by_admin_succeeds() {
         &String::from_str(&env, "Policy A1"),
         &CoverageType::Health,
         &100,
+        &1000, &None);
         &1000,
     &None);
     client.create_policy(
@@ -452,6 +470,7 @@ fn test_remove_tag_by_admin_succeeds() {
         &String::from_str(&env, "Policy A2"),
         &CoverageType::Life,
         &200,
+        &2000, &None);
         &2000,
     &None);
 
@@ -461,6 +480,7 @@ fn test_remove_tag_by_admin_succeeds() {
         &String::from_str(&env, "Policy B1"),
         &CoverageType::Liability,
         &300,
+        &3000, &None);
         &3000,
     &None);
 
@@ -507,6 +527,7 @@ fn test_multiple_premium_payments() {
         &String::from_str(&env, "LongTerm"),
         &CoverageType::Life,
         &100,
+        &10000, &None);
         &10000,
     &None);
 
@@ -576,6 +597,7 @@ fn test_modify_premium_schedule() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -607,6 +629,7 @@ fn test_cancel_premium_schedule() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -634,6 +657,7 @@ fn test_execute_due_premium_schedules() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -695,6 +719,7 @@ fn test_execute_recurring_premium_schedule() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -732,6 +757,7 @@ fn test_execute_missed_premium_schedules() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -764,6 +790,7 @@ fn test_get_premium_schedules() {
         &String::from_str(&env, "Health Insurance"),
         &CoverageType::Health,
         &500,
+        &50000, &None);
         &50000,
     &None);
 
@@ -772,6 +799,7 @@ fn test_get_premium_schedules() {
         &String::from_str(&env, "Life Insurance"),
         &CoverageType::Life,
         &300,
+        &100000, &None);
         &100000,
     &None);
 
@@ -797,6 +825,8 @@ fn test_health_premium_at_minimum_boundary() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
         &1_000_000i128,
         &10_000_000i128, // min coverage
         &None,
@@ -812,6 +842,11 @@ fn test_health_premium_at_maximum_boundary() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
+
+    // other tries to pay the premium for owner
+    client.pay_premium(&owner, &policy_id);
         &500_000_000i128,
         &100_000_000_000i128, // max coverage for Health
         &None,
@@ -826,6 +861,47 @@ fn test_health_coverage_at_minimum_boundary() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
+
+    // other tries to deactivate the policy for owner
+    client.deactivate_policy(&owner, &policy_id);
+}
+
+// Required test cases from issue #61// Required test cases from issue #61
+
+#[test]
+fn test_create_policy_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    let name = String::from_str(&env, "Test Policy");
+    let coverage_type = String::from_str(&env, "health");
+    let monthly_premium = 100;
+    let coverage_amount = 10000;
+
+    let policy_id = client.create_policy(
+        &owner,
+        &name,
+        &coverage_type,
+        &monthly_premium,
+        &coverage_amount, &None);
+
+    // Verify returns id
+    assert_eq!(policy_id, 1);
+
+    // Verify policy stored correctly
+    let policy = client.get_policy(&policy_id).unwrap();
+    assert_eq!(policy.owner, owner);
+    assert_eq!(policy.name, name);
+    assert_eq!(policy.coverage_type, coverage_type);
+    assert_eq!(policy.monthly_premium, monthly_premium);
+    assert_eq!(policy.coverage_amount, coverage_amount);
+    assert!(policy.active);
         &5_000_000i128,
         &10_000_000i128, // exactly min_coverage
         &None,
@@ -889,6 +965,8 @@ fn test_create_policy_empty_name_panics() {
         &caller,
         &String::from_str(&env, ""),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -959,6 +1037,8 @@ fn test_create_policy_negative_premium_panics() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &-1, // negative premium
+        &10000, &None);
         &-1i128,
         &50_000_000i128,
         &None,
@@ -1081,6 +1161,8 @@ fn test_create_policy_negative_coverage_panics() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &-1, // negative coverage, &None);
         &5_000_000i128,
         &-1i128,
         &None,
@@ -1240,6 +1322,8 @@ fn test_pay_premium_success() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -1257,6 +1341,12 @@ fn test_pay_premium_updates_next_payment_date() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
+
+    // Try to pay premium as unauthorized user
+    let result = client.try_pay_premium(&unauthorized_user, &policy_id);
+    assert!(result.is_err());
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -1287,6 +1377,8 @@ fn test_pay_premium_wrong_amount_panics() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -1320,6 +1412,10 @@ fn test_deactivate_policy_success() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &100,
+        &10000, &None);
+
+    // Owner can deactivate
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -1329,6 +1425,229 @@ fn test_deactivate_policy_success() {
 
     let policy = client.get_policy(&policy_id).unwrap();
     assert!(!policy.active);
+
+    // Create another policy to test unauthorized deactivation
+    let policy_id2 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Test Policy 2"),
+        &CoverageType::Life,
+        &200,
+        &20000, &None);
+
+    // Unauthorized user cannot deactivate
+    let result = client.try_deactivate_policy(&unauthorized_user, &policy_id2);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_get_policy_nonexistent() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+
+    // Try to get policy that doesn't exist
+    let policy = client.get_policy(&999);
+    assert!(policy.is_none());
+}
+
+#[test]
+fn test_get_active_policies_filters_by_owner_and_active() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create policies for owner_a
+    let policy_a1 = client.create_policy(
+        &owner_a,
+        &String::from_str(&env, "Policy A1"),
+        &CoverageType::Health,
+        &100,
+        &10000, &None);
+    let policy_a2 = client.create_policy(
+        &owner_a,
+        &String::from_str(&env, "Policy A2"),
+        &CoverageType::Life,
+        &200,
+        &20000, &None);
+
+    // Create policies for owner_b
+    client.create_policy(
+        &owner_b,
+        &String::from_str(&env, "Policy B1"),
+        &CoverageType::Liability,
+        &300,
+        &30000, &None);
+
+    // Deactivate one of owner_a's policies
+    client.deactivate_policy(&owner_a, &policy_a1);
+
+    // Get active policies for owner_a
+    let active_policies_a = client.get_active_policies(&owner_a);
+    assert_eq!(active_policies_a.len(), 1);
+    let active_policy = active_policies_a.get(0).unwrap();
+    assert_eq!(active_policy.id, policy_a2);
+    assert_eq!(active_policy.owner, owner_a);
+    assert!(active_policy.active);
+
+    // Get active policies for owner_b
+    let active_policies_b = client.get_active_policies(&owner_b);
+    assert_eq!(active_policies_b.len(), 1);
+    let active_policy_b = active_policies_b.get(0).unwrap();
+    assert_eq!(active_policy_b.owner, owner_b);
+    assert!(active_policy_b.active);
+}
+
+#[test]
+fn test_get_total_monthly_premium_comprehensive() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create multiple active policies
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 1"),
+        &CoverageType::Health,
+        &100,
+        &10000, &None);
+    client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 2"),
+        &CoverageType::Life,
+        &200,
+        &20000, &None);
+    let policy3 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 3"),
+        &CoverageType::Liability,
+        &300,
+        &30000, &None);
+
+    // Total should be sum of all active policies' monthly_premium
+    let total = client.get_total_monthly_premium(&owner);
+    assert_eq!(total, 600); // 100 + 200 + 300
+
+    // Deactivate one policy
+    client.deactivate_policy(&owner, &policy3);
+
+    // Total should now exclude the deactivated policy
+    let total_after = client.get_total_monthly_premium(&owner);
+    assert_eq!(total_after, 300); // 100 + 200
+}
+
+#[test]
+fn test_multiple_policies_same_owner() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create multiple policies for same owner
+    let policy1 = client.create_policy(
+        &owner,
+        &CoverageType::Health,
+        &CoverageType::Health,
+        &100,
+        &10000, &None);
+    let policy2 = client.create_policy(
+        &owner,
+        &CoverageType::Life,
+        &CoverageType::Life,
+        &200,
+        &20000, &None);
+    let policy3 = client.create_policy(
+        &owner,
+        &CoverageType::Property,
+        &CoverageType::Liability,
+        &300,
+        &30000, &None);
+
+    // Verify all policies exist and are active
+    let p1 = client.get_policy(&policy1).unwrap();
+    let p2 = client.get_policy(&policy2).unwrap();
+    let p3 = client.get_policy(&policy3).unwrap();
+
+    assert!(p1.active && p2.active && p3.active);
+    assert_eq!(p1.owner, owner);
+    assert_eq!(p2.owner, owner);
+    assert_eq!(p3.owner, owner);
+
+    // Pay premiums for all policies
+    set_ledger_time(&env, 1, env.ledger().timestamp() + 86400); // +1 day
+
+    client.pay_premium(&owner, &policy1);
+    client.pay_premium(&owner, &policy2);
+    client.pay_premium(&owner, &policy3);
+
+    // Deactivate policies
+    client.deactivate_policy(&owner, &policy1);
+    client.deactivate_policy(&owner, &policy2);
+    client.deactivate_policy(&owner, &policy3);
+
+    // Verify all policies are now inactive
+    let p1_after = client.get_policy(&policy1).unwrap();
+    let p2_after = client.get_policy(&policy2).unwrap();
+    let p3_after = client.get_policy(&policy3).unwrap();
+
+    assert!(!p1_after.active && !p2_after.active && !p3_after.active);
+
+    // Verify no active policies remain
+    let active_policies = client.get_active_policies(&owner);
+    assert_eq!(active_policies.len(), 0);
+
+    // Verify total monthly premium is now 0
+    let total = client.get_total_monthly_premium(&owner);
+    assert_eq!(total, 0);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Time & Ledger Drift Resilience Tests (#158)
+//
+// Assumptions documented here:
+//  - execute_due_premium_schedules fires when schedule.next_due <= current_time
+//    (inclusive: executes exactly at next_due).
+//  - next_payment_date is set to env.ledger().timestamp() + 30 * 86400 at
+//    execution time, anchored to actual payment time not original due date.
+//  - Stellar ledger timestamps are monotonically increasing in production.
+//    After execution next_due advances by the interval, guarding against
+//    re-execution even if ledger time were set backward.
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Premium schedule must NOT execute one second before next_due.
+#[test]
+fn test_time_drift_premium_schedule_not_executed_before_next_due() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    let next_due = 5000u64;
+    set_ledger_time(&env, 1, 1000);
+
+    let policy_id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Life Cover"),
+        &CoverageType::Life,
+        &200,
+        &100000, &None);
+    client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+    set_ledger_time(&env, 1, next_due - 1);
+    let executed = client.execute_due_premium_schedules();
+    assert_eq!(
+        executed.len(),
+        0,
+        "Premium schedule must not execute one second before next_due"
 }
 
 #[test]
@@ -1360,6 +1679,16 @@ fn test_deactivate_policy_non_owner_panics() {
         &caller,
         &short_name(&env).unwrap(),
         &CoverageType::Health,
+        &150,
+        &75000, &None);
+    let schedule_id = client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+    set_ledger_time(&env, 1, next_due);
+    let executed = client.execute_due_premium_schedules();
+    assert_eq!(
+        executed.len(),
+        1,
+        "Premium schedule must execute exactly at next_due"
         &5_000_000i128,
         &50_000_000i128,
         &None,
@@ -1610,6 +1939,18 @@ fn test_property_premium_above_max_panics() {
         &caller,
         &String::from_str(&env, "Property"),
         &CoverageType::Property,
+        &300,
+        &200000, &None);
+    client.create_premium_schedule(&owner, &policy_id, &next_due, &2592000);
+
+    set_ledger_time(&env, 1, late_payment_time);
+    client.execute_due_premium_schedules();
+
+    let policy = client.get_policy(&policy_id).unwrap();
+    assert_eq!(
+        policy.next_payment_date,
+        late_payment_time + 30 * 86400,
+        "next_payment_date must be anchored to actual payment time"
         &2_000_000_001i128,
         &100_000_000i128,
         &None,
@@ -1625,6 +1966,24 @@ fn test_auto_premium_above_max_panics() {
         &caller,
         &String::from_str(&env, "Auto"),
         &CoverageType::Auto,
+        &100,
+        &50000, &None);
+    client.create_premium_schedule(&owner, &policy_id, &next_due, &interval);
+
+    // First execution at next_due
+    set_ledger_time(&env, 1, next_due);
+    let executed = client.execute_due_premium_schedules();
+    assert_eq!(executed.len(), 1);
+
+    // Between old next_due and new next_due: no re-execution
+    // NOTE: In production, ledger time is monotonic. This also covers repeated
+    //       calls within the same ledger window before the next cycle.
+    set_ledger_time(&env, 1, next_due + 1000);
+    let executed_again = client.execute_due_premium_schedules();
+    assert_eq!(
+        executed_again.len(),
+        0,
+        "Schedule must not re-execute before the new next_due"
         &750_000_001i128,
         &20_000_000i128,
         &None,

@@ -6,13 +6,17 @@ use soroban_sdk::{
 
 use remitwise_common::Category;
 
-// Storage TTL constants for active data
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+// Storage TTL constants
+const DAY_IN_LEDGERS: u32 = 17280;
 
-// Storage TTL constants for archived data (longer retention, less frequent access)
-const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
+
+pub const INSTANCE_BUMP_AMOUNT: u32 = PERSISTENT_BUMP_AMOUNT;
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = PERSISTENT_LIFETIME_THRESHOLD;
+
+pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
+pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
 
 /// Financial health score (0-100)
 #[contracttype]
@@ -489,11 +493,12 @@ impl ReportingContract {
         period_end: u64,
     ) -> RemittanceSummary {
         user.require_auth();
-        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
+        Self::get_remittance_summary_internal(&env, user.clone(), total_amount, period_start, period_end)
     }
 
     fn get_remittance_summary_internal(
         env: &Env,
+        user: Address,
         total_amount: i128,
         period_start: u64,
         period_end: u64,
@@ -515,6 +520,7 @@ impl ReportingContract {
         }
         
         let addresses = addresses.unwrap();
+        let availability = DataAvailability::Complete;
 
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let split_percentages = split_client.get_split();
@@ -822,7 +828,7 @@ impl ReportingContract {
         let health_score =
             Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
         let remittance_summary =
-            Self::get_remittance_summary_internal(&env, total_remittance, period_start, period_end);
+            Self::get_remittance_summary_internal(&env, user.clone(), total_remittance, period_start, period_end);
         let savings_report =
             Self::get_savings_report_internal(&env, user.clone(), period_start, period_end);
         let bill_compliance =

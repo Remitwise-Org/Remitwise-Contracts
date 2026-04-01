@@ -585,6 +585,33 @@ pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
     }
 }
 
+/// Build a fully-checksummed [`ExportSnapshot`] from a [`SavingsGoalsExport`] payload.
+///
+/// This is the canonical bridge between the on-chain `savings_goals` snapshot
+/// representation and the off-chain `data_migration` serialization layer.
+///
+/// # Arguments
+/// * `goals_export` – The savings goals payload to wrap.
+/// * `format`       – Target export format (JSON, Binary, CSV, Encrypted).
+///
+/// # Returns
+/// An [`ExportSnapshot`] with a valid header (version, format label) and a
+/// SHA-256 checksum computed over the canonical JSON of the payload.
+///
+/// # Security notes
+/// - The checksum is computed deterministically from the payload; callers must
+///   not mutate `header.checksum` after construction.
+/// - For `ExportFormat::Encrypted`, callers are responsible for encrypting the
+///   serialised bytes **after** calling this function and wrapping them via
+///   [`export_to_encrypted_payload`].
+pub fn build_savings_snapshot(
+    goals_export: SavingsGoalsExport,
+    format: ExportFormat,
+) -> ExportSnapshot {
+    let payload = SnapshotPayload::SavingsGoals(goals_export);
+    ExportSnapshot::new(payload, format)
+}
+
 /// Rollback metadata (for migration scripts to record last good state).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RollbackMetadata {

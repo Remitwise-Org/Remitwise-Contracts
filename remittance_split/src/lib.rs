@@ -47,14 +47,25 @@ pub enum RemittanceSplitError {
 
     RequestHashMismatch = 15,
 
+    PercentagesDoNotSumTo100 = 18,
+    FutureTimestamp = 19,
+    OwnerMismatch = 20,
     NonceAlreadyUsed = 16,
+    PercentageOutOfRange = 17,
 }
 
-#[derive(Clone)]
 #[contracttype]
-pub struct Allocation {
-    pub category: Symbol,
-    pub amount: i128,
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
 }
 
 #[derive(Clone)]
@@ -971,7 +982,7 @@ impl RemittanceSplit {
             || snapshot.config.insurance_percent > 100
         {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentageRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         // 5. Sum constraint
@@ -1097,7 +1108,7 @@ impl RemittanceSplit {
             || snapshot.config.bills_percent > 100
             || snapshot.config.insurance_percent > 100
         {
-            return Err(RemittanceSplitError::InvalidPercentageRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         // 5. Sum constraint
