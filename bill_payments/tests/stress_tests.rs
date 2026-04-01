@@ -587,3 +587,70 @@ fn stress_batch_pay_mixed_50() {
         assert!(client.get_bill(&id).unwrap().paid);
     }
 }
+
+/// Issue #271: Stress test for overdue bill pagination correctness.
+/// Verify stable ordering, cursor correctness, and no duplication/omission.
+#[test]
+fn stress_overdue_bills_pagination_correctness() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner1 = Address::generate(&env);
+    let owner2 = Address::generate(&env);
+
+    let name = String::from_str(&env, "StressOverdue");
+    let initial_time = 1_700_000_000u64;
+    
+    // We will create 100 bills. 
+    // Odd IDs -> due_date = initial_time + 10_000 (will be overdue when time advances past this)
+    // Even IDs -> due_date = initial_time + 50_000 (will NOT be overdue)
+    
+    for i in 1..=100 {
+        let owner = if i % 2 == 0 { &owner1 } else { &owner2 };
+        let due = if i % 2 != 0 { initial_time + 10_000 } else { initial_time + 50_000 };
+        client.create_bill(owner, &name, &100i128, &due, &false, &0u32, &None, &String::from_str(&env, "XLM"));
+    }
+
+    // Advance time to make odd IDs overdue
+    env.ledger().set(LedgerInfo {
+        protocol_version: env.ledger().protocol_version(),
+        sequence_number: env.ledger().sequence(),
+        timestamp: initial_time + 20_000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
+
+    // We should have exactly 50 overdue bills.
+    // Paginate with limit = 15.
+    let mut collected = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_overdue_bills(&cursor, &15u32);
+        assert!(page.count <= 15, "Page count must not exceed limit");
+        for item in page.items.iter() {
+            collected.push(item.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        // Ensure cursor progresses positively
+        assert!(page.next_cursor > cursor, "Cursor must progress forward");
+        cursor = page.next_cursor;
+    }
+
+    // Verify exactly 50 overdue bills found
+    assert_eq!(collected.len(), 50, "Must find exactly 50 overdue bills");
+    
+    // Verify no duplicates and stable ordering
+    for i in 0..collected.len() - 1 {
+        assert!(collected[i] < collected[i + 1], "Overdue bills must be strictly ordered by ID without duplicates");
+    }
+
+    // Verify correctness: all collected must be odd IDs (which are the overdue ones)
+    for id in collected {
+        assert_eq!(id % 2, 1, "Only odd IDs should be overdue");
+    }
+}

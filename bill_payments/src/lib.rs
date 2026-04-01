@@ -802,9 +802,19 @@ impl BillPayments {
         Self::build_page(&env, staging, limit)
     }
 
-    /// Get a page of overdue (unpaid + past due_date) bills across all owners.
+    /// @notice Get a paginated list of overdue bills (unpaid + past due_date) across all owners.
+    /// @dev This query iterates globally across the Map in key order, ensuring stable ordering.
+    /// Security assumption: Overdue bill retrieval is public since it does not reveal sensitive
+    /// off-chain PII (only on-chain bill state). Bounded by pagination `limit` to prevent
+    /// exceeding maximum compute or memory limits on large datasets.
     ///
-    /// Same cursor/limit semantics.
+    /// # Arguments
+    /// * `cursor` - Start after this bill ID (pass 0 for the first page)
+    /// * `limit`  - Max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    ///
+    /// # Returns
+    /// `BillPage { items, next_cursor, count }`.
+    /// When `next_cursor == 0` there are no more pages.
     pub fn get_overdue_bills(env: Env, cursor: u32, limit: u32) -> BillPage {
         let limit = clamp_limit(limit);
         let current_time = env.ledger().timestamp();
