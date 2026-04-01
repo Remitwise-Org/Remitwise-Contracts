@@ -114,16 +114,21 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "pay_premium"
+                "symbol": "log"
               }
             ],
             "data": {
-              "error": {
-                "contract": 3
-              }
+              "vec": [
+                {
+                  "string": "caught panic 'Policy not found' from contract function 'Symbol(obj#7)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
+                  "u32": 999
+                }
+              ]
             }
           }
         }
@@ -143,12 +148,12 @@
               },
               {
                 "error": {
-                  "contract": 3
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "caught error from function"
             }
           }
         }
@@ -168,7 +173,7 @@
               },
               {
                 "error": {
-                  "contract": 3
+                  "wasm_vm": "invalid_action"
                 }
               }
             ],

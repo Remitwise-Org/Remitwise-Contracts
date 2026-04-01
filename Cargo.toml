@@ -18,10 +18,13 @@ members = [
     "scenarios",
 
     "testutils",
+<<<<<<< test/insurance-auth-lifecycle-matrix
     "integration_tests",
     "remitwise-common",
+=======
+>>>>>>> main
 
-   
+    "integration_tests",
 ]
 default-members = [
     "remittance_split",
@@ -32,12 +35,11 @@ default-members = [
     "data_migration",
     "reporting",
     "orchestrator",
-
 ]
 resolver = "2"
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "=21.7.7"
 ed25519-dalek = "2.1.1"
 remittance_split = { path = "./remittance_split" }
 savings_goals = { path = "./savings_goals" }

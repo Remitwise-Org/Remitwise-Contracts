@@ -96,6 +96,12 @@
                     "hi": 0,
                     "lo": 0
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -238,6 +244,17 @@
                             },
                             {
                               "key": {
+                                "symbol": "daily_limit"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 50000000000
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_amount"
                               },
                               "val": {
@@ -311,6 +328,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -1195,6 +1224,12 @@
                     "hi": 0,
                     "lo": 0
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -1268,18 +1303,24 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ModeOn"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_mode"
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              "vec": [
+                {
+                  "symbol": "ModeOn"
+                }
+              ]
             }
           }
         }
@@ -1366,7 +1407,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency amount exceeds maximum allowed' from contract function 'Symbol(obj#337)'"
+                  "string": "caught panic 'Emergency amount exceeds maximum allowed' from contract function 'Symbol(obj#357)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

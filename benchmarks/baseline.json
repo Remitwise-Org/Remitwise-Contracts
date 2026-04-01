@@ -35,72 +35,201 @@
     "contract": "remittance_split",
     "method": "distribute_usdc",
     "scenario": "4_recipients_all_nonzero",
-    "cpu": 0,
-    "mem": 0,
+    "cpu": 708193,
+    "mem": 100165,
     "description": "Distribute USDC to 4 recipients with non-zero amounts"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "single_recurring_schedule",
-    "cpu": 145230,
-    "mem": 28456,
+    "cpu": 46579,
+    "mem": 6979,
     "description": "Create a single recurring remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "create_remittance_schedule",
     "scenario": "11th_schedule_with_existing",
-    "cpu": 167890,
-    "mem": 32145,
+    "cpu": 372595,
+    "mem": 99899,
     "description": "Create schedule when 10 existing schedules are present"
   },
   {
     "contract": "remittance_split",
     "method": "modify_remittance_schedule",
     "scenario": "single_schedule_modification",
-    "cpu": 134567,
-    "mem": 26789,
+    "cpu": 84477,
+    "mem": 15636,
     "description": "Modify an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "cancel_remittance_schedule",
     "scenario": "single_schedule_cancellation",
-    "cpu": 123456,
-    "mem": 24567,
+    "cpu": 84459,
+    "mem": 15564,
     "description": "Cancel an existing remittance schedule"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "empty_schedules",
-    "cpu": 45678,
-    "mem": 12345,
+    "cpu": 13847,
+    "mem": 1456,
     "description": "Query schedules when none exist for owner"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "5_schedules_with_isolation",
-    "cpu": 234567,
-    "mem": 45678,
+    "cpu": 197774,
+    "mem": 38351,
     "description": "Query 5 schedules with data isolation validation"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedule",
     "scenario": "single_schedule_lookup",
-    "cpu": 67890,
-    "mem": 15432,
+    "cpu": 42932,
+    "mem": 6847,
     "description": "Retrieve a single schedule by ID"
   },
   {
     "contract": "remittance_split",
     "method": "get_remittance_schedules",
     "scenario": "50_schedules_worst_case",
-    "cpu": 1234567,
-    "mem": 234567,
+    "cpu": 1251484,
+    "mem": 250040,
     "description": "Query schedules in worst-case scenario with 50 schedules"
+  },
+  {
+    "contract": "bill_payments",
+    "method": "archive_paid_bills",
+    "scenario": "120_paid_1_unpaid_preserved",
+    "cpu": 640000,
+    "mem": 150000,
+    "description": "Archive 120 paid bills while preserving one unpaid bill"
+  },
+  {
+    "contract": "bill_payments",
+    "method": "restore_bill",
+    "scenario": "single_archived_owner_restore",
+    "cpu": 90000,
+    "mem": 20000,
+    "description": "Restore one archived bill with owner-only authorization checks"
+  },
+  {
+    "contract": "bill_payments",
+    "method": "bulk_cleanup_bills",
+    "scenario": "mixed_age_20_of_30_deleted",
+    "cpu": 250000,
+    "mem": 70000,
+    "description": "Cleanup deletes only older archived entries in a mixed-age archive set"
+  },
+  {
+    "contract": "bill_payments",
+    "method": "batch_pay_bills",
+    "scenario": "mixed_batch_50_partial_success",
+    "cpu": 900000,
+    "mem": 140000,
+    "description": "Batch pay with valid, already-paid, unauthorized, and missing bill IDs"
+  }
+  ,
+  {
+    "contract": "reporting",
+    "method": "get_remittance_summary",
+    "scenario": "no_addresses_baseline",
+    "cpu": 26301,
+    "mem": 2746,
+    "description": "Remittance summary when addresses not configured – returns Missing immediately"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_remittance_summary",
+    "scenario": "with_split_4_categories",
+    "cpu": 94632,
+    "mem": 11542,
+    "description": "Full aggregation path: two cross-contract calls + four-category breakdown loop"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_trend_analysis_multi",
+    "scenario": "5_periods",
+    "cpu": 48112,
+    "mem": 4426,
+    "description": "In-contract trend computation over 5 history windows"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_trend_analysis_multi",
+    "scenario": "25_periods",
+    "cpu": 209732,
+    "mem": 19446,
+    "description": "In-contract trend computation over 25 history windows"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_trend_analysis_multi",
+    "scenario": "50_periods",
+    "cpu": 412882,
+    "mem": 42721,
+    "description": "Worst-case in-contract trend computation over 50 history windows"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_financial_health_report",
+    "scenario": "small_5_items",
+    "cpu": 571480,
+    "mem": 57953,
+    "description": "Full nine-call aggregation with 5 goals, 5 bills, 5 policies"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_financial_health_report",
+    "scenario": "medium_25_items",
+    "cpu": 1789260,
+    "mem": 182153,
+    "description": "Full nine-call aggregation with 25 goals, 25 bills, 25 policies"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_financial_health_report",
+    "scenario": "large_50_items",
+    "cpu": 3318235,
+    "mem": 364403,
+    "description": "Worst-case nine-call aggregation with 50 goals, 50 bills, 50 policies"
+  },
+  {
+    "contract": "reporting",
+    "method": "archive_old_reports",
+    "scenario": "5_stored_reports",
+    "cpu": 1409489,
+    "mem": 285798,
+    "description": "Archive 5 stored reports – dual O(n) map iteration"
+  },
+  {
+    "contract": "reporting",
+    "method": "archive_old_reports",
+    "scenario": "25_stored_reports",
+    "cpu": 6972370,
+    "mem": 1361578,
+    "description": "Archive 25 stored reports – dual O(n) map iteration"
+  },
+  {
+    "contract": "reporting",
+    "method": "archive_old_reports",
+    "scenario": "50_stored_reports",
+    "cpu": 14646212,
+    "mem": 2737803,
+    "description": "Worst-case archive: 50 stored reports – dual O(n) map iteration"
+  },
+  {
+    "contract": "reporting",
+    "method": "get_storage_stats",
+    "scenario": "after_25_archived",
+    "cpu": 443726,
+    "mem": 83027,
+    "description": "O(1) storage-stats read after 25 reports have been archived"
   }
 ]

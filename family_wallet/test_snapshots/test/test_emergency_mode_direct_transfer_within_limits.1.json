@@ -103,6 +103,12 @@
                     "hi": 0,
                     "lo": 10000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -303,6 +309,17 @@
                             },
                             {
                               "key": {
+                                "symbol": "daily_limit"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 50000000000
+                                }
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_amount"
                               },
                               "val": {
@@ -344,6 +361,24 @@
                       },
                       {
                         "key": {
+                          "symbol": "EM_VOL"
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "i128": {
+                                "hi": 0,
+                                "lo": 15000000000
+                              }
+                            },
+                            {
+                              "u64": 0
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "EXEC_TXS"
                         },
                         "val": {
@@ -376,6 +411,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -424,6 +471,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -464,6 +523,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -1461,6 +1532,12 @@
                     "hi": 0,
                     "lo": 10000000000
                   }
+                },
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 50000000000
+                  }
                 }
               ]
             }
@@ -1534,18 +1611,24 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ModeOn"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_mode"
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              "vec": [
+                {
+                  "symbol": "ModeOn"
+                }
+              ]
             }
           }
         }
@@ -1725,14 +1808,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "TransferInit"
-                  }
-                ]
+                "u32": 0
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_init"
               }
             ],
             "data": {
