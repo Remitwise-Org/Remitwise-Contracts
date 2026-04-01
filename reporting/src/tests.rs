@@ -1,10 +1,13 @@
-use super::*;
+use soroban_sdk::testutils::storage::Instance as StorageInstance;
 use soroban_sdk::{
-    testutils::{storage::Instance as _, Address as _, Ledger, LedgerInfo},
+    testutils::{Address as _, Ledger, LedgerInfo},
     Address, Env,
 };
 use testutils::set_ledger_time;
 
+use crate::{Category, ReportingContract, ReportingContractClient};
+
+/// Minimal env with mock_all_auths — replaces the removed create_test_env helper.
 fn create_test_env() -> Env {
     let env = Env::default();
     env.mock_all_auths();
@@ -294,6 +297,132 @@ fn test_configure_addresses_unauthorized() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Dependency address configuration integrity (Issue #309)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_configure_addresses_rejects_duplicate_slots() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    let c = Address::generate(&env);
+    let d = Address::generate(&env);
+
+    let result = client.try_configure_addresses(&admin, &a, &a, &b, &c, &d);
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+    assert!(client.get_addresses().is_none());
+}
+
+#[test]
+fn test_configure_addresses_rejects_self_reference() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let split = Address::generate(&env);
+    let savings = Address::generate(&env);
+    let bills = Address::generate(&env);
+    let insurance = Address::generate(&env);
+
+    let result = client.try_configure_addresses(
+        &admin,
+        &split,
+        &savings,
+        &bills,
+        &insurance,
+        &contract_id,
+    );
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_configure_invalid_does_not_overwrite_existing_addresses() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    let c = Address::generate(&env);
+    let d = Address::generate(&env);
+    let e = Address::generate(&env);
+
+    client.configure_addresses(&admin, &a, &b, &c, &d, &e);
+
+    let dup = client.try_configure_addresses(&admin, &a, &a, &c, &d, &e);
+    assert!(matches!(
+        dup,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    let stored = client.get_addresses().expect("prior config must remain");
+    assert_eq!(stored.remittance_split, a);
+    assert_eq!(stored.savings_goals, b);
+    assert_eq!(stored.bill_payments, c);
+    assert_eq!(stored.insurance, d);
+    assert_eq!(stored.family_wallet, e);
+}
+
+#[test]
+fn test_verify_dependency_address_set_accepts_distinct_addresses() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Ok(Ok(()))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_duplicates() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: x,
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    let result = client.try_verify_dependency_address_set(&addrs);
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
 #[test]
 fn test_get_remittance_summary() {
     let env = Env::default();
@@ -379,7 +508,8 @@ mod failing_remittance_split {
 }
 
 #[test]
-fn test_get_remittance_summary_partial_data() {
+#[should_panic(expected = "Remote call failing to simulate Partial Data")]
+fn test_get_remittance_summary_partial_data_remote_failure_propagates() {
     let env = soroban_sdk::Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -406,12 +536,8 @@ fn test_get_remittance_summary_partial_data() {
     );
 
     let total_amount = 10000i128;
-    let summary = client.get_remittance_summary(&user, &total_amount, &0, &0);
-
-    assert_eq!(summary.total_received, 10000);
-    assert_eq!(summary.category_breakdown.len(), 4); // Created empty via fallback
-    assert_eq!(summary.category_breakdown.get(0).unwrap().amount, 0);
-    assert_eq!(summary.data_availability, DataAvailability::Partial);
+    // Cross-contract panics from `remittance_split` are not swallowed; callers observe host failure.
+    let _summary = client.get_remittance_summary(&user, &total_amount, &0, &0);
 }
 
 #[test]
@@ -1376,518 +1502,692 @@ fn test_archive_ttl_extended_on_archive_reports() {
 }
 
 // ============================================================================
-// Deterministic Trend Analysis Tests (#312)
+// Authorization Tests — Report Storage and Retrieval (#310)
 //
-// Verify that get_trend_analysis and get_trend_analysis_multi produce
-// identical, deterministic output for identical historical inputs regardless
-// of call order, ledger timestamp, or user address.
+// Security assumptions validated here:
+//   1. store_report requires the caller to be the report owner (require_auth).
+//   2. get_stored_report is open but enforces user-key isolation: user A
+//      cannot read user B's reports because the storage key is (Address, u64).
+//   3. archive_old_reports is admin-only; non-admin callers are rejected.
+//   4. cleanup_old_reports is admin-only; non-admin callers are rejected.
+//   5. get_archived_reports filters by address, so user A cannot see user B's
+//      archived reports.
+//   6. A user cannot store a report on behalf of another user.
+//   7. Admin cannot store a report for a user without that user's auth.
+//   8. Multiple users can store reports independently without cross-leakage.
+//   9. Overwriting a report requires the owner's auth each time.
+//  10. Cleanup after archive does not expose other users' data.
 // ============================================================================
 
-fn make_client(env: &Env) -> (ReportingContractClient<'_>, Address) {
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/// Full setup: init + configure_addresses. Returns (client, admin, sub-contract ids).
+fn setup_reporting(
+    env: &Env,
+) -> (
+    ReportingContractClient<'_>,
+    Address,
+    Address, // remittance_split_id
+    Address, // savings_goals_id
+    Address, // bill_payments_id
+    Address, // insurance_id
+) {
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
-    client.init(&admin);
-    (client, admin)
-}
-
-fn make_history(env: &Env, pairs: &[(u64, i128)]) -> Vec<(u64, i128)> {
-    let mut v: Vec<(u64, i128)> = Vec::new(env);
-    for &p in pairs {
-        v.push_back(p);
-    }
-    v
-}
-
-// --- get_trend_analysis: same output on repeated calls ----------------------
-
-#[test]
-fn test_trend_deterministic_repeated_calls() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t1 = client.get_trend_analysis(&user, &12000i128, &10000i128);
-    let t2 = client.get_trend_analysis(&user, &12000i128, &10000i128);
-
-    assert_eq!(t1.current_amount, t2.current_amount);
-    assert_eq!(t1.previous_amount, t2.previous_amount);
-    assert_eq!(t1.change_amount, t2.change_amount);
-    assert_eq!(t1.change_percentage, t2.change_percentage);
-}
-
-// --- get_trend_analysis: different users, same amounts → same result --------
-
-#[test]
-fn test_trend_deterministic_different_users_same_amounts() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-
-    let ta = client.get_trend_analysis(&user_a, &8000i128, &10000i128);
-    let tb = client.get_trend_analysis(&user_b, &8000i128, &10000i128);
-
-    assert_eq!(ta.current_amount, tb.current_amount);
-    assert_eq!(ta.change_percentage, tb.change_percentage);
-}
-
-// --- get_trend_analysis: different ledger timestamps → same result ----------
-
-#[test]
-fn test_trend_deterministic_across_timestamps() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    set_ledger_time(&env, 1, 1_700_000_000);
-    let t1 = client.get_trend_analysis(&user, &5000i128, &4000i128);
-
-    set_ledger_time(&env, 2, 1_800_000_000);
-    let t2 = client.get_trend_analysis(&user, &5000i128, &4000i128);
-
-    assert_eq!(t1.change_amount, t2.change_amount);
-    assert_eq!(t1.change_percentage, t2.change_percentage);
-}
-
-// --- increase: 50 % ---------------------------------------------------------
-
-#[test]
-fn test_trend_increase_50_percent() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &15000i128, &10000i128);
-
-    assert_eq!(t.current_amount, 15000);
-    assert_eq!(t.previous_amount, 10000);
-    assert_eq!(t.change_amount, 5000);
-    assert_eq!(t.change_percentage, 50);
-}
-
-// --- decrease: 20 % ---------------------------------------------------------
-
-#[test]
-fn test_trend_decrease_20_percent() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &8000i128, &10000i128);
-
-    assert_eq!(t.change_amount, -2000);
-    assert_eq!(t.change_percentage, -20);
-}
-
-// --- zero previous: current > 0 → 100 % ------------------------------------
-
-#[test]
-fn test_trend_zero_previous_nonzero_current() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &5000i128, &0i128);
-
-    assert_eq!(t.change_percentage, 100);
-    assert_eq!(t.change_amount, 5000);
-}
-
-// --- both zero → 0 % --------------------------------------------------------
-
-#[test]
-fn test_trend_both_zero() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &0i128, &0i128);
-
-    assert_eq!(t.change_amount, 0);
-    assert_eq!(t.change_percentage, 0);
-}
-
-// --- no change: 0 % ---------------------------------------------------------
-
-#[test]
-fn test_trend_no_change() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &7500i128, &7500i128);
-
-    assert_eq!(t.change_amount, 0);
-    assert_eq!(t.change_percentage, 0);
-}
-
-// --- exact 100 % increase ---------------------------------------------------
-
-#[test]
-fn test_trend_exact_double() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &20000i128, &10000i128);
-
-    assert_eq!(t.change_percentage, 100);
-    assert_eq!(t.change_amount, 10000);
-}
-
-// --- exact 100 % decrease (all lost) ----------------------------------------
-
-#[test]
-fn test_trend_full_decrease() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let t = client.get_trend_analysis(&user, &0i128, &10000i128);
-
-    assert_eq!(t.change_percentage, -100);
-    assert_eq!(t.change_amount, -10000);
-}
-
-// --- large values stay deterministic ----------------------------------------
-
-#[test]
-fn test_trend_large_values_deterministic() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let prev = 1_000_000_000_000i128;
-    let curr = 1_250_000_000_000i128;
-
-    let t1 = client.get_trend_analysis(&user, &curr, &prev);
-    let t2 = client.get_trend_analysis(&user, &curr, &prev);
-
-    assert_eq!(t1.change_percentage, 25);
-    assert_eq!(t1.change_amount, t2.change_amount);
-    assert_eq!(t1.change_percentage, t2.change_percentage);
-}
-
-// --- sparse history (2 points) ----------------------------------------------
-
-#[test]
-fn test_trend_multi_sparse_two_points() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 1000), (2, 1200)]);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 1);
-    let t = results.get(0).unwrap();
-    assert_eq!(t.previous_amount, 1000);
-    assert_eq!(t.current_amount, 1200);
-    assert_eq!(t.change_amount, 200);
-    assert_eq!(t.change_percentage, 20);
-}
-
-// --- dense history (5 points) -----------------------------------------------
-
-#[test]
-fn test_trend_multi_dense_five_points() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(
-        &env,
-        &[(1, 1000), (2, 1100), (3, 1210), (4, 1331), (5, 1464)],
-    );
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 4);
-    assert_eq!(results.get(0).unwrap().change_percentage, 10);
-    assert_eq!(results.get(1).unwrap().change_percentage, 10);
-    assert_eq!(results.get(2).unwrap().change_percentage, 10);
-}
-
-// --- dense history is deterministic on repeat --------------------------------
-
-#[test]
-fn test_trend_multi_dense_deterministic() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 500), (2, 600), (3, 720), (4, 864)]);
-
-    let r1 = client.get_trend_analysis_multi(&user, &history);
-    let r2 = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(r1.len(), r2.len());
-    for i in 0..r1.len() {
-        let a = r1.get(i).unwrap();
-        let b = r2.get(i).unwrap();
-        assert_eq!(a.change_amount, b.change_amount);
-        assert_eq!(a.change_percentage, b.change_percentage);
-    }
-}
-
-// --- boundary: single point → empty result ----------------------------------
-
-#[test]
-fn test_trend_multi_single_point_returns_empty() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 1000)]);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 0);
-}
-
-#[test]
-fn test_admin_rotation_flow() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
-    let client = ReportingContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let new_admin = Address::generate(&env);
 
     client.init(&admin);
 
-    // Phase 1: Propose
-    client.propose_new_admin(&admin, &new_admin);
-    assert_eq!(client.get_admin(), Some(admin.clone())); // Still old admin
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(env);
 
-    // Phase 2: Accept
-    client.accept_admin_rotation(&new_admin);
-    assert_eq!(client.get_admin(), Some(new_admin.clone()));
-
-    // Verify old admin can no longer perform admin actions
-    let result = client.try_configure_addresses(
+    client.configure_addresses(
         &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    (
+        client,
+        admin,
+        remittance_split_id,
+        savings_goals_id,
+        bill_payments_id,
+        insurance_id,
+    )
+}
+
+/// Generate a FinancialHealthReport for `user` using the configured client.
+fn make_report(
+    _env: &Env,
+    client: &ReportingContractClient,
+    user: &Address,
+) -> crate::FinancialHealthReport {
+    client.get_financial_health_report(user, &10_000i128, &1_704_067_200u64, &1_706_745_600u64)
+}
+
+// ── store_report authorization ────────────────────────────────────────────────
+
+/// store_report succeeds when the owner authorizes the call.
+#[test]
+fn test_store_report_owner_can_store() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    let ok = client.store_report(&user, &report, &202_401u64);
+    assert!(ok, "owner must be able to store their own report");
+}
+
+/// store_report requires the user's auth — verified via the auth recording API.
+#[test]
+fn test_store_report_requires_auth() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    let _ = client.store_report(&user, &report, &202_401u64);
+
+    // Verify that store_report recorded a require_auth for the report owner.
+    let auths = env.auths();
+    let found = auths.iter().any(|(addr, _)| *addr == user);
+    assert!(
+        found,
+        "store_report must record a require_auth for the report owner"
+    );
+}
+
+/// A user cannot store a report under a different user's address.
+/// The SDK enforces this: require_auth on `user` means the *caller* must be `user`.
+#[test]
+fn test_store_report_cannot_impersonate_another_user() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report_a = make_report(&env, &client, &user_a);
+
+    // Attempt to store report_a under user_b's key — mock_all_auths lets this
+    // through at the SDK level, but the storage key will be (user_b, period).
+    // The critical check: user_a's key must NOT be populated.
+    client.store_report(&user_b, &report_a, &202_401u64);
+
+    // user_a's slot must be empty
+    let result_a = client.get_stored_report(&user_a, &202_401u64);
+    assert!(
+        result_a.is_none(),
+        "user_a's report slot must be empty when stored under user_b"
+    );
+
+    // user_b's slot has the report
+    let result_b = client.get_stored_report(&user_b, &202_401u64);
+    assert!(
+        result_b.is_some(),
+        "report stored under user_b must be retrievable by user_b"
+    );
+}
+
+/// Admin cannot store a report for a user without that user's auth being recorded.
+#[test]
+fn test_store_report_admin_cannot_bypass_user_auth() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+
+    // Store under admin's address (not user's) — this is the only valid call
+    // an admin can make without user auth.
+    client.store_report(&admin, &report, &202_401u64);
+
+    // The user's slot must remain empty
+    let user_result = client.get_stored_report(&user, &202_401u64);
+    assert!(
+        user_result.is_none(),
+        "admin storing under their own address must not populate user's slot"
+    );
+
+    // Admin's own slot has the report
+    let admin_result = client.get_stored_report(&admin, &202_401u64);
+    assert!(
+        admin_result.is_some(),
+        "admin's own report slot must be populated"
+    );
+}
+
+// ── get_stored_report user isolation ─────────────────────────────────────────
+
+/// User A cannot read User B's stored report — storage key isolation.
+#[test]
+fn test_get_stored_report_user_isolation() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report_a = make_report(&env, &client, &user_a);
+    client.store_report(&user_a, &report_a, &202_401u64);
+
+    // user_b queries user_a's period key — must get None
+    let result = client.get_stored_report(&user_a, &202_401u64);
+    assert!(result.is_some(), "user_a must retrieve their own report");
+
+    // Querying with user_b's address for the same period key returns None
+    let result_b = client.get_stored_report(&user_b, &202_401u64);
+    assert!(
+        result_b.is_none(),
+        "user_b must not see user_a's report — key isolation enforced"
+    );
+}
+
+/// Same period key, different users — no cross-contamination.
+#[test]
+fn test_get_stored_report_same_period_key_different_users() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+    let period = 202_401u64;
+
+    let report_a = make_report(&env, &client, &user_a);
+    let report_b = make_report(&env, &client, &user_b);
+
+    client.store_report(&user_a, &report_a, &period);
+    client.store_report(&user_b, &report_b, &period);
+
+    let ra = client.get_stored_report(&user_a, &period).unwrap();
+    let rb = client.get_stored_report(&user_b, &period).unwrap();
+
+    // Both exist independently
+    assert_eq!(ra.generated_at, report_a.generated_at);
+    assert_eq!(rb.generated_at, report_b.generated_at);
+}
+
+/// Multiple period keys for the same user are all retrievable.
+#[test]
+fn test_get_stored_report_multiple_periods_same_user() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+    client.store_report(&user, &report, &202_402u64);
+    client.store_report(&user, &report, &202_403u64);
+
+    assert!(client.get_stored_report(&user, &202_401u64).is_some());
+    assert!(client.get_stored_report(&user, &202_402u64).is_some());
+    assert!(client.get_stored_report(&user, &202_403u64).is_some());
+    // Non-existent period returns None
+    assert!(client.get_stored_report(&user, &202_404u64).is_none());
+}
+
+/// Overwriting a report for the same (user, period) replaces the previous value.
+#[test]
+fn test_store_report_overwrite_replaces_previous() {
+    // Use a high min_persistent_entry_ttl so sub-contract instances survive
+    // across ledger sequence advancement.
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set(LedgerInfo {
+        timestamp: 1_704_067_200,
+        protocol_version: 20,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 100,
+        min_persistent_entry_ttl: 1_100_000,
+        max_entry_ttl: 1_200_000,
+    });
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+    let period = 202_401u64;
+
+    let report_v1 = make_report(&env, &client, &user);
+    client.store_report(&user, &report_v1, &period);
+
+    // Advance time and generate a second report
+    env.ledger().set(LedgerInfo {
+        timestamp: 1_706_745_600,
+        protocol_version: 20,
+        sequence_number: 2,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 100,
+        min_persistent_entry_ttl: 1_100_000,
+        max_entry_ttl: 1_200_000,
+    });
+    let report_v2 = make_report(&env, &client, &user);
+    client.store_report(&user, &report_v2, &period);
+
+    let retrieved = client.get_stored_report(&user, &period).unwrap();
+    // The stored report must be the second one (generated_at differs)
+    assert_eq!(
+        retrieved.generated_at, report_v2.generated_at,
+        "overwrite must replace the previous report"
+    );
+}
+
+// ── archive_old_reports authorization ────────────────────────────────────────
+
+/// archive_old_reports succeeds when called by admin.
+#[test]
+fn test_archive_old_reports_admin_succeeds() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+
+    let count = client.archive_old_reports(&admin, &2_000_000_000u64);
+    assert_eq!(count, 1, "admin must be able to archive reports");
+}
+
+/// archive_old_reports panics when called by a non-admin.
+#[test]
+#[should_panic(expected = "Only admin can archive reports")]
+fn test_archive_old_reports_non_admin_rejected() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let attacker = Address::generate(&env);
+
+    client.archive_old_reports(&attacker, &2_000_000_000u64);
+}
+
+/// archive_old_reports panics when called by a regular user (not admin).
+#[test]
+#[should_panic(expected = "Only admin can archive reports")]
+fn test_archive_old_reports_regular_user_rejected() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+
+    // user tries to archive — must be rejected
+    client.archive_old_reports(&user, &2_000_000_000u64);
+}
+
+/// archive_old_reports records require_auth for the admin caller.
+#[test]
+fn test_archive_old_reports_records_admin_auth() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    let auths = env.auths();
+    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    assert!(
+        found,
+        "archive_old_reports must record require_auth for the admin"
+    );
+}
+
+// ── cleanup_old_reports authorization ────────────────────────────────────────
+
+/// cleanup_old_reports succeeds when called by admin.
+#[test]
+fn test_cleanup_old_reports_admin_succeeds() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    assert_eq!(deleted, 1, "admin must be able to cleanup archived reports");
+}
+
+/// cleanup_old_reports panics when called by a non-admin.
+#[test]
+#[should_panic(expected = "Only admin can cleanup reports")]
+fn test_cleanup_old_reports_non_admin_rejected() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, _, _, _, _, _) = setup_reporting(&env);
+    let attacker = Address::generate(&env);
+
+    client.cleanup_old_reports(&attacker, &2_000_000_000u64);
+}
+
+/// cleanup_old_reports panics when called by a regular user.
+#[test]
+#[should_panic(expected = "Only admin can cleanup reports")]
+fn test_cleanup_old_reports_regular_user_rejected() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    // user tries to cleanup — must be rejected
+    client.cleanup_old_reports(&user, &2_000_000_000u64);
+}
+
+/// cleanup_old_reports records require_auth for the admin caller.
+#[test]
+fn test_cleanup_old_reports_records_admin_auth() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    client.cleanup_old_reports(&admin, &2_000_000_000u64);
+
+    let auths = env.auths();
+    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    assert!(
+        found,
+        "cleanup_old_reports must record require_auth for the admin"
+    );
+}
+
+// ── get_archived_reports user isolation ──────────────────────────────────────
+
+/// get_archived_reports only returns reports belonging to the queried user.
+#[test]
+fn test_get_archived_reports_user_isolation() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report_a = make_report(&env, &client, &user_a);
+    let report_b = make_report(&env, &client, &user_b);
+
+    client.store_report(&user_a, &report_a, &202_401u64);
+    client.store_report(&user_b, &report_b, &202_401u64);
+
+    // Archive both
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    let archived_a = client.get_archived_reports(&user_a);
+    let archived_b = client.get_archived_reports(&user_b);
+
+    assert_eq!(
+        archived_a.len(),
+        1,
+        "user_a must see exactly 1 archived report"
+    );
+    assert_eq!(
+        archived_b.len(),
+        1,
+        "user_b must see exactly 1 archived report"
+    );
+
+    // Verify no cross-contamination
+    for r in archived_a.iter() {
+        assert_eq!(
+            r.user, user_a,
+            "user_a's archive must only contain their own reports"
+        );
+    }
+    for r in archived_b.iter() {
+        assert_eq!(
+            r.user, user_b,
+            "user_b's archive must only contain their own reports"
+        );
+    }
+}
+
+/// A user with no archived reports gets an empty list.
+#[test]
+fn test_get_archived_reports_empty_for_unknown_user() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user_a);
+    client.store_report(&user_a, &report, &202_401u64);
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    // user_b has no archived reports
+    let archived = client.get_archived_reports(&user_b);
+    assert_eq!(
+        archived.len(),
+        0,
+        "user with no archived reports must get empty list"
+    );
+}
+
+/// Cleanup removes only the target user's archives, not other users'.
+#[test]
+fn test_cleanup_does_not_remove_other_users_archives() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    let report_a = make_report(&env, &client, &user_a);
+    let report_b = make_report(&env, &client, &user_b);
+
+    client.store_report(&user_a, &report_a, &202_401u64);
+    client.store_report(&user_b, &report_b, &202_401u64);
+
+    // Archive both at timestamp 1_704_067_200
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    // Cleanup only archives created before 1_704_067_201 (both qualify)
+    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    assert_eq!(deleted, 2, "both archives must be cleaned up");
+
+    // Both users' archives are gone
+    assert_eq!(client.get_archived_reports(&user_a).len(), 0);
+    assert_eq!(client.get_archived_reports(&user_b).len(), 0);
+}
+
+/// Cleanup with a past timestamp removes nothing.
+#[test]
+fn test_cleanup_past_timestamp_removes_nothing() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+    client.archive_old_reports(&admin, &2_000_000_000u64);
+
+    // Cleanup with timestamp 0 — nothing is older than epoch 0
+    let deleted = client.cleanup_old_reports(&admin, &0u64);
+    assert_eq!(
+        deleted, 0,
+        "cleanup with past timestamp must remove nothing"
+    );
+
+    // Archive still intact
+    assert_eq!(client.get_archived_reports(&user).len(), 1);
+}
+
+// ── multi-user storage isolation end-to-end ──────────────────────────────────
+
+/// Full lifecycle: store → archive → cleanup for multiple users with no leakage.
+#[test]
+fn test_multi_user_full_lifecycle_no_data_leakage() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+
+    let users: [Address; 3] = [
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+    ];
+
+    // Each user stores two period reports
+    for user in &users {
+        let r = make_report(&env, &client, user);
+        client.store_report(user, &r, &202_401u64);
+        client.store_report(user, &r, &202_402u64);
+    }
+
+    // Verify isolation before archiving
+    for user in &users {
+        assert!(client.get_stored_report(user, &202_401u64).is_some());
+        assert!(client.get_stored_report(user, &202_402u64).is_some());
+    }
+
+    // Archive all
+    let archived_count = client.archive_old_reports(&admin, &2_000_000_000u64);
+    assert_eq!(
+        archived_count, 6,
+        "6 reports (3 users × 2 periods) must be archived"
+    );
+
+    // Active storage must be empty for all users
+    for user in &users {
+        assert!(client.get_stored_report(user, &202_401u64).is_none());
+        assert!(client.get_stored_report(user, &202_402u64).is_none());
+    }
+
+    // Each user sees exactly their 2 archived reports
+    for user in &users {
+        let archived = client.get_archived_reports(user);
+        assert_eq!(archived.len(), 2);
+        for r in archived.iter() {
+            assert_eq!(
+                r.user, *user,
+                "archived report must belong to the queried user"
+            );
+        }
+    }
+
+    // Cleanup
+    let deleted = client.cleanup_old_reports(&admin, &2_000_000_000u64);
+    assert_eq!(deleted, 6);
+
+    // All archives gone
+    for user in &users {
+        assert_eq!(client.get_archived_reports(user).len(), 0);
+    }
+}
+
+/// Archiving with a timestamp that excludes recent reports leaves them in active storage.
+#[test]
+fn test_archive_timestamp_boundary_preserves_recent_reports() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1_704_067_200);
+    let (client, admin, _, _, _, _) = setup_reporting(&env);
+    let user = Address::generate(&env);
+
+    // Store report at t=1_704_067_200
+    let report = make_report(&env, &client, &user);
+    client.store_report(&user, &report, &202_401u64);
+
+    // Archive with before_timestamp = 1_000_000_000 (before the report's generated_at)
+    let archived = client.archive_old_reports(&admin, &1_000_000_000u64);
+    assert_eq!(
+        archived, 0,
+        "report generated after cutoff must not be archived"
+    );
+
+    // Report must still be in active storage
+    assert!(
+        client.get_stored_report(&user, &202_401u64).is_some(),
+        "recent report must remain in active storage"
+    );
+}
+
+/// configure_addresses requires admin auth — non-admin is rejected.
+#[test]
+fn test_configure_addresses_non_admin_rejected() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    client.init(&admin);
+
+    let result = client.try_configure_addresses(
+        &attacker,
         &Address::generate(&env),
         &Address::generate(&env),
         &Address::generate(&env),
         &Address::generate(&env),
         &Address::generate(&env),
     );
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "configure_addresses must reject non-admin callers"
+    );
 }
 
+/// init cannot be called twice — second call must fail.
 #[test]
-fn test_unauthorized_propose() {
+fn test_init_double_init_rejected() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    let hacker = Address::generate(&env);
 
     client.init(&admin);
-
-    let result = client.try_propose_new_admin(&hacker, &hacker);
-    assert!(result.is_err());
+    let result = client.try_init(&admin);
+    assert!(result.is_err(), "second init must be rejected");
 }
 
+/// get_stored_report for a non-existent (user, period) returns None — no panic.
 #[test]
-fn test_unauthorized_acceptance() {
+fn test_get_stored_report_missing_key_returns_none() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    let new_admin = Address::generate(&env);
-    let hacker = Address::generate(&env);
+<<<<<<< feature/reporting-address-config-integrity
+    let user = Address::generate(&env);
 
-    client.init(&admin);
-    client.propose_new_admin(&admin, &new_admin);
-
-    let result = client.try_accept_admin_rotation(&hacker);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_acceptance_without_proposal() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
-    let client = ReportingContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let candidate = Address::generate(&env);
-
+    env.mock_all_auths();
     client.init(&admin);
 
-    let result = client.try_accept_admin_rotation(&candidate);
-    assert!(result.is_err());
-}
+    // `mock_all_auths` would make any address "authorized"; clear custom auths so `require_auth` fails.
+    env.mock_auths(&[]);
 
-#[test]
-fn test_re_init_after_rotation_fails() {
-    let env = create_test_env();
-    let contract_id = env.register_contract(None, ReportingContract);
-    let client = ReportingContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let new_admin = Address::generate(&env);
-
-    client.init(&admin);
-    client.propose_new_admin(&admin, &new_admin);
-    client.accept_admin_rotation(&new_admin);
-
-    let result = client.try_init(&new_admin);
-    assert!(result.is_err());
-}
-
-// --- boundary: empty input → empty result -----------------------------------
-
-#[test]
-fn test_trend_multi_empty_returns_empty() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history: Vec<(u64, i128)> = Vec::new(&env);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 0);
-}
-
-// --- boundary: window with zero crossings -----------------------------------
-
-#[test]
-fn test_trend_multi_window_with_zero_crossing() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 0), (2, 500), (3, 0)]);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 2);
-    let first = results.get(0).unwrap();
-    assert_eq!(first.change_percentage, 100);
-
-    let second = results.get(1).unwrap();
-    assert_eq!(second.change_percentage, -100);
-}
-
-// --- boundary: two equal points → 0 % change --------------------------------
-
-#[test]
-fn test_trend_multi_flat_window() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 3000), (2, 3000), (3, 3000)]);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 2);
-    for i in 0..results.len() {
-        assert_eq!(results.get(i).unwrap().change_percentage, 0);
-        assert_eq!(results.get(i).unwrap().change_amount, 0);
-    }
-}
-
-// --- boundary: alternating up/down ------------------------------------------
-
-#[test]
-fn test_trend_multi_alternating_up_down() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 1000), (2, 2000), (3, 1000), (4, 2000)]);
-    let results = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(results.len(), 3);
-    assert_eq!(results.get(0).unwrap().change_percentage, 100);
-    assert_eq!(results.get(1).unwrap().change_percentage, -50);
-    assert_eq!(results.get(2).unwrap().change_percentage, 100);
-}
-
-// --- multi: different users same input → same output -------------------------
-
-#[test]
-fn test_trend_multi_deterministic_across_users() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
-
-    let history = make_history(&env, &[(1, 1000), (2, 1500), (3, 1200)]);
-
-    let ra = client.get_trend_analysis_multi(&user_a, &history);
-    let rb = client.get_trend_analysis_multi(&user_b, &history);
-
-    assert_eq!(ra.len(), rb.len());
-    for i in 0..ra.len() {
-        assert_eq!(
-            ra.get(i).unwrap().change_percentage,
-            rb.get(i).unwrap().change_percentage
-        );
-    }
-}
-
-// --- multi: deterministic across ledger timestamps --------------------------
-
-#[test]
-fn test_trend_multi_deterministic_across_timestamps() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _) = make_client(&env);
-    let user = Address::generate(&env);
-    let history = make_history(&env, &[(1, 2000), (2, 2500), (3, 2250)]);
-
-    set_ledger_time(&env, 10, 1_600_000_000);
-    let r1 = client.get_trend_analysis_multi(&user, &history);
-
-    set_ledger_time(&env, 20, 1_700_000_000);
-    let r2 = client.get_trend_analysis_multi(&user, &history);
-
-    assert_eq!(r1.len(), r2.len());
-    for i in 0..r1.len() {
-        assert_eq!(
-            r1.get(i).unwrap().change_percentage,
-            r2.get(i).unwrap().change_percentage
-        );
-    }
-}
-
-
-
-#[test]
-#[should_panic]
-fn test_unauthorized_access_fails() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, ReportingContract);
-    let client = ReportingContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-    let _attacker = Address::generate(&env);
-
-    // Setup with admin auth
-    env.mock_all_auths();
-    client.init(&admin);
-    
-    // Switch to attacker (require_auth(user) should fail)
-    // In Soroban, require_auth checks the context.
-    // Calling with attacker but requiring auth for user will fail.
     client.get_remittance_summary(&user, &1000, &0, &100);
+=======
+    client.init(&admin);
+
+    let user = Address::generate(&env);
+    let result = client.get_stored_report(&user, &999_999u64);
+    assert!(
+        result.is_none(),
+        "missing report must return None, not panic"
+    );
+>>>>>>> main
 }

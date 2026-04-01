@@ -200,7 +200,7 @@ fn fuzz_large_amounts() {
         1_000_000_000_000i128,
         999_999_999_999i128,
     ] {
-        if let Ok(_) = client.try_calculate_split(amount) {
+        if client.try_calculate_split(amount).is_ok() {
             let amounts = client.calculate_split(amount);
             let sum: i128 = amounts.iter().sum();
             assert_eq!(sum, *amount, "Sum mismatch for large amount {}", amount);

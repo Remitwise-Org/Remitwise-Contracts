@@ -416,9 +416,42 @@ Key benefits:
 - **Well-documented** security assumptions and validation logic
 
 - `add_member` is strict (duplicate-safe and limit-aware), while `add_family_member`/batch add overwrite records and force spending limit to `0`.
-- `archive_old_transactions` archives all `EXEC_TXS` entries currently present; `before_timestamp` is written into archived metadata but not used as a filter.
+- **Archive and cleanup (v2):** see *Transaction archive and pending cleanup* below.
 - `SplitConfigChange` and `PolicyCancellation` transaction execution paths currently complete without cross-contract side effects.
 - Token-transfer execution from `sign_transaction` path calls `proposer.require_auth()` for transfer types, so proposer authorization is required at execution time.
+
+## Transaction archive and pending cleanup
+
+### Storage
+
+- **`EXEC_TXS`:** `Map<u64, ExecutedTxMeta>`. Each multisig-completed execution stores `tx_id`, `tx_type`, `proposer`, and `executed_at` (ledger seconds at completion). Direct (non-multisig) executions do not populate this map.
+- **`ARCH_TX`:** `Map<u64, ArchivedTransaction>` — long-term archive of moved-out executions.
+
+### `archive_old_transactions(caller, before_timestamp)`
+
+- **Authorization:** Owner or Admin; `caller.require_auth()`.
+- **Retention rule:** A row moves from `EXEC_TXS` to `ARCH_TX` iff `executed_at < before_timestamp`.
+- **Cutoff validation:** `before_timestamp <= ledger.timestamp()`. A cutoff in the “future” relative to the ledger would incorrectly treat recent executions as eligible; the contract rejects that.
+- **Integrity:** If `ExecutedTxMeta.tx_id` does not match the map key, the contract panics (`"Inconsistent executed transaction metadata"`) to avoid corrupting `ARCH_TX`.
+- **Metadata:** Archived rows copy **proposer**, **tx_type**, and **executed_at** from `ExecutedTxMeta`; `archived_at` is the ledger time of the archive call.
+
+### `get_archived_transactions(caller, limit)`
+
+- **Authorization:** Owner or Admin; `caller.require_auth()`. Prevents unauthenticated reads of historical transaction metadata (privacy / ownership leakage).
+
+### `cleanup_expired_pending(caller)`
+
+- **Authorization:** Owner or Admin; `caller.require_auth()`.
+- **Rule:** Removes pending entries with `expires_at < ledger.timestamp()`.
+- **Integrity:** If `PendingTransaction.tx_id` does not match the map key, the contract panics (`"Inconsistent pending transaction data"`).
+
+### Upgrade / migration note
+
+`CONTRACT_VERSION` was bumped when `EXEC_TXS` changed from `Map<u64, bool>` to `Map<u64, ExecutedTxMeta>`. Existing deployed instances with the old layout require an explicit migration path; new deployments use the v2 layout from `init`.
+
+### Member record: optional precision limit
+
+`FamilyMember.precision_limit` uses `PrecisionLimitOpt` (`None` / `Some(PrecisionSpendingLimit)`) because Soroban `contracttype` does not support `Option<CustomStruct>` in the same way as Rust’s `Option` for storage encoding.
 
 ## Error Codes
 

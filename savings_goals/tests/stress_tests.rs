@@ -115,7 +115,7 @@ fn stress_200_goals_single_user() {
     // caller receives a non-zero cursor that produces a trailing empty page, so the
     // number of round-trips is pages = ceil(200/50) + 1 trailing = 5.
     assert!(
-        pages >= 4 && pages <= 5,
+        (4..=5).contains(&pages),
         "Expected 4-5 pages for 200 goals at limit 50, got {}",
         pages
     );
@@ -316,7 +316,7 @@ fn stress_batch_add_to_goals_at_max_batch_size() {
         });
     }
 
-    let processed = client.batch_add_to_goals(&owner, &contributions).unwrap();
+    let processed = client.batch_add_to_goals(&owner, &contributions);
     assert_eq!(
         processed, BATCH_SIZE,
         "batch_add_to_goals must process all {} contributions",

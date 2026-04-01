@@ -479,6 +479,90 @@ let vacation_id = savings_goals::create_goal(env, user, "Vacation", 2000_0000000
 - Balance checks prevent overdrafts
 - Access control ensures user data isolation
 
+---
+
+## Migration Compatibility
+
+The Savings Goals contract provides first-class support for off-chain data export
+and migration through the `data_migration` crate. This covers four serialisation
+formats and includes cryptographic integrity checking.
+
+### On-chain API
+
+| Function | Description |
+|---|---|
+| `export_snapshot(caller)` | Exports all goals as a `GoalsExportSnapshot` (version + checksum + goal list). Caller must authorize. |
+| `import_snapshot(caller, nonce, snapshot)` | Imports a validated snapshot, replacing contract state. Caller must authorize. Nonce prevents replay attacks. |
+
+### Off-chain formats (via `data_migration`)
+
+| Format | Helper (export) | Helper (import) | Notes |
+|---|---|---|---|
+| JSON | `export_to_json` | `import_from_json` | Human-readable; includes checksum validation |
+| Binary | `export_to_binary` | `import_from_binary` | Compact bincode; includes checksum validation |
+| CSV | `export_to_csv` | `import_goals_from_csv` | Flat tabular; for spreadsheet tooling |
+| Encrypted | `export_to_encrypted_payload` | `import_from_encrypted_payload` | Base64 wrapper; caller handles encryption layer |
+
+The `build_savings_snapshot` helper (in `data_migration`) wraps a
+`SavingsGoalsExport` payload into a fully-checksummed `ExportSnapshot` for any
+target format.
+
+### Security assumptions
+
+- **Checksum integrity**: Every snapshot carries a SHA-256 checksum over the
+  canonical JSON of the payload. Any mutation after export is detected by
+  `validate_for_import` → `Err(ChecksumMismatch)`.
+- **Version gating**: Snapshots with an unsupported schema version are rejected
+  by `validate_for_import` → `Err(IncompatibleVersion)`.
+- **Nonce replay protection**: `import_snapshot` requires a monotonically
+  increasing nonce per caller; reusing a nonce is rejected on-chain.
+- **Authorization**: Both `export_snapshot` and `import_snapshot` require
+  `caller.require_auth()`.
+- **Encrypted path**: The `Encrypted` format uses base64 as a transport
+  envelope. Callers are responsible for applying actual encryption (e.g. AES-GCM)
+  to the serialised bytes before passing them to `export_to_encrypted_payload`.
+
+### Example: full JSON roundtrip
+
+```rust
+// 1. Export on-chain state
+let snapshot: GoalsExportSnapshot = client.export_snapshot(&admin);
+
+// 2. Convert to data_migration format
+let export = SavingsGoalsExport {
+    next_id: snapshot.next_id,
+    goals: snapshot.goals.iter().map(|g| SavingsGoalExport {
+        id: g.id,
+        owner: format!("{:?}", g.owner),
+        name: g.name.to_string(),
+        target_amount: g.target_amount as i64,
+        current_amount: g.current_amount as i64,
+        target_date: g.target_date,
+        locked: g.locked,
+    }).collect(),
+};
+
+// 3. Build migration snapshot (computes checksum)
+let mig_snapshot = build_savings_snapshot(export, ExportFormat::Json);
+
+// 4. Serialize to JSON bytes
+let bytes = export_to_json(&mig_snapshot).unwrap();
+
+// 5. (transmit bytes off-chain ...)
+
+// 6. Import and validate
+let loaded = import_from_json(&bytes).unwrap(); // validates checksum + version
+```
+
+### Running migration tests
+
+```bash
+# data_migration package (format-level e2e tests)
+cargo test -p data_migration
+
+# savings_goals package (contract + cross-package e2e tests)
+cargo test -p savings_goals
+```
 ### Savings Schedule Security
 
 | Threat | Mitigation |

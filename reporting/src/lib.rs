@@ -1,18 +1,23 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address, Env,
+    Map, Vec,
 };
 
 use remitwise_common::Category;
 
-// Storage TTL constants for active data
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
+// Storage TTL constants
+const DAY_IN_LEDGERS: u32 = 17280;
 
-// Storage TTL constants for archived data (longer retention, less frequent access)
-const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
-const ARCHIVE_BUMP_AMOUNT: u32 = 2592000; // ~180 days (6 months)
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 60 * DAY_IN_LEDGERS; // 60 days
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
+
+pub const INSTANCE_BUMP_AMOUNT: u32 = PERSISTENT_BUMP_AMOUNT;
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = PERSISTENT_LIFETIME_THRESHOLD;
+
+pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
+pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
 
 /// Financial health score (0-100)
 #[contracttype]
@@ -143,54 +148,18 @@ pub struct ContractAddresses {
     pub family_wallet: Address,
 }
 
-/// Events emitted by the reporting contract
-#[contracttype]
-#[derive(Clone, Copy)]
+/// Errors returned by the reporting contract (`Result` arms and `try_` client helpers).
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum ReportingError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     Unauthorized = 3,
     AddressesNotConfigured = 4,
     NotAdminProposed = 5,
-}
-
-impl From<ReportingError> for soroban_sdk::Error {
-    fn from(err: ReportingError) -> Self {
-        match err {
-            ReportingError::AlreadyInitialized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            ReportingError::NotInitialized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::MissingValue,
-            )),
-            ReportingError::Unauthorized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::MissingValue,
-            )),
-            ReportingError::NotAdminProposed => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-        }
-    }
-}
-
-impl From<&ReportingError> for soroban_sdk::Error {
-    fn from(err: &ReportingError) -> Self {
-        (*err).into()
-    }
-}
-
-impl From<soroban_sdk::Error> for ReportingError {
-    fn from(_err: soroban_sdk::Error) -> Self {
-        ReportingError::Unauthorized
-    }
+    /// Dependency address set is not usable: duplicates or self-reference to this reporting contract.
+    InvalidDependencyAddressConfiguration = 6,
 }
 
 #[contracttype]
@@ -317,6 +286,66 @@ pub struct ReportingContract;
 
 #[contractimpl]
 impl ReportingContract {
+    // ---------------------------------------------------------------------
+    // Dependency address integrity
+    // ---------------------------------------------------------------------
+
+    /// Validates the five downstream contract addresses before they are persisted or used.
+    ///
+    /// # Security assumptions
+    ///
+    /// - **Self-reference**: No slot may equal [`Env::current_contract_address`]. Routing a role
+    ///   back to this reporting contract would make cross-contract calls ambiguous and can break
+    ///   tooling that assumes unique callees.
+    /// - **Pairwise uniqueness**: Each of `remittance_split`, `savings_goals`, `bill_payments`,
+    ///   `insurance`, and `family_wallet` must refer to a **different** contract ID. Duplicate IDs
+    ///   mean two logical roles silently talk to the same deployment (data integrity / audit risk).
+    /// Complexity: constant time (five slots, fixed number of equality checks).
+    fn validate_dependency_address_set(
+        env: &Env,
+        addrs: &ContractAddresses,
+    ) -> Result<(), ReportingError> {
+        let reporting = env.current_contract_address();
+        let slots = [
+            &addrs.remittance_split,
+            &addrs.savings_goals,
+            &addrs.bill_payments,
+            &addrs.insurance,
+            &addrs.family_wallet,
+        ];
+
+        for slot in slots {
+            if *slot == reporting {
+                return Err(ReportingError::InvalidDependencyAddressConfiguration);
+            }
+        }
+
+        for i in 0..slots.len() {
+            for j in (i + 1)..slots.len() {
+                if *slots[i] == *slots[j] {
+                    return Err(ReportingError::InvalidDependencyAddressConfiguration);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verify a [`ContractAddresses`] bundle using the same rules as [`ReportingContract::configure_addresses`].
+    ///
+    /// Does **not** write storage and does **not** require authorization. Intended for admin UIs and
+    /// offline checks before submitting a configuration transaction.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::InvalidDependencyAddressConfiguration`] — duplicates or self-reference.
+    pub fn verify_dependency_address_set(
+        env: Env,
+        addrs: ContractAddresses,
+    ) -> Result<(), ReportingError> {
+        Self::validate_dependency_address_set(&env, &addrs)
+    }
+
     /// Initialize the reporting contract with an admin address.
     ///
     /// This function must be called only once. The provided admin address will
@@ -432,6 +461,8 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the admin
+    /// * [`ReportingError::InvalidDependencyAddressConfiguration`] - Duplicate addresses or
+    ///   self-reference (this reporting contract used as a dependency).
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
@@ -466,6 +497,8 @@ impl ReportingContract {
             family_wallet,
         };
 
+        Self::validate_dependency_address_set(&env, &addresses)?;
+
         env.storage()
             .instance()
             .set(&symbol_short!("ADDRS"), &addresses);
@@ -489,37 +522,54 @@ impl ReportingContract {
         period_end: u64,
     ) -> RemittanceSummary {
         user.require_auth();
-        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
+        Self::get_remittance_summary_internal(&env, user.clone(), total_amount, period_start, period_end)
     }
 
     fn get_remittance_summary_internal(
         env: &Env,
+        user: Address,
         total_amount: i128,
         period_start: u64,
         period_end: u64,
     ) -> RemittanceSummary {
-        user.require_auth();
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"));
-            
+
         if addresses.is_none() {
             return RemittanceSummary {
                 total_received: total_amount,
                 total_allocated: total_amount,
-                category_breakdown: Vec::new(&env),
+                category_breakdown: Vec::new(env),
                 period_start,
                 period_end,
                 data_availability: DataAvailability::Missing,
             };
         }
-        
-        let addresses = addresses.unwrap();
 
+        let addresses = addresses.unwrap();
+        let availability = DataAvailability::Complete;
+
+        let addresses = addresses.unwrap();
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
-        let split_percentages = split_client.get_split();
-        let split_amounts = split_client.calculate_split(&total_amount);
+        let mut availability = DataAvailability::Complete;
+
+        let split_percentages = match split_client.try_get_split() {
+            Ok(Ok(res)) => res,
+            _ => {
+                availability = DataAvailability::Partial;
+                Vec::new(env)
+            }
+        };
+
+        let split_amounts = match split_client.try_calculate_split(&total_amount) {
+            Ok(Ok(res)) => res,
+            _ => {
+                availability = DataAvailability::Partial;
+                Vec::new(env)
+            }
+        };
 
         let mut breakdown = Vec::new(env);
         let categories = [
@@ -543,7 +593,7 @@ impl ReportingContract {
             category_breakdown: breakdown,
             period_start,
             period_end,
-            data_availability: availability,
+            data_availability: DataAvailability::Complete,
         }
     }
 
@@ -758,7 +808,7 @@ impl ReportingContract {
             .unwrap_or_else(|| panic!("Contract addresses not configured"));
 
         // Savings score (0-40 points)
-        let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
+        let savings_client = SavingsGoalsClient::new(env, &addresses.savings_goals);
         let goals = savings_client.get_all_goals(&user);
         let mut total_target = 0i128;
         let mut total_saved = 0i128;
@@ -778,7 +828,7 @@ impl ReportingContract {
         };
 
         // Bills score (0-40 points)
-        let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
+        let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
         let unpaid_bills = bill_client.get_unpaid_bills(&user, &0u32, &50u32).items;
         let bills_score = if unpaid_bills.is_empty() {
             40
@@ -795,7 +845,7 @@ impl ReportingContract {
         };
 
         // Insurance score (0-20 points)
-        let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
+        let insurance_client = InsuranceClient::new(env, &addresses.insurance);
         let policy_page = insurance_client.get_active_policies(&user, &0, &1);
         let insurance_score = if !policy_page.items.is_empty() { 20 } else { 0 };
 
@@ -823,7 +873,7 @@ impl ReportingContract {
         let health_score =
             Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
         let remittance_summary =
-            Self::get_remittance_summary_internal(&env, total_remittance, period_start, period_end);
+            Self::get_remittance_summary_internal(&env, user.clone(), total_remittance, period_start, period_end);
         let savings_report =
             Self::get_savings_report_internal(&env, user.clone(), period_start, period_end);
         let bill_compliance =

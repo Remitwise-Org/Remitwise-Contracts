@@ -3,9 +3,9 @@
 use super::*;
 use soroban_sdk::{
     testutils::storage::Instance as StorageInstance,
-    testutils::{Address as AddressTrait, Events, Ledger, LedgerInfo},
+    testutils::{Address as AddressTrait, AuthorizedFunction, Events, Ledger, LedgerInfo},
     token::{StellarAssetClient, TokenClient},
-    Address, Env, Symbol, TryFromVal, TryIntoVal,
+    symbol_short, Address, Env, Symbol, TryFromVal, TryIntoVal,
 };
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,20 @@ fn make_accounts(env: &Env) -> AccountGroup {
         bills: Address::generate(env),
         insurance: Address::generate(env),
     }
+}
+
+/// Ledger deadline and request hash for [`RemittanceSplit::distribute_usdc`] in tests.
+fn distribute_auth_bundle(env: &Env, from: &Address, nonce: u64, total_amount: i128) -> (u64, u64) {
+    let now = env.ledger().timestamp();
+    let deadline = now.saturating_add(300);
+    let request_hash = RemittanceSplit::compute_request_hash(
+        symbol_short!("distrib"),
+        from.clone(),
+        nonce,
+        total_amount,
+        deadline,
+    );
+    (deadline, request_hash)
 }
 
 /// Set a deterministic ledger timestamp for schedule-related tests.
@@ -86,7 +100,7 @@ fn test_initialize_split_domain_separated_auth() {
     // The auths captured by mock_all_auths record what was authorized.
     // In our case, the contract calls owner.require_auth_for_args(payload).
     let (address, auth_invocation) = auths.get(0).unwrap();
-    assert_eq!(address, owner);
+    assert_eq!(*address, owner);
     
     // The top-level invocation from mock_all_auths for require_auth_for_args
     // will have the authorized arguments.
@@ -116,7 +130,7 @@ fn test_initialize_split_succeeds() {
     let token_id = setup_token(&env, &token_admin, &owner, 0);
 
     let success = client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
-    assert_eq!(success, true);
+    assert!(success);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.owner, owner);
@@ -140,7 +154,7 @@ fn test_initialize_split_invalid_sum() {
     let result = client.try_initialize_split(&owner, &0, &token_id, &50, &50, &10, &0);
     assert_eq!(
         result,
-        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+        Err(Ok(RemittanceSplitError::InvalidPercentages))
     );
 }
 
@@ -187,7 +201,7 @@ fn test_update_split() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let success = client.update_split(&owner, &1, &40, &40, &10, &10);
-    assert_eq!(success, true);
+    assert!(success);
 
     let config = client.get_config().unwrap();
     assert_eq!(config.spending_percent, 40);
@@ -250,7 +264,7 @@ fn test_update_split_percentages_must_sum_to_100() {
     let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
     assert_eq!(
         result,
-        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+        Err(Ok(RemittanceSplitError::InvalidPercentages))
     );
 }
 
@@ -420,8 +434,9 @@ fn test_distribute_usdc_success() {
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let accounts = make_accounts(&env);
-    let result = client.distribute_usdc(&token_id, &owner, &1, &accounts, &total);
-    assert_eq!(result, true);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, total);
+    let result = client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &total);
+    assert!(result);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 500);
@@ -443,14 +458,27 @@ fn test_distribute_usdc_emits_event() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let accounts = make_accounts(&env);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
 
     let events = env.events().all();
-    let last = events.last().unwrap();
-    let topic0: Symbol = Symbol::try_from_val(&env, &last.1.get(0).unwrap()).unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic0, symbol_short!("split"));
-    assert_eq!(topic1, SplitEvent::DistributionCompleted);
+    let mut saw_dist = false;
+    for ev in events.iter() {
+        let topics = ev.1;
+        if topics.len() < 4 {
+            continue;
+        }
+        let t0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if t0 != symbol_short!("Remitwise") {
+            continue;
+        }
+        let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+        if action == symbol_short!("dist_ok") {
+            saw_dist = true;
+            break;
+        }
+    }
+    assert!(saw_dist, "expected Remitwise dist_ok event after distribute_usdc");
 }
 
 #[test]
@@ -466,7 +494,8 @@ fn test_distribute_usdc_nonce_increments() {
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     // nonce after init = 1
     let accounts = make_accounts(&env);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     // nonce after first distribute = 2
     assert_eq!(client.get_nonce(&owner), 2);
 }
@@ -496,7 +525,8 @@ fn test_distribute_usdc_requires_auth() {
     let client2 = RemittanceSplitClient::new(&env2, &contract_id2);
     let accounts = make_accounts(&env2);
     // This should panic because owner has not authorized in env2
-    client2.distribute_usdc(&token_id, &owner, &0, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env2, &owner, 0, 1_000);
+    client2.distribute_usdc(&token_id, &owner, &0, &deadline, &req_hash, &accounts, &1_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +548,8 @@ fn test_distribute_usdc_non_owner_rejected() {
 
     // Attacker self-authorizes but is not the config owner
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&token_id, &attacker, &0, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &attacker, 0, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &attacker, &0, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
 }
 
@@ -541,7 +572,8 @@ fn test_distribute_usdc_untrusted_token_rejected() {
     // Supply a different (malicious) token contract address
     let evil_token = Address::generate(&env);
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&evil_token, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let result = client.try_distribute_usdc(&evil_token, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::UntrustedTokenContract))
@@ -571,7 +603,8 @@ fn test_distribute_usdc_self_transfer_spending_rejected() {
         bills: Address::generate(&env),
         insurance: Address::generate(&env),
     };
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
@@ -596,7 +629,8 @@ fn test_distribute_usdc_self_transfer_savings_rejected() {
         bills: Address::generate(&env),
         insurance: Address::generate(&env),
     };
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
@@ -621,7 +655,8 @@ fn test_distribute_usdc_self_transfer_bills_rejected() {
         bills: owner.clone(),
         insurance: Address::generate(&env),
     };
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
@@ -646,7 +681,8 @@ fn test_distribute_usdc_self_transfer_insurance_rejected() {
         bills: Address::generate(&env),
         insurance: owner.clone(),
     };
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
@@ -669,7 +705,8 @@ fn test_distribute_usdc_zero_amount_rejected() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &0);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 0);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &0);
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)));
 }
 
@@ -685,7 +722,8 @@ fn test_distribute_usdc_negative_amount_rejected() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &-1);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, -1);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &-1i128);
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)));
 }
 
@@ -703,7 +741,8 @@ fn test_distribute_usdc_not_initialized_rejected() {
     let token_id = Address::generate(&env);
 
     let accounts = make_accounts(&env);
-    let result = client.try_distribute_usdc(&token_id, &owner, &0, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 0, 1_000);
+    let result = client.try_distribute_usdc(&token_id, &owner, &0, &deadline, &req_hash, &accounts, &1_000);
     assert_eq!(result, Err(Ok(RemittanceSplitError::NotInitialized)));
 }
 
@@ -724,9 +763,11 @@ fn test_distribute_usdc_replay_rejected() {
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let accounts = make_accounts(&env);
     // First call with nonce=1 succeeds
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (d1, r1) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &d1, &r1, &accounts, &1_000);
     // Replaying nonce=1 must fail
-    let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &500);
+    let (d2, r2) = distribute_auth_bundle(&env, &owner, 1, 500);
+    let result = client.try_distribute_usdc(&token_id, &owner, &1, &d2, &r2, &accounts, &500);
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidNonce)));
 }
 
@@ -748,11 +789,13 @@ fn test_distribute_usdc_paused_rejected_and_unpause_restores_access() {
     client.pause(&owner);
 
     let accounts = make_accounts(&env);
-    let paused = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (dl, rh) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    let paused = client.try_distribute_usdc(&token_id, &owner, &1, &dl, &rh, &accounts, &1_000);
     assert_eq!(paused, Err(Ok(RemittanceSplitError::Unauthorized)));
 
     client.unpause(&owner);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (dl2, rh2) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &dl2, &rh2, &accounts, &1_000);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 500);
@@ -777,7 +820,8 @@ fn test_distribute_usdc_split_math_25_25_25_25() {
 
     client.initialize_split(&owner, &0, &token_id, &25, &25, &25, &25);
     let accounts = make_accounts(&env);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 250);
@@ -798,7 +842,8 @@ fn test_distribute_usdc_split_math_100_0_0_0() {
 
     client.initialize_split(&owner, &0, &token_id, &100, &0, &0, &0);
     let accounts = make_accounts(&env);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &1_000);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 1_000);
@@ -820,7 +865,8 @@ fn test_distribute_usdc_rounding_remainder_goes_to_insurance() {
 
     client.initialize_split(&owner, &0, &token_id, &33, &33, &33, &1);
     let accounts = make_accounts(&env);
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &100);
+    let (deadline, req_hash) = distribute_auth_bundle(&env, &owner, 1, 100);
+    client.distribute_usdc(&token_id, &owner, &1, &deadline, &req_hash, &accounts, &100);
 
     let token = TokenClient::new(&env, &token_id);
     let total = token.balance(&accounts.spending)
@@ -848,9 +894,12 @@ fn test_distribute_usdc_multiple_rounds() {
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let accounts = make_accounts(&env);
 
-    client.distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    client.distribute_usdc(&token_id, &owner, &2, &accounts, &1_000);
-    client.distribute_usdc(&token_id, &owner, &3, &accounts, &1_000);
+    let (d1, r1) = distribute_auth_bundle(&env, &owner, 1, 1_000);
+    client.distribute_usdc(&token_id, &owner, &1, &d1, &r1, &accounts, &1_000);
+    let (d2, r2) = distribute_auth_bundle(&env, &owner, 2, 1_000);
+    client.distribute_usdc(&token_id, &owner, &2, &d2, &r2, &accounts, &1_000);
+    let (d3, r3) = distribute_auth_bundle(&env, &owner, 3, 1_000);
+    client.distribute_usdc(&token_id, &owner, &3, &d3, &r3, &accounts, &1_000);
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 1_500); // 3 * 500
@@ -933,11 +982,25 @@ fn test_initialize_split_events() {
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let events = env.events().all();
-    let last_event = events.last().unwrap();
-    let topic0: Symbol = Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap();
-    let topic1: SplitEvent = SplitEvent::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap();
-    assert_eq!(topic0, symbol_short!("split"));
-    assert_eq!(topic1, SplitEvent::Initialized);
+    let mut saw_init = false;
+    for ev in events.iter() {
+        let topics = ev.1;
+        if topics.len() < 4 {
+            continue;
+        }
+        let t0: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if t0 != symbol_short!("Remitwise") {
+            continue;
+        }
+        let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+        if action == symbol_short!("init") {
+            let addr = Address::try_from_val(&env, &ev.2).unwrap();
+            assert_eq!(addr, owner);
+            saw_init = true;
+            break;
+        }
+    }
+    assert!(saw_init, "expected Remitwise init event after initialize_split");
 }
 
 #[test]
@@ -1281,8 +1344,6 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
     let env = Env::default();
     let (client, owner, _token_id) = setup_initialized_split(&env, 0);
     let other = Address::generate(&env);
-    let token_id = Address::generate(&env);
-    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
 
