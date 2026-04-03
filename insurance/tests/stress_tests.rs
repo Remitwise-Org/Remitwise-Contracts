@@ -1,31 +1,10 @@
 //! Stress tests for insurance storage limits and TTL behavior.
-//!
-//! Issue #178: Stress Test Storage Limits and TTL
-//!
-//! Coverage:
-//!   - Many policies per user (200+) exercising the instance-storage Map
-//!   - Many policies across multiple users, verifying per-owner isolation
-//!   - Instance TTL re-bump after a ledger advancement that crosses the threshold
-//!   - Batch premium payment at MAX_BATCH_SIZE (50)
-//!   - Performance benchmarks (CPU instructions + memory bytes) for key reads
-//!
-//! Storage layout (insurance):
-//!   All policies live in one Map<u32, InsurancePolicy> inside instance() storage.
-//!   INSTANCE_BUMP_AMOUNT        = 518,400 ledgers (~30 days)
-//!   INSTANCE_LIFETIME_THRESHOLD = 17,280 ledgers (~1 day)
-//!   MAX_PAGE_LIMIT              = 50
-//!   DEFAULT_PAGE_LIMIT          = 20
-//!   MAX_BATCH_SIZE              = 50
 
 use insurance::{Insurance, InsuranceClient};
 use remitwise_common::CoverageType;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn stress_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {
@@ -60,12 +39,8 @@ where
     (cpu, mem, result)
 }
 
-// ---------------------------------------------------------------------------
-// Stress: many entities per user
-// ---------------------------------------------------------------------------
-
-/// Create 200 policies for a single user and verify full dataset is accessible
-/// via cursor-based get_active_policies pagination (MAX_PAGE_LIMIT = 50).
+/// Create 200 policies for a single user and verify full dataset is returned
+/// by get_active_policies (returns all active policies).
 #[test]
 fn stress_200_policies_single_user() {
     let env = stress_env();
@@ -115,14 +90,13 @@ fn stress_200_policies_single_user() {
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
     assert!(
-        pages >= 4 && pages <= 5,
+        (4..=5).contains(&pages),
         "Expected 4-5 pages for 200 policies at limit 50, got {}",
         pages
     );
 }
 
-/// Create 200 policies and verify instance TTL remains valid after the instance
-/// Map grows to 200 entries.
+/// Create 200 policies and verify instance TTL remains valid.
 #[test]
 fn stress_instance_ttl_valid_after_200_policies() {
     let env = stress_env();
@@ -145,12 +119,8 @@ fn stress_instance_ttl_valid_after_200_policies() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Stress: many users
-// ---------------------------------------------------------------------------
-
 /// Create 20 policies each for 10 different users (200 total) and verify
-/// per-owner isolation — each user sees only their own policies and premiums.
+/// per-owner isolation.
 #[test]
 fn stress_policies_across_10_users() {
     let env = stress_env();
@@ -170,7 +140,7 @@ fn stress_policies_across_10_users() {
             client.create_policy(
                 user,
                 &name,
-                &coverage_type,
+                &CoverageType::Health,
                 &PREMIUM_PER_POLICY,
                 &50_000i128, &None);
         }
@@ -184,35 +154,17 @@ fn stress_policies_across_10_users() {
             "Each user's total premium must reflect only their own policies"
         );
 
-        // Verify paginated count
-        let mut seen = 0u32;
-        let mut cursor = 0u32;
-        loop {
-            let page = client.get_active_policies(user, &cursor, &50u32);
-            seen += page.count;
-            if page.next_cursor == 0 {
-                break;
-            }
-            cursor = page.next_cursor;
-        }
+        let active = client.get_active_policies(user);
         assert_eq!(
-            seen, POLICIES_PER_USER,
+            active.len(),
+            POLICIES_PER_USER,
             "Each user must see exactly their own {} policies",
             POLICIES_PER_USER
         );
     }
 }
 
-// ---------------------------------------------------------------------------
-// Stress: TTL re-bump after ledger advancement
-// ---------------------------------------------------------------------------
-
-/// Verify the instance TTL is re-bumped to >= INSTANCE_BUMP_AMOUNT (518,400)
-/// after the ledger advances far enough to drop TTL below the threshold (17,280).
-///
-/// Phase 1: create 50 policies at sequence 100 → live_until ≈ 518,500
-/// Phase 2: advance to sequence 510,000 → TTL ≈ 8,500 (below 17,280 threshold)
-/// Phase 3: create 1 more policy → extend_ttl fires → TTL re-bumped
+/// Verify the instance TTL is re-bumped after ledger advancement.
 #[test]
 fn stress_ttl_re_bumped_after_ledger_advancement() {
     let env = stress_env();
@@ -236,7 +188,6 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     );
 
     // Phase 2: advance ledger so TTL drops below threshold
-    // live_until ≈ 518,500; at seq 510,000 → TTL ≈ 8,500 < 17,280
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
         sequence_number: 510_000,
@@ -304,12 +255,7 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Stress: batch operations at limit
-// ---------------------------------------------------------------------------
-
-/// Create 50 policies and pay all premiums in a single batch_pay_premiums call
-/// (MAX_BATCH_SIZE = 50). Verify count returned and each policy has been updated.
+/// Create 50 policies and pay all premiums in a single batch.
 #[test]
 fn stress_batch_pay_premiums_at_max_batch_size() {
     let env = stress_env();
@@ -317,7 +263,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    const BATCH_SIZE: u32 = 50; // MAX_BATCH_SIZE
+    const BATCH_SIZE: u32 = 50;
     let name = String::from_str(&env, "BatchPolicy");
     let coverage_type = CoverageType::Health;
 
@@ -339,19 +285,10 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
         BATCH_SIZE
     );
 
-    // Verify each policy still has an active status and its next_payment_date is
-    // set to current_time + 30 days. Both create_policy and batch_pay_premiums run
-    // at the same ledger timestamp (1_700_000_000), so next_payment_date equals
-    // 1_700_000_000 + 30 * 86400 in both cases — no net change, but we confirm
-    // the value is a valid future date.
     let expected_next = 1_700_000_000u64 + (30 * 86400);
     for &id in &policy_ids {
         let policy = client.get_policy(&id).unwrap();
-        assert!(
-            policy.active,
-            "Policy {} must still be active after batch premium payment",
-            id
-        );
+        assert!(policy.active, "Policy {} must still be active after batch premium payment", id);
         assert_eq!(
             policy.next_payment_date, expected_next,
             "Policy {} next_payment_date must equal current_time + 30 days after batch pay",
@@ -360,8 +297,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     }
 }
 
-/// Create 200 policies and deactivate 100 of them, then verify that
-/// get_active_policies only returns the remaining 100 active ones.
+/// Create 200 policies and deactivate 100, verify only 100 remain active.
 #[test]
 fn stress_deactivate_half_of_200_policies() {
     let env = stress_env();
@@ -372,33 +308,25 @@ fn stress_deactivate_half_of_200_policies() {
     let name = String::from_str(&env, "DeactPolicy");
     let coverage_type = CoverageType::Life;
 
+    let mut all_ids = std::vec![];
     for _ in 0..200 {
         client.create_policy(&owner, &name, &coverage_type, &80i128, &8_000i128, &None);
     }
 
-    // Deactivate even-numbered policies (IDs 2, 4, 6, …, 200)
-    for id in (2u32..=200).step_by(2) {
-        client.deactivate_policy(&owner, &id);
-    }
-
-    // get_active_policies must return only the 100 remaining active ones
-    let mut active_count = 0u32;
-    let mut cursor = 0u32;
-    loop {
-        let page = client.get_active_policies(&owner, &cursor, &50u32);
-        active_count += page.count;
-        if page.next_cursor == 0 {
-            break;
+    // Deactivate even-indexed policies
+    for (i, &id) in all_ids.iter().enumerate() {
+        if i % 2 == 1 {
+            client.deactivate_policy(&owner, &id);
         }
-        cursor = page.next_cursor;
     }
 
+    let active = client.get_active_policies(&owner);
     assert_eq!(
-        active_count, 100,
-        "After deactivating 100 of 200 policies, only 100 must be returned by get_active_policies"
+        active.len(),
+        100,
+        "After deactivating 100 of 200 policies, only 100 must be returned"
     );
 
-    // Verify monthly premium dropped by exactly half: 100 deactivated × 80 = 8000 less
     let remaining_premium = client.get_total_monthly_premium(&owner);
     assert_eq!(
         remaining_premium,
@@ -407,13 +335,9 @@ fn stress_deactivate_half_of_200_policies() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Benchmarks
-// ---------------------------------------------------------------------------
-
-/// Measure CPU and memory cost for get_active_policies — first page of 200.
+/// Measure CPU and memory cost for get_active_policies with 200 policies.
 #[test]
-fn bench_get_active_policies_first_page_of_200() {
+fn bench_get_active_policies_200_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -426,11 +350,11 @@ fn bench_get_active_policies_first_page_of_200() {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
-    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
-    assert_eq!(page.count, 50, "First page must return 50 policies");
+    let (cpu, mem, active) = measure(&env, || client.get_active_policies(&owner));
+    assert_eq!(active.len(), 200, "Must return all 200 policies");
 
     println!(
-        r#"{{"contract":"insurance","method":"get_active_policies","scenario":"200_policies_page1_50","cpu":{},"mem":{}}}"#,
+        r#"{{"contract":"insurance","method":"get_active_policies","scenario":"200_policies","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }

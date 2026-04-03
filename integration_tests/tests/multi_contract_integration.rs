@@ -1,4 +1,10 @@
-#![cfg(test)]
+//! Multi-contract integration tests — issue #336
+//!
+//! Validates standardized error codes and cross-contract behaviour across:
+//!   - insurance    (InsuranceError codes 1-8)
+//!   - bill_payments (BillPaymentsError codes 1-14)
+//!   - savings_goals (SavingsGoalsError codes 1-6)
+//!   - remittance_split (RemittanceSplitError codes 1-11)
 
 use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, IntoVal, Symbol, Val};
 use soroban_sdk::testutils::Events;
@@ -107,6 +113,16 @@ fn setup_full_env() -> (
     Address, // user
 ) {
     let env = Env::default();
+    env.ledger().set(LedgerInfo {
+        protocol_version: 20,
+        sequence_number: 100,
+        timestamp: 1_700_000_000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
     env.mock_all_auths();
 
     let remittance_id = env.register_contract(None, RemittanceSplit);
@@ -133,19 +149,12 @@ fn setup_full_env() -> (
 }
 
 // ============================================================================
-// Existing Integration Tests (preserved)
+// PART 1: Full multi-contract user flow
 // ============================================================================
 
-/// Integration test that simulates a complete user flow:
-/// 1. Deploy all contracts (remittance_split, savings_goals, bill_payments, insurance)
-/// 2. Initialize split configuration
-/// 3. Create goals, bills, and policies
-/// 4. Calculate split and verify amounts align with expectations
 #[test]
 fn test_multi_contract_user_flow() {
-    let env = Env::default();
-    env.mock_all_auths();
-
+    let env = make_env();
     let user = Address::generate(&env);
 
     let remittance_contract_id = env.register_contract(None, RemittanceSplit);
@@ -936,13 +945,13 @@ fn test_event_topic_compliance_across_contracts() {
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_id);
 
     let savings_id = env.register_contract(None, SavingsGoalContract);
-    let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
+    let savings = SavingsGoalContractClient::new(&env, &savings_id);
 
     let bills_id = env.register_contract(None, BillPayments);
-    let bills_client = BillPaymentsClient::new(&env, &bills_id);
+    let bills = BillPaymentsClient::new(&env, &bills_id);
 
-    let insurance_id = env.register_contract(None, Insurance);
-    let insurance_client = InsuranceClient::new(&env, &insurance_id);
+    let insure_id = env.register_contract(None, Insurance);
+    let insure = InsuranceClient::new(&env, &insure_id);
 
     // Trigger events in each contract
     let mock_usdc = Address::generate(&env);
@@ -959,14 +968,23 @@ fn test_event_topic_compliance_across_contracts() {
     let bill_name = SorobanString::from_str(&env, "Compliance Bill");
     let _ = bills_client.create_bill(
         &user,
-        &bill_name,
-        &100i128,
-        &(env.ledger().timestamp() + 86400),
+        &SStr::from_str(&env, "Education Fund"),
+        &10_000i128,
+        &(1_700_000_000 + 365 * 86400),
+    );
+    assert_eq!(goal_id, 1u32);
+
+    let bill_id = bills.create_bill(
+        &user,
+        &SStr::from_str(&env, "Electricity"),
+        &500i128,
+        &(1_700_000_000 + 30 * 86400),
         &true,
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
     );
+    assert_eq!(bill_id, 1u32);
 
     let policy_name = SorobanString::from_str(&env, "Compliance Policy");
     let _ = insurance_client.create_policy(&user, &policy_name, &CoverageType::Health, &50i128, &1000i128);

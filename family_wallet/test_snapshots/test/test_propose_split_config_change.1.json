@@ -243,7 +243,40 @@
                                 "u64": 1
                               },
                               "val": {
-                                "bool": true
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "executed_at"
+                                    },
+                                    "val": {
+                                      "u64": 0
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "proposer"
+                                    },
+                                    "val": {
+                                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tx_id"
+                                    },
+                                    "val": {
+                                      "u64": 1
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "tx_type"
+                                    },
+                                    "val": {
+                                      "u32": 2
+                                    }
+                                  }
+                                ]
                               }
                             }
                           ]
@@ -275,6 +308,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -323,6 +368,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -363,6 +420,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {

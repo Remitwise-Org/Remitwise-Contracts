@@ -216,7 +216,10 @@ Owner-only. Updates or clears the `external_ref` field of a policy.
 
 Owner-only. Marks a policy as inactive and removes it from the active-policy list.
 
-**Emits**: `PolicyDeactivatedEvent`
+**Hardening Features**:
+- **Idempotent**: If the policy is already inactive, returns `false` without duplicate events.
+- **Schedule Cleanup**: Automatically deactivates any associated `PremiumSchedule` if present.
+- **Standardized Events**: Emits `InsuranceEvent::PolicyDeactivated` and (if applicable) `InsuranceEvent::ScheduleCancelled`.
 
 ---
 

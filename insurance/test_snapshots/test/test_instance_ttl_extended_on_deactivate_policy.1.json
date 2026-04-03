@@ -20,7 +20,7 @@
                   "string": "Dental"
                 },
                 {
-                  "string": "dental"
+                  "u32": 8
                 },
                 {
                   "i128": {
@@ -142,7 +142,7 @@
                                       "symbol": "coverage_type"
                                     },
                                     "val": {
-                                      "string": "dental"
+                                      "u32": 8
                                     }
                                   },
                                   {
@@ -195,26 +195,6 @@
                                     "val": "void"
                                   }
                                 ]
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "PRM_TOT"
-                        },
-                        "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                              },
-                              "val": {
-                                "i128": {
-                                  "hi": 0,
-                                  "lo": 0
-                                }
                               }
                             }
                           ]
@@ -347,7 +327,7 @@
                   "string": "Dental"
                 },
                 {
-                  "string": "dental"
+                  "u32": 8
                 },
                 {
                   "i128": {
@@ -398,7 +378,7 @@
                     "symbol": "coverage_type"
                   },
                   "val": {
-                    "string": "dental"
+                    "u32": 8
                   }
                 },
                 {
@@ -587,7 +567,7 @@
           "v0": {
             "topics": [
               {
-                "symbol": "insure"
+                "symbol": "insuranc"
               },
               {
                 "vec": [

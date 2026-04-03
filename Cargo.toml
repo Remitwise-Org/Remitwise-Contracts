@@ -30,12 +30,12 @@ default-members = [
     "data_migration",
     "reporting",
     "orchestrator",
-
 ]
 resolver = "2"
 
 [dependencies]
 soroban-sdk = "=21.7.7"
+ed25519-dalek = "2.1.1"
 remittance_split = { path = "./remittance_split" }
 savings_goals = { path = "./savings_goals" }
 bill_payments = { path = "./bill_payments" }

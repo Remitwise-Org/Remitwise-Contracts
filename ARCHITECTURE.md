@@ -294,16 +294,40 @@ fn generate_financial_health_report(env: Env, user: Address) -> FinancialHealthR
 - **Event Logging:** Complete audit trail
 - **Panic Handling:** Fail-fast on invalid operations
 
+### Migration Payload Guardrails
+
+The `data_migration` crate applies bounded import/export rules so migration endpoints fail fast on oversized requests instead of spending unbounded CPU or memory on serialization work.
+
+- `MAX_MIGRATION_PAYLOAD_BYTES = 65,536` bytes for canonical payload JSON, CSV exports, and decrypted payload bodies
+- `MAX_MIGRATION_RECORDS = 1,024` logical records per migration payload
+- `MAX_MIGRATION_SNAPSHOT_BYTES = 98,304` bytes for serialized JSON and binary snapshot envelopes before deserialization
+- `MAX_ENCRYPTED_PAYLOAD_BYTES = 87,384` bytes for base64-encoded encrypted payload imports
+
+Record counting is payload-specific:
+
+- `RemittanceSplit` snapshots count as `1` record
+- `SavingsGoals` snapshots count `goals.len()`
+- `Generic` snapshots count top-level map entries
+
+Security assumptions:
+
+1. Import handlers reject oversized JSON and binary envelopes before `serde_json` or `bincode` deserialization, reducing denial-of-service exposure from large request bodies.
+2. CSV imports are bounded by both total byte size and row count, so large tabular migrations must be chunked across multiple requests.
+3. Checksum validation uses canonical JSON bytes, with generic map keys sorted before hashing, so checksum verification stays deterministic across export/import cycles.
+4. Operators needing larger migrations should split them off-chain into multiple bounded snapshots rather than increasing on-chain limits.
+
 ## Event Architecture
 
 ### Event Naming Conventions
 
 All event topics and storage keys follow standardized naming conventions documented in:
+
 - **Full Conventions**: [`docs/naming-conventions.md`](docs/naming-conventions.md)
 - **Quick Reference**: [`docs/naming-quick-reference.md`](docs/naming-quick-reference.md)
 - **Audit & Action Plan**: [`docs/naming-audit-action-plan.md`](docs/naming-audit-action-plan.md)
 
 **Key Principles**:
+
 - Event topics: lowercase, max 8 characters, past tense for actions
 - Storage keys: UPPERCASE, underscores for multi-word, max 8 characters
 - Event enums: PascalCase, descriptive names
@@ -395,6 +419,7 @@ Active Storage                    Archive Storage
 ```
 
 **Archival Flow:**
+
 1. Archive functions move completed/inactive records to archive storage
 2. Archived records use compressed structs with essential fields only
 3. Archive storage uses longer TTL (6 months) for cost efficiency
@@ -402,6 +427,7 @@ Active Storage                    Archive Storage
 5. Restore functions can move archived records back to active storage
 
 **Archived Data Compression:**
+
 - `ArchivedGoal`: Removes `locked`, `target_date` (no longer relevant)
 - `ArchivedBill`: Removes `due_date`, `recurring`, `frequency_days`, `created_at`
 - `ArchivedPolicy`: Removes `monthly_premium`, `coverage_amount`, `next_payment_date`
@@ -443,12 +469,12 @@ Although `u32` allows billions of IDs, practical limits are much lower because s
 
 Recommended operational caps:
 
-| Contract | Per-user recommended max | Per-contract recommended max (`NEXT_ID`) | Rationale |
-|---|---:|---:|---|
-| `bill_payments` | 2,000 bills/owner | 20,000 | Multiple scan-heavy reads; canceled bills leave ID gaps so scan cost still tracks `NEXT_ID`. |
-| `insurance` | 500 policies/owner | 15,000 | Active-policy queries scan full ID range; deactivated policies still consume IDs. |
-| `savings_goals` | 1,000 goals/owner | 20,000 | Owner list path scans full ID range. |
-| `family_wallet`* | 50 members, 500 pending tx | N/A (`u64` tx IDs) | Numeric overflow is not a practical concern; cap to control operational complexity. |
+| Contract          |   Per-user recommended max | Per-contract recommended max (`NEXT_ID`) | Rationale                                                                                    |
+| ----------------- | -------------------------: | ---------------------------------------: | -------------------------------------------------------------------------------------------- |
+| `bill_payments`   |          2,000 bills/owner |                                   20,000 | Multiple scan-heavy reads; canceled bills leave ID gaps so scan cost still tracks `NEXT_ID`. |
+| `insurance`       |         500 policies/owner |                                   15,000 | Active-policy queries scan full ID range; deactivated policies still consume IDs.            |
+| `savings_goals`   |          1,000 goals/owner |                                   20,000 | Owner list path scans full ID range.                                                         |
+| `family_wallet`\* | 50 members, 500 pending tx |                       N/A (`u64` tx IDs) | Numeric overflow is not a practical concern; cap to control operational complexity.          |
 
 \* `family_wallet` transaction IDs are `u64` (`NEXT_TX`), not `u32`.
 
@@ -487,12 +513,69 @@ Contract Function
     └── Storage Error → Panic with message
 ```
 
-### Error Codes
+### Standardized Error Codes (issue #336)
 
-- **Bill Payments:** BillNotFound, BillAlreadyPaid, InvalidAmount, etc.
-- **Insurance:** Policy not found, unauthorized, inactive policy
-- **Remittance Split:** Invalid percentages, not initialized
-- **Savings Goals:** Goal not found, insufficient balance, locked goal
+All contracts use `#[contracterror]` enums with sequential integer codes starting at 1. This enables
+consistent error handling for indexers, frontends, and cross-contract calls.
+
+#### InsuranceError
+
+| Code | Variant            | Description                       |
+| ---- | ------------------ | --------------------------------- |
+| 1    | `PolicyNotFound`   | Policy ID does not exist          |
+| 2    | `Unauthorized`     | Caller is not the policy owner    |
+| 3    | `InvalidAmount`    | Premium or coverage amount ≤ 0    |
+| 4    | `PolicyInactive`   | Policy has been deactivated       |
+| 5    | `ContractPaused`   | Contract-wide pause is active     |
+| 6    | `FunctionPaused`   | Specific function is paused       |
+| 7    | `InvalidTimestamp` | Provided timestamp is invalid     |
+| 8    | `BatchTooLarge`    | Batch exceeds MAX_BATCH_SIZE (50) |
+
+#### BillPaymentsError
+
+| Code | Variant                 | Description                                  |
+| ---- | ----------------------- | -------------------------------------------- |
+| 1    | `BillNotFound`          | Bill ID does not exist                       |
+| 2    | `BillAlreadyPaid`       | Bill has already been paid                   |
+| 3    | `InvalidAmount`         | Amount ≤ 0                                   |
+| 4    | `InvalidFrequency`      | Recurring frequency is invalid               |
+| 5    | `Unauthorized`          | Caller is not the bill owner                 |
+| 6    | `ContractPaused`        | Contract-wide pause is active                |
+| 7    | `UnauthorizedPause`     | Caller cannot pause contract                 |
+| 8    | `FunctionPaused`        | Specific function is paused                  |
+| 9    | `BatchTooLarge`         | Batch exceeds MAX_BATCH_SIZE (50)            |
+| 10   | `BatchValidationFailed` | One or more bills in batch failed validation |
+| 11   | `InvalidLimit`          | Page limit out of range                      |
+| 12   | `InvalidDueDate`        | Due date is 0 or in the past                 |
+| 13   | `InvalidTag`            | Tag string is empty or invalid               |
+| 14   | `EmptyTags`             | Tag filter list is empty                     |
+
+#### SavingsGoalsError
+
+| Code | Variant               | Description                        |
+| ---- | --------------------- | ---------------------------------- |
+| 1    | `InvalidAmount`       | Amount ≤ 0                         |
+| 2    | `GoalNotFound`        | Goal ID does not exist             |
+| 3    | `Unauthorized`        | Caller is not the goal owner       |
+| 4    | `GoalLocked`          | Goal is locked or time-locked      |
+| 5    | `InsufficientBalance` | Withdrawal exceeds current balance |
+| 6    | `Overflow`            | Arithmetic overflow detected       |
+
+#### RemittanceSplitError
+
+| Code | Variant                    | Description                           |
+| ---- | -------------------------- | ------------------------------------- |
+| 1    | `AlreadyInitialized`       | Contract has already been initialized |
+| 2    | `NotInitialized`           | Contract CONFIG has not been set      |
+| 3    | `PercentagesDoNotSumTo100` | Split percentages must sum to 100     |
+| 4    | `InvalidAmount`            | Amount ≤ 0                            |
+| 5    | `Overflow`                 | Arithmetic overflow detected          |
+| 6    | `Unauthorized`             | Caller is not the contract owner      |
+| 7    | `InvalidNonce`             | Nonce has already been used           |
+| 8    | `UnsupportedVersion`       | Contract version mismatch             |
+| 9    | `ChecksumMismatch`         | Snapshot checksum verification failed |
+| 10   | `InvalidDueDate`           | Schedule due date is 0 or invalid     |
+| 11   | `ScheduleNotFound`         | Schedule ID does not exist            |
 
 ## Testing Architecture
 

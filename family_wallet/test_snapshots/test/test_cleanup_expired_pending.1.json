@@ -372,6 +372,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -416,6 +428,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -456,6 +480,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -1698,14 +1734,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "wallet"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ExpiredCleaned"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "exp_cln"
               }
             ],
             "data": {

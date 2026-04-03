@@ -7,9 +7,8 @@ use soroban_sdk::{
 use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
-const GOAL_CREATED: Symbol = symbol_short!("created");
-const FUNDS_ADDED: Symbol = symbol_short!("added");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+const GOAL_CREATED: Symbol = symbol_short!("created");
 
 #[derive(Clone)]
 #[contracttype]
@@ -486,7 +485,7 @@ impl SavingsGoalContract {
             panic!("Tags cannot be empty");
         }
         for tag in tags.iter() {
-            if tag.len() == 0 || tag.len() > 32 {
+            if tag.is_empty() || tag.len() > 32 {
                 panic!("Tag must be between 1 and 32 characters");
             }
         }
@@ -517,7 +516,13 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = match goals.get(goal_id) {
+            Some(g) => g,
+            None => {
+                Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
+                panic!("Goal not found");
+            }
+        };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
@@ -569,7 +574,13 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = match goals.get(goal_id) {
+            Some(g) => g,
+            None => {
+                Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
+                panic!("Goal not found");
+            }
+        };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
@@ -621,7 +632,6 @@ impl SavingsGoalContract {
     ///   goals should validate this before invoking the contract.
     ///
     /// # Events
-    /// - Emits `GOAL_CREATED` with goal details.
     /// - Emits `SavingsEvent::GoalCreated`.
     pub fn create_goal(
         env: Env,
@@ -685,7 +695,7 @@ impl SavingsGoalContract {
             &env,
             EventCategory::State,
             EventPriority::Medium,
-            symbol_short!("created"),
+            GOAL_CREATED,
             event,
         );
         RemitwiseEvents::emit(
@@ -1614,7 +1624,10 @@ impl SavingsGoalContract {
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = match schedules.get(schedule_id) {
+            Some(s) => s,
+            None => panic!("Schedule not found"),
+        };
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can modify it");
@@ -1649,7 +1662,10 @@ impl SavingsGoalContract {
             .get(&symbol_short!("SAV_SCH"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut schedule = schedules.get(schedule_id).expect("Schedule not found");
+        let mut schedule = match schedules.get(schedule_id) {
+            Some(s) => s,
+            None => panic!("Schedule not found"),
+        };
 
         if schedule.owner != caller {
             panic!("Only the schedule owner can cancel it");

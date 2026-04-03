@@ -302,7 +302,7 @@ fn test_schedule_id_uniqueness_across_operations() {
     // 3. Cancel one
     client.cancel_remittance_schedule(&owner, &id2);
     let cancelled = client.get_remittance_schedule(&id2).unwrap();
-    assert_eq!(cancelled.active, false);
+    assert!(!cancelled.active);
 
     // 4. Create new one and verify it doesn't collide with ANY previous ID (including cancelled/modified)
     let id4 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);

@@ -332,6 +332,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -1291,18 +1303,24 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ModeOn"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_mode"
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              "vec": [
+                {
+                  "symbol": "ModeOn"
+                }
+              ]
             }
           }
         }
@@ -1389,7 +1407,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency amount exceeds maximum allowed' from contract function 'Symbol(obj#345)'"
+                  "string": "caught panic 'Emergency amount exceeds maximum allowed' from contract function 'Symbol(obj#357)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

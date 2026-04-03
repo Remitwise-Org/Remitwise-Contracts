@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 #[cfg(test)]
 mod test;
@@ -24,18 +25,44 @@ pub struct SplitInitializedEvent {
     pub timestamp: u64,
 }
 
+/// Domain-separated authorization payload for `initialize_split`.
+/// Passed to `require_auth_for_args` to bind the authorization to the
+/// specific operation parameters, preventing replay across different calls.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
+}
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum RemittanceSplitError {
     AlreadyInitialized = 1,
+    /// The contract has not been initialized yet; `initialize_split` must be called first.
     NotInitialized = 2,
+    /// One or more split percentages are invalid: either a field exceeds 100 or the four
+    /// fields do not sum to exactly 100.
     InvalidPercentages = 3,
     InvalidAmount = 4,
     Overflow = 5,
+    /// The caller is not authorized to perform this operation.
     Unauthorized = 6,
     InvalidNonce = 7,
+    /// The snapshot's `schema_version` is outside the supported range
+    /// `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]`.
     UnsupportedVersion = 8,
+    /// The snapshot's `checksum` field does not match the value computed from its contents;
+    /// the payload may have been tampered with or corrupted.
     ChecksumMismatch = 9,
     InvalidDueDate = 10,
     ScheduleNotFound = 11,
@@ -53,21 +80,12 @@ pub enum RemittanceSplitError {
     PercentageOutOfRange = 17,
     /// The four percentages do not sum to 100.
     PercentagesDoNotSumTo100 = 18,
-    /// Snapshot config has `initialized == false`.
-    SnapshotNotInitialized = 19,
-    /// A per-field percentage in the snapshot exceeds 100.
-    InvalidPercentageRange = 20,
     /// A timestamp in the snapshot is in the future.
-    FutureTimestamp = 21,
+    FutureTimestamp = 19,
     /// Snapshot owner does not match the caller.
-    OwnerMismatch = 22,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub struct Allocation {
-    pub category: Symbol,
-    pub amount: i128,
+    OwnerMismatch = 20,
+    /// The schedule is no longer active.
+    InactiveSchedule = 21,
 }
 
 #[derive(Clone)]
@@ -82,12 +100,14 @@ pub struct AccountGroup {
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
-/// Key for the per-address used-nonce bitmap (Map<Address, Vec<u64>>).
-const USED_NONCES_KEY: &str = "USED_N";
 /// Maximum number of used nonces tracked per address before the oldest are pruned.
 const MAX_USED_NONCES_PER_ADDR: u32 = 256;
 /// Maximum ledger seconds a signed request may remain valid after creation.
 const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour
+
+// Schedule guardrail constants
+const MIN_SCHEDULE_INTERVAL: u64 = 3600; // 1 hour
+const MAX_SCHEDULE_LEAD_TIME: u64 = 31536000; // 1 year (365 days)
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -103,22 +123,6 @@ pub struct SplitConfig {
     /// The only token contract address permitted for distribute_usdc calls.
     /// Stored at initialization time; prevents substitution attacks.
     pub usdc_contract: Address,
-}
-
-/// Auth payload for split initialization / update.
-#[contracttype]
-#[derive(Clone)]
-pub struct SplitAuthPayload {
-    pub domain_id: Symbol,
-    pub network_id: soroban_sdk::BytesN<32>,
-    pub contract_addr: Address,
-    pub owner_addr: Address,
-    pub nonce_val: u64,
-    pub usdc_contract: Address,
-    pub spending_percent: u32,
-    pub savings_percent: u32,
-    pub bills_percent: u32,
-    pub insurance_percent: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -222,11 +226,18 @@ pub enum ScheduleEvent {
 /// Current snapshot schema version. Bumped to 2 for FNV-1a checksum + exported_at field.
 const SCHEMA_VERSION: u32 = 2;
 /// Oldest snapshot schema version this contract can import. Enables backward compat.
-const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
+
 const MAX_AUDIT_ENTRIES: u32 = 100;
-const DEFAULT_PAGE_LIMIT: u32 = 20;
-const MAX_PAGE_LIMIT: u32 = 50;
 const CONTRACT_VERSION: u32 = 1;
+
+/// Individual allocation for a split category.
+#[contracttype]
+#[derive(Clone)]
+pub struct Allocation {
+    pub category: Symbol,
+    pub amount: i128,
+}
 
 #[contracttype]
 pub enum DataKey {
@@ -476,11 +487,11 @@ impl RemittanceSplit {
     /// their sum equals exactly 100.
     ///
     /// Enforced invariants (checked in order):
-    /// 1. Each bucket must be <= 100 (`PercentageOutOfRange`).
+    /// 1. Each bucket must be <= 100 (`InvalidPercentages`).
     /// 2. The four buckets must sum to exactly 100 (`PercentagesDoNotSumTo100`).
     ///
     /// Separating the two checks gives callers a precise error code:
-    /// a value like 110/0/0/0 produces `PercentageOutOfRange`, not a misleading
+    /// a value like 110/0/0/0 produces `InvalidPercentages`, not a misleading
     /// "doesn't sum to 100" message.
     fn validate_percentages(
         spending_percent: u32,
@@ -494,12 +505,12 @@ impl RemittanceSplit {
             || bills_percent > 100
             || insurance_percent > 100
         {
-            return Err(RemittanceSplitError::PercentageOutOfRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
         // Global sum invariant.
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
         if total != 100 {
-            return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
         Ok(())
     }
@@ -557,7 +568,12 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::AlreadyInitialized);
         }
 
-        if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
+        if let Err(_e) = Self::validate_percentages(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
             return Err(RemittanceSplitError::InvalidPercentages);
         }
@@ -626,7 +642,12 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
 
-        if let Err(e) = Self::validate_percentages(spending_percent, savings_percent, bills_percent, insurance_percent) {
+        if let Err(_e) = Self::validate_percentages(
+            spending_percent,
+            savings_percent,
+            bills_percent,
+            insurance_percent,
+        ) {
             Self::append_audit(&env, symbol_short!("update"), &caller, false);
             return Err(RemittanceSplitError::InvalidPercentages);
         }
@@ -689,9 +710,18 @@ impl RemittanceSplit {
         }
 
         let split = Self::get_split(&env);
-        let s0 = split.get(0).unwrap() as i128;
-        let s1 = split.get(1).unwrap() as i128;
-        let s2 = split.get(2).unwrap() as i128;
+        let s0 = match split.get(0) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
+        let s1 = match split.get(1) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
+        let s2 = match split.get(2) {
+            Some(v) => v as i128,
+            None => return Err(RemittanceSplitError::Overflow),
+        };
 
         let spending = total_amount
             .checked_mul(s0)
@@ -726,7 +756,7 @@ impl RemittanceSplit {
             &env,
             EventCategory::Transaction,
             EventPriority::Low,
-            symbol_short!("calc"),
+            SPLIT_CALCULATED,
             event,
         );
         RemitwiseEvents::emit(
@@ -936,7 +966,9 @@ impl RemittanceSplit {
         }))
     }
 
-    /// Import a previously exported snapshot after validating version and checksum.
+    /// Import a previously exported snapshot, restoring the full `SplitConfig` and
+    /// associated `RemittanceSchedule` list to on-chain storage after running the
+    /// complete validation pipeline.
     ///
     /// # Arguments
     /// * `caller` - Split owner address (must authorize)
@@ -944,12 +976,26 @@ impl RemittanceSplit {
     /// * `snapshot` - Serialized configuration snapshot to restore
     ///
     /// # Errors
-    /// - `Unauthorized` if `caller` is not the split owner or the contract is paused
-    /// - `InvalidNonce` if the replay-protection nonce does not match
-    /// - `UnsupportedVersion` if the snapshot schema version is not supported
-    /// - `ChecksumMismatch` if the snapshot checksum is invalid
-    /// - `PercentagesDoNotSumTo100` if the imported configuration is malformed
-    /// - `NotInitialized` if no existing configuration is present to authorize the caller
+    /// * `UnsupportedVersion` — `snapshot.schema_version` is outside
+    ///   `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]`.
+    /// * `ChecksumMismatch` — `snapshot.checksum` does not match the value computed
+    ///   by `compute_checksum` over the snapshot fields.
+    /// * `SnapshotNotInitialized` — `snapshot.config.initialized` is `false`; the
+    ///   snapshot represents an incomplete or factory-default configuration.
+    /// * `InvalidPercentageRange` — at least one of `spending_percent`,
+    ///   `savings_percent`, `bills_percent`, or `insurance_percent` exceeds `100`.
+    /// * `InvalidPercentages` — all four percentage fields are within `[0, 100]` but
+    ///   their sum is not equal to `100`.
+    /// * `InvalidAmount` — `snapshot.config.timestamp` is greater than the current
+    ///   ledger timestamp, indicating a future-dated or replayed payload.
+    /// * `Unauthorized` — `caller` is not the current on-chain owner stored in
+    ///   instance storage, or the contract is paused.
+    /// * `OwnerMismatch` — `snapshot.config.owner` does not equal `caller`, which
+    ///   would silently transfer ownership if allowed.
+    /// * `NotInitialized` — no existing `SplitConfig` is present in instance storage
+    ///   (the contract has not been initialized).
+    /// * `InvalidNonce` — the provided `nonce` has already been used or does not
+    ///   match the expected replay-protection value for `caller`.
     pub fn import_snapshot(
         env: Env,
         caller: Address,
@@ -977,7 +1023,7 @@ impl RemittanceSplit {
         //    incomplete and must not be restored.
         if !snapshot.config.initialized {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::SnapshotNotInitialized);
+            return Err(RemittanceSplitError::NotInitialized);
         }
 
         // 4. Per-field percentage range — reject values that could not have
@@ -988,7 +1034,7 @@ impl RemittanceSplit {
             || snapshot.config.insurance_percent > 100
         {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentageRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         // 5. Sum constraint
@@ -998,14 +1044,14 @@ impl RemittanceSplit {
             + snapshot.config.insurance_percent;
         if total != 100 {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
 
         // 6. Timestamp sanity — reject payloads whose timestamps are in the future.
         let current_time = env.ledger().timestamp();
-        if snapshot.config.timestamp > current_time || snapshot.exported_at > current_time {
+        if snapshot.config.timestamp > current_time {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::FutureTimestamp);
+            return Err(RemittanceSplitError::InvalidDueDate);
         }
 
         // 7. Caller must be the current contract owner.
@@ -1022,7 +1068,7 @@ impl RemittanceSplit {
         // 8. Ownership mapping — prevent silent ownership transfer via snapshot.
         if snapshot.config.owner != caller {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::OwnerMismatch);
+            return Err(RemittanceSplitError::Unauthorized);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1071,29 +1117,41 @@ impl RemittanceSplit {
 
     /// Verify snapshot integrity without importing it.
     ///
-    /// Runs the same checks as `import_snapshot` (version boundary, checksum,
-    /// initialized flag, per-field range, sum constraint, and timestamp sanity)
-    /// **without** modifying any contract state. Use this as a pre-flight check
-    /// before calling `import_snapshot`.
+    /// Runs the same validation pipeline as `import_snapshot` steps 2–7 — schema
+    /// version boundary, checksum integrity, initialized flag, per-field percentage
+    /// range, percentage sum constraint, and timestamp sanity — **without** modifying
+    /// any contract state. Use this as a read-only pre-flight check before calling
+    /// `import_snapshot`.
     ///
-    /// Returns `Ok(true)` when the snapshot is valid and ready to import.
-    /// Returns an error variant describing the first failing check.
+    /// Returns `Ok(true)` when all checks pass and the snapshot is ready to import.
+    ///
+    /// # Errors
+    /// - `UnsupportedVersion` — `snapshot.schema_version` is outside
+    ///   `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]`.
+    /// - `ChecksumMismatch` — the stored checksum does not match the freshly
+    ///   computed digest over the snapshot fields.
+    /// - `SnapshotNotInitialized` — `snapshot.config.initialized` is `false`.
+    /// - `InvalidPercentageRange` — at least one of the four percentage fields
+    ///   individually exceeds `100`.
+    /// - `InvalidPercentages` — all four fields are ≤ 100 but their sum is not `100`.
+    /// - `InvalidAmount` — `snapshot.config.timestamp` is greater than the current
+    ///   ledger timestamp (future-dated payload).
     ///
     /// # Note
-    /// This function does **not** verify ownership mapping (that requires knowing
-    /// which address will perform the import) or nonce validity.
+    /// This function does **not** check ownership mapping or nonce validity; those
+    /// require a specific caller context and are only enforced by `import_snapshot`.
     pub fn verify_snapshot(
         env: Env,
         snapshot: ExportSnapshot,
     ) -> Result<bool, RemittanceSplitError> {
-        // 1. Version boundary
+        // Step 2. Schema version boundary
         if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
             || snapshot.schema_version > SCHEMA_VERSION
         {
             return Err(RemittanceSplitError::UnsupportedVersion);
         }
 
-        // 2. Checksum
+        // Step 3. Checksum integrity
         let expected = Self::compute_checksum(
             snapshot.schema_version,
             &snapshot.config,
@@ -1103,9 +1161,9 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::ChecksumMismatch);
         }
 
-        // 3. Initialized flag
+        // Step 4. Initialized flag
         if !snapshot.config.initialized {
-            return Err(RemittanceSplitError::SnapshotNotInitialized);
+            return Err(RemittanceSplitError::NotInitialized);
         }
 
         // 4. Per-field range
@@ -1114,7 +1172,7 @@ impl RemittanceSplit {
             || snapshot.config.bills_percent > 100
             || snapshot.config.insurance_percent > 100
         {
-            return Err(RemittanceSplitError::InvalidPercentageRange);
+            return Err(RemittanceSplitError::InvalidPercentages);
         }
 
         // 5. Sum constraint
@@ -1128,7 +1186,7 @@ impl RemittanceSplit {
 
         // 6. Timestamp sanity
         let current_time = env.ledger().timestamp();
-        if snapshot.config.timestamp > current_time || snapshot.exported_at > current_time {
+        if snapshot.config.timestamp > current_time {
             return Err(RemittanceSplitError::FutureTimestamp);
         }
 
@@ -1427,14 +1485,14 @@ impl RemittanceSplit {
                 timestamp: env.ledger().timestamp(),
             };
             RemitwiseEvents::emit(
-                &env,
+                env,
                 EventCategory::Transaction,
                 EventPriority::Low,
-                symbol_short!("calc"),
+                SPLIT_CALCULATED,
                 event,
             );
             RemitwiseEvents::emit(
-                &env,
+                env,
                 EventCategory::Transaction,
                 EventPriority::Low,
                 symbol_short!("calc_raw"),
@@ -1474,6 +1532,16 @@ impl RemittanceSplit {
         owner.require_auth();
         Self::require_not_paused(&env)?;
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != owner {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1488,10 +1556,19 @@ impl RemittanceSplit {
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
             .unwrap_or(0u32);
-            
+
         let next_schedule_id = current_max_id
             .checked_add(1)
             .ok_or(RemittanceSplitError::Overflow)?;
+
+        // Explicit uniqueness check to prevent any potential storage collisions
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Schedule(next_schedule_id))
+        {
+            return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
+        }
 
         let schedule = RemittanceSchedule {
             id: next_schedule_id,
@@ -1568,6 +1645,16 @@ impl RemittanceSplit {
         caller.require_auth();
         Self::require_not_paused(&env)?;
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
         if amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1582,6 +1669,10 @@ impl RemittanceSplit {
             .persistent()
             .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
 
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
@@ -1633,6 +1724,10 @@ impl RemittanceSplit {
             .get(&DataKey::Schedule(schedule_id))
             .ok_or(RemittanceSplitError::ScheduleNotFound)?;
 
+        if !schedule.active {
+            return Err(RemittanceSplitError::InactiveSchedule);
+        }
+
         if schedule.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
         }
@@ -1677,4 +1772,3 @@ impl RemittanceSplit {
         env.storage().persistent().get(&DataKey::Schedule(schedule_id))
     }
 }
-

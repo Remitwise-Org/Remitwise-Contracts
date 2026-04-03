@@ -59,13 +59,13 @@
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
-    "timestamp": 0,
+    "sequence_number": 200,
+    "timestamp": 2000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
+    "base_reserve": 10,
+    "min_persistent_entry_ttl": 1,
+    "min_temp_entry_ttl": 1,
+    "max_entry_ttl": 3000000,
     "ledger_entries": [
       [
         {
@@ -202,6 +202,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -246,6 +258,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -286,6 +310,18 @@
                                     },
                                     "val": {
                                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
                                     }
                                   },
                                   {
@@ -536,7 +572,7 @@
                                 "symbol": "last_updated"
                               },
                               "val": {
-                                "u64": 0
+                                "u64": 2000000
                               }
                             },
                             {
@@ -631,7 +667,7 @@
             },
             "ext": "v0"
           },
-          6311999
+          3000199
         ]
       ],
       [
@@ -763,14 +799,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "wallet"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "TransactionsArchived"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 0
+              },
+              {
+                "symbol": "archived"
               }
             ],
             "data": {
@@ -865,7 +903,7 @@
                     "symbol": "last_updated"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 2000000
                   }
                 },
                 {

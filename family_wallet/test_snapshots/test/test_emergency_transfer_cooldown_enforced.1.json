@@ -405,6 +405,18 @@
                                   },
                                   {
                                     "key": {
+                                      "symbol": "precision_limit"
+                                    },
+                                    "val": {
+                                      "vec": [
+                                        {
+                                          "symbol": "None"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "key": {
                                       "symbol": "role"
                                     },
                                     "val": {
@@ -1470,18 +1482,24 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "ModeOn"
-                  }
-                ]
+                "u32": 3
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_mode"
               }
             ],
             "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+              "vec": [
+                {
+                  "symbol": "ModeOn"
+                }
+              ]
             }
           }
         }
@@ -1614,14 +1632,16 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emerg"
+                "symbol": "Remitwise"
               },
               {
-                "vec": [
-                  {
-                    "symbol": "TransferInit"
-                  }
-                ]
+                "u32": 0
+              },
+              {
+                "u32": 2
+              },
+              {
+                "symbol": "em_init"
               }
             ],
             "data": {
@@ -1857,7 +1877,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#507)'"
+                  "string": "caught panic 'Emergency transfer cooldown period not elapsed' from contract function 'Symbol(obj#519)'"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
