@@ -5,7 +5,7 @@ use soroban_sdk::{
     Env, Map, Vec,
 };
 
-use remitwise_common::Category;
+use remitwise_common::{Category, CoverageType};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -240,6 +240,7 @@ pub struct Bill {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
     pub amount: i128,
     pub due_date: u64,
     pub recurring: bool,
@@ -248,6 +249,7 @@ pub struct Bill {
     pub created_at: u64,
     pub paid_at: Option<u64>,
     pub schedule_id: Option<u32>,
+    pub tags: Vec<soroban_sdk::String>,
     pub currency: soroban_sdk::String,
 }
 
@@ -265,12 +267,12 @@ pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
-    pub coverage_type: soroban_sdk::String,
+    pub external_ref: Option<soroban_sdk::String>,
+    pub coverage_type: CoverageType,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
     pub active: bool,
     pub next_payment_date: u64,
-    pub schedule_id: Option<u32>,
 }
 
 #[contracttype]
