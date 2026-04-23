@@ -15,6 +15,15 @@ use soroban_sdk::{
 const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
 
+/// Maximum length for currency codes (ISO 4217 is 3 letters)
+const MAX_CURRENCY_LEN: u32 = 10;
+
+/// Validates that a currency string contains only ASCII alphabetic characters.
+/// Returns true if the string is valid (all ASCII letters A-Z or a-z).
+fn is_valid_currency_chars(s: &[u8]) -> bool {
+    !s.is_empty() && s.iter().all(|&b| b.is_ascii_alphabetic())
+}
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Bill {
@@ -158,25 +167,41 @@ impl BillPayments {
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    /// Normalize a currency string for consistent storage and comparison.
+    /// Validate and normalize a currency string for consistent storage and comparison.
     ///
     /// # Arguments
     /// * `env` - The Soroban environment
-    /// * `currency` - Currency code string to normalize
+    /// * `currency` - Currency code string to validate and normalize
     ///
     /// # Returns
-    /// Normalized currency string with:
+    /// `Ok(normalized_currency)` on success with:
     /// 1. Empty strings default to "XLM"
-    fn normalize_currency(env: &Env, currency: &String) -> String {
-        // Convert to bytes, trim whitespace, uppercase
+    /// 2. Whitespace trimmed
+    /// 3. Converted to uppercase
+    ///
+    /// # Errors
+    /// * `InvalidCurrency` - If currency is too long or contains non-alphanumeric characters
+    fn validate_and_normalize_currency(
+        env: &Env,
+        currency: &String,
+    ) -> Result<String, BillPaymentsError> {
         let len = currency.len();
+
+        // Empty string defaults to "XLM"
         if len == 0 {
-            return String::from_str(env, "XLM");
+            return Ok(String::from_str(env, "XLM"));
         }
+
+        // Check length constraint
+        if len > MAX_CURRENCY_LEN {
+            return Err(BillPaymentsError::InvalidCurrency);
+        }
+
         let mut buf = [0u8; 32];
         let copy_len = (len as usize).min(buf.len());
         currency.copy_into_slice(&mut buf[..copy_len]);
         let s = &buf[..copy_len];
+
         // Trim leading/trailing ASCII spaces
         let start = s.iter().position(|&b| b != b' ').unwrap_or(copy_len);
         let end = s
@@ -184,17 +209,39 @@ impl BillPayments {
             .rposition(|&b| b != b' ')
             .map(|i| i + 1)
             .unwrap_or(0);
+
         if start >= end {
-            return String::from_str(env, "XLM");
+            // Only whitespace - default to XLM
+            return Ok(String::from_str(env, "XLM"));
         }
+
         let trimmed = &s[start..end];
-        // Uppercase
+
+        // Validate: must be only ASCII alphabetic characters (A-Z or a-z)
+        if !is_valid_currency_chars(trimmed) {
+            return Err(BillPaymentsError::InvalidCurrency);
+        }
+
+        // Uppercase the validated string
         let mut upper = [0u8; 32];
         for (i, &b) in trimmed.iter().enumerate() {
             upper[i] = b.to_ascii_uppercase();
         }
-        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
-        String::from_str(env, upper_str)
+
+        let upper_str =
+            core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        Ok(String::from_str(env, upper_str))
+    }
+
+    /// Legacy helper for backward compatibility - normalizes without strict validation.
+    /// WARNING: This does not validate currency codes. Use validate_and_normalize_currency
+    /// for new code to ensure proper currency validation.
+    fn normalize_currency(env: &Env, currency: &String) -> String {
+        // For backward compatibility, try validation first, fall back on error
+        match Self::validate_and_normalize_currency(env, currency) {
+            Ok(normalized) => normalized,
+            Err(_) => String::from_str(env, "XLM"),
+        }
     }
 
     fn get_pause_admin(env: &Env) -> Option<Address> {
@@ -539,8 +586,9 @@ impl BillPayments {
             return Err(Error::InvalidFrequency);
         }
 
-        // Normalize currency (empty defaults to "XLM")
-        let resolved_currency = Self::normalize_currency(&env, &currency);
+        // Validate and normalize currency (strict validation - rejects invalid codes)
+        let resolved_currency =
+            Self::validate_and_normalize_currency(&env, &currency)?;
 
         Self::extend_instance_ttl(&env);
         let mut bills: Map<u32, Bill> = env

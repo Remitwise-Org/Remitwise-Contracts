@@ -2895,4 +2895,436 @@ mod testsuit {
         let bill = client.get_bill(&id).unwrap();
         assert!(bill.paid);
     }
+
+    // ========================================================================
+    // Currency Validation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_create_bill_valid_currency_xlm() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
+        assert_eq!(bill_id, 1);
+        let bill = client.get_bill(&1).unwrap();
+        assert_eq!(bill.currency.to_string(), "XLM");
+    }
+
+    #[test]
+    fn test_create_bill_valid_currency_usdc() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "USDC Bill"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "USDC"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "USDC");
+    }
+
+    #[test]
+    fn test_create_bill_valid_currency_ngn() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "NGN Bill"),
+            &50000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "NGN"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "NGN");
+    }
+
+    #[test]
+    fn test_create_bill_currency_lowercase_normalized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Lowercase input should be normalized to uppercase
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Lowercase Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "xlm"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "XLM");
+    }
+
+    #[test]
+    fn test_create_bill_currency_mixed_case_normalized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Mixed case should be normalized to uppercase
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Mixed Case Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "UsDc"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "USDC");
+    }
+
+    #[test]
+    fn test_create_bill_currency_with_whitespace() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with leading/trailing whitespace should be trimmed
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Whitespace Test"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "  XLM  "),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "XLM");
+    }
+
+    #[test]
+    fn test_create_bill_empty_currency_defaults_to_xlm() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Empty string should default to XLM
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Empty Currency"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, ""),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "XLM");
+    }
+
+    #[test]
+    fn test_create_bill_invalid_currency_with_numbers() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with numbers should fail
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Invalid Currency"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM1"),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_create_bill_invalid_currency_with_special_chars() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with special characters should fail
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Invalid Currency"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM!"),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_create_bill_invalid_currency_with_dash() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with dash should fail
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Invalid Currency"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "US-D"),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_create_bill_invalid_currency_too_long() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency longer than MAX_CURRENCY_LEN should fail
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Too Long Currency"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "VERYLONGCURRENCYCODE"),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_create_bill_invalid_currency_only_spaces() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Only whitespace should default to XLM (not fail)
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Spaces Only"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "   "),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "XLM");
+    }
+
+    #[test]
+    fn test_create_bill_valid_currency_eur() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "EUR Bill"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "EUR"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "EUR");
+    }
+
+    #[test]
+    fn test_create_bill_valid_currency_gbp() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "GBP Bill"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "GBP"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "GBP");
+    }
+
+    #[test]
+    fn test_create_bill_valid_currency_jpy() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "JPY Bill"),
+            &10000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "JPY"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "JPY");
+    }
+
+    #[test]
+    fn test_recurring_bill_preserves_currency() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Recurring USD"),
+            &100,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "USD"),
+        );
+
+        // Pay the bill to trigger recurring creation
+        env.mock_all_auths();
+        client.pay_bill(&owner, &bill_id);
+
+        // Check original bill
+        let original = client.get_bill(&bill_id).unwrap();
+        assert_eq!(original.currency.to_string(), "USD");
+
+        // Check the new recurring bill
+        let next_bill_id = bill_id + 1;
+        let next_bill = client.get_bill(&next_bill_id).unwrap();
+        assert_eq!(next_bill.currency.to_string(), "USD");
+    }
+
+    #[test]
+    fn test_create_bill_currency_with_leading_spaces() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with leading spaces should be trimmed
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Leading Spaces"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "  USD"),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "USD");
+    }
+
+    #[test]
+    fn test_create_bill_currency_with_trailing_spaces() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Currency with trailing spaces should be trimmed
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trailing Spaces"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "USD  "),
+        );
+
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency.to_string(), "USD");
+    }
 }
