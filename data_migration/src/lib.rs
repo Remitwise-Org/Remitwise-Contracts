@@ -14,6 +14,9 @@
 //! Binding the schema version and format string in addition to the payload
 //! prevents version-downgrade and format-substitution attacks. The checksum
 //! provides integrity, not authentication.
+//!
+//! Legacy snapshots without an explicit `hash_algorithm` field are still
+//! supported by accepting the older `Simple` checksum format on import.
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
@@ -51,10 +54,19 @@ pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
 
 /// Algorithm used to compute the snapshot checksum.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ChecksumAlgorithm {
     /// SHA-256 over `version_le_bytes || format_utf8_bytes || canonical_payload_json`.
     Sha256,
+    /// Legacy checksum used by older snapshots.
+    Simple,
+}
+
+impl Default for ChecksumAlgorithm {
+    fn default() -> Self {
+        ChecksumAlgorithm::Simple
+    }
 }
 
 /// Versioned migration event payload meant for indexing and historical tracking.
@@ -86,6 +98,7 @@ pub enum ExportFormat {
 pub struct SnapshotHeader {
     pub version: u32,
     pub checksum: String,
+    #[serde(default)]
     pub hash_algorithm: ChecksumAlgorithm,
     pub format: String,
     pub created_at_ms: Option<u64>,
@@ -158,6 +171,22 @@ impl ExportSnapshot {
         hex::encode(hasher.finalize().as_ref())
     }
 
+    fn simple_checksum_for_parts(version: u32, format: &str, payload_bytes: &[u8]) -> String {
+        let mut acc = 0u64;
+        for byte in version.to_le_bytes().iter().chain(format.as_bytes()).chain(payload_bytes.iter()) {
+            acc = acc.wrapping_add(*byte as u64);
+        }
+        acc.to_string()
+    }
+
+    fn legacy_simple_checksum(payload_bytes: &[u8]) -> String {
+        let mut acc = 0u64;
+        for byte in payload_bytes.iter() {
+            acc = acc.wrapping_add(*byte as u64);
+        }
+        acc.to_string()
+    }
+
     /// Compute the SHA-256 checksum for this snapshot.
     pub fn compute_checksum(&self) -> String {
         let payload_bytes = self
@@ -166,12 +195,29 @@ impl ExportSnapshot {
         Self::checksum_for_parts(self.header.version, &self.header.format, &payload_bytes)
     }
 
+    fn compute_simple_checksum(&self) -> String {
+        let payload_bytes = self
+            .payload_bytes()
+            .unwrap_or_else(|_| panic!("payload must be serializable"));
+        Self::simple_checksum_for_parts(self.header.version, &self.header.format, &payload_bytes)
+    }
+
+    fn compute_legacy_simple_checksum(&self) -> String {
+        let payload_bytes = self
+            .payload_bytes()
+            .unwrap_or_else(|_| panic!("payload must be serializable"));
+        Self::legacy_simple_checksum(&payload_bytes)
+    }
+
     /// Verify that the stored checksum matches the current payload.
     pub fn verify_checksum(&self) -> bool {
-        if self.header.hash_algorithm != ChecksumAlgorithm::Sha256 {
-            return false;
+        match self.header.hash_algorithm {
+            ChecksumAlgorithm::Sha256 => self.header.checksum == self.compute_checksum(),
+            ChecksumAlgorithm::Simple => {
+                let expected = self.compute_simple_checksum();
+                self.header.checksum == expected || self.header.checksum == self.compute_legacy_simple_checksum()
+            }
         }
-        self.header.checksum == self.compute_checksum()
     }
 
     /// Check if snapshot version is supported for import.
@@ -197,7 +243,7 @@ impl ExportSnapshot {
 
         self.validate_payload_constraints()?;
 
-        if self.header.hash_algorithm != ChecksumAlgorithm::Sha256 {
+        if !matches!(self.header.hash_algorithm, ChecksumAlgorithm::Sha256 | ChecksumAlgorithm::Simple) {
             return Err(MigrationError::UnknownHashAlgorithm);
         }
 
@@ -750,6 +796,36 @@ mod tests {
         let bytes = export_to_binary(&snapshot).unwrap();
         let loaded = import_from_binary_untracked(&bytes).unwrap();
         assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Sha256);
+    }
+
+    #[test]
+    fn test_legacy_simple_checksum_import_succeeds() {
+        let mut snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        snapshot.header.hash_algorithm = ChecksumAlgorithm::Simple;
+        snapshot.header.checksum = snapshot.compute_simple_checksum();
+
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        let loaded = import_from_json_untracked(&bytes).unwrap();
+        assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Simple);
+        assert!(loaded.verify_checksum());
+    }
+
+    #[test]
+    fn test_missing_hash_algorithm_field_defaults_to_legacy_simple() {
+        let mut snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        snapshot.header.checksum = snapshot.compute_simple_checksum();
+        snapshot.header.hash_algorithm = ChecksumAlgorithm::Simple;
+
+        let mut bytes: serde_json::Value = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        bytes.as_object_mut()
+            .and_then(|obj| obj.get_mut("header"))
+            .and_then(|header| header.as_object_mut())
+            .and_then(|header_obj| header_obj.remove("hash_algorithm"));
+        let serialized = serde_json::to_vec(&bytes).unwrap();
+
+        let loaded = import_from_json_untracked(&serialized).unwrap();
+        assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Simple);
+        assert!(loaded.verify_checksum());
     }
 
     #[test]

@@ -28,7 +28,7 @@ The checksum provides **integrity** (tamper detection), not **authentication**. 
 
 ### Hash algorithm field
 
-Every `SnapshotHeader` carries a `hash_algorithm: ChecksumAlgorithm` field. Currently only `ChecksumAlgorithm::Sha256` is produced and accepted. The field is `#[non_exhaustive]` so future algorithm upgrades can be added as new variants without breaking existing importers — which must reject any algorithm they do not recognise rather than silently skipping verification.
+Every `SnapshotHeader` carries a `hash_algorithm: ChecksumAlgorithm` field. New exports produce `ChecksumAlgorithm::Sha256`, while legacy snapshots without an explicit algorithm field or with `ChecksumAlgorithm::Simple` continue to import successfully. The field is `#[non_exhaustive]` so future algorithm upgrades can be added as new variants without breaking existing importers — which must reject any algorithm they do not recognise rather than silently skipping verification.
 
 ## API reference
 
