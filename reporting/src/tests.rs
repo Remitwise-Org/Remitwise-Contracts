@@ -435,6 +435,28 @@ fn test_verify_dependency_address_set_rejects_duplicates() {
 }
 
 #[test]
+fn test_verify_dependency_address_set_rejects_self_reference() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::from_contract_id(&env, &contract_id),
+    };
+    let result = client.try_verify_dependency_address_set(&addrs);
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
 fn test_get_remittance_summary() {
     let env = Env::default();
     env.mock_all_auths();
