@@ -14,6 +14,7 @@ const GOAL_COMPLETED: Symbol = symbol_short!("completed");
 #[contracttype]
 pub struct GoalCreatedEvent {
     pub goal_id: u32,
+    pub owner: Address,
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
@@ -24,6 +25,17 @@ pub struct GoalCreatedEvent {
 #[contracttype]
 pub struct FundsAddedEvent {
     pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FundsWithdrawnEvent {
+    pub goal_id: u32,
+    pub owner: Address,
     pub amount: i128,
     pub new_total: i128,
     pub timestamp: u64,
@@ -33,6 +45,7 @@ pub struct FundsAddedEvent {
 #[contracttype]
 pub struct GoalCompletedEvent {
     pub goal_id: u32,
+    pub owner: Address,
     pub name: String,
     pub final_amount: i128,
     pub timestamp: u64,
@@ -641,6 +654,7 @@ impl SavingsGoalContract {
 
         let event = GoalCreatedEvent {
             goal_id: next_id,
+            owner: owner.clone(),
             name: goal.name.clone(),
             target_amount,
             target_date,
@@ -649,7 +663,7 @@ impl SavingsGoalContract {
         env.events().publish((GOAL_CREATED,), event.clone());
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::GoalCreated),
-            next_id,
+            (next_id, owner.clone()),
         );
         RemitwiseEvents::emit(
             &env,
@@ -738,6 +752,7 @@ impl SavingsGoalContract {
 
         let funds_event = FundsAddedEvent {
             goal_id,
+            owner: caller.clone(),
             amount,
             new_total,
             timestamp: env.ledger().timestamp(),
@@ -753,6 +768,7 @@ impl SavingsGoalContract {
         if was_completed && !previously_completed {
             let completed_event = GoalCompletedEvent {
                 goal_id,
+                owner: caller.clone(),
                 name: goal.name.clone(),
                 final_amount: new_total,
                 timestamp: env.ledger().timestamp(),
@@ -828,6 +844,7 @@ impl SavingsGoalContract {
             goals.set(item.goal_id, goal.clone());
             let funds_event = FundsAddedEvent {
                 goal_id: item.goal_id,
+                owner: caller.clone(),
                 amount: item.amount,
                 new_total,
                 timestamp: env.ledger().timestamp(),
@@ -842,6 +859,7 @@ impl SavingsGoalContract {
             if was_completed && !previously_completed {
                 let completed_event = GoalCompletedEvent {
                     goal_id: item.goal_id,
+                    owner: caller.clone(),
                     name: goal.name.clone(),
                     final_amount: new_total,
                     timestamp: env.ledger().timestamp(),
@@ -979,6 +997,21 @@ impl SavingsGoalContract {
         env.storage()
             .instance()
             .set(&symbol_short!("GOALS"), &goals);
+
+        let withdraw_event = FundsWithdrawnEvent {
+            goal_id,
+            owner: caller.clone(),
+            amount,
+            new_total: new_amount,
+            timestamp: env.ledger().timestamp(),
+        };
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("funds_rem"),
+            withdraw_event,
+        );
 
         Self::append_audit(&env, symbol_short!("withdraw"), &caller, true);
         env.events().publish(
@@ -1815,5 +1848,7 @@ impl SavingsGoalContract {
 // -----------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------
+#[cfg(test)]
+mod event_test;
 #[cfg(test)]
 mod test;

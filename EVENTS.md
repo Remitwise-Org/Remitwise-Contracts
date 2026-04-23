@@ -200,6 +200,7 @@ pub struct VersionUpgradeEvent {
 ```rust
 pub struct GoalCreatedEvent {
     pub goal_id: u32,               // Unique goal ID
+    pub owner: Address,             // Goal owner address
     pub name: String,               // Goal name (e.g., "Emergency Fund")
     pub target_amount: i128,        // Target amount in stroops
     pub target_date: u64,           // Target completion date (Unix timestamp)
@@ -227,6 +228,7 @@ pub struct GoalCreatedEvent {
 ```rust
 pub struct FundsAddedEvent {
     pub goal_id: u32,               // Goal ID
+    pub owner: Address,             // Goal owner
     pub amount: i128,               // Amount added in stroops
     pub new_total: i128,            // New total in goal
     pub timestamp: u64,             // Event timestamp
@@ -252,6 +254,7 @@ pub struct FundsAddedEvent {
 ```rust
 pub struct GoalCompletedEvent {
     pub goal_id: u32,               // Goal ID
+    pub owner: Address,             // Goal owner
     pub name: String,               // Goal name
     pub final_amount: i128,         // Final amount in goal
     pub timestamp: u64,             // Event timestamp
@@ -266,8 +269,9 @@ pub struct GoalCompletedEvent {
 ```rust
 pub struct FundsWithdrawnEvent {
     pub goal_id: u32,               // Goal ID
+    pub owner: Address,             // Goal owner
     pub amount: i128,               // Amount withdrawn
-    pub remaining: i128,            // Remaining amount
+    pub new_total: i128,            // New total remaining in goal
     pub timestamp: u64,             // Event timestamp
 }
 ```
