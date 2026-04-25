@@ -69,6 +69,10 @@ pub enum RemittanceSplitError {
     PercentageOutOfRange = 17,
     /// The owner has reached the maximum number of allowed schedules.
     ScheduleCapExceeded = 22,
+    /// The schedule interval is below the minimum allowed value.
+    ScheduleIntervalTooShort = 23,
+    /// The schedule lead time exceeds the maximum allowed value.
+    ScheduleLeadTimeTooLong = 24,
 }
 
 #[derive(Clone)]
@@ -108,7 +112,13 @@ const MAX_USED_NONCES_PER_ADDR: u32 = 256;
 /// Maximum ledger seconds a signed request may remain valid after creation.
 const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour
 /// Maximum number of remittance schedules allowed per owner to prevent storage bloat.
-const MAX_SCHEDULES_PER_OWNER: u32 = 50;
+pub const MAX_SCHEDULES_PER_OWNER: u32 = 50;
+/// Minimum allowed recurrence interval for repeating schedules (1 hour in seconds).
+/// One-off schedules (interval == 0) are exempt from this check.
+pub const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
+/// Maximum allowed lead time for schedule due dates (1 year in seconds).
+/// Prevents unrealistic far-future scheduling that creates operational risk.
+pub const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -1271,6 +1281,19 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::ScheduleCapExceeded);
         }
 
+        for schedule in snapshot.schedules.iter() {
+            if schedule.active {
+                if schedule.interval > 0 && schedule.interval < MIN_SCHEDULE_INTERVAL {
+                    Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                    return Err(RemittanceSplitError::ScheduleIntervalTooShort);
+                }
+                if schedule.next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+                    Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                    return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
+                }
+            }
+        }
+
         Self::extend_instance_ttl(&env);
         env.storage()
             .instance()
@@ -1776,6 +1799,14 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(RemittanceSplitError::ScheduleIntervalTooShort);
+        }
+
+        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+            return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
+        }
+
         // Check schedule cap before creating new schedule
         let owner_schedules: Vec<u32> = env
             .storage()
@@ -1903,6 +1934,14 @@ impl RemittanceSplit {
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(RemittanceSplitError::InvalidDueDate);
+        }
+
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(RemittanceSplitError::ScheduleIntervalTooShort);
+        }
+
+        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+            return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
         }
 
         let mut schedule: RemittanceSchedule = env

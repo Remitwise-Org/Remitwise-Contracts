@@ -753,6 +753,13 @@ mod tests {
         })
     }
 
+    fn sample_generic_payload() -> SnapshotPayload {
+        let mut entries = HashMap::new();
+        entries.insert("key1".into(), serde_json::json!("value1"));
+        entries.insert("key2".into(), serde_json::json!(42));
+        SnapshotPayload::Generic(entries)
+    }
+
     #[test]
     fn test_snapshot_checksum_roundtrip_succeeds() {
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
@@ -793,6 +800,183 @@ mod tests {
 
         let result = import_from_json(&bytes, &mut tracker, 2_000);
         assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_savings_goals_json_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_generic_payload_json_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_cross_payload_types_independent() {
+        let snapshots = [
+            ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json),
+        ];
+        let mut tracker = MigrationTracker::new();
+
+        for (index, snapshot) in snapshots.iter().enumerate() {
+            let bytes = export_to_json(snapshot).unwrap();
+            import_from_json(&bytes, &mut tracker, (index as u64 + 1) * 1_000).unwrap();
+        }
+
+        for snapshot in snapshots {
+            let bytes = export_to_json(&snapshot).unwrap();
+            let result = import_from_json(&bytes, &mut tracker, 9_999);
+            assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+        }
+    }
+
+    #[test]
+    fn test_replay_protection_savings_goals_binary_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_binary(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_binary(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_generic_payload_binary_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Binary);
+        let _bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        tracker.mark_imported(&snapshot, 1_000).unwrap();
+
+        let result = tracker.mark_imported(&snapshot, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_same_payload_type_different_content_no_collision() {
+        let first_snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let second_snapshot = ExportSnapshot::new(
+            SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+                owner: "GABC".into(),
+                spending_percent: 45,
+                savings_percent: 35,
+                bills_percent: 15,
+                insurance_percent: 5,
+            }),
+            ExportFormat::Json,
+        );
+        let first_bytes = export_to_json(&first_snapshot).unwrap();
+        let second_bytes = export_to_json(&second_snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        assert_ne!(
+            first_snapshot.header.checksum,
+            second_snapshot.header.checksum
+        );
+
+        import_from_json(&first_bytes, &mut tracker, 1_000).unwrap();
+        import_from_json(&second_bytes, &mut tracker, 2_000).unwrap();
+    }
+
+    #[test]
+    fn test_different_payload_same_size_no_collision() {
+        let first_payload = SnapshotPayload::Generic(HashMap::from([
+            ("aa".into(), serde_json::json!("11")),
+            ("bb".into(), serde_json::json!("22")),
+        ]));
+        let second_payload = SnapshotPayload::Generic(HashMap::from([
+            ("cc".into(), serde_json::json!("33")),
+            ("dd".into(), serde_json::json!("44")),
+        ]));
+        let first_snapshot = ExportSnapshot::new(first_payload, ExportFormat::Json);
+        let second_snapshot = ExportSnapshot::new(second_payload, ExportFormat::Json);
+        let first_bytes = export_to_json(&first_snapshot).unwrap();
+        let second_bytes = export_to_json(&second_snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        assert_eq!(
+            canonical_payload_bytes(&first_snapshot.payload)
+                .unwrap()
+                .len(),
+            canonical_payload_bytes(&second_snapshot.payload)
+                .unwrap()
+                .len()
+        );
+        assert_ne!(
+            first_snapshot.header.checksum,
+            second_snapshot.header.checksum
+        );
+
+        import_from_json(&first_bytes, &mut tracker, 1_000).unwrap();
+        import_from_json(&second_bytes, &mut tracker, 2_000).unwrap();
+    }
+
+    #[test]
+    fn test_tracker_is_imported_reflects_state_across_types() {
+        let snapshots = [
+            ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json),
+        ];
+        let mut tracker = MigrationTracker::new();
+
+        for (index, snapshot) in snapshots.iter().enumerate() {
+            assert!(!tracker.is_imported(snapshot));
+
+            let bytes = export_to_json(snapshot).unwrap();
+            let loaded =
+                import_from_json(&bytes, &mut tracker, (index as u64 + 1) * 1_000).unwrap();
+
+            assert!(tracker.is_imported(snapshot));
+            assert!(tracker.is_imported(&loaded));
+        }
+    }
+
+    #[test]
+    fn test_tracker_mark_imported_rejects_exact_duplicate() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.mark_imported(&snapshot, 1_000).unwrap();
+
+        let result = tracker.mark_imported(&snapshot, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_tracker_mark_imported_allows_different_version_same_checksum() {
+        let mut first_snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut second_snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        first_snapshot.header.checksum = "shared-checksum".into();
+        second_snapshot.header.checksum = "shared-checksum".into();
+        second_snapshot.header.version = first_snapshot.header.version + 1;
+
+        tracker.mark_imported(&first_snapshot, 1_000).unwrap();
+        tracker.mark_imported(&second_snapshot, 2_000).unwrap();
+
+        assert!(tracker.is_imported(&first_snapshot));
+        assert!(tracker.is_imported(&second_snapshot));
     }
 
     #[test]
