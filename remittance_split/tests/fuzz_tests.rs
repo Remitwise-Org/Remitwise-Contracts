@@ -8,9 +8,9 @@
 //! - Sum preservation (split amounts always equal total)
 //! - Edge cases with extreme values
 
-use remittance_split::{RemittanceSplit, RemittanceSplitClient, AccountGroup};
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map};
 use proptest::prelude::*;
+use remittance_split::{AccountGroup, RemittanceSplit, RemittanceSplitClient};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map};
 use std::collections::HashSet;
 
 /// Helper: register a dummy token address (no real token needed for pure math tests).
@@ -241,6 +241,8 @@ fn fuzz_single_category_splits() {
         if sb == 100 {
             assert_eq!(amounts.get(2).unwrap(), 1000);
         }
+        if si == 100 {
+            assert_eq!(amounts.get(3).unwrap(), 1000);
         }
     }
 }

@@ -87,6 +87,37 @@ const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour
 /// Maximum number of remittance schedules allowed per owner to prevent storage bloat.
 const MAX_SCHEDULES_PER_OWNER: u32 = 50;
 
+/// Insertion sort for a small `Vec<u32>` in ascending order.
+///
+/// Used by the per-owner schedule index (capped at MAX_SCHEDULES_PER_OWNER) to
+/// enforce deterministic ordering on storage. `soroban_sdk::Vec` does not
+/// expose a `sort_unstable`, and these lists are small enough that an
+/// in-place insertion sort is well within budget.
+fn sort_u32_vec_ascending(v: &mut Vec<u32>) {
+    let n = v.len();
+    let mut i: u32 = 1;
+    while i < n {
+        let key = match v.get(i) {
+            Some(k) => k,
+            None => return,
+        };
+        let mut j: u32 = i;
+        while j > 0 {
+            let prev = match v.get(j - 1) {
+                Some(p) => p,
+                None => break,
+            };
+            if prev <= key {
+                break;
+            }
+            v.set(j, prev);
+            j -= 1;
+        }
+        v.set(j, key);
+        i += 1;
+    }
+}
+
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
 #[contracttype]
@@ -179,6 +210,23 @@ pub struct AuditEntry {
 pub struct SchedulePage {
     /// Schedule entries for this page, ordered by ID ascending.
     pub items: Vec<RemittanceSchedule>,
+    /// Index to pass as `from_index` for the next page. 0 means no more pages.
+    pub next_cursor: u32,
+    /// Number of items returned in this page.
+    pub count: u32,
+}
+
+/// Paginated result for `get_audit_log` queries.
+///
+/// Pagination contract is identical to `SchedulePage`: items are ordered
+/// oldest-to-newest, `next_cursor == 0` signals no more pages, and the
+/// result is deterministic for a given `(from_index, limit)` on identical
+/// state.
+#[contracttype]
+#[derive(Clone)]
+pub struct AuditPage {
+    /// Audit entries for this page, ordered oldest-to-newest.
+    pub items: Vec<AuditEntry>,
     /// Index to pass as `from_index` for the next page. 0 means no more pages.
     pub next_cursor: u32,
     /// Number of items returned in this page.
@@ -1158,7 +1206,7 @@ impl RemittanceSplit {
             owner_ids.push_back(schedule.id);
         }
         // Ensure deterministic ordering for consistent query results
-        owner_ids.sort_unstable();
+        sort_u32_vec_ascending(&mut owner_ids);
         env.storage()
             .persistent()
             .set(&DataKey::OwnerSchedules(caller.clone()), &owner_ids);
@@ -1623,7 +1671,7 @@ impl RemittanceSplit {
             .persistent()
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
-        
+
         if owner_schedules.len() >= MAX_SCHEDULES_PER_OWNER as u32 {
             return Err(RemittanceSplitError::ScheduleCapExceeded);
         }
@@ -1678,7 +1726,7 @@ impl RemittanceSplit {
             .unwrap_or_else(|| Vec::new(&env));
         owner_schedules.push_back(next_schedule_id);
         // Ensure deterministic ordering for consistent query results
-        owner_schedules.sort_unstable();
+        sort_u32_vec_ascending(&mut owner_schedules);
         env.storage()
             .persistent()
             .set(&DataKey::OwnerSchedules(owner.clone()), &owner_schedules);
@@ -1848,7 +1896,7 @@ impl RemittanceSplit {
 
         // Ensure deterministic ordering by sorting IDs ascending
         // This guarantees consistent results regardless of storage order
-        schedule_ids.sort_unstable();
+        sort_u32_vec_ascending(&mut schedule_ids);
 
         let mut result = Vec::new(&env);
         for id in schedule_ids.iter() {
@@ -1885,7 +1933,7 @@ impl RemittanceSplit {
     /// - `limit` is clamped to prevent excessive gas usage
     /// - Out-of-range `from_index` returns empty page safely
     /// - Cancelled schedules are included (they remain in storage for audit)
-    pub fn get_remittance_schedules_paginated(
+    pub fn get_schedules_paginated(
         env: Env,
         owner: Address,
         from_index: u32,
@@ -1899,7 +1947,7 @@ impl RemittanceSplit {
 
         // Ensure deterministic ordering by sorting IDs ascending
         // This guarantees stable pagination even if storage order changes
-        schedule_ids.sort_unstable();
+        sort_u32_vec_ascending(&mut schedule_ids);
 
         let len = schedule_ids.len();
         let cap = clamp_limit(limit);

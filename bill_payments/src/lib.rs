@@ -228,8 +228,7 @@ impl BillPayments {
             upper[i] = b.to_ascii_uppercase();
         }
 
-        let upper_str =
-            core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
         Ok(String::from_str(env, upper_str))
     }
 
@@ -587,8 +586,7 @@ impl BillPayments {
         }
 
         // Validate and normalize currency (strict validation - rejects invalid codes)
-        let resolved_currency =
-            Self::validate_and_normalize_currency(&env, &currency)?;
+        let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
 
         Self::extend_instance_ttl(&env);
         let mut bills: Map<u32, Bill> = env

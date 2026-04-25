@@ -481,7 +481,7 @@ impl ReportingContract {
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
-    
+
     pub fn configure_addresses(
         env: Env,
         caller: Address,
@@ -543,7 +543,10 @@ impl ReportingContract {
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the admin
     /// * `AddressesNotConfigured` - If dependency addresses have not been configured
-    pub fn check_dependencies(env: Env, caller: Address) -> Result<Vec<DependencyStatus>, ReportingError> {
+    pub fn check_dependencies(
+        env: Env,
+        caller: Address,
+    ) -> Result<Vec<DependencyStatus>, ReportingError> {
         caller.require_auth();
 
         let admin: Address = env
@@ -573,43 +576,66 @@ impl ReportingContract {
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
-            error_category: if split_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_split_failed")) },
+            error_category: if split_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_split_failed"))
+            },
         });
 
         // Check savings_goals
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
-        let savings_ok = match savings_client.try_get_all_goals(&Address::from_contract_id(&env, &env.current_contract_address())) {
+        let savings_ok = match savings_client.try_get_all_goals(&env.current_contract_address()) {
             Ok(Ok(_)) => true,
             _ => false,
         };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "savings_goals"),
             ok: savings_ok,
-            error_category: if savings_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_all_goals_failed")) },
+            error_category: if savings_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_all_goals_failed"))
+            },
         });
 
         // Check bill_payments
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let bill_ok = match bill_client.try_get_total_unpaid(&Address::from_contract_id(&env, &env.current_contract_address())) {
+        let bill_ok = match bill_client.try_get_total_unpaid(&env.current_contract_address()) {
             Ok(Ok(_)) => true,
             _ => false,
         };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "bill_payments"),
             ok: bill_ok,
-            error_category: if bill_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_unpaid_failed")) },
+            error_category: if bill_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(
+                    &env,
+                    "get_total_unpaid_failed",
+                ))
+            },
         });
 
         // Check insurance
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let insurance_ok = match insurance_client.try_get_total_monthly_premium(&Address::from_contract_id(&env, &env.current_contract_address())) {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let insurance_ok =
+            match insurance_client.try_get_total_monthly_premium(&env.current_contract_address()) {
+                Ok(Ok(_)) => true,
+                _ => false,
+            };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "insurance"),
             ok: insurance_ok,
-            error_category: if insurance_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_monthly_premium_failed")) },
+            error_category: if insurance_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(
+                    &env,
+                    "get_total_monthly_premium_failed",
+                ))
+            },
         });
 
         // Check family_wallet
@@ -621,7 +647,11 @@ impl ReportingContract {
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "family_wallet"),
             ok: family_ok,
-            error_category: if family_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_owner_failed")) },
+            error_category: if family_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_owner_failed"))
+            },
         });
 
         Ok(statuses)

@@ -35,15 +35,16 @@ fn test_schedule_cap_enforcement() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let owner = Address::generate(&env);
-    
+
     // Initialize split
     init(&client, &env, &owner, 50, 30, 15, 5);
 
     // Create schedules up to the cap
     let mut schedule_ids = Vec::new(&env);
-    for i in 0..50 { // MAX_SCHEDULES_PER_OWNER = 50
+    for i in 0..50 {
+        // MAX_SCHEDULES_PER_OWNER = 50
         let schedule_id = client.create_remittance_schedule(
             &owner,
             &(1000 + i as i128),
@@ -65,7 +66,10 @@ fn test_schedule_cap_enforcement() {
         &3600,
     );
     assert!(result.is_err());
-    assert_eq!(result.err().unwrap(), remittance_split::RemittanceSplitError::ScheduleCapExceeded);
+    assert_eq!(
+        result.err().unwrap(),
+        remittance_split::RemittanceSplitError::ScheduleCapExceeded
+    );
 
     // Verify schedule count hasn't changed
     let schedules = client.get_remittance_schedules(&owner);
@@ -77,9 +81,9 @@ fn test_schedule_cap_with_cancellation() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let owner = Address::generate(&env);
-    
+
     // Initialize split
     init(&client, &env, &owner, 50, 30, 15, 5);
 
@@ -117,10 +121,10 @@ fn test_snapshot_import_schedule_cap_validation() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = dummy_token(&env);
-    
+
     // Initialize split
     init(&client, &env, &owner, 50, 30, 15, 5);
 
@@ -154,7 +158,7 @@ fn test_snapshot_import_schedule_cap_validation() {
 
     let snapshot = remittance_split::ExportSnapshot {
         schema_version: 2, // SCHEMA_VERSION
-        checksum: 0, // Will be computed properly in real implementation
+        checksum: 0,       // Will be computed properly in real implementation
         config,
         schedules,
         exported_at: env.ledger().timestamp(),
@@ -163,7 +167,10 @@ fn test_snapshot_import_schedule_cap_validation() {
     // Try to import snapshot with too many schedules - should fail
     let result = client.try_import_snapshot(&owner, &1, &snapshot);
     assert!(result.is_err());
-    assert_eq!(result.err().unwrap(), remittance_split::RemittanceSplitError::ScheduleCapExceeded);
+    assert_eq!(
+        result.err().unwrap(),
+        remittance_split::RemittanceSplitError::ScheduleCapExceeded
+    );
 }
 
 #[test]
@@ -171,10 +178,10 @@ fn test_snapshot_import_within_cap() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = dummy_token(&env);
-    
+
     // Initialize split
     init(&client, &env, &owner, 50, 30, 15, 5);
 
@@ -208,7 +215,7 @@ fn test_snapshot_import_within_cap() {
 
     let snapshot = remittance_split::ExportSnapshot {
         schema_version: 2, // SCHEMA_VERSION
-        checksum: 0, // Will be computed properly in real implementation
+        checksum: 0,       // Will be computed properly in real implementation
         config,
         schedules,
         exported_at: env.ledger().timestamp(),
@@ -219,7 +226,10 @@ fn test_snapshot_import_within_cap() {
     let result = client.try_import_snapshot(&owner, &1, &snapshot);
     // For now, we expect either success or checksum failure, but not cap failure
     if result.is_err() {
-        assert_ne!(result.err().unwrap(), remittance_split::RemittanceSplitError::ScheduleCapExceeded);
+        assert_ne!(
+            result.err().unwrap(),
+            remittance_split::RemittanceSplitError::ScheduleCapExceeded
+        );
     }
 }
 
@@ -227,7 +237,7 @@ fn test_snapshot_import_within_cap() {
 fn test_schedule_cap_constants() {
     // Verify the cap constant is set correctly
     assert_eq!(remittance_split::MAX_SCHEDULES_PER_OWNER, 50);
-    
+
     // Verify the error variant exists
     let error = remittance_split::RemittanceSplitError::ScheduleCapExceeded;
     match error {
@@ -243,9 +253,9 @@ fn test_empty_schedule_creation() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let owner = Address::generate(&env);
-    
+
     // Initialize split
     init(&client, &env, &owner, 50, 30, 15, 5);
 
