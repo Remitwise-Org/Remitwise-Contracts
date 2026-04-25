@@ -173,7 +173,12 @@ impl ExportSnapshot {
 
     fn simple_checksum_for_parts(version: u32, format: &str, payload_bytes: &[u8]) -> String {
         let mut acc = 0u64;
-        for byte in version.to_le_bytes().iter().chain(format.as_bytes()).chain(payload_bytes.iter()) {
+        for byte in version
+            .to_le_bytes()
+            .iter()
+            .chain(format.as_bytes())
+            .chain(payload_bytes.iter())
+        {
             acc = acc.wrapping_add(*byte as u64);
         }
         acc.to_string()
@@ -215,7 +220,8 @@ impl ExportSnapshot {
             ChecksumAlgorithm::Sha256 => self.header.checksum == self.compute_checksum(),
             ChecksumAlgorithm::Simple => {
                 let expected = self.compute_simple_checksum();
-                self.header.checksum == expected || self.header.checksum == self.compute_legacy_simple_checksum()
+                self.header.checksum == expected
+                    || self.header.checksum == self.compute_legacy_simple_checksum()
             }
         }
     }
@@ -243,7 +249,10 @@ impl ExportSnapshot {
 
         self.validate_payload_constraints()?;
 
-        if !matches!(self.header.hash_algorithm, ChecksumAlgorithm::Sha256 | ChecksumAlgorithm::Simple) {
+        if !matches!(
+            self.header.hash_algorithm,
+            ChecksumAlgorithm::Sha256 | ChecksumAlgorithm::Simple
+        ) {
             return Err(MigrationError::UnknownHashAlgorithm);
         }
 
@@ -830,8 +839,10 @@ mod tests {
         snapshot.header.checksum = snapshot.compute_simple_checksum();
         snapshot.header.hash_algorithm = ChecksumAlgorithm::Simple;
 
-        let mut bytes: serde_json::Value = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
-        bytes.as_object_mut()
+        let mut bytes: serde_json::Value =
+            serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        bytes
+            .as_object_mut()
             .and_then(|obj| obj.get_mut("header"))
             .and_then(|header| header.as_object_mut())
             .and_then(|header_obj| header_obj.remove("hash_algorithm"));

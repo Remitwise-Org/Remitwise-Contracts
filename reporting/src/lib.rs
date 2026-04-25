@@ -160,6 +160,8 @@ pub enum ReportingError {
     NotAdminProposed = 5,
     /// Dependency address set is not usable: duplicates or self-reference to this reporting contract.
     InvalidDependencyAddressConfiguration = 6,
+    /// Report period range is invalid (`period_start` is greater than `period_end`).
+    InvalidPeriod = 7,
 }
 
 #[contracttype]
@@ -346,6 +348,14 @@ impl ReportingContract {
         Ok(())
     }
 
+    /// Validates that a requested report period is logically ordered.
+    fn validate_period(period_start: u64, period_end: u64) -> Result<(), ReportingError> {
+        if period_start > period_end {
+            return Err(ReportingError::InvalidPeriod);
+        }
+        Ok(())
+    }
+
     /// Verify a [`ContractAddresses`] bundle using the same rules as [`ReportingContract::configure_addresses`].
     ///
     /// Does **not** write storage and does **not** require authorization. Intended for admin UIs and
@@ -481,7 +491,7 @@ impl ReportingContract {
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
-    
+
     pub fn configure_addresses(
         env: Env,
         caller: Address,
@@ -543,7 +553,10 @@ impl ReportingContract {
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the admin
     /// * `AddressesNotConfigured` - If dependency addresses have not been configured
-    pub fn check_dependencies(env: Env, caller: Address) -> Result<Vec<DependencyStatus>, ReportingError> {
+    pub fn check_dependencies(
+        env: Env,
+        caller: Address,
+    ) -> Result<Vec<DependencyStatus>, ReportingError> {
         caller.require_auth();
 
         let admin: Address = env
@@ -573,43 +586,66 @@ impl ReportingContract {
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
-            error_category: if split_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_split_failed")) },
+            error_category: if split_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_split_failed"))
+            },
         });
 
         // Check savings_goals
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
-        let savings_ok = match savings_client.try_get_all_goals(&Address::from_contract_id(&env, &env.current_contract_address())) {
+        let savings_ok = match savings_client.try_get_all_goals(&env.current_contract_address()) {
             Ok(Ok(_)) => true,
             _ => false,
         };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "savings_goals"),
             ok: savings_ok,
-            error_category: if savings_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_all_goals_failed")) },
+            error_category: if savings_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_all_goals_failed"))
+            },
         });
 
         // Check bill_payments
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let bill_ok = match bill_client.try_get_total_unpaid(&Address::from_contract_id(&env, &env.current_contract_address())) {
+        let bill_ok = match bill_client.try_get_total_unpaid(&env.current_contract_address()) {
             Ok(Ok(_)) => true,
             _ => false,
         };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "bill_payments"),
             ok: bill_ok,
-            error_category: if bill_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_unpaid_failed")) },
+            error_category: if bill_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(
+                    &env,
+                    "get_total_unpaid_failed",
+                ))
+            },
         });
 
         // Check insurance
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let insurance_ok = match insurance_client.try_get_total_monthly_premium(&Address::from_contract_id(&env, &env.current_contract_address())) {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let insurance_ok =
+            match insurance_client.try_get_total_monthly_premium(&env.current_contract_address()) {
+                Ok(Ok(_)) => true,
+                _ => false,
+            };
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "insurance"),
             ok: insurance_ok,
-            error_category: if insurance_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_monthly_premium_failed")) },
+            error_category: if insurance_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(
+                    &env,
+                    "get_total_monthly_premium_failed",
+                ))
+            },
         });
 
         // Check family_wallet
@@ -621,7 +657,11 @@ impl ReportingContract {
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "family_wallet"),
             ok: family_ok,
-            error_category: if family_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_owner_failed")) },
+            error_category: if family_ok {
+                None
+            } else {
+                Some(soroban_sdk::String::from_str(&env, "get_owner_failed"))
+            },
         });
 
         Ok(statuses)
@@ -636,9 +676,15 @@ impl ReportingContract {
         total_amount: i128,
         period_start: u64,
         period_end: u64,
-    ) -> RemittanceSummary {
+    ) -> Result<RemittanceSummary, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
+        Ok(Self::get_remittance_summary_internal(
+            &env,
+            total_amount,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_remittance_summary_internal(
@@ -715,9 +761,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> SavingsReport {
+    ) -> Result<SavingsReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_savings_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_savings_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_savings_report_internal(
@@ -773,9 +825,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> BillComplianceReport {
+    ) -> Result<BillComplianceReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_bill_compliance_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_bill_compliance_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_bill_compliance_report_internal(
@@ -853,9 +911,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> InsuranceReport {
+    ) -> Result<InsuranceReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_insurance_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_insurance_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_insurance_report_internal(
@@ -978,7 +1042,8 @@ impl ReportingContract {
         total_remittance: i128,
         period_start: u64,
         period_end: u64,
-    ) -> FinancialHealthReport {
+    ) -> Result<FinancialHealthReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
         let health_score =
             Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
@@ -998,14 +1063,14 @@ impl ReportingContract {
             generated_at,
         );
 
-        FinancialHealthReport {
+        Ok(FinancialHealthReport {
             health_score,
             remittance_summary,
             savings_report,
             bill_compliance,
             insurance_report,
             generated_at,
-        }
+        })
     }
 
     /// Generate trend analysis comparing two data points.

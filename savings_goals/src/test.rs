@@ -3147,7 +3147,10 @@ fn test_add_tags_to_goal_normalization_success() {
     client.add_tags_to_goal(&user, &goal_id, &tags);
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.tags.get(0).unwrap(), String::from_str(&env, "urgent-1_tag"));
+    assert_eq!(
+        goal.tags.get(0).unwrap(),
+        String::from_str(&env, "urgent-1_tag")
+    );
 }
 
 #[test]

@@ -464,18 +464,20 @@ impl SavingsGoalContract {
             }
             let mut buf = [0u8; 32];
             tag.copy_into_slice(&mut buf[..len as usize]);
-            
+
             for i in 0..(len as usize) {
                 let mut c = buf[i];
                 if c >= b'A' && c <= b'Z' {
                     c = c + (b'a' - b'A');
                     buf[i] = c;
                 }
-                if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9') || c == b'-' || c == b'_') {
+                if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9') || c == b'-' || c == b'_')
+                {
                     soroban_sdk::panic_with_error!(env, SavingsGoalsError::InvalidTagContent);
                 }
             }
-            normalized_tags.push_back(String::from_slice(env, &buf[..len as usize]));
+            let tag_str = core::str::from_utf8(&buf[..len as usize]).unwrap_or("");
+            normalized_tags.push_back(String::from_str(env, tag_str));
         }
         normalized_tags
     }

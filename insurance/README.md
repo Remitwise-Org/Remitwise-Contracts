@@ -78,10 +78,30 @@ Policy creation (`create_policy`) validates inputs in this order:
 8. **Coverage in range** — within per-type `[min_coverage, max_coverage]`
 9. **Ratio guard** — `coverage_amount <= monthly_premium * 12 * 500`
 10. **External ref length** — `external_ref.len() <= 128` (if provided, also must be > 0)
-11. **Capacity** — active policy count < 1,000
+11. **External ref charset** — `external_ref` must use only ASCII `[A-Za-z0-9._:-]`
+12. **Owner-scoped uniqueness** — `(owner, external_ref)` must be unique among indexed policies
+13. **Capacity** — active policy count < 1,000
 
 All overflow arithmetic uses `checked_mul` / `checked_add` / `saturating_add`
 to prevent silent numeric wrap-around.
+
+## External Ref Index
+
+To support deterministic off-chain reconciliation, the contract maintains an
+owner-scoped index:
+
+`ExternalRefIndex(owner, external_ref) -> policy_id`
+
+Update rules:
+
+- **create**: validates and binds `external_ref` if present
+- **set_external_ref(Some)**: validates, enforces uniqueness, rebinds key
+- **set_external_ref(None)**: clears index entry (reference becomes reusable)
+- **deactivate_policy**: unbinds the policy's `external_ref`
+- **archive_policy**: unbinds on move to archive storage
+- **restore_policy**: attempts rebind; restore fails closed on conflict
+
+A successful `set_external_ref` emits `ExternalRefUpdatedEvent`.
 
 ---
 

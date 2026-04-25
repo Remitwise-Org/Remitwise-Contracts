@@ -369,37 +369,41 @@ fn test_schedule_pagination_ordering_guarantees() {
 
     // Create multiple schedules with different creation times
     let id1 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-    let id2 = client.create_remittance_schedule(&owner, &(amount * 2), &(next_due + 100), &interval);
-    let id3 = client.create_remittance_schedule(&owner, &(amount * 3), &(next_due + 200), &interval);
-    let id4 = client.create_remittance_schedule(&owner, &(amount * 4), &(next_due + 300), &interval);
-    let id5 = client.create_remittance_schedule(&owner, &(amount * 5), &(next_due + 400), &interval);
+    let id2 =
+        client.create_remittance_schedule(&owner, &(amount * 2), &(next_due + 100), &interval);
+    let id3 =
+        client.create_remittance_schedule(&owner, &(amount * 3), &(next_due + 200), &interval);
+    let id4 =
+        client.create_remittance_schedule(&owner, &(amount * 4), &(next_due + 300), &interval);
+    let id5 =
+        client.create_remittance_schedule(&owner, &(amount * 5), &(next_due + 400), &interval);
 
     // Verify IDs are sequential and ascending
     assert!(id1 < id2 && id2 < id3 && id3 < id4 && id4 < id5);
 
     // Test pagination with small pages
-    let page1 = client.get_remittance_schedules_paginated(&owner, &0, &2);
+    let page1 = client.get_schedules_paginated(&owner, &0, &2);
     assert_eq!(page1.count, 2);
     assert_eq!(page1.items.len(), 2);
     assert_eq!(page1.items.get(0).unwrap().id, id1);
     assert_eq!(page1.items.get(1).unwrap().id, id2);
     assert_eq!(page1.next_cursor, 2);
 
-    let page2 = client.get_remittance_schedules_paginated(&owner, &2, &2);
+    let page2 = client.get_schedules_paginated(&owner, &2, &2);
     assert_eq!(page2.count, 2);
     assert_eq!(page2.items.len(), 2);
     assert_eq!(page2.items.get(0).unwrap().id, id3);
     assert_eq!(page2.items.get(1).unwrap().id, id4);
     assert_eq!(page2.next_cursor, 4);
 
-    let page3 = client.get_remittance_schedules_paginated(&owner, &4, &2);
+    let page3 = client.get_schedules_paginated(&owner, &4, &2);
     assert_eq!(page3.count, 1);
     assert_eq!(page3.items.len(), 1);
     assert_eq!(page3.items.get(0).unwrap().id, id5);
     assert_eq!(page3.next_cursor, 0); // No more pages
 
     // Test empty page beyond range
-    let empty_page = client.get_remittance_schedules_paginated(&owner, &10, &2);
+    let empty_page = client.get_schedules_paginated(&owner, &10, &2);
     assert_eq!(empty_page.count, 0);
     assert_eq!(empty_page.items.len(), 0);
     assert_eq!(empty_page.next_cursor, 0);
@@ -435,17 +439,23 @@ fn test_schedule_pagination_stable_cursors() {
     let id3 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Test that repeated calls with same cursor return same results
-    let page1_a = client.get_remittance_schedules_paginated(&owner, &0, &2);
-    let page1_b = client.get_remittance_schedules_paginated(&owner, &0, &2);
+    let page1_a = client.get_schedules_paginated(&owner, &0, &2);
+    let page1_b = client.get_schedules_paginated(&owner, &0, &2);
     assert_eq!(page1_a.count, page1_b.count);
     assert_eq!(page1_a.next_cursor, page1_b.next_cursor);
-    assert_eq!(page1_a.items.get(0).unwrap().id, page1_b.items.get(0).unwrap().id);
-    assert_eq!(page1_a.items.get(1).unwrap().id, page1_b.items.get(1).unwrap().id);
+    assert_eq!(
+        page1_a.items.get(0).unwrap().id,
+        page1_b.items.get(0).unwrap().id
+    );
+    assert_eq!(
+        page1_a.items.get(1).unwrap().id,
+        page1_b.items.get(1).unwrap().id
+    );
 
     // Cancel middle schedule and verify pagination still works deterministically
     client.cancel_remittance_schedule(&owner, &id2);
 
-    let page1_after = client.get_remittance_schedules_paginated(&owner, &0, &2);
+    let page1_after = client.get_schedules_paginated(&owner, &0, &2);
     // Should still return id1 and id3 (id2 is cancelled but still in storage)
     assert_eq!(page1_after.count, 2);
     assert_eq!(page1_after.items.get(0).unwrap().id, id1);
@@ -472,7 +482,7 @@ fn test_schedule_pagination_limit_clamping() {
     }
 
     // Test that very large limit is clamped
-    let page = client.get_remittance_schedules_paginated(&owner, &0, &1000);
+    let page = client.get_schedules_paginated(&owner, &0, &1000);
     // Should be clamped to MAX_PAGE_LIMIT (50)
     assert!(page.count <= 50);
     assert!(page.items.len() <= 50);

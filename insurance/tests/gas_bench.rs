@@ -1,4 +1,4 @@
-use insurance::{Insurance, InsuranceClient};
+use insurance::{Insurance, InsuranceClient, MAX_POLICIES_PER_OWNER};
 use remitwise_common::CoverageType;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -37,6 +37,7 @@ where
     (cpu, mem, result)
 }
 
+/// Benchmark get_total_monthly_premium at the maximum allowed active-policy count.
 #[test]
 fn bench_get_total_monthly_premium_worst_case() {
     let env = bench_env();
@@ -47,16 +48,16 @@ fn bench_get_total_monthly_premium_worst_case() {
 
     let name = String::from_str(&env, "BenchPolicy");
     let coverage_type = CoverageType::Health;
-    for _ in 0..100 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
-    let expected_total = 100i128 * 100i128;
+    let expected_total = MAX_POLICIES_PER_OWNER as i128 * 100i128;
     let (cpu, mem, total) = measure(&env, || client.get_total_monthly_premium(&owner));
     assert_eq!(total, expected_total);
 
     println!(
-        r#"{{"contract":"insurance","method":"get_total_monthly_premium","scenario":"100_active_policies","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"insurance","method":"get_total_monthly_premium","scenario":"{}_active_policies","cpu":{},"mem":{}}}"#,
+        MAX_POLICIES_PER_OWNER, cpu, mem
     );
 }

@@ -609,9 +609,9 @@ fn test_export_import_snapshot_with_large_amounts() {
 
 #[test]
 fn test_add_to_goal_near_safe_cap_boundary() {
-    /// Test adding amounts right at the boundary of safe operations.
-    /// The contract documents max safe goal amount as i128::MAX/2 to allow
-    /// for safe addition operations without overflow.
+    // Test adding amounts right at the boundary of safe operations.
+    // The contract documents max safe goal amount as i128::MAX/2 to allow
+    // for safe addition operations without overflow.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -672,8 +672,8 @@ fn test_add_to_goal_just_over_safe_cap_returns_overflow() {
 
 #[test]
 fn test_withdraw_from_goal_near_underflow() {
-    /// Test that withdrawal near zero boundaries is handled correctly
-    /// and doesn't cause negative wrapping.
+    // Test that withdrawal near zero boundaries is handled correctly
+    // and doesn't cause negative wrapping.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -709,8 +709,8 @@ fn test_withdraw_from_goal_near_underflow() {
 
 #[test]
 fn test_withdraw_from_goal_overflow_protection() {
-    /// Test that attempting to withdraw more than available returns error
-    /// instead of panicking or allowing negative amounts.
+    // Test that attempting to withdraw more than available returns error
+    // instead of panicking or allowing negative amounts.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -722,7 +722,7 @@ fn test_withdraw_from_goal_overflow_protection() {
     let goal_id = client.create_goal(
         &owner,
         &String::from_str(&env, "Withdrawal Test"),
-        &i128::MAX / 2,
+        &(i128::MAX / 2),
         &2000000,
     );
 
@@ -747,8 +747,8 @@ fn test_withdraw_from_goal_overflow_protection() {
 
 #[test]
 fn test_concurrent_near_boundary_operations_deterministic() {
-    /// Test that multiple operations near safe boundaries produce
-    /// deterministic results and consistent error codes.
+    // Test that multiple operations near safe boundaries produce
+    // deterministic results and consistent error codes.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -822,8 +822,8 @@ fn test_concurrent_near_boundary_operations_deterministic() {
 
 #[test]
 fn test_error_codes_stable_across_repeated_operations() {
-    /// Test that repeated operations near boundaries consistently
-    /// return the same error code, proving deterministic error handling.
+    // Test that repeated operations near boundaries consistently
+    // return the same error code, proving deterministic error handling.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -861,4 +861,3 @@ fn test_error_codes_stable_across_repeated_operations() {
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal.current_amount, 1000);
 }
-
