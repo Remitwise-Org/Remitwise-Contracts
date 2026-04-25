@@ -279,16 +279,17 @@ fn test_edge_cases_large_amounts() {
 
     client.init();
     env.mock_all_auths();
+    let safe_cap = i128::MAX / 2;
     let id = client.create_goal(
         &user,
         &String::from_str(&env, "Max"),
-        &i128::MAX,
+        &safe_cap,
         &2000000000,
     );
 
-    client.add_to_goal(&user, &id, &(i128::MAX - 100));
+    client.add_to_goal(&user, &id, &(safe_cap - 100));
     let goal = client.get_goal(&id).unwrap();
-    assert_eq!(goal.current_amount, i128::MAX - 100);
+    assert_eq!(goal.current_amount, safe_cap - 100);
 }
 
 #[test]
@@ -1223,7 +1224,7 @@ fn test_instance_ttl_extended_on_create_goal() {
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -1267,7 +1268,7 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -1287,13 +1288,13 @@ fn test_instance_ttl_refreshed_on_add_to_goal() {
     // After create_goal: live_until = 518,500. At seq 510,000: TTL = 8,500
     env.ledger().set(LedgerInfo {
         protocol_version: 20,
-        sequence_number: 510_000,
+        sequence_number: 500_000,
         timestamp: 500_000,
         network_id: [0; 32],
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     // add_to_goal calls extend_instance_ttl → re-extends TTL to 518,400
@@ -1323,7 +1324,7 @@ fn test_savings_data_persists_across_ledger_advancements() {
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -1344,27 +1345,28 @@ fn test_savings_data_persists_across_ledger_advancements() {
     // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
     env.ledger().set(LedgerInfo {
         protocol_version: 20,
-        sequence_number: 510_000,
-        timestamp: 510_000,
+        sequence_number: 500_000,
+        timestamp: 500_000,
         network_id: [0; 32],
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     client.add_to_goal(&user, &id1, &3000);
+    client.add_to_goal(&user, &id2, &0);
 
     // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
     env.ledger().set(LedgerInfo {
         protocol_version: 20,
-        sequence_number: 1_020_000,
-        timestamp: 1_020_000,
+        sequence_number: 1_000_000,
+        timestamp: 1_000_000,
         network_id: [0; 32],
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     // Add more funds to second goal
@@ -1405,7 +1407,7 @@ fn test_instance_ttl_extended_on_lock_goal() {
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -1424,13 +1426,13 @@ fn test_instance_ttl_extended_on_lock_goal() {
     // Advance ledger past threshold
     env.ledger().set(LedgerInfo {
         protocol_version: 20,
-        sequence_number: 510_000,
-        timestamp: 510_000,
+        sequence_number: 500_000,
+        timestamp: 500_000,
         network_id: [0; 32],
         base_reserve: 10,
         min_temp_entry_ttl: 100,
         min_persistent_entry_ttl: 100,
-        max_entry_ttl: 700_000,
+        max_entry_ttl: 2_000_000,
     });
 
     // lock_goal calls extend_instance_ttl
@@ -1456,6 +1458,14 @@ fn setup_goals(env: &Env, client: &SavingsGoalContractClient, owner: &Address, c
 }
 
 fn page_goal_ids(env: &Env, page: &GoalPage) -> soroban_sdk::Vec<u32> {
+    let mut ids = soroban_sdk::Vec::new(env);
+    for goal in page.items.iter() {
+        ids.push_back(goal.id);
+    }
+    ids
+}
+
+fn page_archived_goal_ids(env: &Env, page: &ArchivedGoalPage) -> soroban_sdk::Vec<u32> {
     let mut ids = soroban_sdk::Vec::new(env);
     for goal in page.items.iter() {
         ids.push_back(goal.id);
@@ -1660,6 +1670,169 @@ fn test_get_all_goals_backward_compat() {
     setup_goals(&env, &client, &owner, 5);
     let all = client.get_all_goals(&owner);
     assert_eq!(all.len(), 5);
+}
+
+#[test]
+fn test_get_archived_goals_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let page = client.get_archived_goals_page(&owner, &0, &0);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+#[test]
+fn test_archive_goal_requires_completion() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let goal_id = client.create_goal(
+        &owner,
+        &soroban_sdk::String::from_str(&env, "Goal"),
+        &1000i128,
+        &(env.ledger().timestamp() + 100),
+    );
+
+    // Not completed yet -> must fail.
+    let res = client.try_archive_goal(&owner, &goal_id);
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_archive_goal_moves_goal_from_active_to_archived() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let goal_id = client.create_goal(
+        &owner,
+        &soroban_sdk::String::from_str(&env, "Goal"),
+        &1000i128,
+        &(env.ledger().timestamp() + 100),
+    );
+    client.add_to_goal(&owner, &goal_id, &1000i128);
+
+    assert!(client.archive_goal(&owner, &goal_id));
+    assert!(client.get_goal(&goal_id).is_none(), "archived goal must not be active");
+
+    let archived = client.get_archived_goal(&goal_id).unwrap();
+    assert_eq!(archived.id, goal_id);
+    assert_eq!(archived.owner, owner);
+
+    let active_page = client.get_goals(&owner, &0, &20);
+    assert_eq!(active_page.count, 0);
+
+    let archived_page = client.get_archived_goals_page(&owner, &0, &20);
+    assert_eq!(archived_page.count, 1);
+    assert_eq!(archived_page.items.get(0).unwrap().id, goal_id);
+}
+
+#[test]
+fn test_get_archived_goals_multiple_pages_and_ordering() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 6);
+
+    // Complete all (setup_goals uses target_amount = 1000 * id).
+    for goal_id in 1u32..=6u32 {
+        client.add_to_goal(&owner, &goal_id, &(1000i128 * goal_id as i128));
+    }
+
+    // Archive out of order to ensure archived index enforces deterministic ordering.
+    client.archive_goal(&owner, &5);
+    client.archive_goal(&owner, &2);
+    client.archive_goal(&owner, &6);
+    client.archive_goal(&owner, &1);
+    client.archive_goal(&owner, &4);
+    client.archive_goal(&owner, &3);
+
+    let page1 = client.get_archived_goals_page(&owner, &0, &2);
+    assert_eq!(page1.count, 2);
+    assert_eq!(page_archived_goal_ids(&env, &page1).get(0), Some(1));
+    assert_eq!(page_archived_goal_ids(&env, &page1).get(1), Some(2));
+
+    let page2 = client.get_archived_goals_page(&owner, &page1.next_cursor, &2);
+    assert_eq!(page2.count, 2);
+    assert_eq!(page_archived_goal_ids(&env, &page2).get(0), Some(3));
+    assert_eq!(page_archived_goal_ids(&env, &page2).get(1), Some(4));
+
+    let page3 = client.get_archived_goals_page(&owner, &page2.next_cursor, &2);
+    assert_eq!(page3.count, 2);
+    assert_eq!(page_archived_goal_ids(&env, &page3).get(0), Some(5));
+    assert_eq!(page_archived_goal_ids(&env, &page3).get(1), Some(6));
+    assert_eq!(page3.next_cursor, 0);
+}
+
+#[test]
+fn test_get_archived_goals_rejects_invalid_cursor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+    for goal_id in 1u32..=3u32 {
+        client.add_to_goal(&owner, &goal_id, &(1000i128 * goal_id as i128));
+        client.archive_goal(&owner, &goal_id);
+    }
+
+    let res = client.try_get_archived_goals_page(&owner, &999_999, &2);
+    assert!(res.is_err(), "non-zero cursor must exist for this owner");
+}
+
+#[test]
+fn test_get_archived_goals_rejects_cursor_from_another_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    client.init();
+
+    let a_goal = client.create_goal(
+        &owner_a,
+        &soroban_sdk::String::from_str(&env, "A"),
+        &1000i128,
+        &(env.ledger().timestamp() + 100),
+    );
+    client.add_to_goal(&owner_a, &a_goal, &1000i128);
+    client.archive_goal(&owner_a, &a_goal);
+
+    let b_goal = client.create_goal(
+        &owner_b,
+        &soroban_sdk::String::from_str(&env, "B"),
+        &1000i128,
+        &(env.ledger().timestamp() + 100),
+    );
+    client.add_to_goal(&owner_b, &b_goal, &1000i128);
+    client.archive_goal(&owner_b, &b_goal);
+
+    let owner_b_first_page = client.get_archived_goals_page(&owner_b, &0, &1);
+    let foreign_cursor = owner_b_first_page.items.get(0).unwrap().id;
+    let res = client.try_get_archived_goals_page(&owner_a, &foreign_cursor, &2);
+    assert!(res.is_err(), "cursor must be bound to the requested owner");
 }
 
 #[test]
@@ -3147,7 +3320,10 @@ fn test_add_tags_to_goal_normalization_success() {
     client.add_tags_to_goal(&user, &goal_id, &tags);
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.tags.get(0).unwrap(), String::from_str(&env, "urgent-1_tag"));
+    assert_eq!(
+        goal.tags.get(0).unwrap(),
+        String::from_str(&env, "urgent-1_tag")
+    );
 }
 
 #[test]

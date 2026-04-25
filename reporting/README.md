@@ -77,15 +77,18 @@ Sets sub-contract addresses. Admin only.
 
 ### Report Generation
 
-#### `get_financial_health_report(user, total_remittance, period_start, period_end) -> FinancialHealthReport`
+#### `get_financial_health_report(user, total_remittance, period_start, period_end) -> Result<FinancialHealthReport, ReportingError>`
 Generates a full report by querying all sub-contracts.
 
-#### `get_remittance_summary(user, total_amount, period_start, period_end) -> RemittanceSummary`
-#### `get_savings_report(user, period_start, period_end) -> SavingsReport`
-#### `get_bill_compliance_report(user, period_start, period_end) -> BillComplianceReport`
-#### `get_insurance_report(user, period_start, period_end) -> InsuranceReport`
+#### `get_remittance_summary(user, total_amount, period_start, period_end) -> Result<RemittanceSummary, ReportingError>`
+#### `get_savings_report(user, period_start, period_end) -> Result<SavingsReport, ReportingError>`
+#### `get_bill_compliance_report(user, period_start, period_end) -> Result<BillComplianceReport, ReportingError>`
+#### `get_insurance_report(user, period_start, period_end) -> Result<InsuranceReport, ReportingError>`
 #### `calculate_health_score(user, total_remittance) -> HealthScore`
 #### `get_trend_analysis(user, current_amount, previous_amount) -> TrendData`
+
+All report generation endpoints validate the period bounds and fail closed with
+`InvalidPeriod` when `period_start > period_end`.
 
 ### Storage
 

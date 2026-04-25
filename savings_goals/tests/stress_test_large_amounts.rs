@@ -11,11 +11,11 @@
 //! - Maximum safe goal amount: i128::MAX/2 (to allow for safe addition operations)
 //! - add_to_goal uses checked_add internally and will panic with "overflow" on overflow
 //! - withdraw_from_goal uses checked_sub internally and will panic with "underflow" on underflow
-//! - No explicit caps are imposed by the contract, but overflow/underflow will panic
+//! - add_to_goal enforces `current_amount <= i128::MAX/2` and returns `Overflow` if exceeded
 //! - batch_add_to_goals has same limitations as add_to_goal for each contribution
 
 use savings_goals::{
-    ContributionItem, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalsError,
+    ContributionItem, SavingsGoalContract, SavingsGoalContractClient, SavingsGoalError,
 };
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
 use soroban_sdk::{Env, String, Vec};
@@ -125,7 +125,7 @@ fn test_add_to_goal_overflow_returns_error() {
     env.mock_all_auths();
 
     let large_target = i128::MAX;
-    let overflow_amount = i128::MAX / 2 + 1000;
+    let safe_cap = i128::MAX / 2;
 
     let goal_id = client.create_goal(
         &owner,
@@ -134,15 +134,15 @@ fn test_add_to_goal_overflow_returns_error() {
         &2000000,
     );
 
-    // First addition should succeed
+    // First addition should succeed at the safe cap boundary.
     env.mock_all_auths();
-    let first = client.add_to_goal(&owner, &goal_id, &overflow_amount);
-    assert_eq!(first, overflow_amount);
+    let first = client.add_to_goal(&owner, &goal_id, &safe_cap);
+    assert_eq!(first, safe_cap);
 
     // Second addition should return an overflow error rather than panic
     env.mock_all_auths();
-    let result = client.try_add_to_goal(&owner, &goal_id, &overflow_amount);
-    assert_eq!(result, Err(Ok(SavingsGoalsError::Overflow)));
+    let result = client.try_add_to_goal(&owner, &goal_id, &1);
+    assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn test_batch_add_to_goals_overflow_returns_error() {
 
     env.mock_all_auths();
     let result = client.try_batch_add_to_goals(&owner, &contributions);
-    assert_eq!(result, Err(Ok(SavingsGoalsError::Overflow)));
+    assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
 #[test]
 fn test_withdraw_from_goal_with_large_amount() {
@@ -609,9 +609,9 @@ fn test_export_import_snapshot_with_large_amounts() {
 
 #[test]
 fn test_add_to_goal_near_safe_cap_boundary() {
-    /// Test adding amounts right at the boundary of safe operations.
-    /// The contract documents max safe goal amount as i128::MAX/2 to allow
-    /// for safe addition operations without overflow.
+    // Test adding amounts right at the boundary of safe operations.
+    // The contract documents max safe goal amount as i128::MAX/2 to allow
+    // for safe addition operations without overflow.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -667,13 +667,13 @@ fn test_add_to_goal_just_over_safe_cap_returns_overflow() {
     // Try to add just over boundary — must fail gracefully with Overflow
     env.mock_all_auths();
     let result = client.try_add_to_goal(&owner, &goal_id, &beyond_cap);
-    assert_eq!(result, Err(Ok(SavingsGoalsError::Overflow)));
+    assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
 
 #[test]
 fn test_withdraw_from_goal_near_underflow() {
-    /// Test that withdrawal near zero boundaries is handled correctly
-    /// and doesn't cause negative wrapping.
+    // Test that withdrawal near zero boundaries is handled correctly
+    // and doesn't cause negative wrapping.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -709,8 +709,8 @@ fn test_withdraw_from_goal_near_underflow() {
 
 #[test]
 fn test_withdraw_from_goal_overflow_protection() {
-    /// Test that attempting to withdraw more than available returns error
-    /// instead of panicking or allowing negative amounts.
+    // Test that attempting to withdraw more than available returns error
+    // instead of panicking or allowing negative amounts.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -722,7 +722,7 @@ fn test_withdraw_from_goal_overflow_protection() {
     let goal_id = client.create_goal(
         &owner,
         &String::from_str(&env, "Withdrawal Test"),
-        &i128::MAX / 2,
+        &(i128::MAX / 2),
         &2000000,
     );
 
@@ -738,7 +738,7 @@ fn test_withdraw_from_goal_overflow_protection() {
     env.mock_all_auths();
     let withdrawing = amount + 1;
     let result = client.try_withdraw_from_goal(&owner, &goal_id, &withdrawing);
-    assert_eq!(result, Err(Ok(SavingsGoalsError::InsufficientBalance)));
+    assert_eq!(result, Err(Ok(SavingsGoalError::InsufficientBalance)));
 
     // Verify amount was not modified
     let goal = client.get_goal(&goal_id).unwrap();
@@ -747,8 +747,8 @@ fn test_withdraw_from_goal_overflow_protection() {
 
 #[test]
 fn test_concurrent_near_boundary_operations_deterministic() {
-    /// Test that multiple operations near safe boundaries produce
-    /// deterministic results and consistent error codes.
+    // Test that multiple operations near safe boundaries produce
+    // deterministic results and consistent error codes.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -757,7 +757,8 @@ fn test_concurrent_near_boundary_operations_deterministic() {
     env.mock_all_auths();
 
     let safe_cap = i128::MAX / 2;
-    let half_cap = safe_cap / 2;
+    let first_add = safe_cap / 2;
+    let second_add = safe_cap - first_add;
 
     // Create three goals at boundary
     let goal1 = client.create_goal(
@@ -783,47 +784,47 @@ fn test_concurrent_near_boundary_operations_deterministic() {
         &2000000,
     );
 
-    // Add half_cap to each
+    // Add amounts that deterministically reach exactly `safe_cap`.
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal1, &half_cap);
+    client.add_to_goal(&owner, &goal1, &first_add);
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal2, &half_cap);
+    client.add_to_goal(&owner, &goal2, &first_add);
 
     env.mock_all_auths();
-    client.add_to_goal(&owner, &goal3, &half_cap);
+    client.add_to_goal(&owner, &goal3, &first_add);
 
-    // Now try to add another half_cap to each — should all succeed
+    // Now add the remainder — should all succeed and land exactly at the cap.
     env.mock_all_auths();
-    let g1_total = client.add_to_goal(&owner, &goal1, &half_cap);
+    let g1_total = client.add_to_goal(&owner, &goal1, &second_add);
     assert_eq!(g1_total, safe_cap);
 
     env.mock_all_auths();
-    let g2_total = client.add_to_goal(&owner, &goal2, &half_cap);
+    let g2_total = client.add_to_goal(&owner, &goal2, &second_add);
     assert_eq!(g2_total, safe_cap);
 
     env.mock_all_auths();
-    let g3_total = client.add_to_goal(&owner, &goal3, &half_cap);
+    let g3_total = client.add_to_goal(&owner, &goal3, &second_add);
     assert_eq!(g3_total, safe_cap);
 
     // Try one more addition to each — all should fail with same error code
     env.mock_all_auths();
     let r1 = client.try_add_to_goal(&owner, &goal1, &1);
-    assert_eq!(r1, Err(Ok(SavingsGoalsError::Overflow)));
+    assert_eq!(r1, Err(Ok(SavingsGoalError::Overflow)));
 
     env.mock_all_auths();
     let r2 = client.try_add_to_goal(&owner, &goal2, &1);
-    assert_eq!(r2, Err(Ok(SavingsGoalsError::Overflow)));
+    assert_eq!(r2, Err(Ok(SavingsGoalError::Overflow)));
 
     env.mock_all_auths();
     let r3 = client.try_add_to_goal(&owner, &goal3, &1);
-    assert_eq!(r3, Err(Ok(SavingsGoalsError::Overflow)));
+    assert_eq!(r3, Err(Ok(SavingsGoalError::Overflow)));
 }
 
 #[test]
 fn test_error_codes_stable_across_repeated_operations() {
-    /// Test that repeated operations near boundaries consistently
-    /// return the same error code, proving deterministic error handling.
+    // Test that repeated operations near boundaries consistently
+    // return the same error code, proving deterministic error handling.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -852,7 +853,7 @@ fn test_error_codes_stable_across_repeated_operations() {
         let result = client.try_withdraw_from_goal(&owner, &goal_id, &2000);
         assert_eq!(
             result,
-            Err(Ok(SavingsGoalsError::InsufficientBalance)),
+            Err(Ok(SavingsGoalError::InsufficientBalance)),
             "Error code must be stable across repeated operations"
         );
     }
@@ -861,4 +862,3 @@ fn test_error_codes_stable_across_repeated_operations() {
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal.current_amount, 1000);
 }
-

@@ -156,6 +156,7 @@ pub enum BillEvent {
     ScheduleMissed,
     ScheduleModified,
     ScheduleCancelled,
+    RecurringBillCreated,
 }
 
 #[derive(Clone, Debug)]
@@ -173,6 +174,101 @@ pub struct BillPayments;
 
 #[contractimpl]
 impl BillPayments {
+    // -----------------------------------------------------------------------
+    // Owner-index helpers
+    // -----------------------------------------------------------------------
+
+    /// Return the active-bill ID list for `owner` (ID-ascending, no gaps).
+    fn get_owner_bills(env: &Env, owner: &Address) -> Vec<u32> {
+        let idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env))
+    }
+
+    /// Return the archived-bill ID list for `owner`.
+    fn get_owner_archived_bills(env: &Env, owner: &Address) -> Vec<u32> {
+        let idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_ARCH_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env))
+    }
+
+    /// Append `bill_id` to the active index for `owner`.
+    /// IDs are appended in creation order, which is ID-ascending by construction.
+    fn index_add_active(env: &Env, owner: &Address, bill_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        ids.push_back(bill_id);
+        idx.set(owner.clone(), ids);
+        env.storage()
+            .instance()
+            .set(&STORAGE_OWNER_INDEX, &idx);
+    }
+
+    /// Remove `bill_id` from the active index for `owner`.
+    fn index_remove_active(env: &Env, owner: &Address, bill_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        let ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        let mut new_ids: Vec<u32> = Vec::new(env);
+        for id in ids.iter() {
+            if id != bill_id {
+                new_ids.push_back(id);
+            }
+        }
+        idx.set(owner.clone(), new_ids);
+        env.storage()
+            .instance()
+            .set(&STORAGE_OWNER_INDEX, &idx);
+    }
+
+    /// Append `bill_id` to the archived index for `owner`.
+    fn index_add_archived(env: &Env, owner: &Address, bill_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_ARCH_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        ids.push_back(bill_id);
+        idx.set(owner.clone(), ids);
+        env.storage()
+            .instance()
+            .set(&STORAGE_ARCH_INDEX, &idx);
+    }
+
+    /// Remove `bill_id` from the archived index for `owner`.
+    fn index_remove_archived(env: &Env, owner: &Address, bill_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_ARCH_INDEX)
+            .unwrap_or_else(|| Map::new(env));
+        let ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        let mut new_ids: Vec<u32> = Vec::new(env);
+        for id in ids.iter() {
+            if id != bill_id {
+                new_ids.push_back(id);
+            }
+        }
+        idx.set(owner.clone(), new_ids);
+        env.storage()
+            .instance()
+            .set(&STORAGE_ARCH_INDEX, &idx);
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -238,8 +334,7 @@ impl BillPayments {
             upper[i] = b.to_ascii_uppercase();
         }
 
-        let upper_str =
-            core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
         Ok(String::from_str(env, upper_str))
     }
 
@@ -690,13 +785,19 @@ impl BillPayments {
         }
 
         // Validate and normalize currency (strict validation - rejects invalid codes)
-        let resolved_currency =
-            Self::validate_and_normalize_currency(&env, &currency)?;
+        let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
 
         // Validate external_ref if provided
         let validated_ext_ref = Self::validate_optional_external_ref(&env, &external_ref)?;
 
         Self::extend_instance_ttl(&env);
+
+        // Enforce per-owner bill cap before touching storage.
+        let owner_bill_count = Self::get_owner_bills(&env, &owner).len();
+        if owner_bill_count >= MAX_BILLS_PER_OWNER {
+            return Err(BillPaymentsError::OwnerBillCapExceeded);
+        }
+
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
@@ -729,12 +830,13 @@ impl BillPayments {
             paid: false,
             created_at: current_time,
             paid_at: None,
-            schedule_id: None,
+            schedule_id,
             tags: Vec::new(&env),
             currency: resolved_currency,
         };
 
         let bill_owner = bill.owner.clone();
+        let bill_ext_ref = bill.external_ref.clone();
         bills.set(next_id, bill);
         env.storage()
             .instance()
@@ -742,12 +844,14 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_ID"), &next_id);
+        // Update owner index
+        Self::index_add_active(&env, &bill_owner, next_id);
         Self::adjust_unpaid_total(&env, &bill_owner, amount);
 
         // Emit event for audit trail
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Created),
-            (next_id, bill_owner.clone(), bill_external_ref),
+            (next_id, bill_owner.clone(), bill_ext_ref),
         );
         RemitwiseEvents::emit(
             &env,
@@ -821,10 +925,13 @@ impl BillPayments {
             env.storage()
                 .instance()
                 .set(&symbol_short!("NEXT_ID"), &next_id);
+            // Update owner index for the newly created recurring bill
+            Self::index_add_active(&env, &caller, next_id);
         }
 
         let paid_amount = bill.amount;
         let was_recurring = bill.recurring;
+        let bill_ext_ref = bill.external_ref.clone();
         bills.set(bill_id, bill);
         env.storage()
             .instance()
@@ -832,11 +939,9 @@ impl BillPayments {
         if !was_recurring {
             Self::adjust_unpaid_total(&env, &caller, -paid_amount);
         }
-
-        // Emit event for audit trail
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
-            (bill_id, caller.clone(), bill_external_ref),
+            (bill_id, caller.clone(), bill_ext_ref),
         );
         RemitwiseEvents::emit(
             &env,
@@ -858,6 +963,14 @@ impl BillPayments {
         bills.get(bill_id)
     }
 
+    /// Return the number of active (non-archived) bills owned by `owner`.
+    ///
+    /// This is an O(1) read from the owner index and does not scan the full
+    /// bill map.  The count is bounded by `MAX_BILLS_PER_OWNER`.
+    pub fn get_owner_bill_count(env: Env, owner: Address) -> u32 {
+        Self::get_owner_bills(&env, &owner).len()
+    }
+
     // -----------------------------------------------------------------------
     // PAGINATED LIST QUERIES
     // -----------------------------------------------------------------------
@@ -877,20 +990,26 @@ impl BillPayments {
     /// Results are always ordered by bill ID ascending. Pagination uses the same
     /// ordering, so `cursor` is stable across repeated calls.
     pub fn get_unpaid_bills(env: Env, owner: Address, cursor: u32, limit: u32) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
-        let max_id = Self::get_next_bill_id(&env);
+
+        // Use the owner index for O(owner_bills) traversal instead of O(NEXT_ID).
+        let owner_ids = Self::get_owner_bills(&env, &owner);
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = bills.get(id) else {
                 continue;
             };
-            if bill.owner != owner || bill.paid {
+            if bill.paid {
                 continue;
             }
             staging.push_back((id, bill));
@@ -917,16 +1036,18 @@ impl BillPayments {
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
-        let max_id = Self::get_next_bill_id(&env);
+
+        // Use the owner index for O(owner_bills) traversal instead of O(NEXT_ID).
+        let owner_ids = Self::get_owner_bills(&env, &owner);
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = bills.get(id) else {
                 continue;
             };
-            if bill.owner != owner {
-                continue;
-            }
             staging.push_back((id, bill));
             if staging.len() > limit {
                 break;
@@ -1192,16 +1313,18 @@ impl BillPayments {
             .instance()
             .get(&symbol_short!("ARCH_BILL"))
             .unwrap_or_else(|| Map::new(&env));
-        let max_id = Self::get_next_bill_id(&env);
+
+        // Use the archived owner index for O(owner_archived) traversal.
+        let owner_ids = Self::get_owner_archived_bills(&env, &owner);
 
         let mut staging: Vec<(u32, ArchivedBill)> = Vec::new(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = archived.get(id) else {
                 continue;
             };
-            if bill.owner != owner {
-                continue;
-            }
             staging.push_back((id, bill));
             if staging.len() > limit {
                 break;
@@ -1226,6 +1349,82 @@ impl BillPayments {
             if let Some((id, _)) = staging.get(take - 1) {
                 next_cursor = id;
             }
+        }
+
+        let count = items.len();
+        ArchivedBillPage {
+            items,
+            next_cursor,
+            count,
+        }
+    }
+
+    /// Returns a page of archived bills for `owner` using the `ARCH_IDX` per-owner index.
+    ///
+    /// # Parameters
+    /// - `owner`: The address whose archived bills are queried.
+    /// - `cursor`: Exclusive lower bound on bill ID. Pass `0` to start from the beginning.
+    ///   The next page starts after the last returned ID (use `next_cursor` from the previous page).
+    /// - `limit`: Maximum items to return per page. `0` defaults to `DEFAULT_PAGE_LIMIT` (20).
+    ///   Values above `MAX_PAGE_LIMIT` (50) are clamped to `MAX_PAGE_LIMIT`.
+    ///
+    /// # Returns
+    /// `ArchivedBillPage` with:
+    /// - `items`: Up to `clamp_limit(limit)` archived bills in strictly ascending bill ID order.
+    /// - `next_cursor`: ID of the last item on this page if more pages exist; `0` if this is the last page.
+    /// - `count`: Number of items in `items`.
+    ///
+    /// # Ordering
+    /// Items are returned in strictly ascending bill ID order, matching the order maintained in `ARCH_IDX`.
+    ///
+    /// # Gas Complexity
+    /// O(clamp_limit(limit)) `ARCH_BILL` map lookups regardless of total archive size, because
+    /// only the owner's index entry is read rather than scanning the full `ARCH_BILL` map.
+    pub fn get_archived_bills_page(
+        env: Env,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> ArchivedBillPage {
+        let effective_limit = clamp_limit(limit);
+        let archived: Map<u32, ArchivedBill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_BILL"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let ids = Self::get_owner_index(&env, &owner);
+        let mut items: Vec<ArchivedBill> = Vec::new(&env);
+
+        for id in ids.iter() {
+            if id <= cursor {
+                continue;
+            }
+            if let Some(bill) = archived.get(id) {
+                items.push_back(bill);
+            }
+            if items.len() > effective_limit {
+                break;
+            }
+        }
+
+        let has_next = items.len() > effective_limit;
+        let mut next_cursor: u32 = 0;
+
+        if has_next {
+            // next_cursor = last item on the current page (before truncation)
+            let last_idx = effective_limit - 1;
+            if let Some(bill) = items.get(last_idx) {
+                next_cursor = bill.id;
+            }
+            // Truncate to effective_limit
+            let mut truncated: Vec<ArchivedBill> = Vec::new(&env);
+            for i in 0..effective_limit {
+                if let Some(bill) = items.get(i) {
+                    truncated.push_back(bill);
+                }
+            }
+            items = truncated;
         }
 
         let count = items.len();
@@ -1275,6 +1474,8 @@ impl BillPayments {
         if removed_unpaid_amount > 0 {
             Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount);
         }
+        // Remove from owner index
+        Self::index_remove_active(&env, &caller, bill_id);
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -1337,6 +1538,9 @@ impl BillPayments {
                             currency: bill.currency.clone(),
                         };
                     archived.set(id, archived_bill);
+                    let mut owner_ids = Self::get_owner_index(&env, &bill.owner);
+                    owner_ids.push_back(id);
+                    Self::set_owner_index(&env, &bill.owner, owner_ids);
                     to_remove.push_back(id);
                     archived_count += 1;
                 }
@@ -1354,6 +1558,15 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("ARCH_BILL"), &archived);
 
+        // Update owner indexes: move archived IDs from active → archived index.
+        // We iterate the archived map to find owner per ID.
+        for id in to_remove.iter() {
+            if let Some(bill) = archived.get(id) {
+                Self::index_remove_active(&env, &bill.owner, id);
+                Self::index_add_archived(&env, &bill.owner, id);
+            }
+        }
+
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
@@ -1368,22 +1581,22 @@ impl BillPayments {
     }
 
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
-        caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::RESTORE)?;
-        Self::extend_instance_ttl(&env);
+            caller.require_auth();
+            Self::require_not_paused(&env, pause_functions::RESTORE)?;
+            Self::extend_instance_ttl(&env);
 
-        let mut archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
-        let archived_bill = archived
-            .get(bill_id)
-            .ok_or(BillPaymentsError::BillNotFound)?;
+            let mut archived: Map<u32, ArchivedBill> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ARCH_BILL"))
+                .unwrap_or_else(|| Map::new(&env));
+            let archived_bill = archived
+                .get(bill_id)
+                .ok_or(BillPaymentsError::BillNotFound)?;
 
-        if archived_bill.owner != caller {
-            return Err(BillPaymentsError::Unauthorized);
-        }
+            if archived_bill.owner != caller {
+                return Err(BillPaymentsError::Unauthorized);
+            }
 
         // Reclaim external_ref in the active index. 
         // Fails if another bill now uses this ref.
@@ -1397,44 +1610,37 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let restored_bill = Bill {
-            id: archived_bill.id,
-            owner: archived_bill.owner.clone(),
-            name: archived_bill.name.clone(),
-            external_ref: archived_bill.external_ref.clone(),
-            amount: archived_bill.amount,
-            due_date: env.ledger().timestamp() + 2592000,
-            recurring: false,
-            frequency_days: 0,
-            paid: true,
-            created_at: archived_bill.paid_at,
-            paid_at: Some(archived_bill.paid_at),
-            schedule_id: None,
-            tags: archived_bill.tags.clone(),
-            currency: archived_bill.currency.clone(),
-        };
+            bills.set(bill_id, restored_bill);
+            archived.remove(bill_id);
 
-        bills.set(bill_id, restored_bill);
-        archived.remove(bill_id);
+            // Remove from ARCH_IDX
+            let old_ids = Self::get_owner_index(&env, &archived_bill.owner);
+            let mut new_ids: Vec<u32> = Vec::new(&env);
+            for eid in old_ids.iter() {
+                if eid != bill_id {
+                    new_ids.push_back(eid);
+                }
+            }
+            Self::set_owner_index(&env, &archived_bill.owner, new_ids);
 
-        env.storage()
-            .instance()
-            .set(&symbol_short!("BILLS"), &bills);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("ARCH_BILL"), &archived);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("BILLS"), &bills);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("ARCH_BILL"), &archived);
 
-        Self::update_storage_stats(&env);
+            Self::update_storage_stats(&env);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::State,
-            EventPriority::Medium,
-            symbol_short!("restored"),
-            bill_id,
-        );
-        Ok(())
-    }
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                symbol_short!("restored"),
+                bill_id,
+            );
+            Ok(())
+        }
 
     /// @notice Permanently delete archived bills with `archived_at < before_timestamp`.
     /// @dev Permissionless maintenance operation for archive compaction.
@@ -1457,7 +1663,7 @@ impl BillPayments {
             .get(&symbol_short!("ARCH_BILL"))
             .unwrap_or_else(|| Map::new(&env));
         let mut deleted_count = 0u32;
-        let mut to_remove: Vec<u32> = Vec::new(&env);
+        let mut to_remove: Vec<(u32, Address)> = Vec::new(&env);
 
         for (id, bill) in archived.iter() {
             if bill.archived_at < before_timestamp {
@@ -1470,8 +1676,17 @@ impl BillPayments {
             }
         }
 
-        for id in to_remove.iter() {
+        for (id, owner) in to_remove.iter() {
             archived.remove(id);
+            // Remove from ARCH_IDX
+            let old_ids = Self::get_owner_index(&env, &owner);
+            let mut new_ids: Vec<u32> = Vec::new(&env);
+            for eid in old_ids.iter() {
+                if eid != id {
+                    new_ids.push_back(eid);
+                }
+            }
+            Self::set_owner_index(&env, &owner, new_ids);
         }
 
         env.storage()
@@ -1599,6 +1814,8 @@ impl BillPayments {
                     currency: bill.currency.clone(),
                 };
                 bills.set(next_id, next_bill);
+                // Update owner index for the newly spawned recurring bill
+                Self::index_add_active(&env, &caller, next_id);
             } else {
                 unpaid_delta = unpaid_delta.saturating_sub(amount);
             }
@@ -1719,14 +1936,18 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let max_id = Self::get_next_bill_id(&env);
+        // Use the owner index for O(owner_bills) traversal instead of O(NEXT_ID).
+        let owner_ids = Self::get_owner_bills(&env, &owner);
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = bills.get(id) else {
                 continue;
             };
-            if bill.owner != owner || bill.currency != normalized_currency {
+            if bill.currency != normalized_currency {
                 continue;
             }
             staging.push_back((id, bill));
@@ -1770,6 +1991,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let bills: Map<u32, Bill> = env
             .storage()
@@ -1777,14 +1999,20 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
         let normalized_currency = Self::normalize_currency(&env, &currency);
-        let max_id = Self::get_next_bill_id(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+
+        // Use the owner index for O(owner_bills) traversal instead of O(NEXT_ID).
+        let owner_ids = Self::get_owner_bills(&env, &owner);
+
+        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = bills.get(id) else {
                 continue;
             };
-            if bill.owner != owner || bill.paid || bill.currency != normalized_currency {
+            if bill.paid || bill.currency != normalized_currency {
                 continue;
             }
             staging.push_back((id, bill));
@@ -1891,6 +2119,28 @@ impl BillPayments {
     }
     fn get_unpaid_totals_map(env: &Env) -> Option<Map<Address, i128>> {
         env.storage().instance().get(&STORAGE_UNPAID_TOTALS)
+    }
+
+    /// Read the owner's archived bill ID list from ARCH_IDX.
+    /// Returns an empty Vec if no entry exists for this owner.
+    fn get_owner_index(env: &Env, owner: &Address) -> Vec<u32> {
+        let idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&ARCH_IDX_KEY)
+            .unwrap_or_else(|| Map::new(env));
+        idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env))
+    }
+
+    /// Persist the owner's archived bill ID list back to ARCH_IDX.
+    fn set_owner_index(env: &Env, owner: &Address, ids: Vec<u32>) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&ARCH_IDX_KEY)
+            .unwrap_or_else(|| Map::new(env));
+        idx.set(owner.clone(), ids);
+        env.storage().instance().set(&ARCH_IDX_KEY, &idx);
     }
 
     fn adjust_unpaid_total(env: &Env, owner: &Address, delta: i128) {
@@ -2241,7 +2491,7 @@ mod test {
         let owner = Address::generate(&env);
 
         setup_bills(&env, &client, &owner, 3);
-        let page = client.get_overdue_bills(&0, &10);
+        let page = client.get_overdue_bills(&owner, &0, &10);
         assert_eq!(page.count, 0);
     }
 
@@ -2277,11 +2527,11 @@ mod test {
         env.ledger().set_timestamp(25000);
 
         // Now get_overdue_bills will actually find the 6 bills
-        let page1 = client.get_overdue_bills(&0, &4);
+        let page1 = client.get_overdue_bills(&owner, &0, &4);
         assert_eq!(page1.count, 4);
         assert!(page1.next_cursor > 0);
 
-        let page2 = client.get_overdue_bills(&page1.next_cursor, &4);
+        let page2 = client.get_overdue_bills(&owner, &page1.next_cursor, &4);
         assert_eq!(page2.count, 2);
         assert_eq!(page2.next_cursor, 0);
     }
@@ -3210,7 +3460,7 @@ mod test {
             // Fast-forward to 'now' so they become overdue
             env.ledger().set_timestamp(now);
 
-            let page = client.get_overdue_bills(&0, &50);
+            let page = client.get_overdue_bills(&owner, &0, &50);
             for bill in page.items.iter() {
                 prop_assert!(bill.due_date < now, "returned bill must be past due");
             }
@@ -3246,7 +3496,7 @@ mod test {
                 );
             }
 
-            let page = client.get_overdue_bills(&0, &50);
+            let page = client.get_overdue_bills(&owner, &0, &50);
             prop_assert_eq!(
                 page.count,
                 0u32,
@@ -3409,7 +3659,7 @@ mod test {
             &String::from_str(&env, "XLM"),
         );
 
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(
             page.count, 0,
             "Bill must not appear overdue when current_time == due_date"
@@ -3439,11 +3689,11 @@ mod test {
             &String::from_str(&env, "XLM"),
         );
 
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(page.count, 0);
 
         env.ledger().set_timestamp(due_date + 1);
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(
             page.count, 1,
             "Bill must appear overdue exactly one second past due_date"
@@ -3491,7 +3741,7 @@ mod test {
         // 3. WARP to the "Present" (2,000_000)
         env.ledger().set_timestamp(2_000_000);
 
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
 
         // Now overdue_target (1.5M) is < current (2M) -> OVERDUE
         // due_now_target (2M) is NOT < current (2M) -> NOT OVERDUE
@@ -3523,11 +3773,11 @@ mod test {
             &String::from_str(&env, "XLM"),
         );
 
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(page.count, 0);
 
         env.ledger().set_timestamp(due_date + day);
-        let page = client.get_overdue_bills(&0, &100);
+        let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(
             page.count, 1,
             "Bill must be overdue one full day past due_date"

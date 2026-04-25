@@ -2609,3 +2609,314 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
     let result = client.try_withdraw(&member, &token_contract.address(), &recipient, &500_0000000);
     assert!(result.is_err());
 }
+
+// ============================================================================
+// Role Expiry Enforcement Tests (#494)
+// ============================================================================
+
+#[test]
+fn test_expired_admin_cannot_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+
+    // Add admin role
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1; // Already expired
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // Attempt pause with expired role should fail
+    let result = client.try_pause(&admin);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // First pause as valid owner
+    let _pause = client.pause(&owner);
+
+    // Attempt unpause with expired role should fail
+    let result = client.try_unpause(&admin);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_archive_transactions() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // Attempt archive with expired role should fail
+    let result = client.try_archive_old_transactions(&admin, &now);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_cleanup_expired_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // Attempt cleanup with expired role should fail
+    let result = client.try_cleanup_expired_pending(&admin);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_configure_multisig() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone(), member.clone()]);
+    let _add_admin = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+    let _add_member = client.add_member(&owner, &member, &FamilyRole::Member, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    let signers = vec![&env, admin.clone(), member.clone()];
+    let result = client.try_configure_multisig(
+        &admin,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_configure_emergency() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // Attempt configure emergency with expired role should fail
+    let result = client.try_configure_emergency(&admin, &5000_0000000, &3600, &0, &10000_0000000);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_set_emergency_mode() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // Attempt set emergency mode with expired role should fail
+    let result = client.try_set_emergency_mode(&admin, &true);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_admin_cannot_batch_add_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let new_member = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    let members_to_add = vec![&env, BatchMemberItem {
+        address: new_member,
+        role: FamilyRole::Member,
+    }];
+
+    // Attempt batch add with expired role should fail
+    let result = client.try_batch_add_family_members(&admin, &members_to_add);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_owner_cannot_batch_remove_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, member.clone()]);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &owner, &Some(expires_at));
+
+    let addresses_to_remove = vec![&env, member];
+
+    // Attempt batch remove with expired role should fail
+    let result = client.try_batch_remove_family_members(&owner, &addresses_to_remove);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_owner_cannot_set_proposal_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let _result = client.init(&owner, &vec![&env]);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &owner, &Some(expires_at));
+
+    // Attempt set proposal expiry with expired role should fail
+    let result = client.try_set_proposal_expiry(&owner, &300);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_owner_cannot_set_upgrade_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let _result = client.init(&owner, &vec![&env]);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &owner, &Some(expires_at));
+
+    // Attempt set upgrade admin with expired role should fail
+    let result = client.try_set_upgrade_admin(&owner, &new_admin);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_expired_owner_cannot_set_version() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let _result = client.init(&owner, &vec![&env]);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now - 1;
+    let _set_exp = client.set_role_expiry(&owner, &owner, &Some(expires_at));
+
+    // Attempt set version with expired role should fail
+    let result = client.try_set_version(&owner, &2);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_non_expired_admin_can_perform_privileged_operations() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let _result = client.init(&owner, &vec![&env, admin.clone()]);
+    let _add = client.add_member(&owner, &admin, &FamilyRole::Admin, &0);
+
+    let now = env.ledger().timestamp();
+    let expires_at = now + 10000; // Far in the future
+    let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
+
+    // All these operations should succeed with non-expired role
+    let pause_result = client.try_pause(&admin);
+    assert!(pause_result.is_ok());
+
+    let unpause_result = client.try_unpause(&admin);
+    assert!(unpause_result.is_ok());
+
+    let archive_result = client.try_archive_old_transactions(&admin, &now);
+    assert!(archive_result.is_ok());
+
+    let cleanup_result = client.try_cleanup_expired_pending(&admin);
+    assert!(cleanup_result.is_ok());
+}
