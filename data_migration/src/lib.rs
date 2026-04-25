@@ -1019,6 +1019,87 @@ mod tests {
     }
 
     #[test]
+    fn test_encrypted_payload_empty_string_fails() {
+        let result = import_from_encrypted_payload("");
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_partial_marker_fails() {
+        for partial in &["enc:", "enc:v1", "enc:v"] {
+            let result = import_from_encrypted_payload(partial);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for partial marker {:?}", partial
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_wrong_case_marker_fails() {
+        let valid_b64 = base64::engine::general_purpose::STANDARD.encode(b"test");
+        for prefix in &["ENC:V1:", "Enc:V1:"] {
+            let input = format!("{}{}", prefix, valid_b64);
+            let result = import_from_encrypted_payload(&input);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for wrong-case marker {:?}", prefix
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_whitespace_input_fails() {
+        for input in &[" ", "\t", " enc:v1:dGVzdA== "] {
+            let result = import_from_encrypted_payload(input);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for whitespace input {:?}", input
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_post_decode_too_large_fails() {
+        let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&plain);
+        let encoded = format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, b64);
+        // Verify pre-decode guard won't fire first
+        assert!(encoded.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded len {} exceeds MAX_ENCRYPTED_PAYLOAD_BYTES {}", encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(
+            matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
+                if size == MAX_MIGRATION_PAYLOAD_BYTES + 1 && max == MAX_MIGRATION_PAYLOAD_BYTES),
+            "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
+            MAX_MIGRATION_PAYLOAD_BYTES + 1, MAX_MIGRATION_PAYLOAD_BYTES, result
+        );
+    }
+
+    #[test]
+    fn test_encrypted_payload_pre_decode_boundary_plus_one_fails() {
+        let oversized = "A".repeat(MAX_ENCRYPTED_PAYLOAD_BYTES + 1);
+        let result = import_from_encrypted_payload(&oversized);
+        assert!(
+            matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
+                if size == MAX_ENCRYPTED_PAYLOAD_BYTES + 1 && max == MAX_ENCRYPTED_PAYLOAD_BYTES),
+            "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
+            MAX_ENCRYPTED_PAYLOAD_BYTES + 1, MAX_ENCRYPTED_PAYLOAD_BYTES, result
+        );
+    }
+
+    #[test]
+    fn test_encrypted_payload_exact_boundary_accepted() {
+        let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES];
+        let encoded = export_to_encrypted_payload(&plain).unwrap();
+        assert_eq!(encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded length {} != MAX_ENCRYPTED_PAYLOAD_BYTES {}", encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(result.is_ok(), "expected Ok(_) at exact boundary, got {:?}", result);
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    #[test]
     fn test_generic_payload_checksum_is_stable_across_map_order() {
         let mut first = HashMap::new();
         first.insert("b".into(), serde_json::json!(2));
@@ -1054,5 +1135,35 @@ mod tests {
         }
         .to_string()
         .contains("5"));
+    }
+
+    // Property 1: Fault Condition — Untested Rejection Paths Return Correct Error Variants
+    // Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6
+    //
+    // Generates arbitrary strings that do NOT start with "enc:v1:" and are within the
+    // pre-decode size limit. All such inputs must return Err(MigrationError::InvalidFormat(_)).
+    // This covers empty, partial markers, wrong-cased markers, whitespace, and arbitrary
+    // non-prefixed inputs in a single property sweep.
+    fn proptest_invalid_prefix_strategy() -> impl proptest::strategy::Strategy<Value = String> {
+        use proptest::strategy::Strategy;
+        proptest::string::string_regex(".{0,100}")
+            .unwrap()
+            .prop_filter("must not start with enc:v1:", |s: &String| {
+                !s.starts_with(ENCRYPTED_PAYLOAD_PREFIX_V1)
+            })
+            .prop_filter("must be within size limit", |s: &String| {
+                s.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES
+            })
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn test_enc_marker_fault_condition_exploration(s in proptest_invalid_prefix_strategy()) {
+            let result = import_from_encrypted_payload(&s);
+            proptest::prop_assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for input {:?}, got {:?}", s, result
+            );
+        }
     }
 }
