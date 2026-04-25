@@ -4,6 +4,16 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Remittance Split (`remittance_split`)
 
+### v0.2.0
+
+- **Summary**: Added owner-indexed schedule pagination with ordering guarantees.
+- **New Features**:
+  - `get_remittance_schedules_paginated()`: Paginated schedule queries with stable cursors
+  - Deterministic ID-ascending ordering for all schedule queries
+  - Enhanced pagination support with limit clamping and cursor stability
+- **Breaking Changes**: None (new function added).
+- **Migration Notes**: Existing `get_remittance_schedules()` now returns results in ID-ascending order for consistency.
+
 ### v0.1.0
 
 - **Summary**: Initial release of the Remittance Split contract.

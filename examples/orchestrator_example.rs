@@ -1,24 +1,22 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
-use orchestrator::{Orchestrator, OrchestratorClient};
+// orchestrator crate is a work-in-progress; its public API is not yet exported.
+// This example documents the intended call shape for the execute_remittance_flow function.
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn main() {
     // 1. Setup the Soroban environment
     let env = Env::default();
     env.mock_all_auths();
 
-    // 2. Register the Orchestrator contract
-    let contract_id = env.register_contract(None, Orchestrator);
-    let client = OrchestratorClient::new(&env, &contract_id);
+    // 2-3. Generate mock addresses — actual orchestrator registration requires the
+    // Orchestrator contract to export its struct and client (in progress).
+    // let caller = Address::generate(&env);
 
-    // 3. Generate mock addresses for all participants and contracts
-    let caller = Address::generate(&env);
-    
     // Contract addresses
-    let family_wallet_addr = Address::generate(&env);
-    let remittance_split_addr = Address::generate(&env);
-    let savings_addr = Address::generate(&env);
-    let bills_addr = Address::generate(&env);
-    let insurance_addr = Address::generate(&env);
+    // let family_wallet_addr = Address::generate(&env);
+    // let remittance_split_addr = Address::generate(&env);
+    // let savings_addr = Address::generate(&env);
+    // let bills_addr = Address::generate(&env);
+    // let insurance_addr = Address::generate(&env);
 
     // Resource IDs
     let goal_id = 1u32;
@@ -30,7 +28,10 @@ fn main() {
     // 4. [Write] Execute a complete remittance flow
     // This coordinates splitting the amount and paying into downstream contracts
     let total_amount = 5000i128;
-    println!("Executing complete remittance flow for amount: {}", total_amount);
+    println!(
+        "Executing complete remittance flow for amount: {}",
+        total_amount
+    );
     println!("Orchestrating across:");
     println!("  - Savings Goal ID: {}", goal_id);
     println!("  - Bill ID: {}", bill_id);
@@ -38,7 +39,7 @@ fn main() {
 
     // In this dry-run example, we show the call signature.
     // In a full test environment, you would first set up the state in the dependent contracts.
-    
+
     /*
     client.execute_remittance_flow(
         &caller,

@@ -122,6 +122,8 @@ This document provides a comprehensive access-control matrix mapping each public
 | `withdraw_from_goal` | Owner | Owner must authorize. Must not be locked. |
 | `lock_goal` | Owner | Owner only. Locks goal for withdrawal. |
 | `unlock_goal` | Owner | Owner only. Unlocks goal. |
+| `add_tags_to_goal` | Owner | Owner must authorize. Adds tags to goal. |
+| `remove_tags_from_goal` | Owner | Owner must authorize. Removes tags from goal. |
 | `get_goal` | Anyone | No auth. Returns goal if exists. |
 | `get_goals` | Anyone | No auth. Paginated query by owner. |
 | `get_all_goals` | Anyone | No auth. Legacy function. |
@@ -240,7 +242,7 @@ This document provides a comprehensive access-control matrix mapping each public
 | `execute_insurance_payment` | Caller | Caller must authorize. Validates spending limit. |
 | `execute_remittance_flow` | Caller | Caller must authorize. Full remittance flow with all validations. |
 | `get_execution_stats` | Anyone | No auth. Returns execution statistics. |
-| `get_audit_log` | Anyone | No auth. Returns audit entries. |
+| `get_audit_log` | Anyone | No auth. Returns audit entries with pagination (from_index, limit). |
 
 ### Cross-Contract Call Constraints
 
@@ -278,6 +280,7 @@ The orchestrator makes the following cross-contract calls:
 |--------------|-----------------|------------------------|
 | `init` | Admin | Admin must authorize. One-time initialization. |
 | `configure_addresses` | Admin | Admin only. Configures contract addresses. |
+| `check_dependencies` | Admin | Admin only. Returns dependency health statuses. |
 | `get_remittance_summary` | Anyone | No auth. Queries split calculator. |
 | `get_savings_report` | Anyone | No auth. Queries savings goals. |
 | `get_bill_compliance_report` | Anyone | No auth. Queries bill payments. |

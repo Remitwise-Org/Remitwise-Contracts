@@ -1,63 +1,102 @@
 # Remittance Split Contract
 
-A Soroban smart contract for configuring and calculating remittance fund allocations across spending, savings, bills, and insurance categories.
+A Soroban smart contract for configuring and executing percentage-based USDC distributions
+across spending, savings, bills, and insurance categories.
 
-## Overview
+## Security Model
 
-The Remittance Split contract manages percentage-based allocations for incoming remittances, automatically distributing funds according to user-defined ratios for different financial categories.
+`distribute_usdc` is the only function that moves funds. It enforces the following invariants
+in strict order before any token interaction occurs:
+
+1. **Domain-Separated Auth** — `initialize_split` uses a structured `InitializationPayload`
+   containing the network ID, contract address, owner, and nonce. This payload must be
+   explicitly signed, preventing the authorization from being replayed on different contract
+   instances or Stellar networks.
+2. **Auth first** — For other operations, `caller.require_auth()` is the very first operation;
+   no state is read before the caller proves authority.
+3. **Pause guard** — the contract must not be globally paused.
+4. **Owner-only** — `from` must equal the address stored as `config.owner` at initialization.
+   Any other address is rejected with `Unauthorized`, even if it can self-authorize.
+4. **Trusted token** — `usdc_contract` must match the address pinned in `config.usdc_contract`
+   at initialization time. Passing a different address returns `UntrustedTokenContract`,
+   preventing token-substitution attacks.
+5. **Amount validation** — `total_amount` must be > 0.
+6. **Self-transfer guard** — none of the four destination accounts may equal `from`.
+   Returns `SelfTransferNotAllowed` if any match.
+7. **Replay protection** — nonce must equal `get_nonce(from)` and is incremented after success.
+8. **Audit + event** — a `DistributionCompleted` event is emitted on success for off-chain indexing.
+9. **Schedule ID Sequencing** — `create_remittance_schedule` generates strictly monotonic IDs using a synchronized counter (`NEXT_RSCH`), ensuring no collisions across high-volume operations.
+10. **Schedule Execution Guardrails** — Remittance schedules enforce minimum intervals (1 hour), maximum lead times (1 year), and strict owner-only modifications to prevent unsafe state transitions or accidental fund depletion.
 
 ## Features
 
-- Configure allocation percentages (spending, savings, bills, insurance)
-- Calculate split amounts from total remittance
-- Update split configurations
-- Access control for configuration management
-- Event emission for audit trails
-- Backward compatibility with vector-based storage
-- **NEW**: Typed request-hash helpers for deterministic `distribute_usdc` signing (SC-001)
+- Percentage-based allocation (spending / savings / bills / insurance, must sum to 100)
+- Hardened `distribute_usdc` with 7-layer auth checks
+- Nonce-based replay protection on split initialization, split updates, distributions, and snapshot imports
+- Global pause that freezes every mutating entrypoint except `unpause`
+- Pause / unpause with transferable admin controls
+- Remittance schedules (create / modify / cancel) with per-owner caps to prevent storage bloat
+- Snapshot export/import with checksum verification and schedule cap validation
+- Audit log (last 100 entries, ring-buffer)
+- TTL extension on initialization, split updates, snapshot imports, and schedule mutations
 
-## Documentation
+## Pause Model
 
-- [REQUEST_HASH_SIGNER_GUIDE.md](REQUEST_HASH_SIGNER_GUIDE.md) - Complete guide for using request hash helpers for secure USDC distribution signing
-- [API Reference](#api-reference) - Contract function documentation
+The contract uses a single global `PAUSED` flag as an emergency stop.
+
+While paused, these mutating entrypoints return `Unauthorized` before changing state:
+
+- `set_pause_admin`
+- `pause`
+- `set_upgrade_admin`
+- `set_version`
+- `initialize_split`
+- `update_split`
+- `distribute_usdc`
+- `import_snapshot`
+- `create_remittance_schedule`
+- `modify_remittance_schedule`
+- `cancel_remittance_schedule`
+
+`unpause` is intentionally the only mutating entrypoint that remains callable while paused so the
+contract can always be recovered by the active pause admin.
+
+Read-only helpers such as `get_config`, `get_split`, `get_split_allocations`,
+`calculate_split`, `get_nonce`, `get_remittance_schedule`, and `export_snapshot` remain available
+while paused.
+
+Because the contract currently reuses `Unauthorized` for pause rejections, off-chain callers
+should check `is_paused()` when distinguishing an auth failure from an emergency stop.
 
 ## Quickstart
 
-This section provides a minimal example of how to interact with the Remittance Split contract.
-
-**Gotchas:**
-- The configured percentages MUST sum up exactly to 100.
-- `initialize_split` must be called with a valid `nonce` for replay protection.
-- To execute actual underlying asset transfers, use `distribute_usdc` rather than just calculating numbers.
-- For secure USDC distribution with signing, use `distribute_usdc_with_hash_and_deadline` with a request hash (see REQUEST_HASH_SIGNER_GUIDE.md)
-
-### Write Example: Initializing the Split
-*Note: This is pseudo-code demonstrating the Soroban Rust SDK CLI or client approach.*
 ```rust
-
-let success = client.initialize_split(
-    &owner_address,
-    &0,  
-    &50, 
-    &30, 
-    &15, 
-    &5   
+// 1. Initialize — pin the trusted USDC contract address at setup time
+client.initialize_split(
+    &owner,
+    &0,           // nonce
+    &usdc_addr,   // trusted token contract — immutable after init
+    &50,          // spending %
+    &30,          // savings %
+    &15,          // bills %
+    &5,           // insurance %
 );
 
-```
-
-### Read Example: Fetching the Configuration
-```rust
-
-let config = client.get_config();
-
+// 2. Distribute
+client.distribute_usdc(
+    &usdc_addr,   // must match the address stored at init
+    &owner,       // must be config.owner and must authorize
+    &1,           // nonce (increments after each call)
+    &AccountGroup { spending, savings, bills, insurance },
+    &1_000_0000000, // stroops
+);
 ```
 
 ## API Reference
 
 ### Data Structures
 
-#### SplitConfig
+#### `SplitConfig`
 
 ```rust
 pub struct SplitConfig {
@@ -66,151 +105,399 @@ pub struct SplitConfig {
     pub savings_percent: u32,
     pub bills_percent: u32,
     pub insurance_percent: u32,
+    pub timestamp: u64,
     pub initialized: bool,
+    /// Trusted USDC contract address — pinned at initialization, validated on every distribute_usdc call.
+    pub usdc_contract: Address,
+}
+```
+
+#### `AccountGroup`
+
+```rust
+pub struct AccountGroup {
+    pub spending: Address,
+    pub savings: Address,
+    pub bills: Address,
+    pub insurance: Address,
 }
 ```
 
 ### Functions
 
-#### `initialize_split(env, owner, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
+#### `initialize_split(env, owner, nonce, usdc_contract, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
-Initializes a remittance split configuration.
+Initializes the split configuration and pins the trusted USDC token contract address.
+
+- `owner` must authorize.
+- `usdc_contract` is stored immutably and validated on every `distribute_usdc` call.
+- Percentages must sum to exactly 100.
+- Can only be called once (`AlreadyInitialized` on repeat).
+
+#### `distribute_usdc(env, usdc_contract, from, nonce, deadline, request_hash, accounts, total_amount) -> bool`
+
+Distributes USDC from `from` to the four split destination accounts.
+
+**Security checks (in order):**
+1. `from.require_auth()`
+2. Contract not paused
+3. `from == config.owner`
+4. `usdc_contract == config.usdc_contract`
+5. `total_amount > 0`
+6. No destination account equals `from`
+7. Hardened replay protection (matches `nonce`, ensures `deadline` is valid, checks `request_hash`, prevents duplicate uses)
+
+**Errors:**
+| Error | Condition |
+|---|---|
+| `Unauthorized` | Caller is not the config owner, or contract is paused |
+| `UntrustedTokenContract` | `usdc_contract` ≠ stored trusted address |
+| `SelfTransferNotAllowed` | Any destination account equals `from` |
+| `InvalidAmount` | `total_amount` ≤ 0 |
+| `NotInitialized` | Contract not yet initialized |
+| `InvalidNonce` | Sequential nonce incorrect |
+| `DeadlineExpired` | Request timestamp exceeded the `deadline` |
+| `RequestHashMismatch` | Sent `request_hash` does not bind the correct parameters |
+| `NonceAlreadyUsed` | Replay attempt within duplicate window |
+
+#### `update_split(env, caller, nonce, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
+
+Updates split percentages. Owner-only, nonce-protected, and blocked while paused.
+
+---
+
+### Snapshot Export / Import
+
+#### `export_snapshot(env, caller) -> Option<ExportSnapshot>`
+
+Exports the current split configuration as a portable, integrity-verified snapshot.
+
+The snapshot includes a **FNV-1a checksum** computed over:
+- snapshot `version`
+- all four percentage fields
+- `config.timestamp`
+- `config.initialized` flag
+- `exported_at` (ledger timestamp at export time)
 
 **Parameters:**
+- `caller`: Address of the owner (must authorize)
 
-- `owner`: Address of the split owner (must authorize)
-- `spending_percent`: Percentage for spending (0-100)
-- `savings_percent`: Percentage for savings (0-100)
-- `bills_percent`: Percentage for bills (0-100)
-- `insurance_percent`: Percentage for insurance (0-100)
+**Returns:** `Some(ExportSnapshot)` on success, `None` if not initialized
 
-**Returns:** True on success
+**Events:** emits `SplitEvent::SnapshotExported`
 
-**Panics:** If percentages don't sum to 100 or already initialized
+**ExportSnapshot structure:**
+```rust
+pub struct ExportSnapshot {
+    pub version: u32,      // snapshot format version (currently 2)
+    pub checksum: u64,     // FNV-1a integrity hash
+    pub config: SplitConfig,
+    pub exported_at: u64,  // ledger timestamp at export
+}
+```
 
-#### `update_split(env, caller, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
+---
 
-Updates an existing split configuration.
+#### `import_snapshot(env, caller, nonce, snapshot) -> bool`
+
+Restores a split configuration from a previously exported snapshot.
+
+**Integrity checks performed (in order):**
+
+| # | Check | Error |
+|---|-------|-------|
+| 1 | `snapshot.version` within `[MIN_SNAPSHOT_VERSION, SNAPSHOT_VERSION]` | `UnsupportedVersion` |
+| 2 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
+| 3 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
+| 4 | Each percentage field `<= 100` | `InvalidPercentageRange` |
+| 5 | Sum of percentages `== 100` | `InvalidPercentages` |
+| 6 | `config.timestamp` and `exported_at` not in the future | `FutureTimestamp` |
+| 7 | Caller is the current contract owner | `Unauthorized` |
+| 8 | `snapshot.config.owner == caller` | `OwnerMismatch` |
 
 **Parameters:**
+- `caller`: Address of the caller (must be current owner and snapshot owner)
+- `nonce`: Replay-protection nonce (must equal current stored nonce)
+- `snapshot`: `ExportSnapshot` returned by `export_snapshot`
 
-- `caller`: Address of the caller (must be owner)
-- `spending_percent`: New spending percentage
-- `savings_percent`: New savings percentage
-- `bills_percent`: New bills percentage
-- `insurance_percent`: New insurance percentage
+**Returns:** `true` on success
 
-**Returns:** True on success
+**Events:** emits `SplitEvent::SnapshotImported`
 
-**Panics:** If caller not owner, percentages invalid, or not initialized
+**Note:** `nonce` is only incremented by `initialize_split` and `import_snapshot`. `update_split` checks the nonce but does **not** increment it.
 
-#### `get_split(env) -> Vec<u32>`
+---
 
-Gets the current split percentages.
+#### `verify_snapshot(env, snapshot) -> bool`
 
-**Returns:** Vector [spending, savings, bills, insurance] percentages
+Read-only integrity check for a snapshot payload — performs all structural checks (version, checksum, initialized flag, percentage ranges and sum, timestamp bounds) without requiring authorization or modifying state.
 
-#### `get_config(env) -> Option<SplitConfig>`
+**Parameters:**
+- `snapshot`: `ExportSnapshot` to verify
 
-Gets the full split configuration.
+**Returns:** `true` if all integrity checks pass, `false` otherwise
 
-**Returns:** SplitConfig struct or None if not initialized
+**Use case:** pre-flight validation before calling `import_snapshot`, or off-chain verification of exported payloads.
+
+---
+
+## Snapshot Import Validation
+
+### Ordered Validation Pipeline
+
+`import_snapshot` runs the following checks in strict order. The first failing check aborts the
+call, appends a failed audit entry, and returns the corresponding error. No state is written on
+failure.
+
+| Step | Guard | Error returned |
+|------|-------|----------------|
+| 1 | `caller.require_auth()` + contract not paused + nonce matches | `Unauthorized` / `InvalidNonce` |
+| 2 | `snapshot.version` within `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]` | `UnsupportedVersion` |
+| 3 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
+| 4 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
+| 5 | Each percentage field `<= 100` | `InvalidPercentageRange` |
+| 6 | Sum of all four percentage fields `== 100` | `InvalidPercentages` |
+| 7 | `snapshot.config.timestamp` and `exported_at` are not in the future | `InvalidAmount` |
+| 8 | Caller is the current on-chain owner (`existing.owner == caller`) | `Unauthorized` |
+| 9 | Snapshot owner matches caller (`snapshot.config.owner == caller`) | `OwnerMismatch` |
+| 10 | Schedule count does not exceed per-owner cap | `ScheduleCapExceeded` |
+
+### New Error Variants (discriminants 17–20)
+
+These variants were added as part of the snapshot import hardening and extend the
+`RemittanceSplitError` enum:
+
+| Discriminant | Variant | Trigger condition |
+|---|---|---|
+| 17 | `SnapshotNotInitialized` | The snapshot's `config.initialized` flag is `false`; importing an uninitialized config is rejected. |
+| 18 | `FutureTimestamp` | Reserved for future use; the pipeline currently maps future-timestamp failures to `InvalidAmount` (discriminant 4). |
+| 19 | `OwnerMismatch` | `snapshot.config.owner` does not equal the calling address, meaning the snapshot was exported by a different owner. |
+| 20 | `InvalidPercentageRange` | At least one of the four percentage fields exceeds 100; delegated to `validate_percentages`. |
+| 22 | `ScheduleCapExceeded` | The owner has reached the maximum number of allowed remittance schedules (MAX_SCHEDULES_PER_OWNER = 50). |
+
+### `verify_snapshot` Pre-flight Helper
+
+`verify_snapshot` is a **stateless, read-only** function that mirrors steps 2–7 of the
+`import_snapshot` pipeline. It is intended as a pre-flight check before committing a nonce and
+writing state.
+
+**Checks performed (in order):**
+
+| Step | Guard | Error returned |
+|------|-------|----------------|
+| 1 | Schema version within supported range | `UnsupportedVersion` |
+| 2 | FNV-1a checksum integrity | `ChecksumMismatch` |
+| 3 | `config.initialized == true` | `SnapshotNotInitialized` |
+| 4 | Per-field percentage range (`<= 100`) | `InvalidPercentageRange` |
+| 5 | Percentage sum `== 100` | `InvalidPercentages` |
+| 6 | Timestamp not in the future | `InvalidAmount` |
+
+**Not checked by `verify_snapshot`:**
+- Caller authorization / nonce (steps 1, 8 of the full pipeline)
+- Ownership match (step 9 of the full pipeline)
+
+This means `verify_snapshot` can be called by anyone without consuming a nonce or requiring the
+caller to be the contract owner. It returns `true` when all structural checks pass and `false`
+(or propagates an error) when any check fails.
 
 #### `calculate_split(env, total_amount) -> Vec<i128>`
 
-Calculates split amounts from a total remittance amount.
+Storage-read-only calculation — returns `[spending, savings, bills, insurance]` amounts.
+Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
+This helper remains callable while paused.
 
-**Parameters:**
+#### `set_pause_admin(env, caller, new_admin) -> ()`
 
-- `total_amount`: Total amount to split (must be positive)
+Transfers pause authority to `new_admin`. Owner-only and blocked while paused.
 
-**Returns:** Vector [spending, savings, bills, insurance] amounts
+#### `pause(env, caller) -> ()`
 
-**Panics:** If total_amount not positive
+Enables the global emergency stop. Only the active pause admin may call it.
 
-## Usage Examples
+#### `unpause(env, caller) -> ()`
 
-### Initializing Split Configuration
+Disables the global emergency stop. This is the only mutating entrypoint callable while paused.
+
+#### `set_upgrade_admin(env, caller, new_admin) -> ()`
+
+Assigns or transfers upgrade authority to `new_admin`. The owner sets the initial admin; after
+that, only the current upgrade admin may transfer the role. Blocked while paused.
+
+#### `set_version(env, caller, new_version) -> ()`
+
+Persists a new version marker for migrations. Upgrade-admin-only and blocked while paused.
+
+#### `import_snapshot(env, caller, nonce, snapshot) -> bool`
+
+Imports a validated snapshot back into contract storage. Owner-only, nonce-protected, and blocked
+while paused. Snapshots must carry a supported `schema_version` and a valid checksum.
+
+#### `create_remittance_schedule(env, owner, amount, next_due, interval) -> u32`
+
+Creates a remittance schedule. Blocked while paused.
+
+#### `modify_remittance_schedule(env, caller, schedule_id, amount, next_due, interval) -> bool`
+
+Updates a remittance schedule. Owner-only and blocked while paused.
+
+#### `cancel_remittance_schedule(env, caller, schedule_id) -> bool`
+
+Cancels a remittance schedule. Owner-only and blocked while paused.
+
+#### `get_config(env) -> Option<SplitConfig>`
+
+Returns the current configuration, or `None` if not initialized.
+
+#### `get_nonce(env, address) -> u64`
+
+Returns the current nonce for `address`. Pass this value as the `nonce` argument on the next call.
+
+#### `create_remittance_schedule(env, owner, amount, next_due, interval) -> u32`
+
+Creates a recurring or one-time remittance schedule.
+- **Constraints:**
+  - `owner` must be the same address as the contract `config.owner`.
+  - `amount` must be > 0.
+  - `next_due` must be in the future and ≤ 1 year from now.
+  - `interval` must be ≥ 1 hour if recurring (> 0).
+
+#### `modify_remittance_schedule(env, caller, schedule_id, amount, next_due, interval) -> bool`
+
+Updates an existing schedule.
+- **Constraints:**
+  - `caller` must be the `config.owner`.
+  - Schedule must be `active`.
+  - All creation constraints apply to the new parameters.
+
+#### `cancel_remittance_schedule(env, caller, schedule_id) -> bool`
+
+Deactivates a schedule.
+- **Constraints:**
+  - `caller` must be the `config.owner`.
+  - Schedule must be `active`.
+
+#### `get_remittance_schedules(env, owner) -> Vec<RemittanceSchedule>`
+
+Returns all remittance schedules for the specified owner, ordered by ID ascending.
+
+- **Ordering Guarantee:** Results are deterministically ordered by schedule ID ascending, ensuring consistent results across queries.
+
+#### `get_remittance_schedules_paginated(env, owner, from_index, limit) -> SchedulePage`
+
+Returns remittance schedules for the specified owner with pagination support.
+
+- **Parameters:**
+  - `owner`: The owner address to query
+  - `from_index`: Zero-based starting index in the schedule list
+  - `limit`: Maximum number of schedules to return (clamped to 50)
+- **Returns:** `SchedulePage` with items ordered by ID ascending, next cursor, and count
+- **Ordering Guarantee:** Results are deterministically ordered by schedule ID ascending, providing stable pagination cursors
+
+#### `get_remittance_schedule(env, schedule_id) -> Option<RemittanceSchedule>`
+
+Returns a single schedule by ID, or `None` if not found.
+
+## Error Reference
 
 ```rust
-// Initialize with 50% spending, 30% savings, 15% bills, 5% insurance
-let success = remittance_split::initialize_split(
-    env,
-    user_address,
-    50, // spending
-    30, // savings
-    15, // bills
-    5,  // insurance
-);
-```
-
-### Calculating Split Amounts
-
-```rust
-// Calculate allocation for 1000 XLM remittance
-let amounts = remittance_split::calculate_split(env, 1000_0000000);
-
-// amounts = [500_0000000, 300_0000000, 150_0000000, 50_0000000]
-let spending_amount = amounts.get(0).unwrap();
-let savings_amount = amounts.get(1).unwrap();
-let bills_amount = amounts.get(2).unwrap();
-let insurance_amount = amounts.get(3).unwrap();
-```
-
-### Updating Configuration
-
-```rust
-// Update to 40% spending, 40% savings, 10% bills, 10% insurance
-let success = remittance_split::update_split(
-    env,
-    user_address,
-    40, 40, 10, 10
-);
+pub enum RemittanceSplitError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    PercentagesDoNotSumTo100 = 3,
+    InvalidAmount = 4,
+    Overflow = 5,
+    Unauthorized = 6,
+    InvalidNonce = 7,
+    UnsupportedVersion = 8,
+    ChecksumMismatch = 9,
+    InvalidDueDate = 10,
+    ScheduleNotFound = 11,
+    UntrustedTokenContract = 12,   // token substitution attack prevention
+    SelfTransferNotAllowed = 13,   // self-transfer guard
+    DeadlineExpired = 14,          // request expired
+    RequestHashMismatch = 15,      // request hash binding failed
+    NonceAlreadyUsed = 16,         // replay duplicate protection
+    SnapshotNotInitialized = 17,   // snapshot config.initialized is false
+    FutureTimestamp = 18,          // reserved; pipeline uses InvalidAmount for future timestamps
+    OwnerMismatch = 19,            // snapshot.config.owner != caller
+    InvalidPercentageRange = 20,   // a percentage field exceeds 100
+}
 ```
 
 ## Events
 
-- `SplitEvent::Initialized`: When split is initialized
-- `SplitEvent::Updated`: When split is updated
-- `SplitEvent::Calculated`: When split calculation is performed
+| Topic | Data | When |
+|---|---|---|
+| `("split", Initialized)` | `owner: Address` | `initialize_split` succeeds |
+| `("split", Updated)` | `caller: Address` | `update_split` succeeds |
+| `("split", Calculated)` | `total_amount: i128` | `calculate_split` called |
+| `("split", DistributionCompleted)` | `(from: Address, total_amount: i128)` | `distribute_usdc` succeeds |
+| `("split", SnapshotExported)` | `caller: Address` | `export_snapshot` succeeds |
+| `("split", SnapshotImported)` | `caller: Address` | `import_snapshot` succeeds |
 
-## Integration Patterns
+## Schedule Caps
 
-### With Other Contracts
+To prevent storage bloat and ensure efficient contract operation, each owner is limited to a maximum of **50 remittance schedules** (`MAX_SCHEDULES_PER_OWNER = 50`).
 
-The split contract serves as a central allocation engine:
+### Cap Enforcement
 
+The schedule cap is enforced in two critical paths:
+
+1. **Schedule Creation**: `create_remittance_schedule` checks the owner's current schedule count before creating a new schedule. If the owner already has 50 active schedules, the function returns `ScheduleCapExceeded`.
+
+2. **Snapshot Import**: `import_snapshot` validates that the snapshot contains no more than 50 schedules for the owner. This prevents bypassing the cap through migration/data import.
+
+### Cap Behavior
+
+- **Per-Owner**: Caps are enforced independently per owner. Different owners can each have up to 50 schedules.
+- **Active Schedules Only**: Only active schedules count toward the cap. Cancelled schedules are removed from the owner's schedule index.
+- **Fail-Closed**: Both creation and import paths fail closed - if the cap would be exceeded, the operation is rejected entirely.
+
+### Error Handling
+
+When the cap is exceeded, the contract returns:
 ```rust
-// Get split amounts
-let split = remittance_split::calculate_split(env, remittance_amount);
-
-// Allocate to savings goals
-savings_goals::add_to_goal(env, user, goal_id, split.get(1).unwrap())?;
-
-// Create bill payments
-bill_payments::create_bill(env, user, "Monthly Bills".into(), split.get(2).unwrap(), due_date, false, 0)?;
-
-// Pay insurance premiums
-insurance::pay_premium(env, user, policy_id);
+RemittanceSplitError::ScheduleCapExceeded
 ```
 
-### Automated Remittance Processing
+This error is emitted before any state changes, ensuring the operation is atomic.
 
-```rust
-// Process incoming remittance
-fn process_remittance(env: Env, user: Address, amount: i128) {
-    let split = remittance_split::calculate_split(env, amount);
+### Recovery
 
-    // Auto-allocate funds
-    allocate_to_savings(env, user, split.get(1).unwrap());
-    allocate_to_bills(env, user, split.get(2).unwrap());
-    allocate_to_insurance(env, user, split.get(3).unwrap());
-}
+To create new schedules after reaching the cap:
+1. Cancel existing schedules using `cancel_remittance_schedule`
+2. Create new schedules (now under the cap)
+
+## Security Assumptions
+
+- The `usdc_contract` address passed to `initialize_split` must be a legitimate SEP-41 token.
+  The contract does not verify the token's bytecode — it trusts the address provided at init.
+- The owner is responsible for keeping their signing key secure. There is no key rotation
+  mechanism; deploy a new contract instance if ownership must change.
+- Nonces are per-address and stored in instance storage. They are not shared across contract
+  instances.
+- The pause mechanism is a defense-in-depth control. It freezes all mutating entrypoints except
+  `unpause`, but it does not protect against a compromised owner key or compromised pause admin.
+- Pause-admin transfer, upgrade-admin transfer, version changes, snapshot imports, and schedule
+  changes all require the contract to be unpaused first.
+
+## Running Tests
+
+```bash
+cargo test -p remittance_split
 ```
 
-## Security Considerations
-
-- Owner authorization required for configuration changes
-- Percentage validation ensures allocations sum to 100%
-- Initialization check prevents duplicate setup
-- Access control prevents unauthorized modifications
+Test coverage includes:
+- Happy-path distribution with real SAC token balances verified
+- All 7 auth checks individually (owner, token, self-transfer, pause, nonce, amount, init)
+- Replay attack prevention
+- `update_split` nonce advancement and replay rejection
+- Pause admin transfer and unauthorized pause attempts
+- Paused-path coverage for upgrade admin changes, version changes, snapshot imports, and schedule mutators
+- Unpause recovery checks for split updates, distributions, and schedule operations
+- Rounding correctness (sum always equals total)
+- Overflow detection for large i128 values
+- Boundary percentages (100/0/0/0, 0/0/0/100, 25/25/25/25)
+- Multiple sequential distributions with nonce advancement
+- Event emission verification
+- TTL extension on initialization

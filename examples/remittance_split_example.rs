@@ -1,5 +1,6 @@
-use soroban_sdk::{Env, Address, testutils::Address as _};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
+// NOTE: initialize_split requires a USDC/token contract address in addition to percentages
 
 fn main() {
     // 1. Setup the Soroban environment
@@ -17,8 +18,9 @@ fn main() {
 
     // 4. [Write] Initialize the split configuration
     // Percentages: 50% Spending, 30% Savings, 15% Bills, 5% Insurance
+    let mock_token = Address::generate(&env);
     println!("Initializing split configuration for owner: {:?}", owner);
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0u64, &mock_token, &50u32, &30u32, &15u32, &5u32);
 
     // 5. [Read] Verify the configuration
     let config = client.get_config().unwrap();
@@ -30,7 +32,10 @@ fn main() {
 
     // 6. [Write] Simulate a remittance distribution
     let total_amount = 1000i128;
-    println!("\nCalculating allocation for total amount: {}", total_amount);
+    println!(
+        "\nCalculating allocation for total amount: {}",
+        total_amount
+    );
     let allocations = client.calculate_split(&total_amount);
 
     println!("Allocations:");
