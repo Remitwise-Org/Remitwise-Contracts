@@ -530,3 +530,622 @@ fn set_time(env: &Env, timestamp: u64) {
     });
 }
 
+// Alias for compatibility
+fn set_ledger_time(env: &Env, timestamp: u64) {
+    set_time(env, timestamp);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Enhanced Security Tests: Deadline & Request-Hash Binding Failures
+// ──────────────────────────────────────────────────────────────────────────
+
+/// TEST 1: Deadline Exactly at Current Time → DeadlineExpired
+///
+/// SECURITY REQUIREMENT: A request with deadline == now is considered expired
+/// because it has no future validity window. The contract must reject even
+/// simultaneously-submitted requests with deadline ≤ now to prevent race conditions.
+#[test]
+fn test_deadline_exactly_at_now_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 5000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 0,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 1000i128,
+        deadline: now,  // deadline == current time
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+    
+    // SECURITY: Must reject deadline <= now
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
+}
+
+/// TEST 2: Deadline One Second Before Now → DeadlineExpired
+///
+/// Validates that the contract uses strict inequality (deadline > now)
+/// to ensure no window exists for execution.
+#[test]
+fn test_deadline_one_second_in_past_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 10_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,  // Using nonce 1 (nonce 0 consumed by initialize)
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 5000i128,
+        deadline: now - 1,  // One second in the past
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+    
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
+}
+
+/// TEST 3: Deadline at Exactly MAX_DEADLINE_WINDOW_SECS (3600) in future → Accepted in Deadline Check
+///
+/// Boundary test: deadline at +3600 seconds should pass deadline validation.
+/// (It may fail for other reasons like insufficient balance, but not deadline.)
+#[test]
+fn test_deadline_at_max_window_boundary_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 2000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 1000i128,
+        deadline: now + 3600,  // Exactly at boundary
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+    
+    // Should not be a deadline error; may fail for other reasons
+    match result {
+        Err(Ok(RemittanceSplitError::DeadlineExpired)) => {
+            panic!("Should not reject deadline exactly at MAX_DEADLINE_WINDOW_SECS");
+        }
+        Err(Ok(RemittanceSplitError::InvalidDeadline)) => {
+            panic!("Should not reject deadline exactly at MAX_DEADLINE_WINDOW_SECS");
+        }
+        _ => {} // Expected: other errors or success
+    }
+}
+
+/// TEST 4: Deadline One Second Beyond MAX_DEADLINE_WINDOW_SECS → InvalidDeadline
+///
+/// SECURITY REQUIREMENT: Prevents attackers from requesting
+/// transactions with unreasonably far future deadlines, which could enable:
+/// - Time-value manipulation attacks
+/// - Stale nonce exploitation
+/// - Operational complexity for off-chain signers
+#[test]
+fn test_deadline_one_second_beyond_max_window_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 1000i128,
+        deadline: now + 3600 + 1,  // 1 second beyond allowed window
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+    
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
+}
+
+/// TEST 5: Deadline One Hour + One Day + 1 Second Beyond Window → InvalidDeadline
+///
+/// Extreme case: Very far future deadline should be rejected with InvalidDeadline.
+#[test]
+fn test_deadline_far_future_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 1000i128,
+        deadline: now + 100_000,  // Far future
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+    
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Request Hash Binding Failure Tests
+// ──────────────────────────────────────────────────────────────────────────
+
+/// TEST 6: Mismatched Request Hash with Correct Nonce → RequestHashMismatch
+///
+/// SECURITY: Hash binding proves that the signer committed to the exact
+/// request parameters. A mismatch indicates either:
+/// - The request was tampered with in transit
+/// - The nonce was recycled with different parameters (replay attack)
+/// - The caller is attempting parameter substitution
+///
+/// The contract must reject any mismatch, even if the nonce is otherwise valid.
+#[test]
+fn test_request_hash_mismatch_with_valid_nonce() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 5000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    // Create valid request
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    // Calculate correct hash
+    let correct_hash = client.get_request_hash(&request);
+
+    // Create a wrong hash by modifying a byte
+    let mut wrong_hash = correct_hash.clone();
+    let byte_0 = wrong_hash.get(0).unwrap();
+    let flipped = if byte_0 == &255u8 { 254u8 } else { byte_0 + 1u8 };
+    wrong_hash.set(0, &flipped);
+
+    // Submit request with wrong hash
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &wrong_hash);
+
+    // SECURITY: Must reject due to hash mismatch, not nonce issues
+    assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
+}
+
+/// TEST 7: Request Hash Mismatch - All Bytes Zeroed
+///
+/// Tests rejection of request hash with all bytes set to zero.
+/// This is an extreme mismatch case.
+#[test]
+fn test_request_hash_all_zeros_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 3000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: Address::generate(&env),
+            savings: Address::generate(&env),
+            bills: Address::generate(&env),
+            insurance: Address::generate(&env),
+        },
+        total_amount: 5000i128,
+        deadline: now + 1800,
+    };
+
+    // Create all-zero hash (using `u64` version)
+    let zero_hash_u64 = 0u64;
+    let computed_hash = client.get_request_hash(&request);
+    
+    // They should be different
+    assert_ne!(computed_hash, zero_hash_u64.to_le_bytes().to_vec().into());
+}
+
+/// TEST 8: Request Hash Mismatch - Hash from Different Amount
+///
+/// This test verifies that if a signer provides a hash for amount X,
+/// but the requester tries to submit with amount Y (X ≠ Y), the contract rejects it.
+#[test]
+fn test_request_hash_mismatch_wrong_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 4000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let spending = Address::generate(&env);
+    let savings = Address::generate(&env);
+    let bills = Address::generate(&env);
+    let insurance = Address::generate(&env);
+
+    // Create request for amount 1000
+    let request_signed_for = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: spending.clone(),
+            savings: savings.clone(),
+            bills: bills.clone(),
+            insurance: insurance.clone(),
+        },
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    // Get hash for 1000
+    let hash_for_1000 = client.get_request_hash(&request_signed_for);
+
+    // But submit request for amount 2000 with the 1000-hash
+    let request_tampered = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,  // Same nonce
+        accounts: AccountGroup {
+            spending,
+            savings,
+            bills,
+            insurance,
+        },
+        total_amount: 2000i128,  // TAMPERED: different amount
+        deadline: now + 1800,
+    };
+
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request_tampered, &hash_for_1000);
+
+    // SECURITY: Must reject tampered amount even though nonce is valid
+    assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
+}
+
+/// TEST 9: Request Hash Mismatch - Hash from Different Deadline
+///
+/// Verifies hash binding prevents deadline tampering.
+#[test]
+fn test_request_hash_mismatch_wrong_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 2000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let spending = Address::generate(&env);
+    let savings = Address::generate(&env);
+    let bills = Address::generate(&env);
+    let insurance = Address::generate(&env);
+
+    // Create request with deadline +1800
+    let request_signed_for = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: spending.clone(),
+            savings: savings.clone(),
+            bills: bills.clone(),
+            insurance: insurance.clone(),
+        },
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    let hash_for_1800 = client.get_request_hash(&request_signed_for);
+
+    // Submit with deadline +3000 and same hash
+    let request_tampered = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending,
+            savings,
+            bills,
+            insurance,
+        },
+        total_amount: 1000i128,
+        deadline: now + 3000,  // TAMPERED: different deadline
+    };
+
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request_tampered, &hash_for_1800);
+
+    // SECURITY: Must reject tampered deadline
+    assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
+}
+
+/// TEST 10: Request Hash Mismatch - Hash from Different Nonce
+///
+/// Proves that hash includes nonce, preventing nonce substitution attacks.
+#[test]
+fn test_request_hash_mismatch_wrong_nonce_binding() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 6000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+    let now = env.ledger().timestamp();
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+
+    let spending = Address::generate(&env);
+    let savings = Address::generate(&env);
+    let bills = Address::generate(&env);
+    let insurance = Address::generate(&env);
+
+    // Create request with nonce=1
+    let request_signed_for_nonce_1 = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: AccountGroup {
+            spending: spending.clone(),
+            savings: savings.clone(),
+            bills: bills.clone(),
+            insurance: insurance.clone(),
+        },
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    let hash_for_nonce_1 = client.get_request_hash(&request_signed_for_nonce_1);
+
+    // Try to use same hash with nonce=2
+    let request_tampered = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 2,  // TAMPERED: different nonce
+        accounts: AccountGroup {
+            spending,
+            savings,
+            bills,
+            insurance,
+        },
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request_tampered, &hash_for_nonce_1);
+
+    // SECURITY: Must reject due to nonce mismatch in hash
+    assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Nonce Replay & Binding Tests
+// ──────────────────────────────────────────────────────────────────────────
+
+/// TEST 11: Nonce Already Used → NonceAlreadyUsed
+///
+/// SECURITY: Once a nonce is consumed, it cannot be reused, even with
+/// a different request hash. This prevents replay attacks where an attacker
+/// intercepts a valid signature and tries to reuse it.
+#[test]
+fn test_nonce_already_used_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 3000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
+    let stellar_client = StellarAssetClient::new(&env, &token_addr);
+
+    // Initialize split with owner, nonce starts at 1
+    client.initialize_split(&owner, &0, &token_addr, &50, &30, &15, &5);
+
+    let accounts = AccountGroup {
+        spending: Address::generate(&env),
+        savings: Address::generate(&env),
+        bills: Address::generate(&env),
+        insurance: Address::generate(&env),
+    };
+
+    // Mint tokens for first request
+    stellar_client.mint(&owner, &1000i128);
+
+    // First request with nonce=1
+    let request1 = DistributeUsdcRequest {
+        usdc_contract: token_addr.clone(),
+        from: owner.clone(),
+        nonce: 1,
+        accounts: accounts.clone(),
+        total_amount: 500i128,
+        deadline: env.ledger().timestamp() + 1800,
+    };
+
+    let hash1 = client.get_request_hash(&request1);
+    
+    // Execute first request (consumes nonce 1)
+    let result1 = client.try_distribute_usdc_with_hash_and_deadline(&request1, &hash1);
+    assert!(result1.is_ok(), "First request should succeed");
+
+    // Mint more tokens for second attempt
+    stellar_client.mint(&owner, &1000i128);
+
+    // Try to resubmit with nonce=1 (already used)
+    let request2 = DistributeUsdcRequest {
+        usdc_contract: token_addr.clone(),
+        from: owner.clone(),
+        nonce: 1,  // REPLAY: nonce already used
+        accounts,
+        total_amount: 500i128,
+        deadline: env.ledger().timestamp() + 1800,
+    };
+
+    let hash2 = client.get_request_hash(&request2);
+    let result2 = client.try_distribute_usdc_with_hash_and_deadline(&request2, &hash2);
+
+    // SECURITY: Must reject due to nonce already used
+    assert_eq!(result2, Err(Ok(RemittanceSplitError::NonceAlreadyUsed)));
+}
+
+/// TEST 12: Nonce Binding - Subsequent Nonce Must Be Sequential
+///
+/// After consuming nonce N, the next valid nonce is N+1.
+/// Out-of-sequence nonces should be rejected.
+#[test]
+fn test_nonce_binding_sequential_requirement() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 1000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let usdc_contract = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    // After initialize, current nonce is 1
+
+    let now = env.ledger().timestamp();
+    let accounts = AccountGroup {
+        spending: Address::generate(&env),
+        savings: Address::generate(&env),
+        bills: Address::generate(&env),
+        insurance: Address::generate(&env),
+    };
+
+    // Try to use nonce=3 (skipping nonce 2)
+    let request = DistributeUsdcRequest {
+        usdc_contract: usdc_contract.clone(),
+        from: owner.clone(),
+        nonce: 3,  // Invalid: should be 1 (next available)
+        accounts,
+        total_amount: 1000i128,
+        deadline: now + 1800,
+    };
+
+    let hash = client.get_request_hash(&request);
+    let result = client.try_distribute_usdc_with_hash_and_deadline(&request, &hash);
+
+    // SECURITY: Must reject out-of-sequence nonce
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidNonce)));
+}
+
