@@ -172,6 +172,36 @@ jobs:
           cargo audit --deny warnings
         continue-on-error: true
 
+  storage-key-validation:
+    name: Storage Key Naming Convention Validation
+    runs-on: macos-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run storage key naming convention tests
+        run: |
+          cargo test --package testutils storage_key_naming_test -- --nocapture
+        continue-on-error: false
+
   gas-benchmarks:
     name: Gas Benchmarks
     runs-on: macos-latest

@@ -83,7 +83,12 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
-/// Helper function to clamp limit
+/// Clamps a pagination limit to ensure it falls within the allowed boundaries.
+///
+/// # Behavior
+/// - `0` is treated as a request for the default limit and returns `DEFAULT_PAGE_LIMIT`.
+/// - Values between `1` and `MAX_PAGE_LIMIT` (inclusive) are passed through unchanged.
+/// - Values greater than `MAX_PAGE_LIMIT` are capped at `MAX_PAGE_LIMIT`.
 pub fn clamp_limit(limit: u32) -> u32 {
     if limit == 0 {
         DEFAULT_PAGE_LIMIT

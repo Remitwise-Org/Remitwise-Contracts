@@ -30,6 +30,9 @@ const MAX_BATCH_MEMBERS: u32 = 50;
 
 // Access audit bounds
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 200;
+const MAX_AUDIT_PAGE_LIMIT: u32 = 50;
+const DEFAULT_AUDIT_PAGE_LIMIT: u32 = 20;
+
 #[contracttype]
 #[derive(Clone)]
 pub struct AccessAuditEntry {
@@ -38,6 +41,14 @@ pub struct AccessAuditEntry {
     pub target: Option<Address>,
     pub success: bool,
     pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AccessAuditPage {
+    pub items: Vec<AccessAuditEntry>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contracttype]
@@ -1591,6 +1602,9 @@ impl FamilyWallet {
     }
 
     /// Set the multisig proposal expiry window in seconds.
+    ///
+    /// # Security
+    /// Only the Owner can set this value, and their role must not be expired.
     pub fn set_proposal_expiry(env: Env, caller: Address, expiry: u64) -> bool {
         caller.require_auth();
         let owner: Address = env
@@ -1598,8 +1612,13 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("OWNER"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        // Verify caller is owner AND role is not expired
         if caller != owner {
             panic_with_error!(&env, Error::Unauthorized);
+        }
+        if Self::role_has_expired(&env, &caller) {
+            panic!("Role has expired");
         }
 
         if expiry == 0 || expiry > MAX_PROPOSAL_EXPIRY {
@@ -1943,6 +1962,46 @@ impl FamilyWallet {
         out
     }
 
+    // Owner/Admin only: audit data is privacy-sensitive — reveals who accessed
+    // what and when, so Members are excluded from reading the full trail.
+    pub fn get_access_audit_page(
+        env: Env,
+        caller: Address,
+        from_index: u32,
+        limit: u32,
+    ) -> AccessAuditPage {
+        caller.require_auth();
+        Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
+
+        let entries: Vec<AccessAuditEntry> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ACC_AUDIT"))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let capped_limit = if limit == 0 {
+            DEFAULT_AUDIT_PAGE_LIMIT
+        } else {
+            limit.min(MAX_AUDIT_PAGE_LIMIT)
+        };
+        let total = entries.len();
+        let mut items = Vec::new(&env);
+        let mut i = from_index;
+        while i < total && items.len() < capped_limit {
+            if let Some(e) = entries.get(i) {
+                items.push_back(e);
+            }
+            i += 1;
+        }
+        let count = items.len();
+        let next_cursor = if i < total { i } else { 0 };
+        AccessAuditPage {
+            items,
+            next_cursor,
+            count,
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -2193,6 +2252,21 @@ impl FamilyWallet {
         }
         if Self::role_ordinal(member.role) > Self::role_ordinal(min_role) {
             panic!("Insufficient role");
+        }
+    }
+
+    /// Helper to enforce role expiry on admin-level operations.
+    ///
+    /// Combines authorization check with expiry validation in a single call,
+    /// ensuring expired admins cannot perform privileged operations.
+    /// This helper is documented as a pattern for future admin-gated operations.
+    #[allow(dead_code)]
+    fn require_not_expired_admin(env: &Env, caller: &Address) {
+        if !Self::is_owner_or_admin(env, caller) {
+            panic!("Only Owner or Admin can perform this operation");
+        }
+        if Self::role_has_expired(env, caller) {
+            panic!("Role has expired");
         }
     }
 

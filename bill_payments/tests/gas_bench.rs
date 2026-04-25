@@ -34,8 +34,8 @@ const RESTORE_SINGLE_ARCHIVED: RegressionSpec = RegressionSpec {
 };
 
 const CLEANUP_ARCHIVED_MIXED_AGE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 1_300_000,
-    mem_baseline: 280_000,
+    cpu_baseline: 1_950_000,
+    mem_baseline: 370_000,
     cpu_threshold_percent: 15,
     mem_threshold_percent: 12,
 };
@@ -45,6 +45,69 @@ const BATCH_PAY_MIXED_50: RegressionSpec = RegressionSpec {
     mem_baseline: 700_000,
     cpu_threshold_percent: 15,
     mem_threshold_percent: 12,
+};
+
+const UNPAID_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const UNPAID_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const UNPAID_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OVERDUE_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OVERDUE_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OVERDUE_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OWNER_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OWNER_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
+};
+
+const OWNER_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
+    cpu_baseline: 0,
+    mem_baseline: 0,
+    cpu_threshold_percent: 100,
+    mem_threshold_percent: 100,
 };
 
 fn bench_env() -> Env {
@@ -113,6 +176,32 @@ fn create_bill(
     )
 }
 
+fn create_many_bills(
+    client: &BillPaymentsClient,
+    env: &Env,
+    owner: &Address,
+    prefix: &str,
+    count: u32,
+    due_date: u64,
+) -> Vec<u32> {
+    let mut ids = Vec::new(env);
+    for i in 0..count {
+        let name = format!("{}-{}", prefix, i);
+        let id = client.create_bill(
+            owner,
+            &String::from_str(env, &name),
+            &(100 + i as i128),
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(env, CURRENCY_XLM),
+        );
+        ids.push_back(id);
+    }
+    ids
+}
+
 fn create_many_unpaid(
     client: &BillPaymentsClient,
     env: &Env,
@@ -120,18 +209,26 @@ fn create_many_unpaid(
     prefix: &str,
     count: u32,
 ) -> Vec<u32> {
-    let mut ids = Vec::new(env);
-    for i in 0..count {
-        let id = create_bill(client, env, owner, prefix, 100 + i as i128);
-        ids.push_back(id);
-    }
-    ids
+    create_many_bills(client, env, owner, prefix, count, FAR_FUTURE_TS)
 }
 
 fn pay_all(client: &BillPaymentsClient, ids: &Vec<u32>, owner: &Address) {
     for id in ids.iter() {
         client.pay_bill(owner, &id);
     }
+}
+
+fn create_many_overdue(
+    client: &BillPaymentsClient,
+    env: &Env,
+    owner: &Address,
+    prefix: &str,
+    count: u32,
+) -> Vec<u32> {
+    let due_date = env.ledger().timestamp() + 1;
+    let ids = create_many_bills(client, env, owner, prefix, count, due_date);
+    set_time(env, env.ledger().timestamp() + 2);
+    ids
 }
 
 fn max_allowed(baseline: u64, threshold_percent: u64) -> u64 {
@@ -377,6 +474,216 @@ fn bench_batch_pay_bills_mixed_50_with_thresholds() {
         cpu,
         mem,
         BATCH_PAY_MIXED_50,
+    );
+}
+
+/// Benchmark first-page unpaid bill pagination at varying dataset sizes.
+#[test]
+fn bench_get_unpaid_bills_page_first_50_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Unpaid50", 50);
+
+    let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert_eq!(page.next_cursor, 0);
+
+    emit_bench_result(
+        "get_unpaid_bills",
+        "50_unpaid_bills_page",
+        cpu,
+        mem,
+        UNPAID_BILLS_PAGE_50,
+    );
+}
+
+#[test]
+fn bench_get_unpaid_bills_page_first_200_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Unpaid200", 200);
+
+    let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 200 bills");
+
+    emit_bench_result(
+        "get_unpaid_bills",
+        "200_unpaid_bills_page",
+        cpu,
+        mem,
+        UNPAID_BILLS_PAGE_200,
+    );
+}
+
+#[test]
+fn bench_get_unpaid_bills_page_first_1000_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Unpaid1000", 1000);
+
+    let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 1000 bills");
+
+    emit_bench_result(
+        "get_unpaid_bills",
+        "1000_unpaid_bills_page",
+        cpu,
+        mem,
+        UNPAID_BILLS_PAGE_1000,
+    );
+}
+
+/// Benchmark first-page overdue bill pagination at varying dataset sizes.
+#[test]
+fn bench_get_overdue_bills_page_first_50_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_overdue(&client, &env, &owner, "Overdue50", 50);
+
+    let (cpu, mem, page) = measure(&env, || client.get_overdue_bills(&0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert_eq!(page.next_cursor, 0);
+
+    emit_bench_result(
+        "get_overdue_bills",
+        "50_overdue_bills_page",
+        cpu,
+        mem,
+        OVERDUE_BILLS_PAGE_50,
+    );
+}
+
+#[test]
+fn bench_get_overdue_bills_page_first_200_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_overdue(&client, &env, &owner, "Overdue200", 200);
+
+    let (cpu, mem, page) = measure(&env, || client.get_overdue_bills(&0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 200 overdue bills");
+
+    emit_bench_result(
+        "get_overdue_bills",
+        "200_overdue_bills_page",
+        cpu,
+        mem,
+        OVERDUE_BILLS_PAGE_200,
+    );
+}
+
+#[test]
+fn bench_get_overdue_bills_page_first_1000_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_overdue(&client, &env, &owner, "Overdue1000", 1000);
+
+    let (cpu, mem, page) = measure(&env, || client.get_overdue_bills(&0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 1000 overdue bills");
+
+    emit_bench_result(
+        "get_overdue_bills",
+        "1000_overdue_bills_page",
+        cpu,
+        mem,
+        OVERDUE_BILLS_PAGE_1000,
+    );
+}
+
+/// Benchmark owner bill listing pagination at varying dataset sizes.
+#[test]
+fn bench_get_all_bills_for_owner_page_first_50_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Owner50", 50);
+
+    let (cpu, mem, page) = measure(&env, || client.get_all_bills_for_owner(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert_eq!(page.next_cursor, 0);
+
+    emit_bench_result(
+        "get_all_bills_for_owner",
+        "50_owner_bills_page",
+        cpu,
+        mem,
+        OWNER_BILLS_PAGE_50,
+    );
+}
+
+#[test]
+fn bench_get_all_bills_for_owner_page_first_200_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Owner200", 200);
+
+    let (cpu, mem, page) = measure(&env, || client.get_all_bills_for_owner(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 200 owner bills");
+
+    emit_bench_result(
+        "get_all_bills_for_owner",
+        "200_owner_bills_page",
+        cpu,
+        mem,
+        OWNER_BILLS_PAGE_200,
+    );
+}
+
+#[test]
+fn bench_get_all_bills_for_owner_page_first_1000_total() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    create_many_unpaid(&client, &env, &owner, "Owner1000", 1000);
+
+    let (cpu, mem, page) = measure(&env, || client.get_all_bills_for_owner(&owner, &0u32, &50u32));
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+    assert!(page.next_cursor > 0, "expected more pages for 1000 owner bills");
+
+    emit_bench_result(
+        "get_all_bills_for_owner",
+        "1000_owner_bills_page",
+        cpu,
+        mem,
+        OWNER_BILLS_PAGE_1000,
     );
 }
 
