@@ -11,6 +11,8 @@ savings_goals = { path = "../savings_goals" }
 bill_payments = { path = "../bill_payments" }
 insurance = { path = "../insurance" }
 remitwise-common = { path = "../remitwise-common" }
+reporting = { path = "../reporting" }
+family_wallet = { path = "../family_wallet" }
 
 [dev-dependencies]
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

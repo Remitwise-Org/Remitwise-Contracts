@@ -9,12 +9,16 @@ use soroban_sdk::{
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+const FUNDS_ADDED: Symbol = symbol_short!("added");
+const FUNDS_WITHDRAWN: Symbol = symbol_short!("withdrawn");
 
 #[derive(Clone)]
 #[contracttype]
 pub struct GoalCreatedEvent {
     pub goal_id: u32,
     pub owner: Address,
+    pub amount: i128,      // Initial amount (0)
+    pub new_total: i128,   // Initial total (0)
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
@@ -46,8 +50,9 @@ pub struct FundsWithdrawnEvent {
 pub struct GoalCompletedEvent {
     pub goal_id: u32,
     pub owner: Address,
+    pub amount: i128,      // Final contribution amount
+    pub new_total: i128,   // Total amount reached
     pub name: String,
-    pub final_amount: i128,
     pub timestamp: u64,
 }
 
@@ -124,7 +129,7 @@ pub enum DataKey {
     Goal(u32),                   // Persistent: SavingsGoal
     ArchivedGoal(u32),           // Persistent: ArchivedSavingsGoal
     OwnerGoals(Address),         // Persistent: Vec<u32>
-    ArchivedGoalsIndex(Address),  // Persistent: Vec<u32>
+    ArchivedGoalsIndex(Address), // Persistent: Vec<u32>
     PauseAdmin,                  // Instance: Address
     Paused,                      // Instance: bool
     PausedFunctions,             // Instance: Map<Symbol, bool>
@@ -153,7 +158,6 @@ pub struct SavingsSchedule {
     pub last_executed: Option<u64>,
     pub missed_count: u32,
 }
-
 
 #[contracttype]
 #[derive(Clone)]
@@ -238,6 +242,7 @@ pub enum SavingsGoalError {
     InvalidAmount = 8,
     Overflow = 9,
     InvalidTagContent = 10,
+    BatchTooLarge = 14,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -275,7 +280,6 @@ impl ArchivedSavingsGoal {
 
 #[contractimpl]
 impl SavingsGoalContract {
-
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -326,6 +330,7 @@ impl SavingsGoalContract {
     /// overwrite existing goals or reset NEXT_ID, to avoid ID collisions and
     /// data loss.
     pub fn init(env: Env) {
+        Self::extend_instance_ttl(&env);
         let storage = env.storage().instance();
         if !storage.has(&DataKey::NextId) {
             storage.set(&DataKey::NextId, &0u32);
@@ -358,9 +363,7 @@ impl SavingsGoalContract {
         if admin != caller {
             panic!("Unauthorized");
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &true);
+        env.storage().instance().set(&DataKey::Paused, &true);
         env.events()
             .publish((symbol_short!("savings"), symbol_short!("paused")), ());
     }
@@ -378,9 +381,7 @@ impl SavingsGoalContract {
             }
             env.storage().instance().remove(&DataKey::UnpauseAt);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
             .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
     }
@@ -397,9 +398,7 @@ impl SavingsGoalContract {
             .get(&DataKey::PausedFunctions)
             .unwrap_or_else(|| Map::new(&env));
         m.set(func, true);
-        env.storage()
-            .instance()
-            .set(&DataKey::PausedFunctions, &m);
+        env.storage().instance().set(&DataKey::PausedFunctions, &m);
     }
 
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) {
@@ -414,9 +413,7 @@ impl SavingsGoalContract {
             .get(&DataKey::PausedFunctions)
             .unwrap_or_else(|| Map::new(&env));
         m.set(func, false);
-        env.storage()
-            .instance()
-            .set(&DataKey::PausedFunctions, &m);
+        env.storage().instance().set(&DataKey::PausedFunctions, &m);
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -424,6 +421,7 @@ impl SavingsGoalContract {
     }
 
     pub fn get_version(env: Env) -> u32 {
+        Self::extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::Version)
@@ -543,11 +541,14 @@ impl SavingsGoalContract {
                 }
                 if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9') || c == b'-' || c == b'_')
                 {
-                    soroban_sdk::panic_with_error!(env, SavingsGoalsError::InvalidTagContent);
+                    soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent);
                 }
             }
-            let tag_str = core::str::from_utf8(&buf[..len as usize]).unwrap_or("");
-            normalized_tags.push_back(String::from_str(env, tag_str));
+            let s = match core::str::from_utf8(&buf[..len as usize]) {
+                Ok(v) => v,
+                Err(_) => soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent),
+            };
+            normalized_tags.push_back(String::from_str(env, s));
         }
         normalized_tags
     }
@@ -566,7 +567,11 @@ impl SavingsGoalContract {
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
@@ -583,8 +588,14 @@ impl SavingsGoalContract {
             goal.tags.push_back(tag);
         }
 
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         RemitwiseEvents::emit(
             &env,
@@ -615,7 +626,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
@@ -643,8 +658,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         }
 
         goal.tags = new_tags;
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         RemitwiseEvents::emit(
             &env,
@@ -698,7 +719,7 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             .instance()
             .get::<_, u32>(&DataKey::NextId)
             .unwrap_or(0u32);
-        
+
         let new_id = next_id + 1;
 
         let goal = SavingsGoal {
@@ -713,14 +734,22 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             tags: Vec::new(&env),
         };
 
-        env.storage().persistent().set(&DataKey::Goal(new_id), &goal);
-        env.storage().persistent().extend_ttl(&DataKey::Goal(new_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(new_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(new_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
         env.storage().instance().set(&DataKey::NextId, &new_id);
         Self::append_owner_goal_id(&env, &owner, new_id);
 
         let event = GoalCreatedEvent {
             goal_id: new_id,
             owner: owner.clone(),
+            amount: 0,
+            new_total: 0,
             name: goal.name.clone(),
             target_amount,
             target_date,
@@ -736,7 +765,7 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             EventCategory::State,
             EventPriority::Medium,
             GOAL_CREATED,
-            event,
+            event.clone(),
         );
         RemitwiseEvents::emit(
             &env,
@@ -776,14 +805,18 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
-        if amount <= 0 {
+        if amount < 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("add"), &caller, false);
@@ -791,12 +824,12 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             }
         };
 
-        // Access control: verify caller is the owner
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::Unauthorized);
         }
 
+        let previously_completed = goal.current_amount >= goal.target_amount;
         let new_total = match goal.current_amount.checked_add(amount) {
             Some(v) => v,
             None => {
@@ -804,56 +837,65 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
                 return Err(SavingsGoalError::Overflow);
             }
         };
+
         if new_total > MAX_SAFE_GOAL_BALANCE {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::Overflow);
         }
+
         goal.current_amount = new_total;
         let was_completed = new_total >= goal.target_amount;
-        let previously_completed = (new_total - amount) >= goal.target_amount;
+        let now = env.ledger().timestamp();
 
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
-        let funds_event = FundsAddedEvent {
-            goal_id,
-            owner: caller.clone(),
-            amount,
-            new_total,
-            timestamp: env.ledger().timestamp(),
-        };
+        // Emit events
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
             EventPriority::Medium,
             symbol_short!("funds_add"),
-            funds_event,
-        );
-
-        if was_completed && !previously_completed {
-            let completed_event = GoalCompletedEvent {
+            FundsAddedEvent {
                 goal_id,
                 owner: caller.clone(),
-                name: goal.name.clone(),
-                final_amount: new_total,
-                timestamp: env.ledger().timestamp(),
-            };
-            env.events().publish((GOAL_COMPLETED,), completed_event);
-        }
+                amount,
+                new_total,
+                timestamp: now,
+            },
+        );
 
-        Self::append_audit(&env, symbol_short!("add"), &caller, true);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::FundsAdded),
             (goal_id, caller.clone(), amount),
         );
 
-        if was_completed && !previously_completed {
+            // Legacy/Action-specific topics
+            env.events().publish((GOAL_COMPLETED,), completed_event);
+            env.events().publish(
+                (GOAL_COMPLETED,),
+                GoalCompletedEvent {
+                    goal_id,
+                    owner: caller.clone(),
+                    name: goal.name.clone(),
+                    final_amount: new_total,
+                    timestamp: now,
+                },
+            );
+
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::GoalCompleted),
-                (goal_id, caller),
+                (goal_id, caller.clone()),
             );
         }
 
+        Self::append_audit(&env, symbol_short!("add"), &caller, true);
         Ok(new_total)
     }
 
@@ -864,79 +906,102 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     ) -> Result<u32, SavingsGoalError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
+
         if contributions.len() > MAX_BATCH_SIZE {
-            return Err(SavingsGoalError::InvalidAmount);
+            return Err(SavingsGoalError::BatchTooLarge);
         }
+
+        Self::extend_instance_ttl(&env);
+        let mut count = 0u32;
+        let now = env.ledger().timestamp();
+
         for item in contributions.iter() {
             if item.amount <= 0 {
                 return Err(SavingsGoalError::InvalidAmount);
             }
-            let goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(item.goal_id)) {
+
+            let mut goal = match env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(item.goal_id))
+            {
                 Some(g) => g,
                 None => return Err(SavingsGoalError::GoalNotFound),
             };
+
             if goal.owner != caller {
                 return Err(SavingsGoalError::Unauthorized);
             }
-        }
-        Self::extend_instance_ttl(&env);
-        let mut count = 0u32;
-        for item in contributions.iter() {
-            let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(item.goal_id)) {
-                Some(g) => g,
-                None => return Err(SavingsGoalError::GoalNotFound),
-            };
-            if goal.owner != caller {
-                return Err(SavingsGoalError::Unauthorized);
-            }
+
+            let previously_completed = goal.current_amount >= goal.target_amount;
             let new_total = match goal.current_amount.checked_add(item.amount) {
                 Some(v) => v,
                 None => return Err(SavingsGoalError::Overflow),
             };
+
             if new_total > MAX_SAFE_GOAL_BALANCE {
                 return Err(SavingsGoalError::Overflow);
             }
+
             goal.current_amount = new_total;
             let was_completed = new_total >= goal.target_amount;
-            let previously_completed = (new_total - item.amount) >= goal.target_amount;
-            env.storage().persistent().set(&DataKey::Goal(item.goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(item.goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-            let funds_event = FundsAddedEvent {
-                goal_id: item.goal_id,
-                owner: caller.clone(),
-                amount: item.amount,
-                new_total,
-                timestamp: env.ledger().timestamp(),
-            };
+
+            env.storage()
+                .persistent()
+                .set(&DataKey::Goal(item.goal_id), &goal);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Goal(item.goal_id),
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
+
+            // Audit
+            Self::append_audit(&env, symbol_short!("add"), &caller, true);
+
+            // Detailed structured event
             RemitwiseEvents::emit(
                 &env,
                 EventCategory::Transaction,
                 EventPriority::Medium,
                 symbol_short!("funds_add"),
-                funds_event,
-            );
-            if was_completed && !previously_completed {
-                let completed_event = GoalCompletedEvent {
+                FundsAddedEvent {
                     goal_id: item.goal_id,
                     owner: caller.clone(),
-                    name: goal.name.clone(),
-                    final_amount: new_total,
-                    timestamp: env.ledger().timestamp(),
-                };
-                env.events().publish((GOAL_COMPLETED,), completed_event);
-            }
+                    amount: item.amount,
+                    new_total,
+                    timestamp: now,
+                },
+            );
+
+            // Module-specific simple event
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::FundsAdded),
                 (item.goal_id, caller.clone(), item.amount),
             );
+
             if was_completed && !previously_completed {
+                // Goal completion structured event
+                env.events().publish(
+                    (GOAL_COMPLETED,),
+                    GoalCompletedEvent {
+                        goal_id: item.goal_id,
+                        owner: caller.clone(),
+                        name: goal.name.clone(),
+                        final_amount: new_total,
+                        timestamp: now,
+                    },
+                );
+
+                // Module-specific completion event
                 env.events().publish(
                     (symbol_short!("savings"), SavingsEvent::GoalCompleted),
                     (item.goal_id, caller.clone()),
                 );
             }
+
             count += 1;
         }
+
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -944,6 +1009,7 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(item.goal_id), INSTANCE_LIF
             symbol_short!("batch_add"),
             (count, caller),
         );
+
         Ok(count)
     }
 
@@ -1006,7 +1072,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(item.goal_id), INSTANCE_LIF
 
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
@@ -1043,8 +1113,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(item.goal_id), INSTANCE_LIF
             .ok_or(SavingsGoalError::Overflow)?;
         let new_amount = goal.current_amount;
 
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         let withdraw_event = FundsWithdrawnEvent {
             goal_id,
@@ -1053,15 +1129,18 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             new_total: new_amount,
             timestamp: env.ledger().timestamp(),
         };
+
+        // Standardized event emission for indexers
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
             EventPriority::Medium,
-            symbol_short!("funds_rem"),
-            withdraw_event,
+            FUNDS_WITHDRAWN,
+            withdraw_event.clone(),
         );
 
-        Self::append_audit(&env, symbol_short!("withdraw"), &caller, true);
+        // Legacy/Action-specific topics
+        env.events().publish((FUNDS_WITHDRAWN,), withdraw_event);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::FundsWithdrawn),
             (goal_id, caller, amount),
@@ -1083,7 +1162,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         Self::require_not_paused(&env, pause_functions::LOCK);
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("lock"), &caller, false);
@@ -1101,8 +1184,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         }
 
         goal.locked = true;
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
         env.events().publish(
@@ -1126,7 +1215,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         Self::require_not_paused(&env, pause_functions::UNLOCK);
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("unlock"), &caller, false);
@@ -1144,8 +1237,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         }
 
         goal.locked = false;
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
         env.events().publish(
@@ -1180,7 +1279,7 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     /// `next_cursor == 0` means no more pages.
     pub fn get_goals(env: Env, owner: Address, cursor: u32, limit: u32) -> GoalPage {
         let limit = Self::clamp_limit(limit);
-        
+
         let ids: Vec<u32> = env
             .storage()
             .persistent()
@@ -1220,7 +1319,10 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             let goal_id = ids
                 .get(i)
                 .unwrap_or_else(|| panic!("Pagination index out of sync"));
-            let goal = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            let goal = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
                 .unwrap_or_else(|| panic!("Pagination index out of sync"));
             if goal.owner != owner {
                 panic!("Pagination index owner mismatch");
@@ -1261,7 +1363,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         Self::require_not_paused(&env, pause_functions::ARCHIVE);
         Self::extend_instance_ttl(&env);
 
-        let goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("archive"), &caller, false);
@@ -1278,14 +1384,25 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             panic!("Goal not completed");
         }
 
-        if env.storage().persistent().has(&DataKey::ArchivedGoal(goal_id)) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::ArchivedGoal(goal_id))
+        {
             Self::append_audit(&env, symbol_short!("archive"), &caller, false);
             panic!("Goal already archived");
         }
 
         env.storage().persistent().remove(&DataKey::Goal(goal_id));
-        env.storage().persistent().set(&DataKey::ArchivedGoal(goal_id), &ArchivedSavingsGoal::from_goal(&env, goal));
-env.storage().persistent().extend_ttl(&DataKey::ArchivedGoal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage().persistent().set(
+            &DataKey::ArchivedGoal(goal_id),
+            &ArchivedSavingsGoal::from_goal(&env, goal),
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::ArchivedGoal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         Self::remove_owner_goal_id(&env, &caller, goal_id);
         Self::insert_owner_archived_goal_id_sorted(&env, &caller, goal_id);
@@ -1304,7 +1421,11 @@ env.storage().persistent().extend_ttl(&DataKey::ArchivedGoal(goal_id), INSTANCE_
         Self::require_not_paused(&env, pause_functions::RESTORE);
         Self::extend_instance_ttl(&env);
 
-        let archived_goal = match env.storage().persistent().get::<_, ArchivedSavingsGoal>(&DataKey::ArchivedGoal(goal_id)) {
+        let archived_goal = match env
+            .storage()
+            .persistent()
+            .get::<_, ArchivedSavingsGoal>(&DataKey::ArchivedGoal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("restore"), &caller, false);
@@ -1322,9 +1443,17 @@ env.storage().persistent().extend_ttl(&DataKey::ArchivedGoal(goal_id), INSTANCE_
             panic!("Active goal already exists");
         }
 
-        env.storage().persistent().remove(&DataKey::ArchivedGoal(goal_id));
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &archived_goal.into_goal());
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ArchivedGoal(goal_id));
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &archived_goal.into_goal());
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         Self::remove_owner_archived_goal_id(&env, &caller, goal_id);
         Self::insert_owner_goal_id_sorted(&env, &caller, goal_id);
@@ -1386,7 +1515,10 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             let goal_id = ids
                 .get(i)
                 .unwrap_or_else(|| panic!("Archived pagination index out of sync"));
-            let goal = env.storage().persistent().get::<_, ArchivedSavingsGoal>(&DataKey::ArchivedGoal(goal_id))
+            let goal = env
+                .storage()
+                .persistent()
+                .get::<_, ArchivedSavingsGoal>(&DataKey::ArchivedGoal(goal_id))
                 .unwrap_or_else(|| panic!("Archived pagination index out of sync"));
             if goal.owner != owner {
                 panic!("Archived pagination index owner mismatch");
@@ -1419,7 +1551,9 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     }
 
     pub fn get_archived_goal(env: Env, goal_id: u32) -> Option<ArchivedSavingsGoal> {
-        env.storage().persistent().get(&DataKey::ArchivedGoal(goal_id))
+        env.storage()
+            .persistent()
+            .get(&DataKey::ArchivedGoal(goal_id))
     }
 
     /// Backward-compatible: returns ALL goals for owner in one Vec.
@@ -1432,7 +1566,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             .unwrap_or_else(|| Vec::new(&env));
         let mut result = Vec::new(&env);
         for goal_id in ids.iter() {
-            if let Some(goal) = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+            if let Some(goal) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            {
                 result.push_back(goal);
             }
         }
@@ -1440,7 +1578,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     }
 
     pub fn is_goal_completed(env: Env, goal_id: u32) -> bool {
-        if let Some(goal) = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        if let Some(goal) = env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             goal.current_amount >= goal.target_amount
         } else {
             false
@@ -1451,7 +1593,6 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     // Snapshot, audit, schedule
     // -----------------------------------------------------------------------
 
-
     pub fn export_snapshot(env: Env, caller: Address) -> GoalsExportSnapshot {
         caller.require_auth();
         let next_id = env
@@ -1461,7 +1602,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             .unwrap_or(0u32);
         let mut list = Vec::new(&env);
         for i in 1..=next_id {
-            if let Some(g) = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(i)) {
+            if let Some(g) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(i))
+            {
                 list.push_back(g);
             }
         }
@@ -1479,6 +1624,7 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
     }
 
     pub fn get_nonce(env: Env, address: Address) -> u64 {
+        Self::extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::Nonces(address))
@@ -1515,10 +1661,20 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         Self::extend_instance_ttl(&env);
 
         // Clear existing goals and owner indices
-        let old_next_id = env.storage().instance().get::<_, u32>(&DataKey::NextId).unwrap_or(0);
+        let old_next_id = env
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::NextId)
+            .unwrap_or(0);
         for i in 1..=old_next_id {
-            if let Some(goal) = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(i)) {
-                env.storage().persistent().remove(&DataKey::OwnerGoals(goal.owner));
+            if let Some(goal) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(i))
+            {
+                env.storage()
+                    .persistent()
+                    .remove(&DataKey::OwnerGoals(goal.owner));
                 env.storage().persistent().remove(&DataKey::Goal(i));
             }
         }
@@ -1526,15 +1682,27 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         let mut owner_indices: Map<Address, Vec<u32>> = Map::new(&env);
         for g in snapshot.goals.iter() {
             env.storage().persistent().set(&DataKey::Goal(g.id), &g);
-env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-            let mut ids = owner_indices.get(g.owner.clone()).unwrap_or_else(|| Vec::new(&env));
+            env.storage().persistent().extend_ttl(
+                &DataKey::Goal(g.id),
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
+            let mut ids = owner_indices
+                .get(g.owner.clone())
+                .unwrap_or_else(|| Vec::new(&env));
             ids.push_back(g.id);
             owner_indices.set(g.owner.clone(), ids);
         }
 
         for (owner, ids) in owner_indices.iter() {
-            env.storage().persistent().set(&DataKey::OwnerGoals(owner.clone()), &ids);
-            env.storage().persistent().extend_ttl(&DataKey::OwnerGoals(owner.clone()), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            env.storage()
+                .persistent()
+                .set(&DataKey::OwnerGoals(owner.clone()), &ids);
+            env.storage().persistent().extend_ttl(
+                &DataKey::OwnerGoals(owner.clone()),
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
         }
 
         env.storage()
@@ -1629,7 +1797,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
             .unwrap_or_else(|| Vec::new(env));
         ids.push_back(goal_id);
         env.storage().persistent().set(&key, &ids);
-        env.storage().persistent().extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
     }
 
     fn insert_owner_goal_id_sorted(env: &Env, owner: &Address, goal_id: u32) {
@@ -1657,7 +1829,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
             out.push_back(goal_id);
         }
         env.storage().persistent().set(&key, &out);
-        env.storage().persistent().extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
     }
 
     fn remove_owner_goal_id(env: &Env, owner: &Address, goal_id: u32) {
@@ -1687,7 +1863,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
             env.storage().persistent().remove(&key);
         } else {
             env.storage().persistent().set(&key, &out);
-            env.storage().persistent().extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                &key,
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
         }
     }
 
@@ -1716,7 +1896,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
             out.push_back(goal_id);
         }
         env.storage().persistent().set(&key, &out);
-        env.storage().persistent().extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            &key,
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
     }
 
     fn remove_owner_archived_goal_id(env: &Env, owner: &Address, goal_id: u32) {
@@ -1746,7 +1930,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
             env.storage().persistent().remove(&key);
         } else {
             env.storage().persistent().set(&key, &out);
-            env.storage().persistent().extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            env.storage().persistent().extend_ttl(
+                &key,
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
         }
     }
 
@@ -1771,7 +1959,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
         caller.require_auth();
         Self::extend_instance_ttl(&env);
 
-        let mut goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
@@ -1791,8 +1983,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(g.id), INSTANCE_LIFETIME_TH
         }
 
         goal.unlock_date = Some(unlock_date);
-        env.storage().persistent().set(&DataKey::Goal(goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         Self::append_audit(&env, symbol_short!("timelock"), &caller, true);
         true
@@ -1823,7 +2021,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             panic!("Amount must be positive");
         }
 
-        let goal = match env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(goal_id)) {
+        let goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
             Some(g) => g,
             None => panic!("Goal not found"),
         };
@@ -1860,9 +2062,17 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
             missed_count: 0,
         };
 
-        env.storage().persistent().set(&DataKey::Schedule(next_schedule_id), &schedule);
-        env.storage().persistent().extend_ttl(&DataKey::Schedule(next_schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        env.storage().instance().set(&DataKey::NextScheduleId, &next_schedule_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Schedule(next_schedule_id), &schedule);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Schedule(next_schedule_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::NextScheduleId, &next_schedule_id);
         Self::append_owner_schedule_id(&env, &owner, next_schedule_id);
 
         env.events().publish(
@@ -1894,7 +2104,11 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedule = match env.storage().persistent().get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id)) {
+        let mut schedule = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id))
+        {
             Some(s) => s,
             None => panic!("Schedule not found"),
         };
@@ -1908,8 +2122,14 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(goal_id), INSTANCE_LIFETIME
         schedule.interval = interval;
         schedule.recurring = interval > 0;
 
-        env.storage().persistent().set(&DataKey::Schedule(schedule_id), &schedule);
-env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Schedule(schedule_id), &schedule);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Schedule(schedule_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleModified),
@@ -1924,7 +2144,11 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
 
         Self::extend_instance_ttl(&env);
 
-        let mut schedule = match env.storage().persistent().get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id)) {
+        let mut schedule = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id))
+        {
             Some(s) => s,
             None => panic!("Schedule not found"),
         };
@@ -1935,8 +2159,14 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
 
         schedule.active = false;
 
-        env.storage().persistent().set(&DataKey::Schedule(schedule_id), &schedule);
-env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Schedule(schedule_id), &schedule);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Schedule(schedule_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCancelled),
@@ -1989,10 +2219,18 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
         let current_time = env.ledger().timestamp();
         let mut executed = Vec::new(&env);
 
-        let next_schedule_id = env.storage().instance().get::<_, u32>(&DataKey::NextScheduleId).unwrap_or(0);
+        let next_schedule_id = env
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::NextScheduleId)
+            .unwrap_or(0);
 
         for schedule_id in 1..=next_schedule_id {
-            let mut schedule = match env.storage().persistent().get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id)) {
+            let mut schedule = match env
+                .storage()
+                .persistent()
+                .get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id))
+            {
                 Some(s) => s,
                 None => continue,
             };
@@ -2001,25 +2239,31 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
                 continue;
             }
 
+            // Simple reentrancy/idempotency check
             if let Some(last_exec) = schedule.last_executed {
                 if last_exec >= schedule.next_due {
                     continue;
                 }
             }
 
-            if let Some(mut goal) = env.storage().persistent().get::<_, SavingsGoal>(&DataKey::Goal(schedule.goal_id)) {
+            if let Some(mut goal) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(schedule.goal_id))
+            {
                 let new_total = match goal.current_amount.checked_add(schedule.amount) {
                     Some(v) => v,
-                    None => panic!("overflow"),
+                    None => continue, // Skip overflow
                 };
                 if new_total > MAX_SAFE_GOAL_BALANCE {
-                    panic!("overflow");
+                    continue;
                 }
                 goal.current_amount = new_total;
 
                 let is_completed = goal.current_amount >= goal.target_amount;
-                env.storage().persistent().set(&DataKey::Goal(schedule.goal_id), &goal);
-env.storage().persistent().extend_ttl(&DataKey::Goal(schedule.goal_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::Goal(schedule.goal_id), &goal);
 
                 env.events().publish(
                     (symbol_short!("savings"), SavingsEvent::FundsAdded),
@@ -2040,10 +2284,10 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(schedule.goal_id), INSTANCE
                 let mut missed = 0u32;
                 let mut next = schedule.next_due + schedule.interval;
                 while next <= current_time {
-                    missed += 1;
-                    next += schedule.interval;
+                    missed = missed.saturating_add(1);
+                    next = next.saturating_add(schedule.interval);
                 }
-                schedule.missed_count += missed;
+                schedule.missed_count = schedule.missed_count.saturating_add(missed);
                 schedule.next_due = next;
 
                 if missed > 0 {
@@ -2056,8 +2300,9 @@ env.storage().persistent().extend_ttl(&DataKey::Goal(schedule.goal_id), INSTANCE
                 schedule.active = false;
             }
 
-            env.storage().persistent().set(&DataKey::Schedule(schedule_id), &schedule);
-env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Schedule(schedule_id), &schedule);
             executed.push_back(schedule_id);
 
             env.events().publish(
@@ -2078,7 +2323,11 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
 
         let mut result = Vec::new(&env);
         for schedule_id in ids.iter() {
-            if let Some(schedule) = env.storage().persistent().get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id)) {
+            if let Some(schedule) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsSchedule>(&DataKey::Schedule(schedule_id))
+            {
                 result.push_back(schedule);
             }
         }
@@ -2086,7 +2335,9 @@ env.storage().persistent().extend_ttl(&DataKey::Schedule(schedule_id), INSTANCE_
     }
 
     pub fn get_savings_schedule(env: Env, schedule_id: u32) -> Option<SavingsSchedule> {
-        env.storage().persistent().get(&DataKey::Schedule(schedule_id))
+        env.storage()
+            .persistent()
+            .get(&DataKey::Schedule(schedule_id))
     }
 
     fn append_owner_schedule_id(env: &Env, owner: &Address, schedule_id: u32) {

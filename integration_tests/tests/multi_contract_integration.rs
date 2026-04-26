@@ -7,9 +7,11 @@
 //! - remittance_split
 
 use bill_payments::{BillPayments, BillPaymentsClient};
+use family_wallet::{FamilyWallet, FamilyWalletClient};
 use insurance::{Insurance, InsuranceClient};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::CoverageType;
+use reporting::{DataAvailability, ReportingContract, ReportingContractClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
 use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String as SorobanString};
@@ -71,6 +73,7 @@ fn test_multi_contract_user_flow() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
 
@@ -176,6 +179,7 @@ fn test_multiple_entities_creation() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill1, 1u32);
 
@@ -188,6 +192,7 @@ fn test_multiple_entities_creation() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill2, 2u32);
 
@@ -210,4 +215,106 @@ fn test_multiple_entities_creation() {
         &None,
     );
     assert_eq!(policy2, 2u32);
+}
+
+#[test]
+fn test_reporting_data_availability_missing() {
+    let env = make_env();
+    let user = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let reporting_contract_id = env.register_contract(None, ReportingContract);
+    let reporting_client = ReportingContractClient::new(&env, &reporting_contract_id);
+
+    // Initialize with admin
+    reporting_client.init(&admin);
+
+    // Do not configure addresses - should result in Missing
+
+    let total_amount = 10_000i128;
+    let period_start = env.ledger().timestamp();
+    let period_end = period_start + (30 * 86400);
+
+    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    assert_eq!(summary.data_availability, DataAvailability::Missing);
+}
+
+#[test]
+fn test_reporting_data_availability_partial() {
+    let env = make_env();
+    let user = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let reporting_contract_id = env.register_contract(None, ReportingContract);
+    let reporting_client = ReportingContractClient::new(&env, &reporting_contract_id);
+
+    // Initialize with admin
+    reporting_client.init(&admin);
+
+    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
+    let bills_contract_id = env.register_contract(None, BillPayments);
+    let insurance_contract_id = env.register_contract(None, Insurance);
+    let family_wallet_id = env.register_contract(None, FamilyWallet);
+
+    // Configure addresses
+    reporting_client.configure_addresses(
+        &admin,
+        &remittance_contract_id,
+        &savings_contract_id,
+        &bills_contract_id,
+        &insurance_contract_id,
+        &family_wallet_id,
+    );
+
+    // Do not initialize remittance split - get_split should fail, resulting in Partial
+
+    let total_amount = 10_000i128;
+    let period_start = env.ledger().timestamp();
+    let period_end = period_start + (30 * 86400);
+
+    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    assert_eq!(summary.data_availability, DataAvailability::Partial);
+}
+
+#[test]
+fn test_reporting_data_availability_complete() {
+    let env = make_env();
+    let user = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let reporting_contract_id = env.register_contract(None, ReportingContract);
+    let reporting_client = ReportingContractClient::new(&env, &reporting_contract_id);
+
+    // Initialize with admin
+    reporting_client.init(&admin);
+
+    let remittance_contract_id = env.register_contract(None, RemittanceSplit);
+    let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
+
+    let savings_contract_id = env.register_contract(None, SavingsGoalContract);
+    let bills_contract_id = env.register_contract(None, BillPayments);
+    let insurance_contract_id = env.register_contract(None, Insurance);
+    let family_wallet_id = env.register_contract(None, FamilyWallet);
+
+    // Configure addresses
+    reporting_client.configure_addresses(
+        &admin,
+        &remittance_contract_id,
+        &savings_contract_id,
+        &bills_contract_id,
+        &insurance_contract_id,
+        &family_wallet_id,
+    );
+
+    // Initialize remittance split
+    let mock_usdc = Address::generate(&env);
+    remittance_client.initialize_split(&user, &0u64, &mock_usdc, &40u32, &30u32, &20u32, &10u32);
+
+    let total_amount = 10_000i128;
+    let period_start = env.ledger().timestamp();
+    let period_end = period_start + (30 * 86400);
+
+    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    assert_eq!(summary.data_availability, DataAvailability::Complete);
 }

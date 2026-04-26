@@ -278,3 +278,25 @@ jobs:
 3. **Monitoring**: Set up automated regression detection
 4. **Documentation**: Update performance characteristics in documentation
 5. **Optimization**: Use benchmark data to identify optimization opportunities
+
+## Lint Check: unwrap/expect Ban (SC-054)
+
+### What it does
+
+Enforces that production contract code does not use `.unwrap()` or `.expect()`. These calls panic at runtime on `None`/`Err` values, which is unsafe in smart contract code. Clippy lints `clippy::unwrap_used` and `clippy::expect_used` are set to deny (`-D`), causing the build to fail if any violations are found.
+
+### How to run locally
+
+```bash
+cargo clippy --workspace --lib -- -D clippy::unwrap_used -D clippy::expect_used
+```
+
+### How to fix violations
+
+Replace `.unwrap()` and `.expect(...)` with proper error handling:
+
+- Return an `Option` or `Result` and propagate with `?`
+- Use `if let Some(val) = ...` or `match`
+- Use `.unwrap_or(default)` / `.unwrap_or_else(|| ...)` where a fallback is appropriate
+- In test code, `#[cfg(test)]` blocks are still allowed to use `unwrap`/`expect`
+

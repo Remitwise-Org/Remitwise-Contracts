@@ -10,6 +10,9 @@ cargo test --all-features
 echo "Running clippy..."
 cargo clippy --all-targets --all-features -- -D warnings
 
+echo "Running clippy unwrap/expect ban (SC-054)..."
+cargo clippy --workspace --lib -- -D clippy::unwrap_used -D clippy::expect_used
+
 echo "Checking format..."
 cargo fmt --all -- --check
 

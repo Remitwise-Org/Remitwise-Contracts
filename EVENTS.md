@@ -201,6 +201,8 @@ pub struct VersionUpgradeEvent {
 pub struct GoalCreatedEvent {
     pub goal_id: u32,               // Unique goal ID
     pub owner: Address,             // Goal owner address
+    pub amount: i128,               // Initial amount (always 0)
+    pub new_total: i128,            // Initial total (always 0)
     pub name: String,               // Goal name (e.g., "Emergency Fund")
     pub target_amount: i128,        // Target amount in stroops
     pub target_date: u64,           // Target completion date (Unix timestamp)
@@ -212,6 +214,9 @@ pub struct GoalCreatedEvent {
 ```json
 {
   "goal_id": 1,
+  "owner": "G...",
+  "amount": 0,
+  "new_total": 0,
   "name": "Emergency Fund",
   "target_amount": 50000,
   "target_date": 1735689600,
@@ -239,6 +244,7 @@ pub struct FundsAddedEvent {
 ```json
 {
   "goal_id": 1,
+  "owner": "G...",
   "amount": 5000,
   "new_total": 15000,
   "timestamp": 1234567850
@@ -246,35 +252,60 @@ pub struct FundsAddedEvent {
 ```
 
 ### Event: Goal Completed
-
-**Topic:** `"completed"` (primary)  
-**Secondary Topic:** `("savings", SavingsEvent::GoalCompleted)`
-
-**Data Structure:**
-```rust
-pub struct GoalCompletedEvent {
-    pub goal_id: u32,               // Goal ID
-    pub owner: Address,             // Goal owner
-    pub name: String,               // Goal name
-    pub final_amount: i128,         // Final amount in goal
-    pub timestamp: u64,             // Event timestamp
-}
-```
+ 
+ **Topic:** `"completed"` (primary)  
+ **Secondary Topic:** `("savings", SavingsEvent::GoalCompleted)`
+ 
+ **Data Structure:**
+ ```rust
+ pub struct GoalCompletedEvent {
+     pub goal_id: u32,               // Goal ID
+     pub owner: Address,             // Goal owner
+     pub amount: i128,               // Final contribution amount
+     pub new_total: i128,            // Total amount reached
+     pub name: String,               // Goal name
+     pub timestamp: u64,             // Event timestamp
+ }
+ ```
+ 
+ **Example Event:**
+ ```json
+ {
+   "goal_id": 1,
+   "owner": "G...",
+   "amount": 5000,
+   "new_total": 50000,
+   "name": "Emergency Fund",
+   "timestamp": 1234567860
+ }
+ ```
 
 ### Event: Funds Withdrawn
-
-**Topic:** `("savings", SavingsEvent::FundsWithdrawn)`
-
-**Data Structure:**
-```rust
-pub struct FundsWithdrawnEvent {
-    pub goal_id: u32,               // Goal ID
-    pub owner: Address,             // Goal owner
-    pub amount: i128,               // Amount withdrawn
-    pub new_total: i128,            // New total remaining in goal
-    pub timestamp: u64,             // Event timestamp
-}
-```
+ 
+ **Topic:** `"withdrawn"` (primary)
+ **Secondary Topic:** `("savings", SavingsEvent::FundsWithdrawn)`
+ 
+ **Data Structure:**
+ ```rust
+ pub struct FundsWithdrawnEvent {
+     pub goal_id: u32,               // Goal ID
+     pub owner: Address,             // Goal owner
+     pub amount: i128,               // Amount withdrawn
+     pub new_total: i128,            // New total remaining in goal
+     pub timestamp: u64,             // Event timestamp
+ }
+ ```
+ 
+ **Example Event:**
+ ```json
+ {
+   "goal_id": 1,
+   "owner": "G...",
+   "amount": 2000,
+   "new_total": 13000,
+   "timestamp": 1234567900
+ }
+ ```
 
 ### Event: Goal Locked/Unlocked
 

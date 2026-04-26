@@ -55,6 +55,7 @@ fn create_bill(env: &Env, client: &BillPaymentsClient, owner: &Address) -> u32 {
         &0u32,
         &None,
         &String::from_str(env, "XLM"),
+        &None,
     )
 }
 
@@ -93,13 +94,11 @@ fn test_no_duplicates_or_skips_after_archive_gaps() {
 
     // Pay bills 2, 4, 6, 8 so they can be archived
     for id in [2u32, 4, 6, 8] {
-        client.pay_bill(&owner, &id).unwrap();
+        client.pay_bill(&owner, &id);
     }
 
     // Archive all paid bills — creates gaps at IDs 2, 4, 6, 8
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // Remaining unpaid: 1, 3, 5, 7, 9, 10
     let ids = collect_all_ids(&client, &owner);
@@ -138,11 +137,9 @@ fn test_cursor_stable_across_archive_operations() {
     let seen_ids: std::vec::Vec<u32> = page1.items.iter().map(|b| b.id).collect();
 
     // Pay and archive some bills that are BEFORE the saved cursor
-    client.pay_bill(&owner, &2u32).unwrap();
-    client.pay_bill(&owner, &4u32).unwrap();
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.pay_bill(&owner, &2u32);
+    client.pay_bill(&owner, &4u32);
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // Resume from saved cursor — must not re-deliver IDs already seen
     let page2 = client.get_unpaid_bills(&owner, &saved_cursor, &50u32);
@@ -167,11 +164,9 @@ fn test_archived_bills_excluded_from_unpaid_pages() {
 
     // Pay and archive bills 1, 3, 5
     for id in [1u32, 3, 5] {
-        client.pay_bill(&owner, &id).unwrap();
+        client.pay_bill(&owner, &id);
     }
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     let ids = collect_all_ids(&client, &owner);
     // Only 2, 4, 6 should remain
@@ -185,7 +180,8 @@ fn test_archived_bills_excluded_from_unpaid_pages() {
     }
 }
 
-/// Restored bills must re-appear in unpaid pages at the correct cursor position.
+/// Restored bills must re-appear in active bill pages at the correct cursor position
+/// while remaining excluded from unpaid pages because restore preserves `paid = true`.
 #[test]
 fn test_restored_bill_reappears_in_correct_cursor_position() {
     let env = make_env();
@@ -197,18 +193,45 @@ fn test_restored_bill_reappears_in_correct_cursor_position() {
     }
 
     // Pay and archive bill 3
-    client.pay_bill(&owner, &3u32).unwrap();
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.pay_bill(&owner, &3u32);
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
-    // Restore bill 3 — it goes back into BILLS map
-    client.restore_bill(&owner, &3u32).unwrap();
+    // Restore bill 3 — it goes back into BILLS map but remains paid.
+    client.restore_bill(&owner, &3u32);
 
-    let ids = collect_all_ids(&client, &owner);
-    // All 5 bills should be present (bill 3 is restored but marked unpaid)
-    assert_eq!(ids.len(), 5, "restored bill should reappear in unpaid pages");
-    assert!(ids.contains(&3u32), "restored bill ID 3 missing from pages");
+    let unpaid_ids = collect_all_ids(&client, &owner);
+    assert_eq!(
+        unpaid_ids.len(),
+        4,
+        "restored paid bill should remain excluded from unpaid pages"
+    );
+    assert!(
+        !unpaid_ids.contains(&3u32),
+        "restored paid bill must not appear in unpaid pages"
+    );
+
+    let mut ids = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_all_bills_for_owner(&owner, &cursor, &50u32);
+        for bill in page.items.iter() {
+            ids.push(bill.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(
+        ids.len(),
+        5,
+        "restored bill should reappear in active bill pages"
+    );
+    assert!(
+        ids.contains(&3u32),
+        "restored bill ID 3 missing from active pages"
+    );
 
     // IDs must be in ascending order (no cursor ordering violation)
     for i in 1..ids.len() {
@@ -234,11 +257,9 @@ fn test_multi_page_traversal_sparse_ids_no_duplicates() {
 
     // Pay every other bill (even IDs) and archive them
     for id in (2u32..=20).step_by(2) {
-        client.pay_bill(&owner, &id).unwrap();
+        client.pay_bill(&owner, &id);
     }
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // 10 unpaid bills remain (odd IDs 1,3,5,...,19); traverse with page size 3
     let mut all_ids: std::vec::Vec<u32> = std::vec::Vec::new();
@@ -263,13 +284,21 @@ fn test_multi_page_traversal_sparse_ids_no_duplicates() {
     // No duplicates
     for i in 0..all_ids.len() {
         for j in (i + 1)..all_ids.len() {
-            assert_ne!(all_ids[i], all_ids[j], "duplicate ID in multi-page traversal");
+            assert_ne!(
+                all_ids[i], all_ids[j],
+                "duplicate ID in multi-page traversal"
+            );
         }
     }
 
     // All returned IDs must be odd (unpaid)
     for &id in &all_ids {
-        assert_eq!(id % 2, 1, "even (archived) ID {} appeared in unpaid pages", id);
+        assert_eq!(
+            id % 2,
+            1,
+            "even (archived) ID {} appeared in unpaid pages",
+            id
+        );
     }
 }
 
@@ -286,15 +315,13 @@ fn test_archived_page_excludes_restored_bills() {
 
     // Pay and archive all 6
     for id in 1u32..=6 {
-        client.pay_bill(&owner, &id).unwrap();
+        client.pay_bill(&owner, &id);
     }
-    client
-        .archive_paid_bills(&owner, &2_000_000_001u64)
-        .unwrap();
+    client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // Restore bills 2 and 4 back to active
-    client.restore_bill(&owner, &2u32).unwrap();
-    client.restore_bill(&owner, &4u32).unwrap();
+    client.restore_bill(&owner, &2u32);
+    client.restore_bill(&owner, &4u32);
 
     // Archived page should only contain 1, 3, 5, 6
     let arch_page = client.get_archived_bills(&owner, &0u32, &50u32);
@@ -346,6 +373,10 @@ fn test_owner_isolation_across_sparse_ids() {
 
     // No overlap
     for &id in &ids_a {
-        assert!(!ids_b.contains(&id), "owner isolation violated for ID {}", id);
+        assert!(
+            !ids_b.contains(&id),
+            "owner isolation violated for ID {}",
+            id
+        );
     }
 }

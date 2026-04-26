@@ -3,7 +3,7 @@
 //! Issue #178: Stress Test Storage Limits and TTL
 //!
 //! Coverage:
-//!   - Many bills per user (200+) exercising the instance-storage Map
+//!   - Many bills per user up to the per-owner cap exercising the instance-storage Map
 //!   - Many bills across multiple users, verifying per-owner isolation
 //!   - Instance TTL re-bump after a ledger advancement that crosses the threshold
 //!   - Archive + cleanup behavior at scale (100 paid bills)
@@ -18,7 +18,7 @@
 //!   DEFAULT_PAGE_LIMIT     = 20
 //!   MAX_BATCH_SIZE         = 50
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, MAX_BILLS_PER_OWNER};
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -66,10 +66,10 @@ where
 // Stress: many entities per user
 // ---------------------------------------------------------------------------
 
-/// Create 200 bills for a single user and verify the full dataset is accessible
+/// Create bills up to the per-owner cap for a single user and verify the full dataset is accessible
 /// via cursor-based pagination at MAX_PAGE_LIMIT (50).
 #[test]
-fn stress_200_bills_single_user() {
+fn stress_max_bills_single_user() {
     let env = stress_env();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -78,7 +78,7 @@ fn stress_200_bills_single_user() {
     let name = String::from_str(&env, "StressBill");
     let due_date = 2_000_000_000u64; // far future
 
-    for _ in 0..200 {
+    for _ in 0..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
             &name,
@@ -88,6 +88,7 @@ fn stress_200_bills_single_user() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
@@ -95,11 +96,11 @@ fn stress_200_bills_single_user() {
     let total = client.get_total_unpaid(&owner);
     assert_eq!(
         total,
-        200 * 100i128,
-        "get_total_unpaid must sum all 200 bills"
+        MAX_BILLS_PER_OWNER as i128 * 100i128,
+        "get_total_unpaid must sum all bills up to the owner cap"
     );
 
-    // Exhaust all pages with MAX_PAGE_LIMIT (50) — should take exactly 4 pages
+    // Exhaust all pages with MAX_PAGE_LIMIT (50).
     let mut collected = 0u32;
     let mut cursor = 0u32;
     let mut pages = 0u32;
@@ -118,14 +119,21 @@ fn stress_200_bills_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected, 200, "Pagination must return all 200 bills");
-    assert_eq!(pages, 4, "200 bills / 50 per page = 4 pages");
+    assert_eq!(
+        collected, MAX_BILLS_PER_OWNER,
+        "Pagination must return all bills up to the owner cap"
+    );
+    assert_eq!(
+        pages,
+        MAX_BILLS_PER_OWNER / 50,
+        "owner-cap bills / 50 per page should match page count"
+    );
 }
 
-/// Create 200 bills for a single user and verify the instance TTL stays valid
-/// after the storage Map grows to 200 entries.
+/// Create bills up to the per-owner cap for a single user and verify the instance TTL stays valid
+/// after the storage Map grows to the owner cap.
 #[test]
-fn stress_instance_ttl_valid_after_200_bills() {
+fn stress_instance_ttl_valid_after_max_bills() {
     let env = stress_env();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -134,7 +142,7 @@ fn stress_instance_ttl_valid_after_200_bills() {
     let name = String::from_str(&env, "TTLBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
             &name,
@@ -144,13 +152,14 @@ fn stress_instance_ttl_valid_after_200_bills() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl >= 518_400,
-        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after 200 creates",
+        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after owner-cap creates",
         ttl
     );
 }
@@ -186,6 +195,7 @@ fn stress_bills_across_10_users() {
                 &0u32,
                 &None,
                 &String::from_str(&env, "XLM"),
+                &None,
             );
         }
     }
@@ -248,6 +258,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
@@ -288,6 +299,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
         &0u32,
         &None,
         &String::from_str(&env, "XLM"),
+        &None,
     );
 
     let ttl_rebumped = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -319,6 +331,7 @@ fn stress_ttl_re_bumped_by_pay_bill_after_ledger_advancement() {
         &0u32,
         &None,
         &String::from_str(&env, "XLM"),
+        &None,
     );
 
     // Advance ledger so TTL drops below threshold
@@ -374,6 +387,7 @@ fn stress_archive_100_paid_bills() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
@@ -463,6 +477,7 @@ fn stress_archive_across_5_users() {
                 &0u32,
                 &None,
                 &String::from_str(&env, "XLM"),
+                &None,
             );
             next_id += 1;
         }
@@ -495,9 +510,9 @@ fn stress_archive_across_5_users() {
 // ---------------------------------------------------------------------------
 
 /// Measure CPU and memory cost for fetching the first page (50 items) of
-/// unpaid bills when the instance Map holds 200 entries.
+/// unpaid bills when the instance Map holds the per-owner maximum.
 #[test]
-fn bench_get_unpaid_bills_first_page_of_200() {
+fn bench_get_unpaid_bills_first_page_of_max() {
     let env = stress_env();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -506,7 +521,7 @@ fn bench_get_unpaid_bills_first_page_of_200() {
     let name = String::from_str(&env, "BenchBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
             &name,
@@ -516,6 +531,7 @@ fn bench_get_unpaid_bills_first_page_of_200() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
@@ -523,15 +539,14 @@ fn bench_get_unpaid_bills_first_page_of_200() {
     assert_eq!(page.count, 50, "First page must return 50 bills");
 
     println!(
-        r#"{{"contract":"bill_payments","method":"get_unpaid_bills","scenario":"200_bills_page1_50","cpu":{},"mem":{}}}"#,
+        r#"{{"contract":"bill_payments","method":"get_unpaid_bills","scenario":"100_bills_page1_50","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }
 
-/// Measure CPU and memory cost for fetching the last page of 200 bills
-/// (cursor pointing to item 150, fetching the final 50).
+/// Measure CPU and memory cost for fetching the last page when the owner has the maximum bill count.
 #[test]
-fn bench_get_unpaid_bills_last_page_of_200() {
+fn bench_get_unpaid_bills_last_page_of_max() {
     let env = stress_env();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -540,7 +555,7 @@ fn bench_get_unpaid_bills_last_page_of_200() {
     let name = String::from_str(&env, "BenchBillLast");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
             &name,
@@ -550,21 +565,20 @@ fn bench_get_unpaid_bills_last_page_of_200() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
     // Navigate to the last page cursor
     let page1 = client.get_unpaid_bills(&owner, &0u32, &50u32);
-    let page2 = client.get_unpaid_bills(&owner, &page1.next_cursor, &50u32);
-    let page3 = client.get_unpaid_bills(&owner, &page2.next_cursor, &50u32);
-    let cursor4 = page3.next_cursor;
+    let cursor2 = page1.next_cursor;
 
-    let (cpu, mem, last_page) = measure(&env, || client.get_unpaid_bills(&owner, &cursor4, &50u32));
+    let (cpu, mem, last_page) = measure(&env, || client.get_unpaid_bills(&owner, &cursor2, &50u32));
     assert_eq!(last_page.count, 50, "Last page must return 50 bills");
     assert_eq!(last_page.next_cursor, 0, "No more pages after last page");
 
     println!(
-        r#"{{"contract":"bill_payments","method":"get_unpaid_bills","scenario":"200_bills_last_page","cpu":{},"mem":{}}}"#,
+        r#"{{"contract":"bill_payments","method":"get_unpaid_bills","scenario":"100_bills_last_page","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }
@@ -590,6 +604,7 @@ fn bench_archive_paid_bills_100() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
     for id in 1u32..=100 {
@@ -607,9 +622,9 @@ fn bench_archive_paid_bills_100() {
     );
 }
 
-/// Measure CPU and memory cost of get_total_unpaid when 200 bills are in storage.
+/// Measure CPU and memory cost of get_total_unpaid when the owner has the maximum bill count.
 #[test]
-fn bench_get_total_unpaid_200_bills() {
+fn bench_get_total_unpaid_max_bills() {
     let env = stress_env();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -618,7 +633,7 @@ fn bench_get_total_unpaid_200_bills() {
     let name = String::from_str(&env, "TotalBench");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
             &name,
@@ -628,15 +643,16 @@ fn bench_get_total_unpaid_200_bills() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 
-    let expected = 200i128 * 100;
+    let expected = MAX_BILLS_PER_OWNER as i128 * 100;
     let (cpu, mem, total) = measure(&env, || client.get_total_unpaid(&owner));
     assert_eq!(total, expected);
 
     println!(
-        r#"{{"contract":"bill_payments","method":"get_total_unpaid","scenario":"200_bills","cpu":{},"mem":{}}}"#,
+        r#"{{"contract":"bill_payments","method":"get_total_unpaid","scenario":"100_bills","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }
@@ -665,6 +681,7 @@ fn stress_batch_pay_mixed_50() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         ));
     }
 
@@ -680,6 +697,7 @@ fn stress_batch_pay_mixed_50() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         ));
     }
 
@@ -747,6 +765,7 @@ fn stress_overdue_bills_pagination_correctness() {
             &0u32,
             &None,
             &String::from_str(&env, "XLM"),
+            &None,
         );
     }
 

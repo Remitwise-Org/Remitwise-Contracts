@@ -9,8 +9,8 @@
 //! - Edge cases with extreme values
 
 use proptest::prelude::*;
-use remittance_split::{AccountGroup, RemittanceSplit, RemittanceSplitClient};
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map};
+use remittance_split::{AccountGroup, DataKey, MIN_SCHEDULE_INTERVAL, MAX_SCHEDULE_LEAD_TIME, RemittanceSplit, RemittanceSplitClient, RemittanceSplitError};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map, Vec};
 use std::collections::HashSet;
 
 /// Helper: register a dummy token address (no real token needed for pure math tests).
@@ -33,6 +33,74 @@ fn init(
 }
 
 /// Helper: try_initialize_split with a dummy token address.
+fn xorshift64(mut state: u64) -> u64 {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    state
+}
+
+fn bounded_schedule_cases(
+    seed: u64,
+    count: usize,
+    current_time: u64,
+) -> std::vec::Vec<(i128, u64, u64, RemittanceSplitError)> {
+    let invalid_amounts = [0i128, -1, -100, -1_000_000_000_000];
+    let invalid_intervals = [1u64, MIN_SCHEDULE_INTERVAL - 1];
+    let mut cases = std::vec::Vec::new();
+    let mut state = seed;
+
+    for index in 0..count {
+        state = xorshift64(state);
+        let selector = (state as usize) % 4;
+        let case = match selector {
+            0 => {
+                let amount = invalid_amounts[((state >> 8) as usize) % invalid_amounts.len()];
+                let next_due = current_time + 1_000;
+                let interval = MIN_SCHEDULE_INTERVAL;
+                (amount, next_due, interval, RemittanceSplitError::InvalidAmount)
+            }
+            1 => {
+                let next_due = if ((state >> 8) & 1) == 0 {
+                    current_time
+                } else {
+                    current_time.saturating_sub(1)
+                };
+                (1000, next_due, MIN_SCHEDULE_INTERVAL, RemittanceSplitError::InvalidDueDate)
+            }
+            2 => {
+                let interval = invalid_intervals[((state >> 8) as usize) % invalid_intervals.len()];
+                (1000, current_time + 1_000, interval, RemittanceSplitError::ScheduleIntervalTooShort)
+            }
+            _ => {
+                let next_due = current_time + MAX_SCHEDULE_LEAD_TIME + 1;
+                (1000, next_due, MIN_SCHEDULE_INTERVAL, RemittanceSplitError::ScheduleLeadTimeTooLong)
+            }
+        };
+        cases.push(case);
+        state ^= index as u64;
+    }
+
+    cases
+}
+
+fn assert_schedule_list_unchanged(
+    client: &RemittanceSplitClient,
+    owner: &Address,
+    before_len: u32,
+) {
+    let after_len = client.get_remittance_schedules(owner).len();
+    assert_eq!(before_len, after_len, "Schedule index was modified on validation failure");
+}
+
+fn assert_schedule_unchanged(
+    before: &remittance_split::RemittanceSchedule,
+    after: &remittance_split::RemittanceSchedule,
+) {
+    assert_eq!(before, after, "Schedule changed after invalid modification request");
+}
+
+
 fn try_init(
     client: &RemittanceSplitClient,
     env: &Env,
@@ -242,6 +310,61 @@ fn fuzz_single_category_splits() {
             assert_eq!(amounts.get(2).unwrap(), 1000);
         }
     }
+}
+
+
+#[test]
+fn fuzz_schedule_create_modify_cancel_validations() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+    let current_time = env.ledger().timestamp();
+    let schedule_count = client.get_remittance_schedules(&owner).len();
+
+    for (amount, next_due, interval, expected_error) in
+        bounded_schedule_cases(0x1234_5678, 16, current_time)
+    {
+        let result = client.try_create_remittance_schedule(&owner, &amount, &next_due, &interval);
+        assert_eq!(result, Err(Ok(expected_error)));
+        assert_schedule_list_unchanged(&client, &owner, schedule_count);
+    }
+
+    let schedule_id = client.create_remittance_schedule(
+        &owner,
+        &1000,
+        &(current_time + 1_000),
+        &MIN_SCHEDULE_INTERVAL,
+    );
+    let schedule_before = client.get_remittance_schedule(&schedule_id).unwrap();
+
+    for (amount, next_due, interval, expected_error) in
+        bounded_schedule_cases(0xDEAD_BEEF, 16, current_time)
+    {
+        let result = client.try_modify_remittance_schedule(
+            &owner,
+            &schedule_id,
+            &amount,
+            &next_due,
+            &interval,
+        );
+        assert_eq!(result, Err(Ok(expected_error)));
+        let schedule_after = client.get_remittance_schedule(&schedule_id).unwrap();
+        assert_schedule_unchanged(&schedule_before, &schedule_after);
+    }
+
+    let wrong_owner = Address::generate(&env);
+    let unauthorized_result = client.try_cancel_remittance_schedule(&wrong_owner, &schedule_id);
+    assert_eq!(unauthorized_result, Err(Ok(RemittanceSplitError::Unauthorized)));
+    assert_schedule_list_unchanged(&client, &owner, schedule_count + 1);
+
+    let not_found_id = schedule_id + 10;
+    let not_found_result = client.try_cancel_remittance_schedule(&owner, &not_found_id);
+    assert_eq!(not_found_result, Err(Ok(RemittanceSplitError::ScheduleNotFound)));
+    assert_schedule_list_unchanged(&client, &owner, schedule_count + 1);
 }
 
 proptest! {

@@ -1225,7 +1225,8 @@ mod tests {
             let result = import_from_encrypted_payload(partial);
             assert!(
                 matches!(result, Err(MigrationError::InvalidFormat(_))),
-                "expected InvalidFormat for partial marker {:?}", partial
+                "expected InvalidFormat for partial marker {:?}",
+                partial
             );
         }
     }
@@ -1238,7 +1239,8 @@ mod tests {
             let result = import_from_encrypted_payload(&input);
             assert!(
                 matches!(result, Err(MigrationError::InvalidFormat(_))),
-                "expected InvalidFormat for wrong-case marker {:?}", prefix
+                "expected InvalidFormat for wrong-case marker {:?}",
+                prefix
             );
         }
     }
@@ -1249,7 +1251,8 @@ mod tests {
             let result = import_from_encrypted_payload(input);
             assert!(
                 matches!(result, Err(MigrationError::InvalidFormat(_))),
-                "expected InvalidFormat for whitespace input {:?}", input
+                "expected InvalidFormat for whitespace input {:?}",
+                input
             );
         }
     }
@@ -1260,14 +1263,20 @@ mod tests {
         let b64 = base64::engine::general_purpose::STANDARD.encode(&plain);
         let encoded = format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, b64);
         // Verify pre-decode guard won't fire first
-        assert!(encoded.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES,
-            "encoded len {} exceeds MAX_ENCRYPTED_PAYLOAD_BYTES {}", encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES);
+        assert!(
+            encoded.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded len {} exceeds MAX_ENCRYPTED_PAYLOAD_BYTES {}",
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES
+        );
         let result = import_from_encrypted_payload(&encoded);
         assert!(
             matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
                 if size == MAX_MIGRATION_PAYLOAD_BYTES + 1 && max == MAX_MIGRATION_PAYLOAD_BYTES),
             "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
-            MAX_MIGRATION_PAYLOAD_BYTES + 1, MAX_MIGRATION_PAYLOAD_BYTES, result
+            MAX_MIGRATION_PAYLOAD_BYTES + 1,
+            MAX_MIGRATION_PAYLOAD_BYTES,
+            result
         );
     }
 
@@ -1279,7 +1288,9 @@ mod tests {
             matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
                 if size == MAX_ENCRYPTED_PAYLOAD_BYTES + 1 && max == MAX_ENCRYPTED_PAYLOAD_BYTES),
             "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
-            MAX_ENCRYPTED_PAYLOAD_BYTES + 1, MAX_ENCRYPTED_PAYLOAD_BYTES, result
+            MAX_ENCRYPTED_PAYLOAD_BYTES + 1,
+            MAX_ENCRYPTED_PAYLOAD_BYTES,
+            result
         );
     }
 
@@ -1287,10 +1298,19 @@ mod tests {
     fn test_encrypted_payload_exact_boundary_accepted() {
         let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES];
         let encoded = export_to_encrypted_payload(&plain).unwrap();
-        assert_eq!(encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES,
-            "encoded length {} != MAX_ENCRYPTED_PAYLOAD_BYTES {}", encoded.len(), MAX_ENCRYPTED_PAYLOAD_BYTES);
+        assert_eq!(
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded length {} != MAX_ENCRYPTED_PAYLOAD_BYTES {}",
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES
+        );
         let result = import_from_encrypted_payload(&encoded);
-        assert!(result.is_ok(), "expected Ok(_) at exact boundary, got {:?}", result);
+        assert!(
+            result.is_ok(),
+            "expected Ok(_) at exact boundary, got {:?}",
+            result
+        );
         assert_eq!(result.unwrap(), plain);
     }
 

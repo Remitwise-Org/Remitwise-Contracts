@@ -124,7 +124,7 @@ mod mock_remittance_split {
 macro_rules! mock_savings {
     ($mod_name:ident, $struct_name:ident, $n:expr) => {
         mod $mod_name {
-            use reporting::{SavingsGoal, SavingsGoalsTrait};
+            use reporting::{GoalPage, SavingsGoal, SavingsGoalsTrait};
             use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
             #[contract]
@@ -145,9 +145,19 @@ macro_rules! mock_savings {
                             target_date: 1_800_000_000,
                             locked: false,
                             unlock_date: None,
+                            tags: Vec::new(&env),
                         });
                     }
                     goals
+                }
+
+                fn get_goals(env: Env, owner: Address, _cursor: u32, _limit: u32) -> GoalPage {
+                    let items = Self::get_all_goals(env, owner);
+                    GoalPage {
+                        count: items.len(),
+                        items,
+                        next_cursor: 0,
+                    }
                 }
 
                 fn is_goal_completed(_env: Env, _goal_id: u32) -> bool {
@@ -193,8 +203,6 @@ macro_rules! mock_bills {
                             schedule_id: None,
                             tags: Vec::new(&env),
                             currency: SorobanString::from_str(&env, "USDC"),
-                            external_ref: None,
-                            tags: Vec::new(&env),
                         });
                     }
                     let count = items.len();
@@ -233,8 +241,6 @@ macro_rules! mock_bills {
                             schedule_id: None,
                             tags: Vec::new(&env),
                             currency: SorobanString::from_str(&env, "USDC"),
-                            external_ref: None,
-                            tags: Vec::new(&env),
                         });
                     }
                     let count = items.len();

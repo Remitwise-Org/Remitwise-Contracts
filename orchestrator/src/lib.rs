@@ -2,8 +2,8 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, vec,
-    Address, Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Env, Map,
+    Symbol, Vec,
 };
 
 use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION};
@@ -21,7 +21,7 @@ const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour
 const MAX_AUDIT_ENTRIES: u32 = 100;
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AuditEntry {
     pub operation: Symbol,
     pub executor: Address,
@@ -30,7 +30,7 @@ pub struct AuditEntry {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExecutionStats {
     pub total_executions: u32,
     pub successful_executions: u32,
@@ -146,10 +146,9 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("EXEC_LOCK"), &false);
 
-        env.storage().instance().set(
-            &symbol_short!("NONCES"),
-            &Map::<Address, u64>::new(&env),
-        );
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NONCES"), &Map::<Address, u64>::new(&env));
 
         let stats = ExecutionStats {
             total_executions: 0,
@@ -157,7 +156,9 @@ impl Orchestrator {
             failed_executions: 0,
             last_execution_time: 0,
         };
-        env.storage().instance().set(&symbol_short!("STATS"), &stats);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("STATS"), &stats);
 
         RemitwiseEvents::emit(
             &env,
@@ -236,7 +237,14 @@ impl Orchestrator {
             amount,
             deadline,
         );
-        Self::require_nonce_hardened(&env, &executor, nonce, deadline, request_hash, expected_hash)?;
+        Self::require_nonce_hardened(
+            &env,
+            &executor,
+            nonce,
+            deadline,
+            request_hash,
+            expected_hash,
+        )?;
 
         // 6. Set execution lock
         Self::extend_instance_ttl(&env);
@@ -293,6 +301,7 @@ impl Orchestrator {
 
     /// Get current execution statistics.
     pub fn get_execution_stats(env: Env) -> Option<ExecutionStats> {
+        Self::extend_instance_ttl(&env);
         env.storage().instance().get(&symbol_short!("STATS"))
     }
 
@@ -305,8 +314,7 @@ impl Orchestrator {
     /// # Returns
     /// A vector of audit entries, safe against overflow (uses saturating arithmetic)
     pub fn get_audit_log(env: Env, from_index: u32, limit: u32) -> Vec<AuditEntry> {
-        let log: Option<Vec<AuditEntry>> =
-            env.storage().instance().get(&symbol_short!("AUDIT"));
+        let log: Option<Vec<AuditEntry>> = env.storage().instance().get(&symbol_short!("AUDIT"));
         let log = log.unwrap_or_else(|| Vec::new(&env));
         let len = log.len();
         let cap = Self::clamp_limit(limit);
@@ -333,7 +341,11 @@ impl Orchestrator {
             .unwrap_or(CONTRACT_VERSION)
     }
 
-    pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<bool, OrchestratorError> {
+    pub fn set_version(
+        env: Env,
+        caller: Address,
+        new_version: u32,
+    ) -> Result<bool, OrchestratorError> {
         caller.require_auth();
 
         let owner: Address = env
@@ -394,11 +406,7 @@ impl Orchestrator {
             .unwrap_or(0)
     }
 
-    fn require_nonce(
-        env: &Env,
-        address: &Address,
-        expected: u64,
-    ) -> Result<(), OrchestratorError> {
+    fn require_nonce(env: &Env, address: &Address, expected: u64) -> Result<(), OrchestratorError> {
         let current = Self::get_nonce_value(env, address);
         if expected != current {
             return Err(OrchestratorError::InvalidNonce);
@@ -490,9 +498,7 @@ impl Orchestrator {
         // Mark current nonce as used BEFORE advancing the counter
         Self::mark_nonce_used(env, address, current);
 
-        let next = current
-            .checked_add(1)
-            .ok_or(OrchestratorError::Overflow)?;
+        let next = current.checked_add(1).ok_or(OrchestratorError::Overflow)?;
         let mut nonces: Map<Address, u64> = env
             .storage()
             .instance()
@@ -573,7 +579,9 @@ impl Orchestrator {
         }
         stats.last_execution_time = env.ledger().timestamp();
 
-        env.storage().instance().set(&symbol_short!("STATS"), &stats);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("STATS"), &stats);
     }
 
     fn clamp_limit(limit: u32) -> u32 {
