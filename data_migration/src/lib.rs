@@ -53,20 +53,15 @@ pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
     ENCRYPTED_PAYLOAD_PREFIX_V1.len() + MAX_MIGRATION_PAYLOAD_BYTES.div_ceil(3) * 4;
 
 /// Algorithm used to compute the snapshot checksum.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ChecksumAlgorithm {
     /// SHA-256 over `version_le_bytes || format_utf8_bytes || canonical_payload_json`.
     Sha256,
     /// Legacy checksum used by older snapshots.
+    #[default]
     Simple,
-}
-
-impl Default for ChecksumAlgorithm {
-    fn default() -> Self {
-        ChecksumAlgorithm::Simple
-    }
 }
 
 /// Versioned migration event payload meant for indexing and historical tracking.

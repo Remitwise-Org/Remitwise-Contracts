@@ -1027,7 +1027,7 @@ fn test_goal_completed_emits_event() {
             let event_data: GoalCompletedEvent =
                 GoalCompletedEvent::try_from_val(&env, &event.2).unwrap();
             assert_eq!(event_data.goal_id, goal_id);
-            assert_eq!(event_data.final_amount, 1000);
+            assert_eq!(event_data.new_total, 1000);
             found_completed_struct = true;
         }
 
@@ -2836,9 +2836,11 @@ fn test_import_snapshot_failed_checksum_appends_failure_audit_entry() {
     assert!(result.is_err());
 
     let log = client.get_audit_log(&0, &10);
-    // Soroban reverts state changes on contract errors; failed imports can't persist audit entries
-    // when they return an error.
-    assert!(log.is_empty());
+    // The log should contain exactly one entry from the initial successful create_goal.
+    // The failed import should not have persisted its audit entry because Soroban
+    // reverts state changes on contract errors.
+    assert_eq!(log.len(), 1);
+    assert_eq!(log.get(0).unwrap().operation, symbol_short!("create"));
 }
 
 /// export_snapshot must emit the (goals, snap_exp) event with the schema version.
@@ -4504,8 +4506,7 @@ fn test_create_goal_accepts_typical_names() {
     assert_eq!(goal_2.name, name_10);
 
     // Test typical long but valid name (50 bytes)
-    let name_50 =
-        String::from_str(&env, "This is a reasonably detailed goal name");
+    let name_50 = String::from_str(&env, "This is a reasonably detailed goal name");
     let id_3 = client.create_goal(&owner, &name_50, &3000, &2000000000);
     assert_eq!(id_3, 2);
     let goal_3 = client.get_goal(&id_3).unwrap();
@@ -4556,7 +4557,10 @@ fn test_create_goal_rejects_oversized_name_129bytes() {
     );
 
     let result = client.try_create_goal(&owner, &name_129, &1000, &2000000000);
-    assert!(result.is_err(), "Creating goal with 129-byte name must fail");
+    assert!(
+        result.is_err(),
+        "Creating goal with 129-byte name must fail"
+    );
     assert_eq!(
         result.unwrap_err().unwrap(),
         SavingsGoalError::InvalidGoalName
@@ -4583,7 +4587,10 @@ fn test_create_goal_rejects_very_long_name() {
     );
 
     let result = client.try_create_goal(&owner, &long_name, &1000, &2000000000);
-    assert!(result.is_err(), "Creating goal with very long name must fail");
+    assert!(
+        result.is_err(),
+        "Creating goal with very long name must fail"
+    );
     assert_eq!(
         result.unwrap_err().unwrap(),
         SavingsGoalError::InvalidGoalName
@@ -4606,7 +4613,8 @@ fn test_goal_name_validation_prevents_storage_and_id_consumption() {
     let oversized = String::from_str(
         &env,
         "This name is definitely way too long and exceeds the maximum allowable length \
-         by a significant amount testing validation",
+         by a significant amount testing validation - adding extra characters to ensure \
+         it exceeds the 128 byte limit for sure!",
     );
     let _ = client.try_create_goal(&owner, &oversized, &1000, &2000000000);
 
@@ -4643,7 +4651,8 @@ fn test_name_validation_independent_of_amount_validation() {
     let oversized = String::from_str(
         &env,
         "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor \
-         incididunt ut labore et dolore magna aliqua ut enim",
+         incididunt ut labore et dolore magna aliqua ut enim - adding extra characters \
+         to ensure it exceeds the 128 byte limit for sure!",
     );
     let result1 = client.try_create_goal(&owner, &oversized, &1000, &2000000000);
     assert_eq!(
@@ -4683,7 +4692,7 @@ fn test_sequential_goals_with_various_name_lengths() {
     client.init();
 
     // Create goals with various valid name lengths
-    let names_and_amounts = vec![
+    let names_and_amounts = [
         ("A", 100i128),
         ("Home Savings", 5000i128),
         ("FIRE Goal - Financial Independence Retire Early", 50000i128),
@@ -4743,7 +4752,8 @@ fn test_name_validation_before_event_emission() {
     let oversized = String::from_str(
         &env,
         "This name exceeds the maximum allowed byte length and should be rejected \
-         before any events are emitted during creation",
+         before any events are emitted during creation - adding extra characters \
+         to ensure it exceeds the 128 byte limit for sure!",
     );
     let _ = client.try_create_goal(&owner, &oversized, &1000, &2000000000);
 
@@ -4783,12 +4793,12 @@ fn test_create_goal_accepts_127byte_name() {
     // Exactly 127 bytes
     let name_127 = String::from_str(
         &env,
-        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     );
     let id = client.create_goal(&owner, &name_127, &1000, &2000000000);
     assert!(id > 0, "127-byte name must be accepted");
     assert_eq!(id, 1);
-    
+
     let goal = client.get_goal(&id).unwrap();
     assert_eq!(goal.name.len(), 127);
 }
@@ -4819,3 +4829,130 @@ fn test_create_goal_accepts_special_chars_within_limit() {
 // batch_add_to_goals() only adds funds and does not check the lock flag,
 // which is correct — deposits are always allowed regardless of lock state.
 // #[test] fn test_batch_operations_enforce_lock — no batch withdrawal in this contract
+
+#[test]
+fn test_per_owner_goal_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+
+    // Create goals up to the cap (2000)
+    for _ in 0..2000 {
+        client.create_goal(&owner, &name, &1000, &2000000000);
+    }
+
+    // Attempting to create one more should fail
+    let result = client.try_create_goal(&owner, &name, &1000, &2000000000);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_archived_goals_count_toward_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+
+    // Create 1000 goals
+    for _ in 0..1000 {
+        client.create_goal(&owner, &name, &1000, &2000000000);
+    }
+
+    // Complete and archive the first 1000 goals
+    let goals = client.get_all_goals(&owner);
+    for goal in goals.iter() {
+        client.add_to_goal(&owner, &goal.id, &1000);
+        client.archive_goal(&owner, &goal.id);
+    }
+
+    // Create another 1000 goals
+    for _ in 0..1000 {
+        client.create_goal(&owner, &name, &1000, &2000000000);
+    }
+
+    // Total is now 2000 (1000 active + 1000 archived). Next one should fail.
+    let result = client.try_create_goal(&owner, &name, &1000, &2000000000);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_pagination_by_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    // Create 15 goals
+    for i in 1..=15 {
+        let name = String::from_str(&env, &std::format!("Goal {}", i));
+        client.create_goal(&owner, &name, &1000, &2000000000);
+    }
+
+    // Page 1: offset 0, limit 5
+    let page1 = client.get_goals_by_owner(&owner, &0, &5);
+    assert_eq!(page1.len(), 5);
+    assert_eq!(page1.get(0).unwrap().id, 1);
+    assert_eq!(page1.get(4).unwrap().id, 5);
+
+    // Page 2: offset 5, limit 5
+    let page2 = client.get_goals_by_owner(&owner, &5, &5);
+    assert_eq!(page2.len(), 5);
+    assert_eq!(page2.get(0).unwrap().id, 6);
+    assert_eq!(page2.get(4).unwrap().id, 10);
+
+    // Page 3: offset 10, limit 10 (only 5 left)
+    let page3 = client.get_goals_by_owner(&owner, &10, &10);
+    assert_eq!(page3.len(), 5);
+    assert_eq!(page3.get(0).unwrap().id, 11);
+    assert_eq!(page3.get(4).unwrap().id, 15);
+
+    // Page 4: offset 15, limit 5 (empty)
+    let page4 = client.get_goals_by_owner(&owner, &15, &5);
+    assert_eq!(page4.len(), 0);
+}
+
+#[test]
+fn test_multi_user_isolation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    client.init();
+
+    let name1 = String::from_str(&env, "User1 Goal");
+    let name2 = String::from_str(&env, "User2 Goal");
+
+    client.create_goal(&user1, &name1, &1000, &2000000000);
+    client.create_goal(&user2, &name2, &2000, &2000000000);
+
+    let goals1 = client.get_all_goals(&user1);
+    let goals2 = client.get_all_goals(&user2);
+
+    assert_eq!(goals1.len(), 1);
+    assert_eq!(goals2.len(), 1);
+    assert_eq!(goals1.get(0).unwrap().owner, user1);
+    assert_eq!(goals2.get(0).unwrap().owner, user2);
+}

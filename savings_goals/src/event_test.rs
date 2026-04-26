@@ -3,10 +3,10 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+    Address, Env, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 
-fn setup_test(env: &Env) -> (SavingsGoalContractClient, Address) {
+fn setup_test(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(env, &contract_id);
     let user = Address::generate(env);
@@ -123,7 +123,7 @@ fn test_funds_withdrawn_event_schema() {
     let remitwise_events = get_remitwise_events(&env, FUNDS_WITHDRAWN);
     assert_eq!(remitwise_events.len(), 1);
 
-    let event = remitwise_events.get(0).unwrap();
+    let _event = remitwise_events.get(0).unwrap();
 
     // Topic Schema: [Remitwise, Transaction, Medium, funds_rem]
     let event = remitwise_events.get(0).unwrap();
@@ -241,14 +241,16 @@ fn test_consistent_progress_fields() {
     client.unlock_goal(&user, &id);
     client.withdraw_from_goal(&user, &id, &200);
     let withdrawn_event = get_remitwise_events(&env, FUNDS_WITHDRAWN).get(0).unwrap();
-    let w_data: FundsWithdrawnEvent = FundsWithdrawnEvent::try_from_val(&env, &withdrawn_event.2).unwrap();
+    let w_data: FundsWithdrawnEvent =
+        FundsWithdrawnEvent::try_from_val(&env, &withdrawn_event.2).unwrap();
     assert_eq!(w_data.amount, 200);
     assert_eq!(w_data.new_total, 300);
 
     // 4. Completed
     client.add_to_goal(&user, &id, &700);
     let completed_event = get_remitwise_events(&env, GOAL_COMPLETED).get(0).unwrap();
-    let comp_data: GoalCompletedEvent = GoalCompletedEvent::try_from_val(&env, &completed_event.2).unwrap();
+    let comp_data: GoalCompletedEvent =
+        GoalCompletedEvent::try_from_val(&env, &completed_event.2).unwrap();
     assert_eq!(comp_data.amount, 700);
     assert_eq!(comp_data.new_total, 1000);
 }

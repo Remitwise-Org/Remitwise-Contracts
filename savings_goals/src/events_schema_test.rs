@@ -59,6 +59,8 @@ fn goal_created_event_payload_schema() {
         goal_id: 1,
         owner: owner.clone(),
         name: name.clone(),
+        amount: 0,
+        new_total: 0,
         target_amount: 50_000,
         target_date: 1_735_689_600,
         timestamp: 1_234_567_800,
@@ -71,6 +73,8 @@ fn goal_created_event_payload_schema() {
     assert_eq!(decoded.goal_id, 1);
     assert_eq!(decoded.owner, owner);
     assert_eq!(decoded.name, name);
+    assert_eq!(decoded.amount, 0);
+    assert_eq!(decoded.new_total, 0);
     assert_eq!(decoded.target_amount, 50_000);
     assert_eq!(decoded.target_date, 1_735_689_600);
     assert_eq!(decoded.timestamp, 1_234_567_800);
@@ -132,7 +136,8 @@ fn goal_completed_event_payload_schema() {
         goal_id: 3,
         owner: owner.clone(),
         name: name.clone(),
-        final_amount: 25_000,
+        amount: 5_000,
+        new_total: 25_000,
         timestamp: 12_345,
     };
 
@@ -142,7 +147,8 @@ fn goal_completed_event_payload_schema() {
     assert_eq!(decoded.goal_id, 3);
     assert_eq!(decoded.owner, owner);
     assert_eq!(decoded.name, name);
-    assert_eq!(decoded.final_amount, 25_000);
+    assert_eq!(decoded.amount, 5_000);
+    assert_eq!(decoded.new_total, 25_000);
     assert_eq!(decoded.timestamp, 12_345);
 }
 
