@@ -43,12 +43,7 @@ fn setup_client(env: &Env) -> (BillPaymentsClient, Address) {
 
 /// Create `n` bills for `owner`, pay them all, and archive them.
 /// Returns the list of archived bill IDs.
-fn create_pay_archive(
-    env: &Env,
-    client: &BillPaymentsClient,
-    owner: &Address,
-    n: u32,
-) -> Vec<u32> {
+fn create_pay_archive(env: &Env, client: &BillPaymentsClient, owner: &Address, n: u32) -> Vec<u32> {
     let mut ids = Vec::new();
     for i in 0..n {
         let name = soroban_sdk::String::from_str(env, &format!("Bill{}", i));
@@ -61,6 +56,7 @@ fn create_pay_archive(
             &0,
             &None,
             &soroban_sdk::String::from_str(env, "XLM"),
+            &None,
         );
         client.pay_bill(owner, &id);
         ids.push(id);
@@ -189,7 +185,10 @@ fn test_restore_bill_removes_from_index() {
     client.restore_bill(&owner, &first_id);
     // Should no longer appear in paginated results
     let after = paginate_all(&client, &owner, 10);
-    assert!(!after.contains(&first_id), "restored bill should not appear in index");
+    assert!(
+        !after.contains(&first_id),
+        "restored bill should not appear in index"
+    );
 }
 
 #[test]
@@ -231,7 +230,10 @@ fn test_multi_owner_isolation() {
     assert_eq!(ids_b.len(), 3);
     // Disjoint
     for id in &ids_a {
-        assert!(!ids_b.contains(id), "owner B should not see owner A's bills");
+        assert!(
+            !ids_b.contains(id),
+            "owner B should not see owner A's bills"
+        );
     }
 }
 
@@ -246,7 +248,10 @@ fn test_equivalence_with_get_archived_bills() {
 
     let ids_old: Vec<u32> = page_old.items.iter().map(|b| b.id).collect();
     let ids_new: Vec<u32> = page_new.items.iter().map(|b| b.id).collect();
-    assert_eq!(ids_old, ids_new, "get_archived_bills and get_archived_bills_page must return same IDs");
+    assert_eq!(
+        ids_old, ids_new,
+        "get_archived_bills and get_archived_bills_page must return same IDs"
+    );
     assert_eq!(page_old.next_cursor, page_new.next_cursor);
 }
 
@@ -448,7 +453,10 @@ proptest! {
 }
 
 // Helper: returns a reference to the client (proptest closures need owned values)
-fn env_client_ref<'a>(env: &'a Env, client: &'a BillPaymentsClient<'a>) -> &'a BillPaymentsClient<'a> {
+fn env_client_ref<'a>(
+    env: &'a Env,
+    client: &'a BillPaymentsClient<'a>,
+) -> &'a BillPaymentsClient<'a> {
     let _ = env;
     client
 }

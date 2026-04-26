@@ -1,28 +1,195 @@
+#![no_std]
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    Unauthorized = 1,
+    AlreadyInitialized = 2,
+    NotInitialized = 3,
+    LimitExceeded = 4,
+}
+
+#[contracttype]
+#[derive(Clone)]
+enum DataKey {
+    Admin,
+    GlobalPaused,
+    ModulePaused(Symbol),
+    PausedFunctions(Symbol), // Symbol is module_id, maps to Vec of paused functions
+    UnpauseSchedule,
+}
+
+pub const MAX_PAUSED_FUNCTIONS: u32 = 10;
+
 #[contract]
-pub struct EmergencyKillSwitch;
+pub struct EmergencyKillswitch;
 
 #[contractimpl]
-impl EmergencyKillSwitch {
-    /// Activates the global or module-specific kill switch.
-    /// Only the Emergency Admin or a Multisig Family Wallet can trigger this.
-    pub fn activate_pause(env: Env, admin: Address, module_id: Option<Symbol>) {
-        admin.require_auth();
-        // Check if admin is in the authorized 'Emergency Role'
-        ensure_is_emergency_admin(&env, &admin);
+impl EmergencyKillswitch {
+    pub fn initialize(env: Env, admin: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+    }
 
-        let key = module_id.unwrap_or(Symbol::new(&env, "GLOBAL"));
-        env.storage().instance().set(&key, &true);
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    pub fn pause(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::GlobalPaused, &true);
 
         env.events().publish(
-            (Symbol::new(&env, "emergency"), Symbol::new(&env, "paused")),
-            (key, env.ledger().timestamp())
+            (symbol_short!("emergency"), symbol_short!("paused")),
+            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
         );
     }
 
-    pub fn is_paused(env: Env, module_id: Symbol) -> bool {
-        let global_paused = env.storage().instance().get::<Symbol, bool>(&Symbol::new(&env, "GLOBAL")).unwrap_or( Berghs: false);
-        let module_paused = env.storage().instance().get::<Symbol, bool>(&module_id).unwrap_or(false);
-        
-        global_paused || module_paused
+    pub fn unpause(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let schedule: Option<u64> = env.storage().instance().get(&DataKey::UnpauseSchedule);
+        if let Some(time) = schedule {
+            if env.ledger().timestamp() < time {
+                panic!("too early to unpause");
+            }
+        }
+
+        env.storage().instance().set(&DataKey::GlobalPaused, &false);
+        env.storage().instance().remove(&DataKey::UnpauseSchedule);
+
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("unpaused")),
+            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+        );
+    }
+
+    pub fn schedule_unpause(env: Env, time: u64) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::UnpauseSchedule, &time);
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::GlobalPaused)
+            .unwrap_or(false)
+    }
+
+    // --- Issue #501: Per-function pause flags ---
+
+    pub fn pause_function(env: Env, module_id: Symbol, func: Symbol) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let mut paused_funcs: Vec<Symbol> = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedFunctions(module_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        if !paused_funcs.contains(func.clone()) {
+            if paused_funcs.len() >= MAX_PAUSED_FUNCTIONS {
+                panic!("max paused functions reached");
+            }
+            paused_funcs.push_back(func.clone());
+            env.storage()
+                .instance()
+                .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
+
+            env.events().publish(
+                (symbol_short!("emergency"), symbol_short!("f_paused")),
+                (module_id, func, env.ledger().timestamp()),
+            );
+        }
+    }
+
+    pub fn unpause_function(env: Env, module_id: Symbol, func: Symbol) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        let mut paused_funcs: Vec<Symbol> = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedFunctions(module_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        if let Some(index) = paused_funcs.first_index_of(func.clone()) {
+            paused_funcs.remove(index);
+            env.storage()
+                .instance()
+                .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
+
+            env.events().publish(
+                (symbol_short!("emergency"), symbol_short!("f_unpause")),
+                (module_id, func, env.ledger().timestamp()),
+            );
+        }
+    }
+
+    pub fn is_function_paused(env: Env, module_id: Symbol, func: Symbol) -> bool {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalPaused)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::ModulePaused(module_id.clone()))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        let paused_funcs: Vec<Symbol> = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedFunctions(module_id))
+            .unwrap_or(Vec::new(&env));
+
+        paused_funcs.contains(func)
+    }
+
+    pub fn pause_module(env: Env, module_id: Symbol) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::ModulePaused(module_id.clone()), &true);
+
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("m_paused")),
+            (module_id, env.ledger().timestamp()),
+        );
+    }
+
+    pub fn unpause_module(env: Env, module_id: Symbol) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::ModulePaused(module_id.clone()), &false);
+
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("m_unpause")),
+            (module_id, env.ledger().timestamp()),
+        );
     }
 }

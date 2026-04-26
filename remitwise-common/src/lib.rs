@@ -141,8 +141,50 @@ impl RemitwiseEvents {
 mod tests {
     use super::*;
     use soroban_sdk::{
-        symbol_short, testutils::Events, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+        contract, contractimpl, symbol_short, testutils::Events, Address, Env, Symbol, TryFromVal,
+        Val, Vec,
     };
+
+    #[contract]
+    struct EventProbe;
+
+    #[contractimpl]
+    impl EventProbe {
+        pub fn ping(_env: Env) {}
+    }
+
+    fn setup_event_env() -> (Env, Address) {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EventProbe);
+        (env, contract_id)
+    }
+
+    fn emit_event<T>(
+        env: &Env,
+        contract_id: &Address,
+        category: EventCategory,
+        priority: EventPriority,
+        action: Symbol,
+        data: T,
+    ) where
+        T: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
+    {
+        env.as_contract(contract_id, || {
+            RemitwiseEvents::emit(env, category, priority, action, data);
+        });
+    }
+
+    fn emit_batch_event(
+        env: &Env,
+        contract_id: &Address,
+        category: EventCategory,
+        action: Symbol,
+        count: u32,
+    ) {
+        env.as_contract(contract_id, || {
+            RemitwiseEvents::emit_batch(env, category, action, count);
+        });
+    }
 
     // -----------------------------------------------------------------------
     // clamp_limit – boundary and property tests
@@ -358,9 +400,10 @@ mod tests {
 
     #[test]
     fn emit_produces_four_topic_tuple() {
-        let env = Env::default();
-        RemitwiseEvents::emit(
+        let (env, contract_id) = setup_event_env();
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::Transaction,
             EventPriority::Low,
             symbol_short!("test"),
@@ -373,9 +416,10 @@ mod tests {
 
     #[test]
     fn emit_topic_0_is_namespace() {
-        let env = Env::default();
-        RemitwiseEvents::emit(
+        let (env, contract_id) = setup_event_env();
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("init"),
@@ -393,7 +437,7 @@ mod tests {
 
     #[test]
     fn emit_topic_1_is_category() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
 
         let categories = [
             (EventCategory::Transaction, 0u32),
@@ -404,7 +448,14 @@ mod tests {
         ];
 
         for (cat, expected) in categories {
-            RemitwiseEvents::emit(&env, cat, EventPriority::Low, symbol_short!("t"), 0u32);
+            emit_event(
+                &env,
+                &contract_id,
+                cat,
+                EventPriority::Low,
+                symbol_short!("t"),
+                0u32,
+            );
 
             let (_contract, topics, _data) = last_event(&env);
             let cat_val: u32 = u32::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
@@ -417,7 +468,7 @@ mod tests {
 
     #[test]
     fn emit_topic_2_is_priority() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
 
         let priorities = [
             (EventPriority::Low, 0u32),
@@ -426,8 +477,9 @@ mod tests {
         ];
 
         for (pri, expected) in priorities {
-            RemitwiseEvents::emit(
+            emit_event(
                 &env,
+                &contract_id,
                 EventCategory::Transaction,
                 pri,
                 symbol_short!("t"),
@@ -445,11 +497,12 @@ mod tests {
 
     #[test]
     fn emit_topic_3_is_action() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
         let action = symbol_short!("created");
 
-        RemitwiseEvents::emit(
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::State,
             EventPriority::Medium,
             action.clone(),
@@ -463,11 +516,12 @@ mod tests {
 
     #[test]
     fn emit_data_payload_is_preserved() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
         let payload = 12345u32;
 
-        RemitwiseEvents::emit(
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::Transaction,
             EventPriority::Low,
             symbol_short!("calc"),
@@ -484,9 +538,10 @@ mod tests {
 
     #[test]
     fn emit_bool_payload() {
-        let env = Env::default();
-        RemitwiseEvents::emit(
+        let (env, contract_id) = setup_event_env();
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::System,
             EventPriority::High,
             symbol_short!("paused"),
@@ -500,11 +555,12 @@ mod tests {
 
     #[test]
     fn emit_tuple_payload() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
         let payload: (u32, u32) = (1, 2);
 
-        RemitwiseEvents::emit(
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::System,
             EventPriority::High,
             symbol_short!("upgraded"),
@@ -518,7 +574,7 @@ mod tests {
 
     #[test]
     fn emit_with_all_category_priority_combinations() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
 
         let categories = [
             EventCategory::Transaction,
@@ -536,7 +592,7 @@ mod tests {
         let mut count = 0u32;
         for cat in &categories {
             for pri in &priorities {
-                RemitwiseEvents::emit(&env, *cat, *pri, symbol_short!("test"), count);
+                emit_event(&env, &contract_id, *cat, *pri, symbol_short!("test"), count);
 
                 let (_contract, topics, _data) = last_event(&env);
                 // Verify namespace is always "Remitwise"
@@ -559,8 +615,14 @@ mod tests {
 
     #[test]
     fn emit_batch_produces_four_topics() {
-        let env = Env::default();
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, symbol_short!("member"), 5);
+        let (env, contract_id) = setup_event_env();
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Access,
+            symbol_short!("member"),
+            5,
+        );
 
         let (_contract, topics, _data) = last_event(&env);
         assert_eq!(topics.len(), 4, "Batch event must have exactly 4 topics");
@@ -568,8 +630,14 @@ mod tests {
 
     #[test]
     fn emit_batch_topic_0_is_namespace() {
-        let env = Env::default();
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, symbol_short!("member"), 5);
+        let (env, contract_id) = setup_event_env();
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Access,
+            symbol_short!("member"),
+            5,
+        );
 
         let (_contract, topics, _data) = last_event(&env);
         let ns: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
@@ -578,7 +646,7 @@ mod tests {
 
     #[test]
     fn emit_batch_topic_2_is_always_low_priority() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
 
         // Batch events always use Low priority regardless of category
         let categories = [
@@ -590,7 +658,7 @@ mod tests {
         ];
 
         for cat in categories {
-            RemitwiseEvents::emit_batch(&env, cat, symbol_short!("op"), 1);
+            emit_batch_event(&env, &contract_id, cat, symbol_short!("op"), 1);
 
             let (_contract, topics, _data) = last_event(&env);
             let pri: u32 = u32::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
@@ -604,8 +672,14 @@ mod tests {
 
     #[test]
     fn emit_batch_topic_3_is_always_batch() {
-        let env = Env::default();
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, symbol_short!("member"), 10);
+        let (env, contract_id) = setup_event_env();
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Access,
+            symbol_short!("member"),
+            10,
+        );
 
         let (_contract, topics, _data) = last_event(&env);
         let act: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
@@ -618,11 +692,17 @@ mod tests {
 
     #[test]
     fn emit_batch_payload_contains_action_and_count() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
         let action = symbol_short!("member");
         let count = 42u32;
 
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, action.clone(), count);
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Access,
+            action.clone(),
+            count,
+        );
 
         let (_contract, _topics, data) = last_event(&env);
         let (received_action, received_count): (Symbol, u32) =
@@ -633,8 +713,14 @@ mod tests {
 
     #[test]
     fn emit_batch_zero_count() {
-        let env = Env::default();
-        RemitwiseEvents::emit_batch(&env, EventCategory::Transaction, symbol_short!("noop"), 0);
+        let (env, contract_id) = setup_event_env();
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Transaction,
+            symbol_short!("noop"),
+            0,
+        );
 
         let (_contract, _topics, data) = last_event(&env);
         let (_action, count): (Symbol, u32) = <(Symbol, u32)>::try_from_val(&env, &data).unwrap();
@@ -643,9 +729,10 @@ mod tests {
 
     #[test]
     fn emit_batch_large_count() {
-        let env = Env::default();
-        RemitwiseEvents::emit_batch(
+        let (env, contract_id) = setup_event_env();
+        emit_batch_event(
             &env,
+            &contract_id,
             EventCategory::Transaction,
             symbol_short!("bulk"),
             MAX_BATCH_SIZE,
@@ -662,11 +749,12 @@ mod tests {
 
     #[test]
     fn emit_and_emit_batch_share_namespace_and_category_positions() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
 
         // Emit a normal event
-        RemitwiseEvents::emit(
+        emit_event(
             &env,
+            &contract_id,
             EventCategory::Access,
             EventPriority::High,
             symbol_short!("member"),
@@ -675,7 +763,13 @@ mod tests {
         let (_c1, topics_emit, _d1) = last_event(&env);
 
         // Emit a batch event with the same category
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, symbol_short!("member"), 1);
+        emit_batch_event(
+            &env,
+            &contract_id,
+            EventCategory::Access,
+            symbol_short!("member"),
+            1,
+        );
         let (_c2, topics_batch, _d2) = last_event(&env);
 
         // Topic[0] (namespace) must be identical
@@ -697,10 +791,10 @@ mod tests {
 
     #[test]
     fn emit_batch_action_in_payload_not_topics() {
-        let env = Env::default();
+        let (env, contract_id) = setup_event_env();
         let action = symbol_short!("member");
 
-        RemitwiseEvents::emit_batch(&env, EventCategory::Access, action.clone(), 5);
+        emit_batch_event(&env, &contract_id, EventCategory::Access, action.clone(), 5);
 
         let (_contract, topics, data) = last_event(&env);
 

@@ -9,7 +9,6 @@
 /// Reference: STORAGE_LAYOUT.md
 /// Soroban SDK Reference: symbol_short! supports up to 9 characters
 /// https://developers.stellar.org/docs/build/smart-contracts/example-contracts/storage
-
 use std::collections::HashSet;
 
 /// Storage key definition with metadata for validation
@@ -505,15 +504,15 @@ fn test_keys_not_empty() {
 
     for key_def in &keys {
         if key_def.key.is_empty() {
-            violations.push(format!(
-                "❌ {}: Empty storage key found",
-                key_def.contract
-            ));
+            violations.push(format!("❌ {}: Empty storage key found", key_def.contract));
         }
     }
 
     if !violations.is_empty() {
-        panic!("\n\nEmpty storage keys found:\n{}\n\n", violations.join("\n"));
+        panic!(
+            "\n\nEmpty storage keys found:\n{}\n\n",
+            violations.join("\n")
+        );
     }
 
     println!("✅ All storage keys are non-empty");
@@ -607,7 +606,13 @@ fn test_common_keys_consistency() {
 
     // Common keys that should be consistent across contracts
     let common_keys = vec![
-        "PAUSE_ADM", "PAUSED", "UPG_ADM", "VERSION", "NEXT_ID", "AUDIT", "NONCES",
+        "PAUSE_ADM",
+        "PAUSED",
+        "UPG_ADM",
+        "VERSION",
+        "NEXT_ID",
+        "AUDIT",
+        "NONCES",
     ];
 
     for common_key in common_keys {
@@ -663,10 +668,10 @@ fn test_print_storage_key_summary() {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("Total storage keys: {}", keys.len());
     println!("\nKeys per contract:");
-    
+
     let mut contracts: Vec<_> = contract_counts.iter().collect();
     contracts.sort_by_key(|(name, _)| *name);
-    
+
     for (contract, count) in contracts {
         println!("  • {}: {} keys", contract, count);
     }

@@ -267,7 +267,7 @@ pub enum Error {
     DuplicateSigner = 18,
     TooManySigners = 19,
     InvalidPrecisionConfig = 20,
-    MemberAlreadyExists = 21,
+    InvalidProposalExpiry = 21,
 }
 
 #[contractimpl]
@@ -1623,7 +1623,7 @@ impl FamilyWallet {
         }
 
         if expiry == 0 || expiry > MAX_PROPOSAL_EXPIRY {
-            panic_with_error!(&env, Error::ThresholdAboveMaximum);
+            panic_with_error!(&env, Error::InvalidProposalExpiry);
         }
 
         env.storage()

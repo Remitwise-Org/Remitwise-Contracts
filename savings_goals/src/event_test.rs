@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+    Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 
 fn setup_test(env: &Env) -> (SavingsGoalContractClient, Address) {
@@ -61,6 +61,8 @@ fn test_goal_created_event_schema() {
     let data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
     assert_eq!(data.goal_id, id);
     assert_eq!(data.owner, user);
+    assert_eq!(data.amount, 0);
+    assert_eq!(data.new_total, 0);
     assert_eq!(data.name, name);
     assert_eq!(data.target_amount, target_amount);
     assert_eq!(data.target_date, target_date);
@@ -80,7 +82,7 @@ fn test_funds_added_event_schema() {
 
     client.add_to_goal(&user, &id, &amount);
 
-    let remitwise_events = get_remitwise_events(&env, symbol_short!("funds_add"));
+    let remitwise_events = get_remitwise_events(&env, FUNDS_ADDED);
     assert_eq!(remitwise_events.len(), 1);
 
     let event = remitwise_events.get(0).unwrap();
@@ -118,7 +120,7 @@ fn test_funds_withdrawn_event_schema() {
 
     client.withdraw_from_goal(&user, &id, &withdraw_amount);
 
-    let remitwise_events = get_remitwise_events(&env, symbol_short!("funds_rem"));
+    let remitwise_events = get_remitwise_events(&env, FUNDS_WITHDRAWN);
     assert_eq!(remitwise_events.len(), 1);
 
     let event = remitwise_events.get(0).unwrap();
@@ -151,20 +153,21 @@ fn test_goal_completed_event_schema() {
     client.add_to_goal(&user, &id, &1000);
 
     // GoalCompletedEvent is published with a single topic (GOAL_COMPLETED,)
-    // It's not using RemitwiseEvents::emit for this specific one in lib.rs currently
-    // Let's verify what it emits
     let events = env.events().all();
-    let completed_event = events
+    let data = events
         .iter()
-        .find(|e| e.1.len() == 1)
-        .expect("GoalCompletedEvent not found");
+        .filter(|e| {
+            e.1.len() == 1
+                && Symbol::try_from_val(&env, &e.1.get_unchecked(0)) == Ok(GOAL_COMPLETED)
+        })
+        .find_map(|e| GoalCompletedEvent::try_from_val(&env, &e.2).ok())
+        .expect("GoalCompletedEvent not found or schema mismatch");
 
-    let data: GoalCompletedEvent =
-        GoalCompletedEvent::try_from_val(&env, &completed_event.2).unwrap();
     assert_eq!(data.goal_id, id);
     assert_eq!(data.owner, user);
     assert_eq!(data.name, name);
-    assert_eq!(data.final_amount, 1000);
+    assert_eq!(data.amount, 1000);
+    assert_eq!(data.new_total, 1000);
     assert_eq!(data.timestamp, ts);
 }
 
@@ -195,7 +198,7 @@ fn test_batch_add_to_goals_events() {
 
     client.batch_add_to_goals(&user, &contributions);
 
-    let add_events = get_remitwise_events(&env, symbol_short!("funds_add"));
+    let add_events = get_remitwise_events(&env, FUNDS_ADDED);
     assert_eq!(add_events.len(), 2);
 
     let event1_data: FundsAddedEvent =
@@ -211,4 +214,41 @@ fn test_batch_add_to_goals_events() {
     assert_eq!(event2_data.amount, 300);
     assert_eq!(event2_data.owner, user);
     assert_eq!(event2_data.timestamp, ts);
+}
+
+#[test]
+fn test_consistent_progress_fields() {
+    let env = Env::default();
+    let (client, user) = setup_test(&env);
+    let ts = 100u64;
+    env.ledger().with_mut(|li| li.timestamp = ts);
+
+    // 1. Created
+    let id = client.create_goal(&user, &String::from_str(&env, "Consistent"), &1000, &10000);
+    let created_event = get_remitwise_events(&env, GOAL_CREATED).get(0).unwrap();
+    let c_data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &created_event.2).unwrap();
+    assert_eq!(c_data.amount, 0);
+    assert_eq!(c_data.new_total, 0);
+
+    // 2. Added
+    client.add_to_goal(&user, &id, &500);
+    let added_event = get_remitwise_events(&env, FUNDS_ADDED).get(0).unwrap();
+    let a_data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &added_event.2).unwrap();
+    assert_eq!(a_data.amount, 500);
+    assert_eq!(a_data.new_total, 500);
+
+    // 3. Withdrawn
+    client.unlock_goal(&user, &id);
+    client.withdraw_from_goal(&user, &id, &200);
+    let withdrawn_event = get_remitwise_events(&env, FUNDS_WITHDRAWN).get(0).unwrap();
+    let w_data: FundsWithdrawnEvent = FundsWithdrawnEvent::try_from_val(&env, &withdrawn_event.2).unwrap();
+    assert_eq!(w_data.amount, 200);
+    assert_eq!(w_data.new_total, 300);
+
+    // 4. Completed
+    client.add_to_goal(&user, &id, &700);
+    let completed_event = get_remitwise_events(&env, GOAL_COMPLETED).get(0).unwrap();
+    let comp_data: GoalCompletedEvent = GoalCompletedEvent::try_from_val(&env, &completed_event.2).unwrap();
+    assert_eq!(comp_data.amount, 700);
+    assert_eq!(comp_data.new_total, 1000);
 }

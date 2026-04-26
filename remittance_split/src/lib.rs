@@ -9,9 +9,8 @@ mod test;
 use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
-    Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
-use soroban_sdk::crypto::Sha256;
 
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
@@ -19,7 +18,6 @@ const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
 
 // Request hash domain separator for signing (prevents cross-domain attacks)
 const DISTRIBUTE_USDC_DOMAIN: &[u8] = b"distribute_usdc_v1";
-const MAX_DEADLINE_WINDOW_SECS: u64 = 3600; // 1 hour deadline window
 
 // Event data structures
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +59,7 @@ pub enum RemittanceSplitError {
     /// A destination account is the same as the sender, which would be a no-op transfer.
     SelfTransferNotAllowed = 13,
     DeadlineExpired = 14,
+    InvalidDeadline = 25,
 
     RequestHashMismatch = 15,
 
@@ -75,6 +74,7 @@ pub enum RemittanceSplitError {
     ScheduleIntervalTooShort = 23,
     /// The schedule lead time exceeds the maximum allowed value.
     ScheduleLeadTimeTooLong = 24,
+    InvalidDeadline = 25,
 }
 
 #[derive(Clone)]
@@ -255,7 +255,6 @@ pub struct AuditPage {
 #[contracttype]
 #[derive(Clone)]
 pub struct SchedulePage {
-    /// Schedule entries for this page, ordered by ID ascending.
     pub items: Vec<RemittanceSchedule>,
     /// Index to pass as `from_index` for the next page. 0 means no more pages.
     pub next_cursor: u32,
@@ -263,19 +262,14 @@ pub struct SchedulePage {
     pub count: u32,
 }
 
-/// Paginated result for `get_audit_log` queries.
-///
-/// Pagination contract is identical to `SchedulePage`: items are ordered
-/// oldest-to-newest, `next_cursor == 0` signals no more pages, and the
-/// result is deterministic for a given `(from_index, limit)` on identical
-/// state.
+/// Paginated result for remittance schedules with optional cursor.
 #[contracttype]
 #[derive(Clone)]
-pub struct AuditPage {
-    /// Audit entries for this page, ordered oldest-to-newest.
-    pub items: Vec<AuditEntry>,
-    /// Index to pass as `from_index` for the next page. 0 means no more pages.
-    pub next_cursor: u32,
+pub struct RemittanceSchedulePage {
+    /// Schedule entries for this page, ordered by ID ascending.
+    pub items: Vec<RemittanceSchedule>,
+    /// Cursor to pass as `cursor` for the next page. None means no more pages.
+    pub next_cursor: Option<u32>,
     /// Number of items returned in this page.
     pub count: u32,
 }
@@ -1076,10 +1070,10 @@ impl RemittanceSplit {
     /// - `accounts.insurance`: Insurance destination (prevents fund misdirection)
     /// - `total_amount`: Total amount to distribute (prevents amount tampering)
     /// - `deadline`: Expiry time (prevents stale request use)
-    pub fn distribute_usdc_with_hash_and_deadline(
+    pub fn distribute_usdc_signed(
         env: Env,
         request: DistributeUsdcRequest,
-        request_hash: Bytes,
+        request_hash: u64,
     ) -> Result<bool, RemittanceSplitError> {
         // Validate amount
         if request.total_amount <= 0 {
@@ -1089,24 +1083,19 @@ impl RemittanceSplit {
 
         // Validate deadline
         let current_time = env.ledger().timestamp();
-        if request.deadline == 0 {
-            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
-            return Err(RemittanceSplitError::InvalidDeadline);
-        }
-        if current_time > request.deadline {
+        if request.deadline == 0 || current_time > request.deadline {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::DeadlineExpired);
         }
-        
-        // Validate deadline is within reasonable bounds (max 1 hour from now)
-        let deadline_in_future = request.deadline - current_time;
-        if deadline_in_future > MAX_DEADLINE_WINDOW_SECS {
-            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
-            return Err(RemittanceSplitError::InvalidDeadline);
-        }
 
         // Verify request hash matches computed hash
-        let computed_hash = Self::compute_request_hash(&env, &request);
+        let computed_hash = Self::compute_request_hash(
+            symbol_short!("distH"),
+            request.from.clone(),
+            request.nonce,
+            request.total_amount,
+            request.deadline,
+        );
         if computed_hash.ne(&request_hash) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::RequestHashMismatch);
@@ -1858,7 +1847,7 @@ impl RemittanceSplit {
         }
 
         // Check schedule cap before creating new schedule
-        let owner_schedules: Vec<u32> = env
+        let mut owner_schedules: Vec<u32> = env
             .storage()
             .persistent()
             .get(&DataKey::OwnerSchedules(owner.clone()))
@@ -2203,22 +2192,41 @@ impl RemittanceSplit {
         owner: Address,
         cursor: u32,
         limit: u32,
-    ) -> RemittanceSchedulePage {
+    ) -> SchedulePage {
         let mut schedule_ids: Vec<u32> = env
             .storage()
             .persistent()
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
 
-        schedule_ids.sort_unstable();
+        // Manual sort since sort_unstable is not available on soroban_sdk::Vec
+        let mut n = schedule_ids.len();
+        if n > 1 {
+            let mut swapped = true;
+            while swapped {
+                swapped = false;
+                for i in 0..n - 1 {
+                    let a = schedule_ids.get(i).unwrap();
+                    let b = schedule_ids.get(i + 1).unwrap();
+                    if a > b {
+                        schedule_ids.set(i, b);
+                        schedule_ids.set(i + 1, a);
+                        swapped = true;
+                    }
+                }
+                n -= 1;
+            }
+        }
+
+        sort_u32_vec_ascending(&mut schedule_ids);
 
         let len = schedule_ids.len();
         let cap = clamp_limit(limit);
 
         if cursor >= len {
-            return RemittanceSchedulePage {
+            return SchedulePage {
                 items: Vec::new(&env),
-                next_cursor: None,
+                next_cursor: 0,
                 count: 0,
             };
         }
@@ -2234,11 +2242,11 @@ impl RemittanceSplit {
         }
 
         let count = items.len();
-        let next_cursor = if end < len { Some(end) } else { None };
+        let out_next_cursor = if end < len { end } else { 0 };
 
-        RemittanceSchedulePage {
+        SchedulePage {
             items,
-            next_cursor,
+            next_cursor: out_next_cursor,
             count,
         }
     }

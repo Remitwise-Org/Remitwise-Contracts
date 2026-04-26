@@ -81,6 +81,7 @@ fn test_end_to_end_flow() {
         &30,
         &None,
         &String::from_str(&env, "USDC"),
+        &None,
     );
 
     // Advance time
@@ -299,6 +300,7 @@ fn test_recurring_obligations_flow() {
         &30u32,
         &None,
         &String::from_str(&env, "USDC"),
+        &None,
     );
 
     // Bill 2: Internet — due in 14 days, repeats every 30 days.
@@ -312,6 +314,7 @@ fn test_recurring_obligations_flow() {
         &30u32,
         &None,
         &String::from_str(&env, "USDC"),
+        &None,
     );
 
     // Assert each bill is retrievable and has paid = false immediately after creation

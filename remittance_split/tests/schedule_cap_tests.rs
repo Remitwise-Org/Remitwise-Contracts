@@ -177,7 +177,7 @@ fn test_snapshot_import_schedule_cap_validation() {
 
     let snapshot = remittance_split::ExportSnapshot {
         schema_version: 2, // SCHEMA_VERSION
-        checksum: 0,       // Will be computed properly in real implementation
+        checksum: checksum(2, &config, &schedules),
         config,
         schedules,
         exported_at: env.ledger().timestamp(),
@@ -237,24 +237,14 @@ fn test_snapshot_import_within_cap() {
 
     let snapshot = remittance_split::ExportSnapshot {
         schema_version: 2, // SCHEMA_VERSION
-        checksum: 0,       // Will be computed properly in real implementation
+        checksum: checksum(2, &config, &schedules),
         config,
         schedules,
         exported_at: env.ledger().timestamp(),
     };
 
-    // Import should succeed (assuming proper checksum)
-    // Note: This test would need proper checksum computation to fully pass
     let result = client.try_import_snapshot(&owner, &1, &snapshot);
-    // For now, we expect either success or checksum failure, but not cap failure
-    if result.is_err() {
-        assert!(!matches!(
-            result,
-            Err(Ok(
-                remittance_split::RemittanceSplitError::ScheduleCapExceeded
-            ))
-        ));
-    }
+    assert!(result.is_ok());
 }
 
 #[test]

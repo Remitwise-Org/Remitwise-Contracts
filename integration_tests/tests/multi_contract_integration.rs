@@ -71,6 +71,7 @@ fn test_multi_contract_user_flow() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill_id, 1u32, "Bill ID should be 1");
 
@@ -176,6 +177,7 @@ fn test_multiple_entities_creation() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill1, 1u32);
 
@@ -188,6 +190,7 @@ fn test_multiple_entities_creation() {
         &30u32,
         &None,
         &SorobanString::from_str(&env, "XLM"),
+        &None,
     );
     assert_eq!(bill2, 2u32);
 
