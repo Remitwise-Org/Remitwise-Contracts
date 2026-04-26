@@ -237,3 +237,52 @@ fn restore_at_cap_returns_false() {
 
     assert!(!client.restore_policy(&owner, &archived_id));
 }
+
+// ---------------------------------------------------------------------------
+// Bounds validation for premiums and coverage
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bounds_monthly_premium_too_high() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &(MAX_MONTHLY_PREMIUM + 1),
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
+}
+
+#[test]
+fn bounds_coverage_amount_too_high() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &(MAX_COVERAGE_AMOUNT + 1),
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
+}
+
+#[test]
+fn bounds_max_values_succeed() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &MAX_MONTHLY_PREMIUM,
+        &MAX_COVERAGE_AMOUNT,
+        &None,
+    );
+    assert!(id > 0);
+}
