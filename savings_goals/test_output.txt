@@ -1,0 +1,763 @@
+warning: associated function `remove_owner_schedule_id` is never used
+    --> savings_goals/src/lib.rs:2071:8
+     |
+ 277 | impl SavingsGoalContract {
+     | ------------------------ associated function in this implementation
+...
+2071 |     fn remove_owner_schedule_id(env: &Env, owner: &Address, schedule_i...
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+ --> savings_goals/src/event_test.rs:9:20
+  |
+9 | fn setup_test(env: &Env) -> (SavingsGoalContractClient, Address) {
+  |                    ^^^^      ^^^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+  |                    |
+  |                    the lifetime is elided here
+  |
+  = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+  = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+  |
+9 | fn setup_test(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
+  |                                                       ++++
+
+warning: `savings_goals` (lib test) generated 2 warnings (run `cargo fix --lib -p savings_goals --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running unittests src/lib.rs (/home/maryjane/Desktop/workspace/job/HushLuxe/drip/Remitwise-Contracts/target/debug/deps/savings_goals-0164d81917e41db2)
+
+running 138 tests
+test event_test::test_batch_add_to_goals_events ... ok
+test event_test::test_funds_added_event_schema ... ok
+test event_test::test_goal_completed_event_schema ... ok
+test event_test::test_funds_withdrawn_event_schema ... ok
+test event_test::test_goal_created_event_schema ... ok
+test test::migration_e2e_tests::test_e2e_contract_export_import_encrypted_roundtrip ... ok
+test test::migration_e2e_tests::test_e2e_empty_contract_export_json_roundtrip ... ok
+test test::migration_e2e_tests::test_e2e_contract_export_import_json_roundtrip ... FAILED
+test test::migration_e2e_tests::test_e2e_contract_export_import_binary_roundtrip ... ok
+test test::migration_e2e_tests::test_e2e_contract_export_import_csv_roundtrip ... FAILED
+test test::migration_e2e_tests::test_e2e_incompatible_version_fails_import ... ok
+test test::migration_e2e_tests::test_e2e_tampered_checksum_fails_import ... ok
+test test::migration_e2e_tests::test_e2e_snapshot_checksum_is_stable ... ok
+test test::migration_e2e_tests::test_e2e_multi_owner_export_import_json_roundtrip ... FAILED
+test test::test_add_tags_to_goal_duplicates_allowed ... ok
+test test::migration_e2e_tests::test_e2e_locked_goal_preserved_through_migration ... ok
+test test::test_add_and_remove_tags_to_goal_success ... ok
+test test::test_add_tags_to_goal_invalid_tag_length_panics - should panic ... ok
+test test::test_add_tags_to_goal_empty_tags_panics - should panic ... ok
+test test::test_add_tags_to_goal_nonexistent_goal_panics - should panic ... ok
+test test::test_add_tags_to_goal_empty_string_tag_panics - should panic ... ok
+test test::test_add_tags_to_goal_non_owner_auth_failure - should panic ... ok
+test test::test_add_tags_to_goal_invalid_char_panics - should panic ... ok
+test test::test_add_tags_to_goal_normalization_success ... ok
+test test::test_add_tags_to_goal_unauthorized ... ok
+test test::test_add_to_goal_emits_event ... ok
+test test::test_add_to_goal_non_owner_auth_failure - should panic ... ok
+test test::test_add_to_goal_increments ... ok
+test test::test_add_to_non_existent_goal ... ok
+test test::test_create_goal_allows_past_target_date ... FAILED
+test test::test_archive_goal_requires_completion ... ok
+test test::test_cancel_savings_schedule ... ok
+test test::test_archive_goal_moves_goal_from_active_to_archived ... ok
+test test::test_create_goal_emits_event ... FAILED
+test test::test_edge_cases_large_amounts ... ok
+test test::test_create_savings_schedule ... ok
+test test::test_create_goal_unique_ids_succeeds ... ok
+test test::test_exact_goal_completion ... ok
+test test::test_execute_due_savings_schedules ... ok
+test test::test_execute_oneshot_schedule_idempotent ... FAILED
+test test::test_execute_missed_savings_schedules ... ok
+test test::test_execute_recurring_savings_schedule ... ok
+test test::test_execute_recurring_fires_again_next_window ... FAILED
+test test::test_execute_recurring_schedule_idempotent ... FAILED
+test test::test_export_snapshot_contains_correct_schema_version ... ok
+test test::test_get_all_goals ... ok
+test test::test_get_archived_goals_empty ... ok
+test test::test_export_snapshot_emits_event ... ok
+test test::test_get_all_goals_filters_by_owner ... ok
+test test::test_get_all_goals_backward_compat ... ok
+test test::test_get_goal_retrieval ... ok
+test test::test_get_archived_goals_rejects_invalid_cursor ... FAILED
+test test::test_get_goals_empty ... ok
+test test::test_get_archived_goals_multiple_pages_and_ordering ... FAILED
+test test::test_get_archived_goals_rejects_cursor_from_another_owner ... ok
+test test::test_get_goals_cursor_is_exclusive ... ok
+test test::test_get_goals_rejects_cursor_from_another_owner ... ok
+test test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages ... FAILED
+test test::test_get_goals_multi_owner_isolation ... ok
+test test::test_goal_completed_emits_event ... ok
+test test::test_get_goals_rejects_invalid_cursor ... ok
+test test::test_get_goals_single_page ... ok
+test test::test_idempotent_unlock_does_not_bypass_time_lock ... ok
+test test::test_import_empty_snapshot_succeeds_and_clears_goals ... ok
+test test::test_get_goals_multiple_pages ... ok
+test test::test_import_snapshot_appends_success_audit_entry ... ok
+test test::test_import_snapshot_current_schema_version_succeeds ... ok
+test test::test_import_snapshot_failed_checksum_appends_failure_audit_entry ... ok
+test test::test_import_snapshot_future_schema_version_rejected ... ok
+test test::test_import_snapshot_max_u32_schema_version_rejected ... ok
+test test::test_import_snapshot_min_supported_version_accepted ... ok
+test test::test_import_snapshot_nonce_replay_panics - should panic ... ok
+test test::test_import_snapshot_preserves_locked_state ... ok
+test test::test_import_snapshot_overwrites_existing_goals ... FAILED
+test test::test_import_snapshot_preserves_original_goal_owner ... FAILED
+test test::test_import_snapshot_multi_owner_goals_preserved ... ok
+test test::test_import_snapshot_tampered_goal_amount_rejected ... FAILED
+test test::test_import_snapshot_preserves_time_lock ... ok
+test test::test_import_snapshot_tampered_checksum_rejected ... ok
+test test::test_import_snapshot_sequential_nonce_increments ... ok
+test test::test_import_snapshot_tampered_next_id_rejected ... ok
+test test::test_import_snapshot_version_2_rejected_by_v1_contract ... ok
+test test::test_import_snapshot_too_old_schema_version_rejected ... ok
+test test::test_init_idempotent_does_not_wipe_goals ... FAILED
+test test::test_import_snapshot_zero_checksum_on_nonempty_rejected ... ok
+test test::test_instance_ttl_extended_on_create_goal ... ok
+test test::test_import_snapshot_wrong_nonce_panics - should panic ... ok
+test test::test_instance_ttl_extended_on_lock_goal ... FAILED
+test test::test_last_executed_set_to_current_time ... FAILED
+test test::test_is_goal_completed ... ok
+test test::test_instance_ttl_refreshed_on_add_to_goal ... FAILED
+test test::test_lock_goal_emits_event ... ok
+test test::test_lock_goal_idempotent_already_locked ... ok
+test test::test_limit_zero_uses_default ... ok
+test test::test_lock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_lock_goal_idempotent_no_duplicate_event ... ok
+test test::test_lock_goal_many_repeated_calls_safe ... ok
+test test::test_lock_nonexistent_goal_panics ... ok
+test test::test_lock_goal_unauthorized_panics ... ok
+test test::test_lock_goal_success ... ok
+test test::test_multiple_goals_management ... ok
+test test::test_modify_savings_schedule ... ok
+test test::test_lock_unlock_goal ... ok
+test test::test_multiple_goals_emit_separate_events ... ok
+test test::test_remove_nonexistent_tag_keeps_existing_tags ... ok
+test test::test_remove_tags_from_goal_nonexistent_goal_panics - should panic ... ok
+test test::test_remove_tags_from_goal_non_owner_auth_failure - should panic ... ok
+test test::test_next_id_increments_sequentially ... FAILED
+test test::test_remove_tags_from_goal_unauthorized ... ok
+test test::test_savings_schedule_drift_and_missed_intervals ... ok
+test test::test_savings_data_persists_across_ledger_advancements ... FAILED
+test test::test_savings_schedule_exact_timestamp_execution ... ok
+test test::test_set_time_lock_succeeds ... ok
+test test::test_savings_schedule_goal_completion ... ok
+test test::test_unlock_goal_emits_event ... ok
+test test::test_unlock_goal_idempotent_no_duplicate_event ... ok
+test test::test_tag_operations_emit_events ... ok
+test test::test_snapshot_export_import_roundtrip_restores_goals ... ok
+test test::test_unlock_goal_idempotent_already_unlocked ... ok
+test test::test_unlock_goal_non_owner_auth_failure - should panic ... ok
+test test::test_unlock_goal_success ... ok
+test test::test_unlock_goal_unauthorized_panics ... ok
+test test::test_unlock_goal_many_repeated_calls_safe ... ok
+test test::test_withdraw_after_lock_fails ... ok
+test test::test_withdraw_after_unlock_succeeds ... ok
+test test::test_withdraw_from_goal_locked ... ok
+test test::test_withdraw_from_goal_nonexistent_goal_panics ... ok
+test test::test_withdraw_from_goal_insufficient_balance ... ok
+test test::test_withdraw_from_goal_non_owner_auth_failure - should panic ... ok
+test test::test_withdraw_from_goal_emits_event ... ok
+test test::test_withdraw_full_balance ... ok
+test test::test_withdraw_from_goal_success ... ok
+test test::test_withdraw_from_goal_unauthorized ... ok
+test test::test_withdraw_from_goal_zero_amount_panics ... ok
+test test::test_zero_amount_fails ... ok
+test test::test_withdraw_time_locked_goal_before_unlock ... ok
+test test::test_withdraw_time_locked_goal_after_unlock ... ok
+test test::test_withdraw_time_lock_boundaries ... ok
+
+failures:
+
+---- test::migration_e2e_tests::test_e2e_contract_export_import_json_roundtrip stdout ----
+
+thread 'test::migration_e2e_tests::test_e2e_contract_export_import_json_roundtrip' (134922) panicked at savings_goals/src/test.rs:3815:9:
+assertion `left == right` failed
+  left: 2
+ right: 1
+Writing test snapshot file for test "test::migration_e2e_tests::test_e2e_contract_export_import_json_roundtrip" to "test_snapshots/test/migration_e2e_tests/test_e2e_contract_export_import_json_roundtrip.1.json".
+
+---- test::migration_e2e_tests::test_e2e_contract_export_import_csv_roundtrip stdout ----
+
+thread 'test::migration_e2e_tests::test_e2e_contract_export_import_csv_roundtrip' (134920) panicked at savings_goals/src/test.rs:3929:14:
+goal 1 must be present
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test::migration_e2e_tests::test_e2e_contract_export_import_csv_roundtrip" to "test_snapshots/test/migration_e2e_tests/test_e2e_contract_export_import_csv_roundtrip.1.json".
+
+---- test::migration_e2e_tests::test_e2e_multi_owner_export_import_json_roundtrip stdout ----
+
+thread 'test::migration_e2e_tests::test_e2e_multi_owner_export_import_json_roundtrip' (134926) panicked at savings_goals/src/test.rs:4250:57:
+goal 1
+Writing test snapshot file for test "test::migration_e2e_tests::test_e2e_multi_owner_export_import_json_roundtrip" to "test_snapshots/test/migration_e2e_tests/test_e2e_multi_owner_export_import_json_roundtrip.1.json".
+
+---- test::test_create_goal_allows_past_target_date stdout ----
+
+thread 'test::test_create_goal_allows_past_target_date' (134948) panicked at savings_goals/src/test.rs:55:5:
+assertion `left == right` failed
+  left: 2
+ right: 1
+Writing test snapshot file for test "test::test_create_goal_allows_past_target_date" to "test_snapshots/test/test_create_goal_allows_past_target_date.1.json".
+
+---- test::test_create_goal_emits_event stdout ----
+
+thread 'test::test_create_goal_emits_event' (134949) panicked at savings_goals/src/test.rs:904:5:
+assertion `left == right` failed
+  left: 2
+ right: 1
+Writing test snapshot file for test "test::test_create_goal_emits_event" to "test_snapshots/test/test_create_goal_emits_event.1.json".
+
+---- test::test_execute_oneshot_schedule_idempotent stdout ----
+
+thread 'test::test_execute_oneshot_schedule_idempotent' (134956) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", execute_due_savings_schedules, []]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Schedule, 1]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), execute_due_savings_schedules], data:Void
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_savings_schedule], data:1
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [ScheduleCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_savings_schedule], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 500, 3000, 0]
+   9: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:1
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   11: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 1, name: "Emergency", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 9999, timestamp: 1000}
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 1, name: "Emergency", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 9999, timestamp: 1000}
+   14: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Emergency", 5000, 9999]
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::execute_due_savings_schedules
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_execute_oneshot_schedule_idempotent
+             at src/test.rs:3549:24
+   8: savings_goals::test::test_execute_oneshot_schedule_idempotent::{{closure}}
+             at src/test.rs:3533:46
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_execute_oneshot_schedule_idempotent" to "test_snapshots/test/test_execute_oneshot_schedule_idempotent.1.json".
+
+---- test::test_execute_recurring_fires_again_next_window stdout ----
+
+thread 'test::test_execute_recurring_fires_again_next_window' (134957) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", execute_due_savings_schedules, []]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Schedule, 1]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), execute_due_savings_schedules], data:Void
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_savings_schedule], data:1
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [ScheduleCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_savings_schedule], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 300, 3000, 1000]
+   9: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:1
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   11: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 1, name: "Pension", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 1, name: "Pension", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   14: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Pension", 10000, 99999]
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::execute_due_savings_schedules
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_execute_recurring_fires_again_next_window
+             at src/test.rs:3657:24
+   8: savings_goals::test::test_execute_recurring_fires_again_next_window::{{closure}}
+             at src/test.rs:3643:52
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_execute_recurring_fires_again_next_window" to "test_snapshots/test/test_execute_recurring_fires_again_next_window.1.json".
+
+---- test::test_execute_recurring_schedule_idempotent stdout ----
+
+thread 'test::test_execute_recurring_schedule_idempotent' (134959) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", execute_due_savings_schedules, []]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Schedule, 1]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), execute_due_savings_schedules], data:Void
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_savings_schedule], data:1
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [ScheduleCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_savings_schedule], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 200, 3000, 86400]
+   9: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:1
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   11: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 1, name: "Vacation", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 1, name: "Vacation", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   14: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Vacation", 10000, 99999]
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::execute_due_savings_schedules
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_execute_recurring_schedule_idempotent
+             at src/test.rs:3601:24
+   8: savings_goals::test::test_execute_recurring_schedule_idempotent::{{closure}}
+             at src/test.rs:3586:48
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_execute_recurring_schedule_idempotent" to "test_snapshots/test/test_execute_recurring_schedule_idempotent.1.json".
+
+---- test::test_get_archived_goals_rejects_invalid_cursor stdout ----
+
+thread 'test::test_get_archived_goals_rejects_invalid_cursor' (134969) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Contract, #1)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 1000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #1)], data:"escalating Ok(ScErrorType::Contract) frame-exit to Err"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, add_to_goal], data:Error(Contract, #1)
+   4: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 1000]
+   5: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:4
+   6: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[4, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 4, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 3000, target_date: 259200, timestamp: 0}
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[4, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 4, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 3000, target_date: 259200, timestamp: 0}
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 3000, 259200]
+   11: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:3
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[3, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 3, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 2000, target_date: 172800, timestamp: 0}
+   14: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[3, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   15: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 3, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 2000, target_date: 172800, timestamp: 0}
+   16: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 2000, 172800]
+   17: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   18: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   19: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 2, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 1000, target_date: 86400, timestamp: 0}
+   20: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   21: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 1000, target_date: 86400, timestamp: 0}
+   22: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 1000, 86400]
+   23: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   24: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_get_archived_goals_rejects_invalid_cursor
+             at src/test.rs:1794:16
+   8: savings_goals::test::test_get_archived_goals_rejects_invalid_cursor::{{closure}}
+             at src/test.rs:1784:52
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_get_archived_goals_rejects_invalid_cursor" to "test_snapshots/test/test_get_archived_goals_rejects_invalid_cursor.1.json".
+
+---- test::test_get_archived_goals_multiple_pages_and_ordering stdout ----
+
+thread 'test::test_get_archived_goals_multiple_pages_and_ordering' (134967) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Contract, #1)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 1000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #1)], data:"escalating Ok(ScErrorType::Contract) frame-exit to Err"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, add_to_goal], data:Error(Contract, #1)
+   4: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 1000]
+   5: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:7
+   6: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[7, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 7, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 6000, target_date: 518400, timestamp: 0}
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[7, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 7, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 6000, target_date: 518400, timestamp: 0}
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 6000, 518400]
+   11: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:6
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[6, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 6, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 432000, timestamp: 0}
+   14: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[6, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   15: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 6, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 432000, timestamp: 0}
+   16: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 5000, 432000]
+   17: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:5
+   18: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[5, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   19: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 5, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 4000, target_date: 345600, timestamp: 0}
+   20: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[5, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   21: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 5, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 4000, target_date: 345600, timestamp: 0}
+   22: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 4000, 345600]
+   23: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:4
+   24: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[4, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   25: ... 18 events elided ...
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_get_archived_goals_multiple_pages_and_ordering
+             at src/test.rs:1755:16
+   8: savings_goals::test::test_get_archived_goals_multiple_pages_and_ordering::{{closure}}
+             at src/test.rs:1743:57
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_get_archived_goals_multiple_pages_and_ordering" to "test_snapshots/test/test_get_archived_goals_multiple_pages_and_ordering.1.json".
+
+---- test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages stdout ----
+
+thread 'test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages' (134975) panicked at savings_goals/src/test.rs:1625:5:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(1)
+Writing test snapshot file for test "test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages" to "test_snapshots/test/test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages.1.json".
+
+---- test::test_import_snapshot_overwrites_existing_goals stdout ----
+
+thread 'test::test_import_snapshot_overwrites_existing_goals' (134990) panicked at savings_goals/src/test.rs:2771:5:
+goal 1 must survive import
+Writing test snapshot file for test "test::test_import_snapshot_overwrites_existing_goals" to "test_snapshots/test/test_import_snapshot_overwrites_existing_goals.1.json".
+
+---- test::test_import_snapshot_preserves_original_goal_owner stdout ----
+
+thread 'test::test_import_snapshot_preserves_original_goal_owner' (134992) panicked at savings_goals/src/test.rs:2688:36:
+goal must exist after import
+Writing test snapshot file for test "test::test_import_snapshot_preserves_original_goal_owner" to "test_snapshots/test/test_import_snapshot_preserves_original_goal_owner.1.json".
+
+---- test::test_import_snapshot_tampered_goal_amount_rejected stdout ----
+
+thread 'test::test_import_snapshot_tampered_goal_amount_rejected' (134996) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Contract, #1)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #1)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 2000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #1)], data:"escalating Ok(ScErrorType::Contract) frame-exit to Err"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, add_to_goal], data:Error(Contract, #1)
+   4: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 2000]
+   5: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   6: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 2, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 2000000000, timestamp: 0}
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "Goal", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 2000000000, timestamp: 0}
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Goal", 5000, 2000000000]
+   11: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   12: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_import_snapshot_tampered_goal_amount_rejected
+             at src/test.rs:2958:12
+   8: savings_goals::test::test_import_snapshot_tampered_goal_amount_rejected::{{closure}}
+             at src/test.rs:2949:56
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_import_snapshot_tampered_goal_amount_rejected" to "test_snapshots/test/test_import_snapshot_tampered_goal_amount_rejected.1.json".
+
+---- test::test_init_idempotent_does_not_wipe_goals stdout ----
+
+thread 'test::test_init_idempotent_does_not_wipe_goals' (135002) panicked at savings_goals/src/test.rs:90:5:
+assertion `left == right` failed: first goal must receive goal_id == 1
+  left: 2
+ right: 1
+Writing test snapshot file for test "test::test_init_idempotent_does_not_wipe_goals" to "test_snapshots/test/test_init_idempotent_does_not_wipe_goals.1.json".
+
+---- test::test_instance_ttl_extended_on_lock_goal stdout ----
+
+thread 'test::test_instance_ttl_extended_on_lock_goal' (135004) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", lock_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Goal, 2]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), lock_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 2, name: "Retirement", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 100000, target_date: 2000000000, timestamp: 1000}
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "Retirement", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 100000, target_date: 2000000000, timestamp: 1000}
+   11: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Retirement", 100000, 2000000000]
+   12: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   13: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::lock_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_instance_ttl_extended_on_lock_goal
+             at src/test.rs:1438:12
+   8: savings_goals::test::test_instance_ttl_extended_on_lock_goal::{{closure}}
+             at src/test.rs:1397:45
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_instance_ttl_extended_on_lock_goal" to "test_snapshots/test/test_instance_ttl_extended_on_lock_goal.1.json".
+
+---- test::test_last_executed_set_to_current_time stdout ----
+
+thread 'test::test_last_executed_set_to_current_time' (135008) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", execute_due_savings_schedules, []]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Schedule, 1]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), execute_due_savings_schedules], data:Void
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_savings_schedule], data:1
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [ScheduleCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_savings_schedule], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1, 100, 3000, 0]
+   9: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:1
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   11: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 1, name: "Housing", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   12: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[1, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 1, name: "Housing", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 99999, timestamp: 1000}
+   14: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Housing", 10000, 99999]
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::execute_due_savings_schedules
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_last_executed_set_to_current_time
+             at src/test.rs:3699:12
+   8: savings_goals::test::test_last_executed_set_to_current_time::{{closure}}
+             at src/test.rs:3685:44
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_last_executed_set_to_current_time" to "test_snapshots/test/test_last_executed_set_to_current_time.1.json".
+
+---- test::test_instance_ttl_refreshed_on_add_to_goal stdout ----
+
+thread 'test::test_instance_ttl_refreshed_on_add_to_goal' (135006) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 500]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Goal, 2]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 500]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 2, name: "Vacation", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 2000000000, timestamp: 1000}
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "Vacation", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 5000, target_date: 2000000000, timestamp: 1000}
+   11: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Vacation", 5000, 2000000000]
+   12: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   13: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_instance_ttl_refreshed_on_add_to_goal
+             at src/test.rs:1301:30
+   8: savings_goals::test::test_instance_ttl_refreshed_on_add_to_goal::{{closure}}
+             at src/test.rs:1259:48
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_instance_ttl_refreshed_on_add_to_goal" to "test_snapshots/test/test_instance_ttl_refreshed_on_add_to_goal.1.json".
+
+---- test::test_next_id_increments_sequentially stdout ----
+
+thread 'test::test_next_id_increments_sequentially' (135023) panicked at savings_goals/src/test.rs:154:5:
+assertion `left == right` failed: first goal id must be 1
+  left: 2
+ right: 1
+Writing test snapshot file for test "test::test_next_id_increments_sequentially" to "test_snapshots/test/test_next_id_increments_sequentially.1.json".
+
+---- test::test_savings_data_persists_across_ledger_advancements stdout ----
+
+thread 'test::test_savings_data_persists_across_ledger_advancements' (135028) panicked at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Storage, InternalError)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Storage, InternalError)], data:["contract call failed", add_to_goal, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 3000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Storage, InternalError)], data:["[testing-only] Accessed contract data key key that has been archived. Important: this error may only appear in tests; in the real network contracts aren't called at all if any archived entry is accessed.", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, [Goal, 2]]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), add_to_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 2, 3000]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:3
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[3, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   8: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 3, name: "House", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 50000, target_date: 2000000000, timestamp: 1000}
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[3, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   10: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 3, name: "House", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 50000, target_date: 2000000000, timestamp: 1000}
+   11: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "House", 50000, 2000000000]
+   12: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, create_goal], data:2
+   13: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, goal_new], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   14: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[Remitwise, 1, 1, created], data:{goal_id: 2, name: "Education", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 2000000000, timestamp: 1000}
+   15: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[savings, [GoalCreated]], data:[2, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   16: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[created], data:{goal_id: 2, name: "Education", owner: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, target_amount: 10000, target_date: 2000000000, timestamp: 1000}
+   17: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), create_goal], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, "Education", 10000, 2000000000]
+   18: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, init], data:Void
+   19: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), init], data:Void
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/maryjane/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: savings_goals::SavingsGoalContractClient::add_to_goal
+             at src/lib.rs:276:1
+   7: savings_goals::test::test_savings_data_persists_across_ledger_advancements
+             at src/test.rs:1357:12
+   8: savings_goals::test::test_savings_data_persists_across_ledger_advancements::{{closure}}
+             at src/test.rs:1315:59
+   9: core::ops::function::FnOnce::call_once
+             at /home/maryjane/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "test::test_savings_data_persists_across_ledger_advancements" to "test_snapshots/test/test_savings_data_persists_across_ledger_advancements.1.json".
+
+
+failures:
+    test::migration_e2e_tests::test_e2e_contract_export_import_csv_roundtrip
+    test::migration_e2e_tests::test_e2e_contract_export_import_json_roundtrip
+    test::migration_e2e_tests::test_e2e_multi_owner_export_import_json_roundtrip
+    test::test_create_goal_allows_past_target_date
+    test::test_create_goal_emits_event
+    test::test_execute_oneshot_schedule_idempotent
+    test::test_execute_recurring_fires_again_next_window
+    test::test_execute_recurring_schedule_idempotent
+    test::test_get_archived_goals_multiple_pages_and_ordering
+    test::test_get_archived_goals_rejects_invalid_cursor
+    test::test_get_goals_no_duplicate_or_skip_when_new_goals_added_between_pages
+    test::test_import_snapshot_overwrites_existing_goals
+    test::test_import_snapshot_preserves_original_goal_owner
+    test::test_import_snapshot_tampered_goal_amount_rejected
+    test::test_init_idempotent_does_not_wipe_goals
+    test::test_instance_ttl_extended_on_lock_goal
+    test::test_instance_ttl_refreshed_on_add_to_goal
+    test::test_last_executed_set_to_current_time
+    test::test_next_id_increments_sequentially
+    test::test_savings_data_persists_across_ledger_advancements
+
+test result: FAILED. 118 passed; 20 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.92s
+
+error: test failed, to rerun pass `--lib`

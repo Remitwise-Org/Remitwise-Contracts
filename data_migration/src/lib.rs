@@ -14,6 +14,9 @@
 //! Binding the schema version and format string in addition to the payload
 //! prevents version-downgrade and format-substitution attacks. The checksum
 //! provides integrity, not authentication.
+//!
+//! Legacy snapshots without an explicit `hash_algorithm` field are still
+//! supported by accepting the older `Simple` checksum format on import.
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
@@ -51,10 +54,19 @@ pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
 
 /// Algorithm used to compute the snapshot checksum.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ChecksumAlgorithm {
     /// SHA-256 over `version_le_bytes || format_utf8_bytes || canonical_payload_json`.
     Sha256,
+    /// Legacy checksum used by older snapshots.
+    Simple,
+}
+
+impl Default for ChecksumAlgorithm {
+    fn default() -> Self {
+        ChecksumAlgorithm::Simple
+    }
 }
 
 /// Versioned migration event payload meant for indexing and historical tracking.
@@ -86,6 +98,7 @@ pub enum ExportFormat {
 pub struct SnapshotHeader {
     pub version: u32,
     pub checksum: String,
+    #[serde(default)]
     pub hash_algorithm: ChecksumAlgorithm,
     pub format: String,
     pub created_at_ms: Option<u64>,
@@ -158,6 +171,27 @@ impl ExportSnapshot {
         hex::encode(hasher.finalize().as_ref())
     }
 
+    fn simple_checksum_for_parts(version: u32, format: &str, payload_bytes: &[u8]) -> String {
+        let mut acc = 0u64;
+        for byte in version
+            .to_le_bytes()
+            .iter()
+            .chain(format.as_bytes())
+            .chain(payload_bytes.iter())
+        {
+            acc = acc.wrapping_add(*byte as u64);
+        }
+        acc.to_string()
+    }
+
+    fn legacy_simple_checksum(payload_bytes: &[u8]) -> String {
+        let mut acc = 0u64;
+        for byte in payload_bytes.iter() {
+            acc = acc.wrapping_add(*byte as u64);
+        }
+        acc.to_string()
+    }
+
     /// Compute the SHA-256 checksum for this snapshot.
     pub fn compute_checksum(&self) -> String {
         let payload_bytes = self
@@ -166,12 +200,30 @@ impl ExportSnapshot {
         Self::checksum_for_parts(self.header.version, &self.header.format, &payload_bytes)
     }
 
+    fn compute_simple_checksum(&self) -> String {
+        let payload_bytes = self
+            .payload_bytes()
+            .unwrap_or_else(|_| panic!("payload must be serializable"));
+        Self::simple_checksum_for_parts(self.header.version, &self.header.format, &payload_bytes)
+    }
+
+    fn compute_legacy_simple_checksum(&self) -> String {
+        let payload_bytes = self
+            .payload_bytes()
+            .unwrap_or_else(|_| panic!("payload must be serializable"));
+        Self::legacy_simple_checksum(&payload_bytes)
+    }
+
     /// Verify that the stored checksum matches the current payload.
     pub fn verify_checksum(&self) -> bool {
-        if self.header.hash_algorithm != ChecksumAlgorithm::Sha256 {
-            return false;
+        match self.header.hash_algorithm {
+            ChecksumAlgorithm::Sha256 => self.header.checksum == self.compute_checksum(),
+            ChecksumAlgorithm::Simple => {
+                let expected = self.compute_simple_checksum();
+                self.header.checksum == expected
+                    || self.header.checksum == self.compute_legacy_simple_checksum()
+            }
         }
-        self.header.checksum == self.compute_checksum()
     }
 
     /// Check if snapshot version is supported for import.
@@ -197,7 +249,10 @@ impl ExportSnapshot {
 
         self.validate_payload_constraints()?;
 
-        if self.header.hash_algorithm != ChecksumAlgorithm::Sha256 {
+        if !matches!(
+            self.header.hash_algorithm,
+            ChecksumAlgorithm::Sha256 | ChecksumAlgorithm::Simple
+        ) {
             return Err(MigrationError::UnknownHashAlgorithm);
         }
 
@@ -460,6 +515,9 @@ pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, Migrati
 
 /// Decode encrypted payload from prefixed base64.
 pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, MigrationError> {
+    // Pre-deserialization check: Ensure the base64-encoded string does not exceed
+    // MAX_ENCRYPTED_PAYLOAD_BYTES to prevent DoS from oversized requests before decoding.
+    // The decoded payload's size is checked against MAX_MIGRATION_PAYLOAD_BYTES later.
     validate_encrypted_payload_size(encoded.len())?;
 
     let rest = encoded
@@ -495,6 +553,10 @@ pub fn import_from_json(
     tracker: &mut MigrationTracker,
     timestamp_ms: u64,
 ) -> Result<ExportSnapshot, MigrationError> {
+    // Pre-deserialization check: Ensure the raw JSON snapshot envelope does not exceed
+    // MAX_MIGRATION_SNAPSHOT_BYTES to prevent DoS from oversized requests before parsing.
+    // Logical payload size (MAX_MIGRATION_PAYLOAD_BYTES) and record count (MAX_MIGRATION_RECORDS)
+    // are validated post-deserialization as part of `snapshot.validate_for_import()`.
     validate_snapshot_size(bytes.len())?;
     let snapshot: ExportSnapshot = serde_json::from_slice(bytes)
         .map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
@@ -509,6 +571,10 @@ pub fn import_from_binary(
     tracker: &mut MigrationTracker,
     timestamp_ms: u64,
 ) -> Result<ExportSnapshot, MigrationError> {
+    // Pre-deserialization check: Ensure the raw binary snapshot envelope does not exceed
+    // MAX_MIGRATION_SNAPSHOT_BYTES to prevent DoS from oversized requests before parsing.
+    // Logical payload size (MAX_MIGRATION_PAYLOAD_BYTES) and record count (MAX_MIGRATION_RECORDS)
+    // are validated post-deserialization as part of `snapshot.validate_for_import()`.
     validate_snapshot_size(bytes.len())?;
     let snapshot: ExportSnapshot =
         bincode::deserialize(bytes).map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
@@ -531,6 +597,9 @@ pub fn import_from_binary_untracked(bytes: &[u8]) -> Result<ExportSnapshot, Migr
 
 /// Import goals from CSV into SavingsGoalsExport.
 pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, MigrationError> {
+    // Pre-deserialization check: Ensure the raw CSV input bytes do not exceed
+    // MAX_MIGRATION_PAYLOAD_BYTES to prevent DoS from oversized requests before parsing.
+    // Logical record count (MAX_MIGRATION_RECORDS) is validated during iteration.
     if bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
         return Err(MigrationError::PayloadTooLarge {
             size: bytes.len(),
@@ -684,6 +753,13 @@ mod tests {
         })
     }
 
+    fn sample_generic_payload() -> SnapshotPayload {
+        let mut entries = HashMap::new();
+        entries.insert("key1".into(), serde_json::json!("value1"));
+        entries.insert("key2".into(), serde_json::json!(42));
+        SnapshotPayload::Generic(entries)
+    }
+
     #[test]
     fn test_snapshot_checksum_roundtrip_succeeds() {
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
@@ -727,6 +803,183 @@ mod tests {
     }
 
     #[test]
+    fn test_replay_protection_savings_goals_json_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_generic_payload_json_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_cross_payload_types_independent() {
+        let snapshots = [
+            ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json),
+        ];
+        let mut tracker = MigrationTracker::new();
+
+        for (index, snapshot) in snapshots.iter().enumerate() {
+            let bytes = export_to_json(snapshot).unwrap();
+            import_from_json(&bytes, &mut tracker, (index as u64 + 1) * 1_000).unwrap();
+        }
+
+        for snapshot in snapshots {
+            let bytes = export_to_json(&snapshot).unwrap();
+            let result = import_from_json(&bytes, &mut tracker, 9_999);
+            assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+        }
+    }
+
+    #[test]
+    fn test_replay_protection_savings_goals_binary_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_binary(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_binary(&bytes, &mut tracker, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_replay_protection_generic_payload_binary_duplicate_rejected() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Binary);
+        let _bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        tracker.mark_imported(&snapshot, 1_000).unwrap();
+
+        let result = tracker.mark_imported(&snapshot, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_same_payload_type_different_content_no_collision() {
+        let first_snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let second_snapshot = ExportSnapshot::new(
+            SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+                owner: "GABC".into(),
+                spending_percent: 45,
+                savings_percent: 35,
+                bills_percent: 15,
+                insurance_percent: 5,
+            }),
+            ExportFormat::Json,
+        );
+        let first_bytes = export_to_json(&first_snapshot).unwrap();
+        let second_bytes = export_to_json(&second_snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        assert_ne!(
+            first_snapshot.header.checksum,
+            second_snapshot.header.checksum
+        );
+
+        import_from_json(&first_bytes, &mut tracker, 1_000).unwrap();
+        import_from_json(&second_bytes, &mut tracker, 2_000).unwrap();
+    }
+
+    #[test]
+    fn test_different_payload_same_size_no_collision() {
+        let first_payload = SnapshotPayload::Generic(HashMap::from([
+            ("aa".into(), serde_json::json!("11")),
+            ("bb".into(), serde_json::json!("22")),
+        ]));
+        let second_payload = SnapshotPayload::Generic(HashMap::from([
+            ("cc".into(), serde_json::json!("33")),
+            ("dd".into(), serde_json::json!("44")),
+        ]));
+        let first_snapshot = ExportSnapshot::new(first_payload, ExportFormat::Json);
+        let second_snapshot = ExportSnapshot::new(second_payload, ExportFormat::Json);
+        let first_bytes = export_to_json(&first_snapshot).unwrap();
+        let second_bytes = export_to_json(&second_snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        assert_eq!(
+            canonical_payload_bytes(&first_snapshot.payload)
+                .unwrap()
+                .len(),
+            canonical_payload_bytes(&second_snapshot.payload)
+                .unwrap()
+                .len()
+        );
+        assert_ne!(
+            first_snapshot.header.checksum,
+            second_snapshot.header.checksum
+        );
+
+        import_from_json(&first_bytes, &mut tracker, 1_000).unwrap();
+        import_from_json(&second_bytes, &mut tracker, 2_000).unwrap();
+    }
+
+    #[test]
+    fn test_tracker_is_imported_reflects_state_across_types() {
+        let snapshots = [
+            ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json),
+            ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json),
+        ];
+        let mut tracker = MigrationTracker::new();
+
+        for (index, snapshot) in snapshots.iter().enumerate() {
+            assert!(!tracker.is_imported(snapshot));
+
+            let bytes = export_to_json(snapshot).unwrap();
+            let loaded =
+                import_from_json(&bytes, &mut tracker, (index as u64 + 1) * 1_000).unwrap();
+
+            assert!(tracker.is_imported(snapshot));
+            assert!(tracker.is_imported(&loaded));
+        }
+    }
+
+    #[test]
+    fn test_tracker_mark_imported_rejects_exact_duplicate() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.mark_imported(&snapshot, 1_000).unwrap();
+
+        let result = tracker.mark_imported(&snapshot, 2_000);
+        assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_tracker_mark_imported_allows_different_version_same_checksum() {
+        let mut first_snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut second_snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        first_snapshot.header.checksum = "shared-checksum".into();
+        second_snapshot.header.checksum = "shared-checksum".into();
+        second_snapshot.header.version = first_snapshot.header.version + 1;
+
+        tracker.mark_imported(&first_snapshot, 1_000).unwrap();
+        tracker.mark_imported(&second_snapshot, 2_000).unwrap();
+
+        assert!(tracker.is_imported(&first_snapshot));
+        assert!(tracker.is_imported(&second_snapshot));
+    }
+
+    #[test]
     fn test_checksum_mismatch_import_fails() {
         let mut snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
         snapshot.header.checksum = "wrong".into();
@@ -750,6 +1003,38 @@ mod tests {
         let bytes = export_to_binary(&snapshot).unwrap();
         let loaded = import_from_binary_untracked(&bytes).unwrap();
         assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Sha256);
+    }
+
+    #[test]
+    fn test_legacy_simple_checksum_import_succeeds() {
+        let mut snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        snapshot.header.hash_algorithm = ChecksumAlgorithm::Simple;
+        snapshot.header.checksum = snapshot.compute_simple_checksum();
+
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        let loaded = import_from_json_untracked(&bytes).unwrap();
+        assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Simple);
+        assert!(loaded.verify_checksum());
+    }
+
+    #[test]
+    fn test_missing_hash_algorithm_field_defaults_to_legacy_simple() {
+        let mut snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        snapshot.header.checksum = snapshot.compute_simple_checksum();
+        snapshot.header.hash_algorithm = ChecksumAlgorithm::Simple;
+
+        let mut bytes: serde_json::Value =
+            serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        bytes
+            .as_object_mut()
+            .and_then(|obj| obj.get_mut("header"))
+            .and_then(|header| header.as_object_mut())
+            .and_then(|header_obj| header_obj.remove("hash_algorithm"));
+        let serialized = serde_json::to_vec(&bytes).unwrap();
+
+        let loaded = import_from_json_untracked(&serialized).unwrap();
+        assert_eq!(loaded.header.hash_algorithm, ChecksumAlgorithm::Simple);
+        assert!(loaded.verify_checksum());
     }
 
     #[test]
@@ -929,6 +1214,107 @@ mod tests {
     }
 
     #[test]
+    fn test_encrypted_payload_empty_string_fails() {
+        let result = import_from_encrypted_payload("");
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_partial_marker_fails() {
+        for partial in &["enc:", "enc:v1", "enc:v"] {
+            let result = import_from_encrypted_payload(partial);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for partial marker {:?}",
+                partial
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_wrong_case_marker_fails() {
+        let valid_b64 = base64::engine::general_purpose::STANDARD.encode(b"test");
+        for prefix in &["ENC:V1:", "Enc:V1:"] {
+            let input = format!("{}{}", prefix, valid_b64);
+            let result = import_from_encrypted_payload(&input);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for wrong-case marker {:?}",
+                prefix
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_whitespace_input_fails() {
+        for input in &[" ", "\t", " enc:v1:dGVzdA== "] {
+            let result = import_from_encrypted_payload(input);
+            assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for whitespace input {:?}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_encrypted_payload_post_decode_too_large_fails() {
+        let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&plain);
+        let encoded = format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, b64);
+        // Verify pre-decode guard won't fire first
+        assert!(
+            encoded.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded len {} exceeds MAX_ENCRYPTED_PAYLOAD_BYTES {}",
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES
+        );
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(
+            matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
+                if size == MAX_MIGRATION_PAYLOAD_BYTES + 1 && max == MAX_MIGRATION_PAYLOAD_BYTES),
+            "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
+            MAX_MIGRATION_PAYLOAD_BYTES + 1,
+            MAX_MIGRATION_PAYLOAD_BYTES,
+            result
+        );
+    }
+
+    #[test]
+    fn test_encrypted_payload_pre_decode_boundary_plus_one_fails() {
+        let oversized = "A".repeat(MAX_ENCRYPTED_PAYLOAD_BYTES + 1);
+        let result = import_from_encrypted_payload(&oversized);
+        assert!(
+            matches!(result, Err(MigrationError::PayloadTooLarge { size, max })
+                if size == MAX_ENCRYPTED_PAYLOAD_BYTES + 1 && max == MAX_ENCRYPTED_PAYLOAD_BYTES),
+            "expected PayloadTooLarge {{ size: {}, max: {} }}, got {:?}",
+            MAX_ENCRYPTED_PAYLOAD_BYTES + 1,
+            MAX_ENCRYPTED_PAYLOAD_BYTES,
+            result
+        );
+    }
+
+    #[test]
+    fn test_encrypted_payload_exact_boundary_accepted() {
+        let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES];
+        let encoded = export_to_encrypted_payload(&plain).unwrap();
+        assert_eq!(
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "encoded length {} != MAX_ENCRYPTED_PAYLOAD_BYTES {}",
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES
+        );
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(
+            result.is_ok(),
+            "expected Ok(_) at exact boundary, got {:?}",
+            result
+        );
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    #[test]
     fn test_generic_payload_checksum_is_stable_across_map_order() {
         let mut first = HashMap::new();
         first.insert("b".into(), serde_json::json!(2));
@@ -964,5 +1350,35 @@ mod tests {
         }
         .to_string()
         .contains("5"));
+    }
+
+    // Property 1: Fault Condition — Untested Rejection Paths Return Correct Error Variants
+    // Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6
+    //
+    // Generates arbitrary strings that do NOT start with "enc:v1:" and are within the
+    // pre-decode size limit. All such inputs must return Err(MigrationError::InvalidFormat(_)).
+    // This covers empty, partial markers, wrong-cased markers, whitespace, and arbitrary
+    // non-prefixed inputs in a single property sweep.
+    fn proptest_invalid_prefix_strategy() -> impl proptest::strategy::Strategy<Value = String> {
+        use proptest::strategy::Strategy;
+        proptest::string::string_regex(".{0,100}")
+            .unwrap()
+            .prop_filter("must not start with enc:v1:", |s: &String| {
+                !s.starts_with(ENCRYPTED_PAYLOAD_PREFIX_V1)
+            })
+            .prop_filter("must be within size limit", |s: &String| {
+                s.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES
+            })
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn test_enc_marker_fault_condition_exploration(s in proptest_invalid_prefix_strategy()) {
+            let result = import_from_encrypted_payload(&s);
+            proptest::prop_assert!(
+                matches!(result, Err(MigrationError::InvalidFormat(_))),
+                "expected InvalidFormat for input {:?}, got {:?}", s, result
+            );
+        }
     }
 }

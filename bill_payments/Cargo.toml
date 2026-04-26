@@ -14,3 +14,7 @@ remitwise-common = { path = "../remitwise-common" }
 proptest = "1.10.0"
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 testutils = { path = "../testutils" }
+
+[[test]]
+name = "pagination_gaps"
+path = "tests/pagination_gaps.rs"

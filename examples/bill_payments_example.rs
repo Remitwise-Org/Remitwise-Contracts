@@ -26,7 +26,7 @@ fn main() {
         bill_name, amount, currency
     );
     let bill_id = client.create_bill(
-        &owner, &bill_name, &amount, &due_date, &false, &0u32, &None, &currency,
+        &owner, &bill_name, &amount, &due_date, &false, &0u32, &None, &currency, &None,
     );
     println!("Bill created successfully with ID: {}", bill_id);
 

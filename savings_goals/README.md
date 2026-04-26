@@ -52,6 +52,22 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 - Any detected index/storage mismatch fails fast instead of returning ambiguous data.
 - This reduces the risk of inconsistent client state caused by malformed or stale cursors.
 
+## Archived Goals
+
+Completed goals can be moved into an archived store to keep the active goal set small and keep reads scalable.
+
+- `archive_goal(caller, goal_id)` moves a **completed** goal from active storage into archive storage (owner-only).
+- `restore_goal(caller, goal_id)` moves an archived goal back into active storage (owner-only).
+- `get_archived_goals_page(owner, cursor, limit)` returns a deterministic archived page for `owner` without scanning the full archive map.
+
+### Archived Pagination Semantics
+
+Archived reads are backed by an owner → goal-id index, so paging is deterministic and stable:
+
+- Ordering is deterministic: ascending goal ID for that owner.
+- Cursor is exclusive and owner-bound (same semantics as `get_goals`).
+- Invalid non-zero cursors are rejected.
+
 ## Quickstart
 
 This section provides a minimal example of how to interact with the Savings Goals contract.

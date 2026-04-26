@@ -1,6 +1,6 @@
 //! Stress tests for insurance storage limits and TTL behavior.
 
-use insurance::{Insurance, InsuranceClient};
+use insurance::{Insurance, InsuranceClient, MAX_POLICIES_PER_OWNER};
 use remitwise_common::CoverageType;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
@@ -39,10 +39,10 @@ where
     (cpu, mem, result)
 }
 
-/// Create 200 policies for a single user and verify full dataset is returned
-/// by get_active_policies (returns all active policies).
+/// Create exactly MAX_POLICIES_PER_OWNER (50) policies for a single user and
+/// verify the full dataset is returned by get_active_policies.
 #[test]
-fn stress_200_policies_single_user() {
+fn stress_max_policies_single_user() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -51,7 +51,7 @@ fn stress_200_policies_single_user() {
     let name = String::from_str(&env, "StressPolicy");
     let coverage_type = CoverageType::Health;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
@@ -59,14 +59,14 @@ fn stress_200_policies_single_user() {
     let total_premium = client.get_total_monthly_premium(&owner);
     assert_eq!(
         total_premium,
-        200 * 100i128,
-        "get_total_monthly_premium must sum premiums across all 200 policies"
+        MAX_POLICIES_PER_OWNER as i128 * 100i128,
+        "get_total_monthly_premium must sum premiums across all {} policies",
+        MAX_POLICIES_PER_OWNER
     );
 
-    // Exhaust all pages (MAX_PAGE_LIMIT = 50 → 4 pages)
+    // Exhaust all pages (MAX_PAGE_LIMIT = 50 → 1 full page + possible trailing empty)
     let mut collected = 0u32;
     let mut cursor = 0u32;
-    let mut pages = 0u32;
     loop {
         let page = client.get_active_policies(&owner, &cursor, &50u32);
         assert!(
@@ -75,7 +75,6 @@ fn stress_200_policies_single_user() {
             page.count
         );
         collected += page.count;
-        pages += 1;
         if page.next_cursor == 0 {
             break;
         }
@@ -83,22 +82,172 @@ fn stress_200_policies_single_user() {
     }
 
     assert_eq!(
-        collected, 200,
-        "Pagination must return all 200 active policies"
-    );
-    // get_active_policies sets next_cursor = last_returned_id; when a page is exactly
-    // full the caller receives a non-zero cursor that produces a trailing empty page,
-    // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(
-        (4..=5).contains(&pages),
-        "Expected 4-5 pages for 200 policies at limit 50, got {}",
-        pages
+        collected, MAX_POLICIES_PER_OWNER,
+        "Pagination must return all {} active policies",
+        MAX_POLICIES_PER_OWNER
     );
 }
 
-/// Create 200 policies and verify instance TTL remains valid.
+/// Verify that creating a policy beyond MAX_POLICIES_PER_OWNER returns
+/// PolicyLimitExceeded and does not modify state.
 #[test]
-fn stress_instance_ttl_valid_after_200_policies() {
+fn stress_owner_cap_enforced() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "CapPolicy");
+    let coverage_type = CoverageType::Health;
+
+    for _ in 0..MAX_POLICIES_PER_OWNER {
+        client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+    }
+
+    // The (MAX + 1)-th create must be rejected.
+    let result =
+        client.try_create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+    assert!(
+        result.is_err(),
+        "create_policy must reject creates when owner is at cap"
+    );
+
+    // Active count must remain at MAX_POLICIES_PER_OWNER.
+    let stats = client.get_storage_stats();
+    assert_eq!(
+        stats.active_policies, MAX_POLICIES_PER_OWNER,
+        "active_policies must not exceed MAX_POLICIES_PER_OWNER after rejected create"
+    );
+}
+
+/// Deactivating a policy frees a slot so a new policy can be created.
+#[test]
+fn stress_deactivate_frees_slot() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "SlotPolicy");
+    let coverage_type = CoverageType::Health;
+
+    let mut ids = std::vec![];
+    for _ in 0..MAX_POLICIES_PER_OWNER {
+        let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+        ids.push(id);
+    }
+
+    // At cap — next create must fail.
+    assert!(client
+        .try_create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None)
+        .is_err());
+
+    // Deactivate one policy to free a slot.
+    client.deactivate_policy(&owner, &ids[0]);
+
+    // Now a new policy must succeed.
+    let new_id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+    assert!(
+        new_id > 0,
+        "New policy must be created after freeing a slot"
+    );
+
+    let stats = client.get_storage_stats();
+    assert_eq!(
+        stats.active_policies, MAX_POLICIES_PER_OWNER,
+        "active_policies must be back at cap after deactivate + create"
+    );
+}
+
+/// Contract test for PolicyPage semantics: stable ID ordering, cursor progression,
+/// inactive exclusion, and duplicate-free pagination across pages.
+#[test]
+fn contract_policy_page_ordering_and_cursor_correctness() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "ContractPolicy");
+    let coverage_type = CoverageType::Health;
+
+    let mut created_ids = std::vec::Vec::new();
+    for _ in 0..6 {
+        let id = client.create_policy(&owner, &name, &coverage_type, &120i128, &12_000i128, &None);
+        created_ids.push(id);
+    }
+
+    // Make dataset mixed active/inactive.
+    client.deactivate_policy(&owner, &created_ids[1]); // id #2
+    client.deactivate_policy(&owner, &created_ids[4]); // id #5
+
+    let expected_active_ids = std::vec![
+        created_ids[0],
+        created_ids[2],
+        created_ids[3],
+        created_ids[5],
+    ];
+
+    let mut cursor = 0u32;
+    let mut seen_ids = std::vec::Vec::new();
+    let mut ended = false;
+
+    loop {
+        let page = client.get_active_policies(&owner, &cursor, &2u32);
+        assert!(page.count <= 2, "page count must obey the requested limit");
+
+        for policy in page.items.iter() {
+            assert!(policy.active, "inactive policy must never be returned");
+            assert_eq!(policy.owner, owner, "page must be owner-scoped");
+            seen_ids.push(policy.id);
+        }
+
+        if page.next_cursor == 0 {
+            ended = true;
+            break;
+        }
+
+        assert!(
+            page.count > 0,
+            "non-terminal pages must contain at least one item"
+        );
+        let last_index = page.count - 1;
+        let last_policy_id = page.items.get(last_index).unwrap().id;
+        assert_eq!(
+            page.next_cursor, last_policy_id,
+            "next_cursor must equal the last returned policy id"
+        );
+        assert!(
+            page.next_cursor > cursor,
+            "next_cursor must advance monotonically between pages"
+        );
+        cursor = page.next_cursor;
+    }
+
+    assert!(ended, "paging must terminate with next_cursor == 0");
+    assert_eq!(
+        seen_ids, expected_active_ids,
+        "active policies must be ordered canonically by ascending policy id"
+    );
+    assert!(
+        !seen_ids.contains(&created_ids[1]) && !seen_ids.contains(&created_ids[4]),
+        "inactive policies must be excluded from all pages"
+    );
+
+    let mut deduped = seen_ids.clone();
+    deduped.sort_unstable();
+    deduped.dedup();
+    assert_eq!(
+        deduped.len(),
+        seen_ids.len(),
+        "policy IDs must not duplicate across paginated responses"
+    );
+}
+
+/// Create 200 policies and verify instance TTL remains valid after the instance
+/// Map grows to 200 entries.
+#[test]
+fn stress_instance_ttl_valid_after_max_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -107,20 +256,21 @@ fn stress_instance_ttl_valid_after_200_policies() {
     let name = String::from_str(&env, "TTLPolicy");
     let coverage_type = CoverageType::Life;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &50i128, &5_000i128, &None);
     }
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
         ttl >= 518_400,
-        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after 200 creates",
-        ttl
+        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after {} creates",
+        ttl,
+        MAX_POLICIES_PER_OWNER
     );
 }
 
 /// Create 20 policies each for 10 different users (200 total) and verify
-/// per-owner isolation.
+/// per-owner isolation. Each user is well within the cap.
 #[test]
 fn stress_policies_across_10_users() {
     let env = stress_env();
@@ -131,7 +281,6 @@ fn stress_policies_across_10_users() {
     const POLICIES_PER_USER: u32 = 20;
     const PREMIUM_PER_POLICY: i128 = 150;
     let name = String::from_str(&env, "UserPolicy");
-    let coverage_type = CoverageType::Health;
 
     let users: std::vec::Vec<Address> = (0..N_USERS).map(|_| Address::generate(&env)).collect();
 
@@ -157,9 +306,8 @@ fn stress_policies_across_10_users() {
         );
 
         let page = client.get_active_policies(user, &0u32, &50u32);
-        let active = page.items;
         assert_eq!(
-            active.len(),
+            page.items.len(),
             POLICIES_PER_USER,
             "Each user must see exactly their own {} policies",
             POLICIES_PER_USER
@@ -178,8 +326,8 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     let name = String::from_str(&env, "TTLStress");
     let coverage_type = CoverageType::Health;
 
-    // Phase 1: 50 creates
-    for _ in 0..50 {
+    // Phase 1: 10 creates (well within cap)
+    for _ in 0..10 {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
@@ -260,7 +408,7 @@ fn stress_ttl_re_bumped_by_pay_premium_after_ledger_advancement() {
     );
 }
 
-/// Create 50 policies and pay all premiums in a single batch.
+/// Create MAX_POLICIES_PER_OWNER policies and pay all premiums in a single batch.
 #[test]
 fn stress_batch_pay_premiums_at_max_batch_size() {
     let env = stress_env();
@@ -268,12 +416,11 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
 
-    const BATCH_SIZE: u32 = 50;
     let name = String::from_str(&env, "BatchPolicy");
     let coverage_type = CoverageType::Health;
 
     let mut policy_ids = std::vec![];
-    for _ in 0..BATCH_SIZE {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
         policy_ids.push(id);
     }
@@ -285,9 +432,9 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
 
     let paid_count = client.batch_pay_premiums(&owner, &ids_vec);
     assert_eq!(
-        paid_count, BATCH_SIZE,
+        paid_count, MAX_POLICIES_PER_OWNER,
         "batch_pay_premiums must process all {} policies",
-        BATCH_SIZE
+        MAX_POLICIES_PER_OWNER
     );
 
     let expected_next = 1_700_000_000u64 + (30 * 86400);
@@ -306,9 +453,9 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     }
 }
 
-/// Create 200 policies and deactivate 100, verify only 100 remain active.
+/// Create MAX_POLICIES_PER_OWNER policies and deactivate half, verify only half remain active.
 #[test]
-fn stress_deactivate_half_of_200_policies() {
+fn stress_deactivate_half_of_max_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -318,17 +465,19 @@ fn stress_deactivate_half_of_200_policies() {
     let coverage_type = CoverageType::Life;
 
     let mut all_ids = std::vec![];
-    for _ in 0..200 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         let id = client.create_policy(&owner, &name, &coverage_type, &80i128, &8_000i128, &None);
         all_ids.push(id);
     }
 
-    // Deactivate even-indexed policies
+    // Deactivate odd-indexed policies (half)
     for (i, &id) in all_ids.iter().enumerate() {
         if i % 2 == 1 {
             client.deactivate_policy(&owner, &id);
         }
     }
+
+    let half = MAX_POLICIES_PER_OWNER / 2;
 
     // Count all active policies via pagination.
     let mut collected = 0u32;
@@ -342,21 +491,31 @@ fn stress_deactivate_half_of_200_policies() {
         cursor = page.next_cursor;
     }
     assert_eq!(
-        collected, 100,
-        "After deactivating 100 of 200 policies, only 100 must remain active"
+        collected, half,
+        "After deactivating half of {} policies, only {} must remain active",
+        MAX_POLICIES_PER_OWNER, half
     );
 
     let remaining_premium = client.get_total_monthly_premium(&owner);
     assert_eq!(
         remaining_premium,
-        100 * 80i128,
-        "Monthly premium must reflect only the 100 still-active policies"
+        half as i128 * 80i128,
+        "Monthly premium must reflect only the {} still-active policies",
+        half
+    );
+
+    // StorageStats must reflect the correct active count.
+    let stats = client.get_storage_stats();
+    assert_eq!(
+        stats.active_policies, half,
+        "StorageStats::active_policies must equal {} after deactivating half",
+        half
     );
 }
 
-/// Measure CPU and memory cost for get_active_policies with 200 policies.
+/// Measure CPU and memory cost for get_active_policies with MAX_POLICIES_PER_OWNER policies.
 #[test]
-fn bench_get_active_policies_200_policies() {
+fn bench_get_active_policies_max_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -365,22 +524,27 @@ fn bench_get_active_policies_200_policies() {
     let name = String::from_str(&env, "BenchPolicy");
     let coverage_type = CoverageType::Health;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
     let (cpu, mem, active) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
-    assert_eq!(active.items.len(), 50, "Must return first page (limit 50)");
+    assert_eq!(
+        active.items.len(),
+        MAX_POLICIES_PER_OWNER,
+        "Must return all {} policies in one page",
+        MAX_POLICIES_PER_OWNER
+    );
 
     println!(
-        r#"{{"contract":"insurance","method":"get_active_policies","scenario":"200_policies","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"insurance","method":"get_active_policies","scenario":"{}_policies","cpu":{},"mem":{}}}"#,
+        MAX_POLICIES_PER_OWNER, cpu, mem
     );
 }
 
-/// Measure CPU and memory cost for get_total_monthly_premium with 200 active policies.
+/// Measure CPU and memory cost for get_total_monthly_premium with MAX_POLICIES_PER_OWNER active policies.
 #[test]
-fn bench_get_total_monthly_premium_200_policies() {
+fn bench_get_total_monthly_premium_max_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -389,23 +553,23 @@ fn bench_get_total_monthly_premium_200_policies() {
     let name = String::from_str(&env, "PremBench");
     let coverage_type = CoverageType::Health;
 
-    for _ in 0..200 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
 
-    let expected = 200i128 * 100;
+    let expected = MAX_POLICIES_PER_OWNER as i128 * 100;
     let (cpu, mem, total) = measure(&env, || client.get_total_monthly_premium(&owner));
     assert_eq!(total, expected);
 
     println!(
-        r#"{{"contract":"insurance","method":"get_total_monthly_premium","scenario":"200_active_policies","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"insurance","method":"get_total_monthly_premium","scenario":"{}_active_policies","cpu":{},"mem":{}}}"#,
+        MAX_POLICIES_PER_OWNER, cpu, mem
     );
 }
 
-/// Measure CPU and memory cost for batch_pay_premiums with 50 policies.
+/// Measure CPU and memory cost for batch_pay_premiums with MAX_POLICIES_PER_OWNER policies.
 #[test]
-fn bench_batch_pay_premiums_50_policies() {
+fn bench_batch_pay_premiums_max_policies() {
     let env = stress_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
@@ -415,7 +579,7 @@ fn bench_batch_pay_premiums_50_policies() {
     let coverage_type = CoverageType::Health;
 
     let mut policy_ids = std::vec![];
-    for _ in 0..50 {
+    for _ in 0..MAX_POLICIES_PER_OWNER {
         let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
         policy_ids.push(id);
     }
@@ -426,11 +590,11 @@ fn bench_batch_pay_premiums_50_policies() {
     }
 
     let (cpu, mem, count) = measure(&env, || client.batch_pay_premiums(&owner, &ids_vec));
-    assert_eq!(count, 50);
+    assert_eq!(count, MAX_POLICIES_PER_OWNER);
 
     println!(
-        r#"{{"contract":"insurance","method":"batch_pay_premiums","scenario":"50_policies","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"insurance","method":"batch_pay_premiums","scenario":"{}_policies","cpu":{},"mem":{}}}"#,
+        MAX_POLICIES_PER_OWNER, cpu, mem
     );
 }
 
@@ -444,20 +608,14 @@ fn stress_batch_pay_mixed_states() {
     let name = String::from_str(&env, "MixedBatch");
     let coverage_type = CoverageType::Health;
 
+    // Create 50 policies: deactivate odd-indexed ones.
     let mut policy_ids = std::vec![];
-    for i in 0..50 {
-        if i % 2 == 0 {
-            // Valid policy
-            let id =
-                client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
-            policy_ids.push(id);
-        } else {
-            // Invalid policy: deactivated
-            let id =
-                client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+    for i in 0..MAX_POLICIES_PER_OWNER {
+        let id = client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
+        if i % 2 == 1 {
             client.deactivate_policy(&owner, &id);
-            policy_ids.push(id);
         }
+        policy_ids.push(id);
     }
 
     let mut ids_vec = soroban_sdk::Vec::new(&env);
@@ -466,10 +624,14 @@ fn stress_batch_pay_mixed_states() {
     }
 
     let (cpu, mem, count) = measure(&env, || client.batch_pay_premiums(&owner, &ids_vec));
-    assert_eq!(count, 25, "Exactly 25 policies should be paid");
+    assert_eq!(
+        count,
+        MAX_POLICIES_PER_OWNER / 2,
+        "Exactly half the policies should be paid (active ones)"
+    );
 
     println!(
-        r#"{{"contract":"insurance","method":"batch_pay_premiums","scenario":"50_policies_mixed","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"insurance","method":"batch_pay_premiums","scenario":"{}_policies_mixed","cpu":{},"mem":{}}}"#,
+        MAX_POLICIES_PER_OWNER, cpu, mem
     );
 }

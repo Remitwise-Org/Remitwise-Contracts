@@ -35,8 +35,8 @@ in strict order before any token interaction occurs:
 - Nonce-based replay protection on split initialization, split updates, distributions, and snapshot imports
 - Global pause that freezes every mutating entrypoint except `unpause`
 - Pause / unpause with transferable admin controls
-- Remittance schedules (create / modify / cancel)
-- Snapshot export/import with checksum verification
+- Remittance schedules (create / modify / cancel) with per-owner caps to prevent storage bloat
+- Snapshot export/import with checksum verification and schedule cap validation
 - Audit log (last 100 entries, ring-buffer)
 - TTL extension on initialization, split updates, snapshot imports, and schedule mutations
 
@@ -260,6 +260,7 @@ failure.
 | 7 | `snapshot.config.timestamp` and `exported_at` are not in the future | `InvalidAmount` |
 | 8 | Caller is the current on-chain owner (`existing.owner == caller`) | `Unauthorized` |
 | 9 | Snapshot owner matches caller (`snapshot.config.owner == caller`) | `OwnerMismatch` |
+| 10 | Schedule count does not exceed per-owner cap | `ScheduleCapExceeded` |
 
 ### New Error Variants (discriminants 17–20)
 
@@ -272,6 +273,7 @@ These variants were added as part of the snapshot import hardening and extend th
 | 18 | `FutureTimestamp` | Reserved for future use; the pipeline currently maps future-timestamp failures to `InvalidAmount` (discriminant 4). |
 | 19 | `OwnerMismatch` | `snapshot.config.owner` does not equal the calling address, meaning the snapshot was exported by a different owner. |
 | 20 | `InvalidPercentageRange` | At least one of the four percentage fields exceeds 100; delegated to `validate_percentages`. |
+| 22 | `ScheduleCapExceeded` | The owner has reached the maximum number of allowed remittance schedules (MAX_SCHEDULES_PER_OWNER = 50). |
 
 ### `verify_snapshot` Pre-flight Helper
 
@@ -374,6 +376,27 @@ Deactivates a schedule.
   - `caller` must be the `config.owner`.
   - Schedule must be `active`.
 
+#### `get_remittance_schedules(env, owner) -> Vec<RemittanceSchedule>`
+
+Returns all remittance schedules for the specified owner, ordered by ID ascending.
+
+- **Ordering Guarantee:** Results are deterministically ordered by schedule ID ascending, ensuring consistent results across queries.
+
+#### `get_remittance_schedules_paginated(env, owner, from_index, limit) -> SchedulePage`
+
+Returns remittance schedules for the specified owner with pagination support.
+
+- **Parameters:**
+  - `owner`: The owner address to query
+  - `from_index`: Zero-based starting index in the schedule list
+  - `limit`: Maximum number of schedules to return (clamped to 50)
+- **Returns:** `SchedulePage` with items ordered by ID ascending, next cursor, and count
+- **Ordering Guarantee:** Results are deterministically ordered by schedule ID ascending, providing stable pagination cursors
+
+#### `get_remittance_schedule(env, schedule_id) -> Option<RemittanceSchedule>`
+
+Returns a single schedule by ID, or `None` if not found.
+
 ## Error Reference
 
 ```rust
@@ -411,6 +434,39 @@ pub enum RemittanceSplitError {
 | `("split", DistributionCompleted)` | `(from: Address, total_amount: i128)` | `distribute_usdc` succeeds |
 | `("split", SnapshotExported)` | `caller: Address` | `export_snapshot` succeeds |
 | `("split", SnapshotImported)` | `caller: Address` | `import_snapshot` succeeds |
+
+## Schedule Caps
+
+To prevent storage bloat and ensure efficient contract operation, each owner is limited to a maximum of **50 remittance schedules** (`MAX_SCHEDULES_PER_OWNER = 50`).
+
+### Cap Enforcement
+
+The schedule cap is enforced in two critical paths:
+
+1. **Schedule Creation**: `create_remittance_schedule` checks the owner's current schedule count before creating a new schedule. If the owner already has 50 active schedules, the function returns `ScheduleCapExceeded`.
+
+2. **Snapshot Import**: `import_snapshot` validates that the snapshot contains no more than 50 schedules for the owner. This prevents bypassing the cap through migration/data import.
+
+### Cap Behavior
+
+- **Per-Owner**: Caps are enforced independently per owner. Different owners can each have up to 50 schedules.
+- **Active Schedules Only**: Only active schedules count toward the cap. Cancelled schedules are removed from the owner's schedule index.
+- **Fail-Closed**: Both creation and import paths fail closed - if the cap would be exceeded, the operation is rejected entirely.
+
+### Error Handling
+
+When the cap is exceeded, the contract returns:
+```rust
+RemittanceSplitError::ScheduleCapExceeded
+```
+
+This error is emitted before any state changes, ensuring the operation is atomic.
+
+### Recovery
+
+To create new schedules after reaching the cap:
+1. Cancel existing schedules using `cancel_remittance_schedule`
+2. Create new schedules (now under the cap)
 
 ## Security Assumptions
 

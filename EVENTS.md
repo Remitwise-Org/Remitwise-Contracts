@@ -884,6 +884,47 @@ When upgrading contracts:
 3. Indexers can subscribe to both old and new topics during transition period
 4. After deprecation period, old events may be phased out (announced in advance)
 
+### Schema Stability Tests
+
+The schema documented above is enforced in CI by per-contract test modules
+named `events_schema_test`. Each module pins down three things:
+
+1. **Topic symbols** — every `symbol_short!()` literal that appears in a
+   topic tuple is asserted equal to its documented value.
+2. **Payload field set, names, and types** — every event struct is built via
+   a struct literal naming each field (which fails to compile if a field is
+   added, removed, or renamed) and round-tripped through `Val` to verify the
+   on-wire serialization is preserved.
+3. **Enum variant set and discriminants** — every event enum's variants are
+   listed by name and (where stable discriminants matter) compared against
+   their documented `as u32` value.
+
+Run them locally:
+
+```bash
+cargo test --workspace events_schema_test
+```
+
+Per-contract:
+
+| Contract | Test module |
+|----------|-------------|
+| `bill_payments` | [bill_payments/src/events_schema_test.rs](bill_payments/src/events_schema_test.rs) |
+| `family_wallet` | [family_wallet/src/events_schema_test.rs](family_wallet/src/events_schema_test.rs) |
+| `remittance_split` | [remittance_split/src/events_schema_test.rs](remittance_split/src/events_schema_test.rs) |
+| `reporting` | [reporting/src/events_schema_test.rs](reporting/src/events_schema_test.rs) |
+| `savings_goals` | [savings_goals/src/events_schema_test.rs](savings_goals/src/events_schema_test.rs) |
+
+A failing schema test is the signal that **a change is breaking for indexers**.
+The required workflow is:
+
+1. Bump the contract's major version.
+2. Update `EVENTS.md` to document the old and new shapes side-by-side.
+3. Update the test to reflect the new schema *as a separate commit on top
+   of the version bump*, so reviewers can audit the diff in isolation.
+4. Coordinate with downstream indexer owners before the upgrade event is
+   emitted on mainnet.
+
 ---
 
 ## Indexer Integration Guide
