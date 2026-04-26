@@ -794,6 +794,7 @@ impl ReportingContract {
     /// Aggregates all goals for a user and calculates overall completion progress.
     pub fn get_savings_report(
         env: Env,
+        caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
@@ -855,6 +856,7 @@ impl ReportingContract {
     /// Analyzes bill statuses and payment deadlines for a specific period.
     pub fn get_bill_compliance_report(
         env: Env,
+        caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
@@ -952,6 +954,7 @@ impl ReportingContract {
     /// Summarizes active policies, coverage amounts, and premium ratios.
     pub fn get_insurance_report(
         env: Env,
+        caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
@@ -1093,6 +1096,7 @@ impl ReportingContract {
     /// This is the primary reporting entry point for users.
     pub fn get_financial_health_report(
         env: Env,
+        caller: Address,
         user: Address,
         total_remittance: i128,
         period_start: u64,
@@ -1131,7 +1135,8 @@ impl ReportingContract {
     /// Generate trend analysis comparing two data points.
     pub fn get_trend_analysis(
         _env: Env,
-        _user: Address,
+        caller: Address,
+        user: Address,
         current_amount: i128,
         previous_amount: i128,
     ) -> TrendData {
@@ -1235,6 +1240,7 @@ impl ReportingContract {
     /// Retrieve a previously stored report.
     pub fn get_stored_report(
         env: Env,
+        caller: Address,
         user: Address,
         period_key: u64,
     ) -> Option<FinancialHealthReport> {

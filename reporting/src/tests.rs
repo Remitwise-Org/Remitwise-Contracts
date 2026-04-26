@@ -830,7 +830,7 @@ fn test_get_trend_analysis() {
     let current_amount = 15000i128;
     let previous_amount = 10000i128;
 
-    let trend = client.get_trend_analysis(&user, &current_amount, &previous_amount);
+    let trend = client.get_trend_analysis(&user, &user, &current_amount, &previous_amount);
 
     assert_eq!(trend.current_amount, 15000);
     assert_eq!(trend.change_percentage, 50);
@@ -875,7 +875,7 @@ fn test_store_and_retrieve_report() {
     let stored = client.store_report(&user, &report, &period_key);
     assert!(stored);
 
-    let retrieved = client.get_stored_report(&user, &period_key);
+    let retrieved = client.get_stored_report(&user, &user, &period_key);
     assert!(retrieved.is_some());
 }
 
