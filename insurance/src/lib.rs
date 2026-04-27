@@ -273,3 +273,6 @@ impl Insurance {
         }
     }
 }
+
+#[cfg(test)]
+mod test;
