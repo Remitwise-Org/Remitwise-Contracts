@@ -3147,7 +3147,10 @@ fn test_add_tags_to_goal_normalization_success() {
     client.add_tags_to_goal(&user, &goal_id, &tags);
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.tags.get(0).unwrap(), String::from_str(&env, "urgent-1_tag"));
+    assert_eq!(
+        goal.tags.get(0).unwrap(),
+        String::from_str(&env, "urgent-1_tag")
+    );
 }
 
 #[test]
@@ -4086,4 +4089,320 @@ mod migration_e2e_tests {
             panic!("Expected SavingsGoals payload");
         }
     }
+}
+
+// ============================================================================
+// get_goals_for_owner – deterministic cursor pagination tests
+// ============================================================================
+
+/// get_goals_for_owner is an alias for get_goals – must produce identical results.
+#[test]
+fn test_get_goals_for_owner_matches_get_goals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 7);
+
+    let via_get_goals = client.get_goals(&owner, &0, &3);
+    let via_for_owner = client.get_goals_for_owner(&owner, &0, &3);
+
+    assert_eq!(via_get_goals.count, via_for_owner.count);
+    assert_eq!(via_get_goals.next_cursor, via_for_owner.next_cursor);
+    assert_eq!(via_get_goals.items.len(), via_for_owner.items.len());
+    for i in 0..via_get_goals.items.len() {
+        assert_eq!(
+            via_get_goals.items.get(i).unwrap().id,
+            via_for_owner.items.get(i).unwrap().id
+        );
+    }
+}
+
+/// get_goals_for_owner empty owner returns empty page.
+#[test]
+fn test_get_goals_for_owner_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let page = client.get_goals_for_owner(&owner, &0, &10);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+/// Limit exceeding MAX_PAGE_LIMIT is clamped to MAX_PAGE_LIMIT.
+#[test]
+fn test_get_goals_for_owner_limit_clamped_to_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    // Create exactly MAX_PAGE_LIMIT + 5 goals
+    let total = MAX_PAGE_LIMIT + 5;
+    setup_goals(&env, &client, &owner, total);
+
+    // Request limit=200, should be clamped to MAX_PAGE_LIMIT
+    let page = client.get_goals_for_owner(&owner, &0, &200);
+    assert_eq!(
+        page.count, MAX_PAGE_LIMIT,
+        "count must be clamped to MAX_PAGE_LIMIT"
+    );
+    assert!(page.next_cursor > 0, "there must be a next page");
+
+    // Verify the remaining goals are on the second page
+    let page2 = client.get_goals_for_owner(&owner, &page.next_cursor, &200);
+    assert_eq!(page2.count, 5);
+    assert_eq!(page2.next_cursor, 0, "no more pages");
+}
+
+/// Exact boundary: when goal count equals the limit, next_cursor must be 0.
+#[test]
+fn test_get_goals_for_owner_exact_page_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 4);
+
+    let page = client.get_goals_for_owner(&owner, &0, &4);
+    assert_eq!(page.count, 4);
+    assert_eq!(page.next_cursor, 0, "exactly filling the page signals end");
+}
+
+/// Single goal pagination: page of 1 with 1 goal returns that goal and next_cursor=0.
+#[test]
+fn test_get_goals_for_owner_single_goal() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Only"),
+        &500,
+        &2_000_000_000,
+    );
+
+    let page = client.get_goals_for_owner(&owner, &0, &1);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.items.get(0).unwrap().id, goal_id);
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// next_cursor value equals the last returned item's ID.
+#[test]
+fn test_get_goals_for_owner_next_cursor_is_last_item_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 10);
+
+    let page = client.get_goals_for_owner(&owner, &0, &3);
+    let last_item_id = page.items.get(page.count - 1).unwrap().id;
+    assert_eq!(
+        page.next_cursor, last_item_id,
+        "next_cursor must equal the last returned item's ID"
+    );
+}
+
+/// Full iteration: paginating through all goals collects every ID exactly once.
+#[test]
+fn test_get_goals_for_owner_full_iteration_no_gaps_no_dupes() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    let total = 23u32;
+    setup_goals(&env, &client, &owner, total);
+
+    let mut collected_ids = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    let limit = 5u32;
+    loop {
+        let page = client.get_goals_for_owner(&owner, &cursor, &limit);
+        for goal in page.items.iter() {
+            collected_ids.push(goal.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(
+        collected_ids.len(),
+        total as usize,
+        "must collect exactly {total} goals"
+    );
+    // IDs must be strictly ascending (deterministic order)
+    for i in 1..collected_ids.len() {
+        assert!(
+            collected_ids[i] > collected_ids[i - 1],
+            "IDs must be strictly ascending: {} > {}",
+            collected_ids[i],
+            collected_ids[i - 1]
+        );
+    }
+    // No duplicates (ascending guarantees this, but explicit check)
+    let mut deduped = collected_ids.clone();
+    deduped.sort();
+    deduped.dedup();
+    assert_eq!(deduped.len(), collected_ids.len(), "no duplicates allowed");
+}
+
+/// Cursor pointing at the last goal returns an empty next page.
+#[test]
+fn test_get_goals_for_owner_cursor_at_last_returns_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+
+    // Get all goals to find the last ID
+    let all_page = client.get_goals_for_owner(&owner, &0, &50);
+    let last_id = all_page.items.get(all_page.count - 1).unwrap().id;
+
+    // Use last ID as cursor
+    let next_page = client.get_goals_for_owner(&owner, &last_id, &10);
+    assert_eq!(next_page.count, 0);
+    assert_eq!(next_page.next_cursor, 0);
+    assert_eq!(next_page.items.len(), 0);
+}
+
+/// Limit=0 defaults to DEFAULT_PAGE_LIMIT via get_goals_for_owner.
+#[test]
+fn test_get_goals_for_owner_limit_zero_uses_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+
+    let page = client.get_goals_for_owner(&owner, &0, &0);
+    assert_eq!(page.count, 3, "3 < DEFAULT_PAGE_LIMIT so all returned");
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// Invalid (non-existent) cursor panics via get_goals_for_owner.
+#[test]
+fn test_get_goals_for_owner_rejects_invalid_cursor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+
+    let res = client.try_get_goals_for_owner(&owner, &999, &10);
+    assert!(res.is_err(), "invalid cursor must be rejected");
+}
+
+/// Owner isolation: one owner's cursor is invalid for another owner.
+#[test]
+fn test_get_goals_for_owner_cross_owner_cursor_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &alice, 5);
+    setup_goals(&env, &client, &bob, 3);
+
+    let alice_page = client.get_goals_for_owner(&alice, &0, &2);
+    let alice_cursor = alice_page.next_cursor;
+
+    // Bob using Alice's cursor must fail
+    let res = client.try_get_goals_for_owner(&bob, &alice_cursor, &10);
+    assert!(res.is_err(), "cross-owner cursor must be rejected");
+}
+
+/// Multi-owner isolation: each owner sees only their own goals.
+#[test]
+fn test_get_goals_for_owner_multi_owner_isolation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &alice, 4);
+    setup_goals(&env, &client, &bob, 6);
+
+    let alice_page = client.get_goals_for_owner(&alice, &0, &50);
+    assert_eq!(alice_page.count, 4);
+    for g in alice_page.items.iter() {
+        assert_eq!(g.owner, alice);
+    }
+
+    let bob_page = client.get_goals_for_owner(&bob, &0, &50);
+    assert_eq!(bob_page.count, 6);
+    for g in bob_page.items.iter() {
+        assert_eq!(g.owner, bob);
+    }
+}
+
+/// Page size of 1 iterates one goal at a time.
+#[test]
+fn test_get_goals_for_owner_page_size_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+
+    let mut collected = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_goals_for_owner(&owner, &cursor, &1);
+        assert!(page.count <= 1);
+        for g in page.items.iter() {
+            collected.push(g.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    assert_eq!(collected.len(), 3);
+    assert_eq!(collected, std::vec![1, 2, 3]);
 }

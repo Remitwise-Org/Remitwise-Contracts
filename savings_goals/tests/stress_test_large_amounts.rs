@@ -722,7 +722,7 @@ fn test_withdraw_from_goal_overflow_protection() {
     let goal_id = client.create_goal(
         &owner,
         &String::from_str(&env, "Withdrawal Test"),
-        &i128::MAX / 2,
+        &(i128::MAX / 2),
         &2000000,
     );
 
@@ -861,4 +861,3 @@ fn test_error_codes_stable_across_repeated_operations() {
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal.current_amount, 1000);
 }
-

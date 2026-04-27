@@ -3,20 +3,16 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+    Address, Env, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 
-fn setup_test(env: &Env) -> (SavingsGoalContractClient, Address) {
+fn setup_test(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(env, &contract_id);
     let user = Address::generate(env);
     env.mock_all_auths();
     client.init();
     (client, user)
-}
-
-fn last_event(env: &Env) -> (Address, SorobanVec<Val>, Val) {
-    env.events().all().last().expect("No events emitted")
 }
 
 fn get_remitwise_events(env: &Env, action: Symbol) -> SorobanVec<(Address, SorobanVec<Val>, Val)> {
@@ -58,19 +54,17 @@ fn test_goal_created_event_schema() {
     let event = remitwise_events.get(0).unwrap();
 
     // Topic Schema: [Remitwise, State, Medium, created]
-    assert_eq!(
-        event.1.get(0).unwrap(),
-        symbol_short!("Remitwise").into_val(&env)
-    );
-    assert_eq!(
-        event.1.get(1).unwrap(),
-        (EventCategory::State as u32).into_val(&env)
-    );
-    assert_eq!(
-        event.1.get(2).unwrap(),
-        (EventPriority::Medium as u32).into_val(&env)
-    );
-    assert_eq!(event.1.get(3).unwrap(), GOAL_CREATED.into_val(&env));
+    let topic0: Symbol = Symbol::try_from_val(&env, &event.1.get(0).unwrap()).unwrap();
+    assert_eq!(topic0, symbol_short!("Remitwise"));
+
+    let topic1: u32 = u32::try_from_val(&env, &event.1.get(1).unwrap()).unwrap();
+    assert_eq!(topic1, EventCategory::State as u32);
+
+    let topic2: u32 = u32::try_from_val(&env, &event.1.get(2).unwrap()).unwrap();
+    assert_eq!(topic2, EventPriority::Medium as u32);
+
+    let topic3: Symbol = Symbol::try_from_val(&env, &event.1.get(3).unwrap()).unwrap();
+    assert_eq!(topic3, GOAL_CREATED);
 
     // Payload Schema: GoalCreatedEvent
     let data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
@@ -101,14 +95,11 @@ fn test_funds_added_event_schema() {
     let event = remitwise_events.get(0).unwrap();
 
     // Topic Schema: [Remitwise, Transaction, Medium, funds_add]
-    assert_eq!(
-        event.1.get(1).unwrap(),
-        (EventCategory::Transaction as u32).into_val(&env)
-    );
-    assert_eq!(
-        event.1.get(3).unwrap(),
-        symbol_short!("funds_add").into_val(&env)
-    );
+    let topic1: u32 = u32::try_from_val(&env, &event.1.get(1).unwrap()).unwrap();
+    assert_eq!(topic1, EventCategory::Transaction as u32);
+
+    let topic3: Symbol = Symbol::try_from_val(&env, &event.1.get(3).unwrap()).unwrap();
+    assert_eq!(topic3, symbol_short!("funds_add"));
 
     // Payload Schema: FundsAddedEvent
     let data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
@@ -145,10 +136,8 @@ fn test_funds_withdrawn_event_schema() {
     let event = remitwise_events.get(0).unwrap();
 
     // Topic Schema: [Remitwise, Transaction, Medium, funds_rem]
-    assert_eq!(
-        event.1.get(3).unwrap(),
-        symbol_short!("funds_rem").into_val(&env)
-    );
+    let topic3: Symbol = Symbol::try_from_val(&env, &event.1.get(3).unwrap()).unwrap();
+    assert_eq!(topic3, symbol_short!("funds_rem"));
 
     // Payload Schema: FundsWithdrawnEvent
     let data: FundsWithdrawnEvent = FundsWithdrawnEvent::try_from_val(&env, &event.2).unwrap();
@@ -174,12 +163,15 @@ fn test_goal_completed_event_schema() {
     client.add_to_goal(&user, &id, &1000);
 
     // GoalCompletedEvent is published with a single topic (GOAL_COMPLETED,)
-    // It's not using RemitwiseEvents::emit for this specific one in lib.rs currently
-    // Let's verify what it emits
     let events = env.events().all();
     let completed_event = events
         .iter()
-        .find(|e| e.1.len() == 1 && e.1.get(0).unwrap() == GOAL_COMPLETED.into_val(&env))
+        .find(|e| {
+            e.1.len() == 1 && {
+                let t: Symbol = Symbol::try_from_val(&env, &e.1.get(0).unwrap()).unwrap();
+                t == GOAL_COMPLETED
+            }
+        })
         .expect("GoalCompletedEvent not found");
 
     let data: GoalCompletedEvent =

@@ -464,18 +464,22 @@ impl SavingsGoalContract {
             }
             let mut buf = [0u8; 32];
             tag.copy_into_slice(&mut buf[..len as usize]);
-            
-            for i in 0..(len as usize) {
-                let mut c = buf[i];
-                if c >= b'A' && c <= b'Z' {
-                    c = c + (b'a' - b'A');
-                    buf[i] = c;
+
+            for c in buf[..len as usize].iter_mut() {
+                if c.is_ascii_uppercase() {
+                    *c += b'a' - b'A';
                 }
-                if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9') || c == b'-' || c == b'_') {
+                if !(c.is_ascii_lowercase()
+                    || c.is_ascii_digit()
+                    || *c == b'-'
+                    || *c == b'_')
+                {
                     soroban_sdk::panic_with_error!(env, SavingsGoalsError::InvalidTagContent);
                 }
             }
-            normalized_tags.push_back(String::from_slice(env, &buf[..len as usize]));
+            let tag_str = core::str::from_utf8(&buf[..len as usize])
+                .unwrap_or_else(|_| panic!("Invalid UTF-8 in tag"));
+            normalized_tags.push_back(String::from_str(env, tag_str));
         }
         normalized_tags
     }
@@ -1243,8 +1247,19 @@ impl SavingsGoalContract {
         }
     }
 
+    /// Named alias for `get_goals` matching the issue specification.
+    /// Returns a deterministic page of goals scoped to `owner`.
+    ///
+    /// # Arguments
+    /// * `owner`  - whose goals to return
+    /// * `cursor` - start after this goal ID (pass 0 for the first page)
+    /// * `limit`  - max items per page (0 -> DEFAULT, capped at MAX_PAGE_LIMIT)
+    pub fn get_goals_for_owner(env: Env, owner: Address, cursor: u32, limit: u32) -> GoalPage {
+        Self::get_goals(env, owner, cursor, limit)
+    }
+
     /// Backward-compatible: returns ALL goals for owner in one Vec.
-    /// Prefer the paginated `get_goals` for production use.
+    /// Prefer the paginated `get_goals` / `get_goals_for_owner` for production use.
     pub fn get_all_goals(env: Env, owner: Address) -> Vec<SavingsGoal> {
         let goals: Map<u32, SavingsGoal> = env
             .storage()
