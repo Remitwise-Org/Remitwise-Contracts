@@ -725,3 +725,6 @@ impl Insurance {
         Self::read_stats(&env)
     }
 }
+
+#[cfg(test)]
+mod test;

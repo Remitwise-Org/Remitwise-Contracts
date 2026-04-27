@@ -190,7 +190,7 @@ fn contract_policy_page_ordering_and_cursor_correctness() {
 
     let mut cursor = 0u32;
     let mut seen_ids = std::vec::Vec::new();
-    let mut ended = false;
+    let ended;
 
     loop {
         let page = client.get_active_policies(&owner, &cursor, &2u32);
