@@ -304,4 +304,164 @@ pub mod nonce {
         map.set(address.clone(), used);
         env.storage().instance().set(&USED_NONCES_KEY, &map);
     }
+
+
+/// Tag validation and canonicalization constants
+pub const TAG_MIN_LENGTH: usize = 1;
+pub const TAG_MAX_LENGTH: usize = 32;
+
+/// Tag validation and canonicalization utilities
+///
+/// Provides consistent tag handling across all contracts to ensure
+/// safe indexing and predictable search behavior.
+pub mod tags {
+    use super::{TAG_MAX_LENGTH, TAG_MIN_LENGTH};
+    use soroban_sdk::{Env, String, Vec};
+
+    /// Validates a tag for length and character constraints.
+    ///
+    /// # Requirements
+    /// - Tag length must be between 1 and 32 characters (inclusive)
+    /// - Tag must not be empty
+    ///
+    /// # Character Set
+    /// Tags should consist of printable ASCII characters. The validation
+    /// enforces length bounds but allows the contract layer to define
+    /// additional charset restrictions if needed.
+    ///
+    /// # Panics
+    /// Panics if the tag violates any validation rule.
+    pub fn validate_tag(tag: &String) {
+        let len = tag.len() as usize;
+        if len < TAG_MIN_LENGTH {
+            panic!("Tag must be at least 1 character");
+        }
+        if len > TAG_MAX_LENGTH {
+            panic!("Tag must be at most 32 characters");
+        }
+    }
+
+    /// Validates a batch of tags.
+    ///
+    /// # Requirements
+    /// - At least one tag must be provided
+    /// - Each tag must pass individual validation
+    ///
+    /// # Panics
+    /// Panics if the tag list is empty or any tag is invalid.
+    pub fn validate_tags(tags: &Vec<String>) {
+        if tags.is_empty() {
+            panic!("Tags list cannot be empty");
+        }
+        for tag in tags.iter() {
+            validate_tag(&tag);
+        }
+    }
+
+    /// Canonicalizes a tag by applying normalization rules.
+    ///
+    /// # Normalization Rules
+    /// 1. Trim leading and trailing whitespace
+    /// 2. Convert to lowercase for consistency
+    /// 3. Collapse multiple consecutive spaces to single space
+    ///
+    /// # Security
+    /// This function ensures tags are in a canonical form for reliable
+    /// indexing and comparison. All tags should be canonicalized before
+    /// storage or comparison.
+    ///
+    /// # Returns
+    /// A new canonicalized String.
+    pub fn canonicalize_tag(env: &Env, tag: &String) -> String {
+        // Convert to bytes for manipulation
+        let bytes = tag.to_bytes();
+        let len = bytes.len();
+
+        if len == 0 {
+            return String::from_str(env, "");
+        }
+
+        // Find start (skip leading whitespace)
+        let mut start = 0;
+        while start < len && is_whitespace(bytes.get(start).unwrap_or(0)) {
+            start += 1;
+        }
+
+        // Find end (skip trailing whitespace)
+        let mut end = len;
+        while end > start && is_whitespace(bytes.get(end - 1).unwrap_or(0)) {
+            end -= 1;
+        }
+
+        // Build canonicalized string
+        let mut result = Vec::new(env);
+        let mut prev_was_space = false;
+
+        for i in start..end {
+            let byte = bytes.get(i).unwrap_or(0);
+
+            if is_whitespace(byte) {
+                // Collapse multiple spaces
+                if !prev_was_space {
+                    result.push_back(b' ');
+                    prev_was_space = true;
+                }
+            } else {
+                // Convert to lowercase (ASCII only)
+                let lower = if byte >= b'A' && byte <= b'Z' {
+                    byte + 32
+                } else {
+                    byte
+                };
+                result.push_back(lower);
+                prev_was_space = false;
+            }
+        }
+
+        // Convert bytes back to string
+        String::from_bytes(env, &result)
+    }
+
+    /// Validates and canonicalizes a single tag.
+    ///
+    /// Combines validation and canonicalization in one step.
+    /// The tag is validated first, then canonicalized.
+    ///
+    /// # Returns
+    /// A validated and canonicalized tag string.
+    ///
+    /// # Panics
+    /// Panics if the tag fails validation.
+    pub fn validate_and_canonicalize(env: &Env, tag: &String) -> String {
+        let canonical = canonicalize_tag(env, tag);
+        validate_tag(&canonical);
+        canonical
+    }
+
+    /// Validates and canonicalizes a batch of tags.
+    ///
+    /// # Returns
+    /// A vector of validated and canonicalized tag strings.
+    ///
+    /// # Panics
+    /// Panics if any tag fails validation.
+    pub fn validate_and_canonicalize_tags(env: &Env, tags: &Vec<String>) -> Vec<String> {
+        let mut result = Vec::new(env);
+        for tag in tags.iter() {
+            let canonical = validate_and_canonicalize(env, &tag);
+            result.push_back(canonical);
+        }
+        // Validate the final list is not empty
+        if result.is_empty() {
+            panic!("Tags list cannot be empty");
+        }
+        result
+    }
+
+    /// Check if a byte is a whitespace character
+    fn is_whitespace(byte: u8) -> bool {
+        byte == b' ' || byte == b'	' || byte == b'
+' || byte == b''
+    }
 }
+
