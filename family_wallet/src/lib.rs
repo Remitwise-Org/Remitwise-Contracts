@@ -32,6 +32,8 @@ const MAX_BATCH_MEMBERS: u32 = 50;
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 200;
 const MAX_AUDIT_PAGE_LIMIT: u32 = 50;
 const DEFAULT_AUDIT_PAGE_LIMIT: u32 = 20;
+const MAX_PENDING_PAGE_LIMIT: u32 = 100;
+const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
 
 #[contracttype]
 #[derive(Clone)]
@@ -81,6 +83,14 @@ pub struct PendingTransaction {
     pub created_at: u64,
     pub expires_at: u64,
     pub data: TransactionData,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PendingTxPage {
+    pub items: Vec<PendingTransaction>,
+    pub next_cursor: u64,
+    pub count: u32,
 }
 
 #[contracttype]
@@ -1155,6 +1165,65 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
         pending_txs.get(tx_id)
+    }
+
+    /// Paginated listing of pending multisig proposals.
+    ///
+    /// - `caller` must be authenticated.
+    /// - Owner/Admin may list all pending proposals.
+    /// - Regular members may only list proposals they proposed.
+    ///
+    /// Cursor is the last-seen `tx_id`. Pass `0` for the first page.
+    pub fn get_pending_transactions_page(
+        env: Env,
+        caller: Address,
+        cursor: u64,
+        limit: u32,
+    ) -> PendingTxPage {
+        caller.require_auth();
+
+        let capped_limit = if limit == 0 {
+            DEFAULT_PENDING_PAGE_LIMIT
+        } else {
+            limit.min(MAX_PENDING_PAGE_LIMIT)
+        };
+
+        let pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let next_tx: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NEXT_TX"))
+            .unwrap_or(1u64);
+
+        let mut items: Vec<PendingTransaction> = Vec::new(&env);
+
+        let mut id = cursor.saturating_add(1);
+        let mut last_returned: u64 = 0;
+        let is_admin = Self::is_owner_or_admin(&env, &caller);
+
+        while id < next_tx && items.len() < capped_limit {
+            if let Some(tx) = pending_txs.get(id) {
+                if is_admin || tx.proposer == caller {
+                    items.push_back(tx.clone());
+                    last_returned = id;
+                }
+            }
+            id = id.saturating_add(1);
+        }
+
+        let next_cursor = if id < next_tx && last_returned != 0 { last_returned } else { 0u64 };
+        let count = items.len();
+
+        PendingTxPage {
+            items,
+            next_cursor,
+            count,
+        }
     }
 
     pub fn get_multisig_config(env: Env, tx_type: TransactionType) -> Option<MultiSigConfig> {

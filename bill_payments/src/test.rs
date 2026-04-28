@@ -752,6 +752,75 @@ mod testsuit {
     }
 
     #[test]
+    fn test_create_bill_invalid_due_dates() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // due_date == 0 should be rejected
+        let res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Invalid"),
+            &100,
+            &0u64,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        assert_eq!(res, Err(Ok(Error::InvalidDueDate)));
+
+        // due_date <= now should be rejected
+        set_ledger_time(&env, 1, 1_000_000);
+        env.mock_all_auths();
+        let res2 = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Invalid"),
+            &100,
+            &1_000_000u64, // equal to now
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        assert_eq!(res2, Err(Ok(Error::InvalidDueDate)));
+    }
+
+    #[test]
+    fn test_recurring_generation_never_in_past() {
+        let env = Env::default();
+        // initial time
+        set_ledger_time(&env, 1, 1_000_000);
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // create recurring bill due shortly after now
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Rent"),
+            &1000,
+            &(1_000_010u64),
+            &true,
+            &30u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
+        // advance far into the future so next_due_date would otherwise be in the past
+        set_ledger_time(&env, 2, 2_000_000);
+        env.mock_all_auths();
+        client.pay_bill(&owner, &bill_id).unwrap();
+
+        // The next generated recurring bill (id 2) must have due_date > current time
+        let next_bill = client.get_bill(&2).unwrap();
+        assert!(next_bill.due_date > 2_000_000);
+    }
+
+    #[test]
     fn test_get_all_bills_for_owner_basic() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
