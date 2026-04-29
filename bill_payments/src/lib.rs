@@ -120,6 +120,8 @@ pub enum BillPaymentsError {
     DuplicateExternalRef = 17,
     /// Owner has reached the maximum number of allowed active bills.
     OwnerBillCapExceeded = 18,
+    /// Tag content contains invalid characters (must be [a-z0-9-_])
+    InvalidTagContent = 19,
 }
 
 // Back-compat alias: large parts of this crate (and tests) still refer to `Error`.
@@ -468,8 +470,8 @@ impl BillPayments {
         ext_ref: &Option<String>,
     ) -> Result<Option<String>, BillPaymentsError> {
         match ext_ref {
-            None => Ok(None),
-            Some(r) => Ok(Some(Self::validate_external_ref(env, r)?)),
+            Option::None => Ok(None),
+            Option::Some(r) => Ok(Some(Self::validate_external_ref(env, r)?)),
         }
     }
 
@@ -565,12 +567,12 @@ impl BillPayments {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
-            None => {
+            Option::None => {
                 if caller != new_admin {
                     return Err(BillPaymentsError::UnauthorizedPause);
                 }
             }
-            Some(admin) if admin != caller => return Err(BillPaymentsError::UnauthorizedPause),
+            Option::Some(admin) if admin != caller => return Err(BillPaymentsError::UnauthorizedPause),
             _ => {}
         }
         env.storage()
@@ -748,13 +750,13 @@ impl BillPayments {
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
         // 2. If upgrade admin exists, only current upgrade admin can transfer
         match &current_upgrade_admin {
-            None => {
+            Option::None => {
                 // Bootstrap pattern - caller must be setting themselves as admin
                 if caller != new_admin {
                     return Err(Error::Unauthorized);
                 }
             }
-            Some(ref current_admin) => {
+            Option::Some(ref current_admin) => {
                 // Admin transfer - only current admin can transfer
                 if *current_admin != caller {
                     return Err(Error::Unauthorized);
@@ -1030,6 +1032,163 @@ impl BillPayments {
         );
 
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Tag management
+    // -----------------------------------------------------------------------
+
+    /// Validates a tag batch for metadata operations.
+    ///
+    /// Requirements:
+    /// - At least one tag must be provided.
+    /// - Each tag length must be between 1 and 32 characters.
+    /// - Allowed charset: [a-z0-9-_]. Uppercase is normalized to lowercase.
+    fn validate_and_normalize_tags(env: &Env, tags: &Vec<String>) -> Vec<String> {
+        if tags.is_empty() {
+            panic!("Tags cannot be empty");
+        }
+        let mut normalized_tags = Vec::new(env);
+        for tag in tags.iter() {
+            let len = tag.len();
+            if len == 0 || len > 32 {
+                panic!("Tag must be between 1 and 32 characters");
+            }
+            let mut buf = [0u8; 32];
+            tag.copy_into_slice(&mut buf[..len as usize]);
+
+            for c in buf.iter_mut().take(len as usize) {
+                if c.is_ascii_uppercase() {
+                    *c += b'a' - b'A';
+                }
+                let c_val = *c;
+                if !(c_val.is_ascii_lowercase()
+                    || c_val.is_ascii_digit()
+                    || c_val == b'-'
+                    || c_val == b'_')
+                {
+                    soroban_sdk::panic_with_error!(env, BillPaymentsError::InvalidTagContent);
+                }
+            }
+            let s = match core::str::from_utf8(&buf[..len as usize]) {
+                Ok(v) => v,
+                Err(_) => soroban_sdk::panic_with_error!(env, BillPaymentsError::InvalidTagContent),
+            };
+            normalized_tags.push_back(String::from_str(env, s));
+        }
+        normalized_tags
+    }
+
+    /// Adds tags to a bill's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the bill owner can add tags.
+    ///
+    /// Notes:
+    /// - Tags are validated and normalized (lowercase, trimmed charset).
+    /// - Emits `(bill, tags_add)` with `(bill_id, caller, tags)`.
+    pub fn add_tags_to_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
+        caller.require_auth();
+        let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
+        Self::extend_instance_ttl(&env);
+
+        let mut bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut bill = bills.get(bill_id).unwrap_or_else(|| {
+            panic!("Bill not found");
+        });
+
+        if bill.owner != caller {
+            panic!("Only the bill owner can add tags");
+        }
+
+        for tag in normalized_tags.iter() {
+            bill.tags.push_back(tag);
+        }
+
+        bills.set(bill_id, bill);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILLS"), &bills);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("tags_add"),
+            (bill_id, caller.clone(), tags.clone()),
+        );
+        env.events().publish(
+            (symbol_short!("bill"), symbol_short!("tags_add")),
+            (bill_id, caller.clone(), tags.clone()),
+        );
+    }
+
+    /// Removes tags from a bill's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the bill owner can remove tags.
+    ///
+    /// Notes:
+    /// - Removing a tag that is not present is a no-op.
+    /// - Emits `(bill, tags_rem)` with `(bill_id, caller, tags)`.
+    pub fn remove_tags_from_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
+        caller.require_auth();
+        let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
+        Self::extend_instance_ttl(&env);
+
+        let mut bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut bill = bills.get(bill_id).unwrap_or_else(|| {
+            panic!("Bill not found");
+        });
+
+        if bill.owner != caller {
+            panic!("Only the bill owner can remove tags");
+        }
+
+        // Remove matching tags (first occurrence only for each tag in the removal list)
+        let mut remaining_tags = Vec::new(&env);
+        for existing_tag in bill.tags.iter() {
+            let mut should_remove = false;
+            for tag_to_remove in normalized_tags.iter() {
+                if existing_tag == tag_to_remove {
+                    should_remove = true;
+                    break;
+                }
+            }
+            if !should_remove {
+                remaining_tags.push_back(existing_tag);
+            }
+        }
+        bill.tags = remaining_tags;
+
+        bills.set(bill_id, bill);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILLS"), &bills);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("tags_rem"),
+            (bill_id, caller.clone(), tags.clone()),
+        );
+        env.events().publish(
+            (symbol_short!("bill"), symbol_short!("tags_rem")),
+            (bill_id, caller.clone(), tags.clone()),
+        );
     }
 
     pub fn get_bill(env: Env, bill_id: u32) -> Option<Bill> {
@@ -1823,8 +1982,8 @@ impl BillPayments {
 
             // Validation logic for each bill
             let mut bill = match bill_result {
-                Some(b) => b,
-                None => {
+                Option::Some(b) => b,
+                Option::None => {
                     failed_count += 1;
                     RemitwiseEvents::emit(
                         &env,
@@ -2222,8 +2381,8 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
         let next = match current.checked_add(delta) {
-            Some(n) => n,
-            None => panic!("overflow"),
+            Option::Some(n) => n,
+            Option::None => panic!("overflow"),
         };
         totals.set(owner.clone(), next);
         env.storage()
@@ -2269,9 +2428,9 @@ mod test {
                 &(env.ledger().timestamp() + 86400 * (i as u64 + 1)),
                 &false,
                 &0,
-                &None,
+                &Option::<String>::None,
                 &String::from_str(env, "XLM"),
-                &None,
+                &Option::<u32>::None,
             );
             ids.push_back(id);
         }
