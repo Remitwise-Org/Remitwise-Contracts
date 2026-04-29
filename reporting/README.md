@@ -9,7 +9,6 @@ Aggregates financial health data from the remittance_split, savings_goals, bill_
 - Admin-only archival and cleanup of old reports
 - Storage TTL management (instance: ~30 days, archive: ~180 days)
 
-<<<<<<< feature/reporting-address-config-integrity
 ## Dependency contract address integrity
 
 Reporting stores five downstream contract IDs (`remittance_split`, `savings_goals`,
@@ -18,8 +17,8 @@ Reporting stores five downstream contract IDs (`remittance_split`, `savings_goal
 **Validation (on every `configure_addresses` call)**:
 
 - **No self-reference** — None of the five addresses may equal the reporting
-  contract’s own address. Pointing a role at this contract would create ambiguous
-  cross-contract calls and break the intended “one deployment per role” model.
+  contract's own address. Pointing a role at this contract would create ambiguous
+  cross-contract calls and break the intended "one deployment per role" model.
 - **Pairwise uniqueness** — All five values must differ. Two roles must not share
   the same contract ID, or aggregation would silently read the wrong deployment
   twice (audit and correctness risk).
@@ -38,11 +37,10 @@ is rejected.
   its role (that requires off-chain governance / deployment manifests). It only
   enforces **structural** integrity: distinct callees and no reporting
   self-loop.
-- Soroban/Stellar contract IDs are not an EVM-style “zero address”; “malformed”
+- Soroban/Stellar contract IDs are not an EVM-style "zero address"; "malformed"
   in this layer means duplicate or self-reference as above.
-=======
+
 ## Quickstart
->>>>>>> main
 
 ```rust
 // 1. Initialize
