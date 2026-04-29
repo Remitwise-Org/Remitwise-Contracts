@@ -29,19 +29,19 @@ mod remittance_split {
     impl RemittanceSplit {
         pub fn get_split(env: &Env) -> Vec<u32> {
             let mut split = Vec::new(env);
-            split.push_back(50);
-            split.push_back(30);
-            split.push_back(15);
-            split.push_back(5);
+            split.push_back(5000);
+            split.push_back(3000);
+            split.push_back(1500);
+            split.push_back(500);
             split
         }
 
         pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
             let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 50 / 100);
-            amounts.push_back(total_amount * 30 / 100);
-            amounts.push_back(total_amount * 15 / 100);
-            amounts.push_back(total_amount * 5 / 100);
+            amounts.push_back(total_amount * 5000 / 10000);
+            amounts.push_back(total_amount * 3000 / 10000);
+            amounts.push_back(total_amount * 1500 / 10000);
+            amounts.push_back(total_amount * 500 / 10000);
             amounts
         }
     }
@@ -590,7 +590,7 @@ fn test_get_remittance_summary() {
     let spending = summary.category_breakdown.get(0).unwrap();
     assert_eq!(spending.category, Category::Spending);
     assert_eq!(spending.amount, 5000);
-    assert_eq!(spending.percentage, 50);
+    assert_eq!(spending.percentage, 5000);
 }
 
 #[test]

@@ -206,6 +206,8 @@ pub enum ReportingError {
     InvalidDependencyAddressConfiguration = 6,
     /// Report period range is invalid (`period_start` is greater than `period_end`).
     InvalidPeriod = 7,
+    /// Invalid percentage split summing to > 10000 or != 10000
+    InvalidPercentageSplit = 8,
 }
 
 #[contracttype]
@@ -799,13 +801,26 @@ impl ReportingContract {
             }
         };
 
-        let split_amounts = match split_client.try_calculate_split(&total_amount) {
-            Ok(Ok(res)) => res,
-            _ => {
-                availability = DataAvailability::Partial;
-                Vec::new(env)
+        let mut split_amounts = Vec::new(env);
+        if availability == DataAvailability::Complete {
+            let mut sum = 0u32;
+            // Percentages are stored as basis points (bps), where 10000 = 100.00%
+            for i in 0..split_percentages.len() {
+                let p = split_percentages.get(i).unwrap_or(0);
+                sum = sum.checked_add(p).ok_or(ReportingError::InvalidPercentageSplit)?;
+                if sum > 10000 {
+                    return Err(ReportingError::InvalidPercentageSplit);
+                }
+                
+                // Formula used is (amount * percentage) / 10000
+                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10000;
+                split_amounts.push_back(amount);
             }
-        };
+
+            if sum != 10000 {
+                return Err(ReportingError::InvalidPercentageSplit);
+            }
+        }
 
         let mut breakdown = Vec::new(env);
         let categories = [
@@ -1140,7 +1155,7 @@ impl ReportingContract {
         let health_score =
             Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
         let remittance_summary =
-            Self::get_remittance_summary_internal(&env, total_remittance, period_start, period_end);
+            Self::get_remittance_summary_internal(&env, total_remittance, period_start, period_end)?;
         let savings_report =
             Self::get_savings_report_internal(&env, user.clone(), period_start, period_end);
         let bill_compliance =
