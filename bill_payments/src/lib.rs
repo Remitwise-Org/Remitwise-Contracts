@@ -970,14 +970,17 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let next_due_date = bill
+            let period = (bill.frequency_days as u64)
+                .checked_mul(SECONDS_PER_DAY)
+                .ok_or(Error::InvalidFrequency)?;
+            let mut next_due_date = bill
                 .due_date
-                .checked_add(
-                    (bill.frequency_days as u64)
-                        .checked_mul(SECONDS_PER_DAY)
-                        .ok_or(Error::InvalidFrequency)?,
-                )
+                .checked_add(period)
                 .ok_or(Error::InvalidDueDate)?;
+            // Advance forward by frequency periods until the next due date is strictly in the future
+            while next_due_date <= current_time {
+                next_due_date = next_due_date.checked_add(period).ok_or(Error::InvalidDueDate)?;
+            }
             let next_id = env
                 .storage()
                 .instance()

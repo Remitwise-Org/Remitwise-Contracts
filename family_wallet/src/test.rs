@@ -2012,6 +2012,50 @@ fn test_paused_contract_rejects_multisig_config() {
 }
 
 #[test]
+fn test_pending_transactions_pagination_and_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Create 5 pending proposals, alternating proposers
+    env.mock_all_auths();
+    client.propose_split_config_change(&member1, &10, &40, &30, &20);
+    env.mock_all_auths();
+    client.propose_split_config_change(&member2, &11, &39, &30, &20);
+    env.mock_all_auths();
+    client.propose_split_config_change(&member1, &12, &38, &30, &20);
+    env.mock_all_auths();
+    client.propose_split_config_change(&member2, &13, &37, &30, &20);
+    env.mock_all_auths();
+    client.propose_split_config_change(&member1, &14, &36, &30, &20);
+
+    // Owner (admin) can list all pending txs paginated
+    env.mock_all_auths();
+    let page1 = client.get_pending_transactions_page(&owner, &0u64, &2u32);
+    assert_eq!(page1.items.len(), 2);
+    assert!(page1.next_cursor != 0);
+
+    env.mock_all_auths();
+    let page2 = client.get_pending_transactions_page(&owner, &page1.next_cursor, &2u32);
+    assert!(page2.items.len() >= 1 && page2.items.len() <= 2);
+
+    // Member1 should only see their own proposals
+    env.mock_all_auths();
+    let m1_all = client.get_pending_transactions_page(&member1, &0u64, &100u32);
+    for tx in m1_all.items.iter() {
+        assert_eq!(tx.proposer, member1);
+    }
+}
+
+#[test]
 fn test_admin_can_configure_multisig() {
     let env = Env::default();
     env.mock_all_auths();
