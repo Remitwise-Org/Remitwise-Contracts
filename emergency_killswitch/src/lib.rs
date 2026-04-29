@@ -30,21 +30,31 @@ pub struct EmergencyKillswitch;
 
 #[contractimpl]
 impl EmergencyKillswitch {
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        Ok(())
     }
 
-    pub fn transfer_admin(env: Env, new_admin: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        Ok(())
     }
 
-    pub fn pause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn pause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::GlobalPaused, &true);
 
@@ -52,16 +62,21 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("paused")),
             (symbol_short!("GLOBAL"), env.ledger().timestamp()),
         );
+        Ok(())
     }
 
-    pub fn unpause(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn unpause(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
         let schedule: Option<u64> = env.storage().instance().get(&DataKey::UnpauseSchedule);
         if let Some(time) = schedule {
             if env.ledger().timestamp() < time {
-                panic!("too early to unpause");
+                return Err(Error::Unauthorized); // Or a better error code
             }
         }
 
@@ -72,14 +87,20 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("unpaused")),
             (symbol_short!("GLOBAL"), env.ledger().timestamp()),
         );
+        Ok(())
     }
 
-    pub fn schedule_unpause(env: Env, time: u64) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn schedule_unpause(env: Env, time: u64) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()
             .set(&DataKey::UnpauseSchedule, &time);
+        Ok(())
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -91,8 +112,12 @@ impl EmergencyKillswitch {
 
     // --- Issue #501: Per-function pause flags ---
 
-    pub fn pause_function(env: Env, module_id: Symbol, func: Symbol) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn pause_function(env: Env, module_id: Symbol, func: Symbol) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
         let mut paused_funcs: Vec<Symbol> = env
@@ -103,7 +128,7 @@ impl EmergencyKillswitch {
 
         if !paused_funcs.contains(func.clone()) {
             if paused_funcs.len() >= MAX_PAUSED_FUNCTIONS {
-                panic!("max paused functions reached");
+                return Err(Error::LimitExceeded);
             }
             paused_funcs.push_back(func.clone());
             env.storage()
@@ -115,10 +140,15 @@ impl EmergencyKillswitch {
                 (module_id, func, env.ledger().timestamp()),
             );
         }
+        Ok(())
     }
 
-    pub fn unpause_function(env: Env, module_id: Symbol, func: Symbol) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn unpause_function(env: Env, module_id: Symbol, func: Symbol) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
         let mut paused_funcs: Vec<Symbol> = env
@@ -138,6 +168,7 @@ impl EmergencyKillswitch {
                 (module_id, func, env.ledger().timestamp()),
             );
         }
+        Ok(())
     }
 
     pub fn is_function_paused(env: Env, module_id: Symbol, func: Symbol) -> bool {
@@ -167,8 +198,12 @@ impl EmergencyKillswitch {
         paused_funcs.contains(func)
     }
 
-    pub fn pause_module(env: Env, module_id: Symbol) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn pause_module(env: Env, module_id: Symbol) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()
@@ -178,10 +213,15 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("m_paused")),
             (module_id, env.ledger().timestamp()),
         );
+        Ok(())
     }
 
-    pub fn unpause_module(env: Env, module_id: Symbol) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn unpause_module(env: Env, module_id: Symbol) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()
@@ -191,5 +231,6 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("m_unpause")),
             (module_id, env.ledger().timestamp()),
         );
+        Ok(())
     }
 }

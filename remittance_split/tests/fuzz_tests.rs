@@ -9,7 +9,10 @@
 //! - Edge cases with extreme values
 
 use proptest::prelude::*;
-use remittance_split::{AccountGroup, DataKey, MIN_SCHEDULE_INTERVAL, MAX_SCHEDULE_LEAD_TIME, RemittanceSplit, RemittanceSplitClient, RemittanceSplitError};
+use remittance_split::{
+    AccountGroup, DataKey, RemittanceSplit, RemittanceSplitClient, RemittanceSplitError,
+    MAX_SCHEDULE_LEAD_TIME, MIN_SCHEDULE_INTERVAL,
+};
 use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map, Vec};
 use std::collections::HashSet;
 
@@ -58,7 +61,12 @@ fn bounded_schedule_cases(
                 let amount = invalid_amounts[((state >> 8) as usize) % invalid_amounts.len()];
                 let next_due = current_time + 1_000;
                 let interval = MIN_SCHEDULE_INTERVAL;
-                (amount, next_due, interval, RemittanceSplitError::InvalidAmount)
+                (
+                    amount,
+                    next_due,
+                    interval,
+                    RemittanceSplitError::InvalidAmount,
+                )
             }
             1 => {
                 let next_due = if ((state >> 8) & 1) == 0 {
@@ -66,15 +74,30 @@ fn bounded_schedule_cases(
                 } else {
                     current_time.saturating_sub(1)
                 };
-                (1000, next_due, MIN_SCHEDULE_INTERVAL, RemittanceSplitError::InvalidDueDate)
+                (
+                    1000,
+                    next_due,
+                    MIN_SCHEDULE_INTERVAL,
+                    RemittanceSplitError::InvalidDueDate,
+                )
             }
             2 => {
                 let interval = invalid_intervals[((state >> 8) as usize) % invalid_intervals.len()];
-                (1000, current_time + 1_000, interval, RemittanceSplitError::ScheduleIntervalTooShort)
+                (
+                    1000,
+                    current_time + 1_000,
+                    interval,
+                    RemittanceSplitError::ScheduleIntervalTooShort,
+                )
             }
             _ => {
                 let next_due = current_time + MAX_SCHEDULE_LEAD_TIME + 1;
-                (1000, next_due, MIN_SCHEDULE_INTERVAL, RemittanceSplitError::ScheduleLeadTimeTooLong)
+                (
+                    1000,
+                    next_due,
+                    MIN_SCHEDULE_INTERVAL,
+                    RemittanceSplitError::ScheduleLeadTimeTooLong,
+                )
             }
         };
         cases.push(case);
@@ -90,16 +113,21 @@ fn assert_schedule_list_unchanged(
     before_len: u32,
 ) {
     let after_len = client.get_remittance_schedules(owner).len();
-    assert_eq!(before_len, after_len, "Schedule index was modified on validation failure");
+    assert_eq!(
+        before_len, after_len,
+        "Schedule index was modified on validation failure"
+    );
 }
 
 fn assert_schedule_unchanged(
     before: &remittance_split::RemittanceSchedule,
     after: &remittance_split::RemittanceSchedule,
 ) {
-    assert_eq!(before, after, "Schedule changed after invalid modification request");
+    assert_eq!(
+        before, after,
+        "Schedule changed after invalid modification request"
+    );
 }
-
 
 fn try_init(
     client: &RemittanceSplitClient,
@@ -312,7 +340,6 @@ fn fuzz_single_category_splits() {
     }
 }
 
-
 #[test]
 fn fuzz_schedule_create_modify_cancel_validations() {
     let env = Env::default();
@@ -358,12 +385,18 @@ fn fuzz_schedule_create_modify_cancel_validations() {
 
     let wrong_owner = Address::generate(&env);
     let unauthorized_result = client.try_cancel_remittance_schedule(&wrong_owner, &schedule_id);
-    assert_eq!(unauthorized_result, Err(Ok(RemittanceSplitError::Unauthorized)));
+    assert_eq!(
+        unauthorized_result,
+        Err(Ok(RemittanceSplitError::Unauthorized))
+    );
     assert_schedule_list_unchanged(&client, &owner, schedule_count + 1);
 
     let not_found_id = schedule_id + 10;
     let not_found_result = client.try_cancel_remittance_schedule(&owner, &not_found_id);
-    assert_eq!(not_found_result, Err(Ok(RemittanceSplitError::ScheduleNotFound)));
+    assert_eq!(
+        not_found_result,
+        Err(Ok(RemittanceSplitError::ScheduleNotFound))
+    );
     assert_schedule_list_unchanged(&client, &owner, schedule_count + 1);
 }
 

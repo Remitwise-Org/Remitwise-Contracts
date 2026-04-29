@@ -1,5 +1,6 @@
 use soroban_sdk::testutils::storage::Instance as StorageInstance;
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Ledger, LedgerInfo},
     Address, Env,
 };
@@ -468,6 +469,78 @@ fn test_verify_dependency_address_set_rejects_self_reference() {
         result,
         Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
     ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_does_not_write_storage() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+
+    let _ = client.try_verify_dependency_address_set(&addrs);
+
+    let instance_snapshot: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
+    assert!(instance_snapshot.is_some(), "ADMIN should still exist");
+
+    let stored_addrs: Option<ContractAddresses> =
+        env.storage().instance().get(&symbol_short!("ADDRESSES"));
+    assert!(stored_addrs.is_none(), "ADDRESSES must not be written by preflight");
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_multiple_duplicates() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: x.clone(),
+        bill_payments: x.clone(),
+        insurance: x.clone(),
+        family_wallet: x,
+    };
+    let result = client.try_verify_dependency_address_set(&addrs);
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_deterministic_error() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: x,
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+
+    let result1 = client.try_verify_dependency_address_set(&addrs);
+    let result2 = client.try_verify_dependency_address_set(&addrs);
+    assert!(matches!(result1, Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))));
+    assert!(matches!(result2, Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))));
 }
 
 #[test]

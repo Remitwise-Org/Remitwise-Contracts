@@ -235,7 +235,8 @@ fn test_reporting_data_availability_missing() {
     let period_start = env.ledger().timestamp();
     let period_end = period_start + (30 * 86400);
 
-    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    let summary =
+        reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
     assert_eq!(summary.data_availability, DataAvailability::Missing);
 }
 
@@ -273,7 +274,8 @@ fn test_reporting_data_availability_partial() {
     let period_start = env.ledger().timestamp();
     let period_end = period_start + (30 * 86400);
 
-    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    let summary =
+        reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
     assert_eq!(summary.data_availability, DataAvailability::Partial);
 }
 
@@ -315,6 +317,7 @@ fn test_reporting_data_availability_complete() {
     let period_start = env.ledger().timestamp();
     let period_end = period_start + (30 * 86400);
 
-    let summary = reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
+    let summary =
+        reporting_client.get_remittance_summary(&user, &total_amount, &period_start, &period_end);
     assert_eq!(summary.data_availability, DataAvailability::Complete);
 }

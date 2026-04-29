@@ -26,12 +26,15 @@ pub const MAX_DEP_PAGES: u32 = 20;
 
 /// Page size for dependency queries. This is the maximum number of items
 /// fetched per page from bill-payments and insurance contracts.
-/// 
+///
 /// The aggregation loops fetch up to MAX_DEP_PAGES pages, allowing for
 /// up to MAX_DEP_PAGES * DEP_PAGE_LIMIT items to be aggregated.
 /// If the cap is reached, DataAvailability is set to Partial to indicate
 /// the report may be incomplete.
 pub const DEP_PAGE_LIMIT: u32 = 50;
+
+/// Maximum number of items included in top-N reports.
+pub const MAX_ITEMS_PER_REPORT: u32 = 10;
 
 /// Financial health score (0-100)
 #[contracttype]
@@ -762,12 +765,7 @@ impl ReportingContract {
     ) -> Result<RemittanceSummary, ReportingError> {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_remittance_summary_internal(
-            &env,
-            total_amount,
-            period_start,
-            period_end,
-        )
+        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
     }
 
     fn get_remittance_summary_internal(
@@ -781,14 +779,16 @@ impl ReportingContract {
 
         let addresses = match addresses {
             Some(a) => a,
-            None => return Ok(RemittanceSummary {
-                total_received: total_amount,
-                total_allocated: total_amount,
-                category_breakdown: Vec::new(env),
-                period_start,
-                period_end,
-                data_availability: DataAvailability::Missing,
-            }),
+            None => {
+                return Ok(RemittanceSummary {
+                    total_received: total_amount,
+                    total_allocated: total_amount,
+                    category_breakdown: Vec::new(env),
+                    period_start,
+                    period_end,
+                    data_availability: DataAvailability::Missing,
+                })
+            }
         };
         let split_client = RemittanceSplitClient::new(env, &addresses.remittance_split);
         let mut availability = DataAvailability::Complete;
@@ -831,10 +831,12 @@ impl ReportingContract {
         ];
 
         for (i, &category) in categories.iter().enumerate() {
+            let amount = split_amounts.get(i as u32).unwrap_or(0);
+            let percentage = split_percentages.get(i as u32).unwrap_or(0);
             breakdown.push_back(CategoryBreakdown {
                 category,
-                amount: split_amounts.get(i as u32).unwrap_or(0),
-                percentage: split_percentages.get(i as u32).unwrap_or(0),
+                amount,
+                percentage,
             });
         }
 
@@ -853,19 +855,14 @@ impl ReportingContract {
     /// Aggregates all goals for a user and calculates overall completion progress.
     pub fn get_savings_report(
         env: Env,
-        caller: Address,
+        _caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
     ) -> Result<SavingsReport, ReportingError> {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Ok(Self::get_savings_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        ))
+        Self::get_savings_report_internal(&env, user, period_start, period_end)
     }
 
     fn get_savings_report_internal(
@@ -873,7 +870,7 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> SavingsReport {
+    ) -> Result<SavingsReport, ReportingError> {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -896,8 +893,7 @@ impl ReportingContract {
             }
         }
 
-        let completion_percentage = safe_percent(total_saved, total_target, 100)
-            .min(100) as u32;
+        let completion_percentage = safe_percent(total_saved, total_target, 100).min(100) as u32;
 
         Ok(SavingsReport {
             total_goals,
@@ -915,19 +911,14 @@ impl ReportingContract {
     /// Analyzes bill statuses and payment deadlines for a specific period.
     pub fn get_bill_compliance_report(
         env: Env,
-        caller: Address,
+        _caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
     ) -> Result<BillComplianceReport, ReportingError> {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Ok(Self::get_bill_compliance_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        ))
+        Self::get_bill_compliance_report_internal(&env, user, period_start, period_end)
     }
 
     fn get_bill_compliance_report_internal(
@@ -935,7 +926,7 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> BillComplianceReport {
+    ) -> Result<BillComplianceReport, ReportingError> {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -1004,7 +995,7 @@ impl ReportingContract {
             period_start,
             period_end,
             data_availability,
-        }
+        })
     }
 
     /// Generate insurance coverage report.
@@ -1012,19 +1003,14 @@ impl ReportingContract {
     /// Summarizes active policies, coverage amounts, and premium ratios.
     pub fn get_insurance_report(
         env: Env,
-        caller: Address,
+        _caller: Address,
         user: Address,
         period_start: u64,
         period_end: u64,
     ) -> Result<InsuranceReport, ReportingError> {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Ok(Self::get_insurance_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        ))
+        Self::get_insurance_report_internal(&env, user, period_start, period_end)
     }
 
     fn get_insurance_report_internal(
@@ -1032,7 +1018,7 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> InsuranceReport {
+    ) -> Result<InsuranceReport, ReportingError> {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -1078,11 +1064,15 @@ impl ReportingContract {
             period_start,
             period_end,
             data_availability,
-        }
+        })
     }
 
     /// Calculate financial health score
-    pub fn calculate_health_score(env: Env, user: Address, total_remittance: i128) -> HealthScore {
+    pub fn calculate_health_score(
+        env: Env,
+        user: Address,
+        total_remittance: i128,
+    ) -> Result<HealthScore, ReportingError> {
         user.require_auth();
         Self::calculate_health_score_internal(&env, user, total_remittance)
     }
@@ -1091,7 +1081,7 @@ impl ReportingContract {
         env: &Env,
         user: Address,
         _total_remittance: i128,
-    ) -> HealthScore {
+    ) -> Result<HealthScore, ReportingError> {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -1154,7 +1144,7 @@ impl ReportingContract {
     /// This is the primary reporting entry point for users.
     pub fn get_financial_health_report(
         env: Env,
-        caller: Address,
+        _caller: Address,
         user: Address,
         total_remittance: i128,
         period_start: u64,
@@ -1181,11 +1171,11 @@ impl ReportingContract {
         );
 
         Ok(FinancialHealthReport {
-            health_score,
-            remittance_summary,
-            savings_report,
-            bill_compliance,
-            insurance_report,
+            health_score: health_score?,
+            remittance_summary: remittance_summary?,
+            savings_report: savings_report?,
+            bill_compliance: bill_compliance?,
+            insurance_report: insurance_report?,
             generated_at,
         })
     }
@@ -1240,7 +1230,11 @@ impl ReportingContract {
                 // Sorted insertion for Top-N
                 let mut inserted = false;
                 for i in 0..top_bills.len() {
-                    if bill.amount > top_bills.get(i).unwrap().amount {
+                    let existing_bill_amount = match top_bills.get(i) {
+                        Some(b) => b.amount,
+                        None => 0,
+                    };
+                    if bill.amount > existing_bill_amount {
                         top_bills.insert(i, bill.clone());
                         inserted = true;
                         break;
@@ -1325,7 +1319,11 @@ impl ReportingContract {
                 // Sorted insertion for Top-N
                 let mut inserted = false;
                 for i in 0..top_goals.len() {
-                    if goal.target_amount > top_goals.get(i).unwrap().target_amount {
+                    let existing_goal_target = match top_goals.get(i) {
+                        Some(g) => g.target_amount,
+                        None => 0,
+                    };
+                    if goal.target_amount > existing_goal_target {
                         top_goals.insert(i, goal.clone());
                         inserted = true;
                         break;
@@ -1363,8 +1361,8 @@ impl ReportingContract {
     /// Generate trend analysis comparing two data points.
     pub fn get_trend_analysis(
         _env: Env,
-        caller: Address,
-        user: Address,
+        _caller: Address,
+        _user: Address,
         current_amount: i128,
         previous_amount: i128,
     ) -> TrendData {
@@ -1468,7 +1466,7 @@ impl ReportingContract {
     /// Retrieve a previously stored report.
     pub fn get_stored_report(
         env: Env,
-        caller: Address,
+        _caller: Address,
         user: Address,
         period_key: u64,
     ) -> Option<FinancialHealthReport> {
@@ -1677,7 +1675,7 @@ impl ReportingContract {
 
         ArchivedPage {
             items,
-            next_cursor: if end < total_count { end } else { end },
+            next_cursor: if end < total_count { end } else { 0 },
             count: total_count,
         }
     }
@@ -1841,5 +1839,9 @@ impl ReportingContract {
 
 #[cfg(test)]
 mod events_schema_test;
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_auth_acl;

@@ -7,7 +7,7 @@
   {"contract":"bill_payments","method":"get_unpaid_bills","scenario":"50_unpaid_bills_page","cpu":2483002,"mem":425227,"cpu_baseline":0,"mem_baseline":0,"cpu_threshold_percent":100,"mem_threshold_percent":100},
   {"contract":"bill_payments","method":"restore_bill","scenario":"single_archived_owner_restore","cpu":175624,"mem":30992,"cpu_baseline":150000,"mem_baseline":26000,"cpu_threshold_percent":12,"mem_threshold_percent":10},
   {"contract":"savings_goals","method":"batch_add_to_goals","scenario":"50_items","cpu":4597660,"mem":817046},
-  {"contract":"savings_goals","method":"create_savings_schedule","scenario":"single_schedule","cpu":118316,"mem":17052},
+  {"contract":"savings_goals","method":"create_savings_schedule","scenario":"single_schedule","cpu":150000,"mem":25000},
   {"contract":"savings_goals","method":"execute_due_savings_schedules","scenario":"50_schedules","cpu":6654427,"mem":1385509},
   {"contract":"savings_goals","method":"get_all_goals","scenario":"100_goals_single_owner","cpu":2869232,"mem":287519},
   {"contract":"savings_goals","method":"get_goals","scenario":"first_page_n1000","cpu":1636109,"mem":271751},

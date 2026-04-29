@@ -1,5 +1,4 @@
 #![no_std]
-#![no_std]
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 extern crate alloc;
@@ -11,7 +10,7 @@ mod test;
 use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 // Event topics
@@ -76,7 +75,6 @@ pub enum RemittanceSplitError {
     ScheduleIntervalTooShort = 23,
     /// The schedule lead time exceeds the maximum allowed value.
     ScheduleLeadTimeTooLong = 24,
-    InvalidDeadline = 25,
 }
 
 #[derive(Clone)]
@@ -121,6 +119,8 @@ pub const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
 /// Maximum allowed lead time for schedule due dates (1 year in seconds).
 /// Prevents unrealistic far-future scheduling that creates operational risk.
 pub const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
+/// Maximum allowed window for transaction deadlines (1 hour).
+pub const MAX_DEADLINE_WINDOW_SECS: u64 = 3_600;
 
 /// Insertion sort for a small `Vec<u32>` in ascending order.
 ///
@@ -236,7 +236,14 @@ pub struct AuditEntry {
     pub success: bool,
 }
 
-
+/// Paginated audit log result.
+#[contracttype]
+#[derive(Clone)]
+pub struct AuditPage {
+    pub items: Vec<AuditEntry>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
 
 ///
 /// Provides stable cursor-based pagination so consumers can replay the schedule list
@@ -1137,7 +1144,7 @@ impl RemittanceSplit {
         ];
 
         let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
+        for (category, amount) in categories.into_iter().zip(amounts) {
             result.push_back(Allocation { category, amount });
         }
         Ok(result)
@@ -1304,7 +1311,7 @@ impl RemittanceSplit {
         }
 
         // 9. Schedule cap validation — prevent bypass via migration
-        if snapshot.schedules.len() > MAX_SCHEDULES_PER_OWNER as u32 {
+        if snapshot.schedules.len() > MAX_SCHEDULES_PER_OWNER {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::ScheduleCapExceeded);
         }
@@ -1842,7 +1849,7 @@ impl RemittanceSplit {
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
 
-        if owner_schedules.len() >= MAX_SCHEDULES_PER_OWNER as u32 {
+        if owner_schedules.len() >= MAX_SCHEDULES_PER_OWNER {
             return Err(RemittanceSplitError::ScheduleCapExceeded);
         }
 
@@ -2187,25 +2194,6 @@ impl RemittanceSplit {
             .persistent()
             .get(&DataKey::OwnerSchedules(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
-
-        // Manual sort since sort_unstable is not available on soroban_sdk::Vec
-        let mut n = schedule_ids.len();
-        if n > 1 {
-            let mut swapped = true;
-            while swapped {
-                swapped = false;
-                for i in 0..n - 1 {
-                    let a = schedule_ids.get(i).unwrap();
-                    let b = schedule_ids.get(i + 1).unwrap();
-                    if a > b {
-                        schedule_ids.set(i, b);
-                        schedule_ids.set(i + 1, a);
-                        swapped = true;
-                    }
-                }
-                n -= 1;
-            }
-        }
 
         sort_u32_vec_ascending(&mut schedule_ids);
 

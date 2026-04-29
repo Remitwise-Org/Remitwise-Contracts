@@ -69,7 +69,6 @@ fn test_per_function_pause() {
 }
 
 #[test]
-#[should_panic(expected = "max paused functions reached")]
 fn test_max_paused_functions_limit() {
     let env = Env::default();
     env.mock_all_auths();
@@ -86,7 +85,8 @@ fn test_max_paused_functions_limit() {
         client.pause_function(&module, &Symbol::new(&env, &format!("f{}", i)));
     }
 
-    client.pause_function(&module, &symbol_short!("one_more"));
+    let result = client.try_pause_function(&module, &symbol_short!("one_more"));
+    assert!(result.is_err());
 }
 
 #[test]

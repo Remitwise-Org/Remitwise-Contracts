@@ -9,16 +9,16 @@ use soroban_sdk::{
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
 const GOAL_COMPLETED: Symbol = symbol_short!("completed");
-const FUNDS_ADDED: Symbol = symbol_short!("added");
-const FUNDS_WITHDRAWN: Symbol = symbol_short!("withdrawn");
+const FUNDS_ADDED: Symbol = symbol_short!("funds_add");
+const FUNDS_WITHDRAWN: Symbol = symbol_short!("funds_rem");
 
 #[derive(Clone)]
 #[contracttype]
 pub struct GoalCreatedEvent {
     pub goal_id: u32,
     pub owner: Address,
-    pub amount: i128,      // Initial amount (0)
-    pub new_total: i128,   // Initial total (0)
+    pub amount: i128,    // Initial amount (0)
+    pub new_total: i128, // Initial total (0)
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
@@ -50,8 +50,8 @@ pub struct FundsWithdrawnEvent {
 pub struct GoalCompletedEvent {
     pub goal_id: u32,
     pub owner: Address,
-    pub amount: i128,      // Final contribution amount
-    pub new_total: i128,   // Total amount reached
+    pub amount: i128,    // Final contribution amount
+    pub new_total: i128, // Total amount reached
     pub name: String,
     pub timestamp: u64,
 }
@@ -73,6 +73,10 @@ const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
 /// Allows reasonable goal names (e.g., "FIRE Goal", "House Down Payment") while
 /// protecting against unbounded string storage.
 const MAX_GOAL_NAME_LEN_BYTES: u32 = 128;
+
+/// Maximum number of goals (active + archived) allowed per owner.
+/// Prevents storage-bloat DoS attacks.
+const MAX_GOALS_PER_OWNER: u32 = 2000;
 
 #[contracttype]
 #[derive(Clone)]
@@ -211,7 +215,7 @@ pub struct AuditEntry {
 const SCHEMA_VERSION: u32 = 1;
 /// Oldest snapshot schema version this contract can import. Enables backward compat.
 const MIN_SUPPORTED_SCHEMA_VERSION: u32 = 1;
-const MAX_AUDIT_ENTRIES: u32 = 100;
+const MAX_AUDIT_ENTRIES: u32 = 5;
 const CONTRACT_VERSION: u32 = 1;
 const MAX_BATCH_SIZE: u32 = 50;
 
@@ -247,6 +251,8 @@ pub enum SavingsGoalError {
     InvalidAmount = 8,
     Overflow = 9,
     InvalidTagContent = 10,
+    InvalidGoalName = 11,
+    GoalCapReached = 12,
     BatchTooLarge = 14,
 }
 #[contract]
@@ -313,17 +319,17 @@ impl SavingsGoalContract {
     /// - `Err(SavingsGoalError::InvalidGoalName)` if name violates constraints
     fn validate_goal_name(name: &String) -> Result<(), SavingsGoalError> {
         let byte_len = name.len();
-        
+
         // Check for empty name
         if byte_len == 0 {
             return Err(SavingsGoalError::InvalidGoalName);
         }
-        
+
         // Check for max byte length
-        if byte_len > MAX_GOAL_NAME_LEN_BYTES as usize {
+        if byte_len > MAX_GOAL_NAME_LEN_BYTES {
             return Err(SavingsGoalError::InvalidGoalName);
         }
-        
+
         Ok(())
     }
 
@@ -336,6 +342,22 @@ impl SavingsGoalContract {
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
+
+    /// Returns the total number of goals (active + archived) owned by an address.
+    fn get_owner_goal_count(env: &Env, owner: &Address) -> u32 {
+        let active_ids: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OwnerGoals(owner.clone()))
+            .unwrap_or_else(|| Vec::new(env));
+        let archived_ids: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ArchivedGoalsIndex(owner.clone()))
+            .unwrap_or_else(|| Vec::new(env));
+        active_ids.len() + archived_ids.len()
+    }
+
     fn is_function_paused(env: &Env, func: Symbol) -> bool {
         env.storage()
             .instance()
@@ -351,6 +373,51 @@ impl SavingsGoalContract {
         if Self::is_function_paused(env, func) {
             panic!("Function is paused");
         }
+    }
+
+    /// Returns a list of goals for an owner using offset-based pagination.
+    ///
+    /// # Arguments
+    /// * `owner` - The address of the goal owner.
+    /// * `offset` - The number of items to skip.
+    /// * `limit` - The maximum number of items to return.
+    ///
+    /// # Returns
+    /// A `Vec<SavingsGoal>` containing the requested goals.
+    pub fn get_goals_by_owner(
+        env: Env,
+        owner: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<SavingsGoal> {
+        let limit = Self::clamp_limit(limit);
+
+        let ids: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OwnerGoals(owner.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let total_count = ids.len();
+        if offset >= total_count {
+            return Vec::new(&env);
+        }
+
+        let end = (offset + limit).min(total_count);
+        let mut result = Vec::new(&env);
+
+        for i in offset..end {
+            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
+            if let Some(goal) = env
+                .storage()
+                .persistent()
+                .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            {
+                result.push_back(goal);
+            }
+        }
+
+        result
     }
 
     // -----------------------------------------------------------------------
@@ -377,11 +444,7 @@ impl SavingsGoalContract {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
-            None => {
-                if caller != new_admin {
-                    panic!("Unauthorized");
-                }
-            }
+            None if caller != new_admin => panic!("Unauthorized"),
             Some(admin) if admin != caller => panic!("Unauthorized"),
             _ => {}
         }
@@ -566,13 +629,15 @@ impl SavingsGoalContract {
             let mut buf = [0u8; 32];
             tag.copy_into_slice(&mut buf[..len as usize]);
 
-            for i in 0..(len as usize) {
-                let mut c = buf[i];
-                if c >= b'A' && c <= b'Z' {
-                    c = c + (b'a' - b'A');
-                    buf[i] = c;
+            for c in buf.iter_mut().take(len as usize) {
+                if c.is_ascii_uppercase() {
+                    *c += b'a' - b'A';
                 }
-                if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9') || c == b'-' || c == b'_')
+                let c_val = *c;
+                if !(c_val.is_ascii_lowercase()
+                    || c_val.is_ascii_digit()
+                    || c_val == b'-'
+                    || c_val == b'_')
                 {
                     soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent);
                 }
@@ -741,14 +806,19 @@ impl SavingsGoalContract {
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
 
         // Validate goal name before any storage writes to prevent invalid data
-        Self::validate_goal_name(&name).map_err(|e| {
+        Self::validate_goal_name(&name).inspect_err(|_| {
             Self::append_audit(&env, symbol_short!("create"), &owner, false);
-            e
         })?;
 
         if target_amount <= 0 {
             Self::append_audit(&env, symbol_short!("create"), &owner, false);
             return Err(SavingsGoalError::InvalidAmount);
+        }
+
+        // Enforce per-owner goal cap (includes archived goals)
+        if Self::get_owner_goal_count(&env, &owner) >= MAX_GOALS_PER_OWNER {
+            Self::append_audit(&env, symbol_short!("create"), &owner, false);
+            return Err(SavingsGoalError::GoalCapReached);
         }
 
         Self::extend_instance_ttl(&env);
@@ -903,7 +973,7 @@ impl SavingsGoalContract {
             &env,
             EventCategory::Transaction,
             EventPriority::Medium,
-            symbol_short!("funds_add"),
+            FUNDS_ADDED,
             FundsAddedEvent {
                 goal_id,
                 owner: caller.clone(),
@@ -918,19 +988,27 @@ impl SavingsGoalContract {
             (goal_id, caller.clone(), amount),
         );
 
-            // Legacy/Action-specific topics
-            env.events().publish((GOAL_COMPLETED,), completed_event);
-            env.events().publish(
-                (GOAL_COMPLETED,),
-                GoalCompletedEvent {
-                    goal_id,
-                    owner: caller.clone(),
-                    name: goal.name.clone(),
-                    final_amount: new_total,
-                    timestamp: now,
-                },
+        if was_completed && !previously_completed {
+            let completed_event = GoalCompletedEvent {
+                goal_id,
+                owner: caller.clone(),
+                amount,
+                new_total,
+                name: goal.name.clone(),
+                timestamp: now,
+            };
+
+            // Standardized event emission for indexers
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                GOAL_COMPLETED,
+                completed_event.clone(),
             );
 
+            // Legacy/Action-specific topics
+            env.events().publish((GOAL_COMPLETED,), completed_event);
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::GoalCompleted),
                 (goal_id, caller.clone()),
@@ -997,24 +1075,6 @@ impl SavingsGoalContract {
                 INSTANCE_BUMP_AMOUNT,
             );
 
-            // Audit
-            Self::append_audit(&env, symbol_short!("add"), &caller, true);
-
-            // Detailed structured event
-            RemitwiseEvents::emit(
-                &env,
-                EventCategory::Transaction,
-                EventPriority::Medium,
-                symbol_short!("funds_add"),
-                FundsAddedEvent {
-                    goal_id: item.goal_id,
-                    owner: caller.clone(),
-                    amount: item.amount,
-                    new_total,
-                    timestamp: now,
-                },
-            );
-
             // Module-specific simple event
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::FundsAdded),
@@ -1022,17 +1082,26 @@ impl SavingsGoalContract {
             );
 
             if was_completed && !previously_completed {
-                // Goal completion structured event
-                env.events().publish(
-                    (GOAL_COMPLETED,),
-                    GoalCompletedEvent {
-                        goal_id: item.goal_id,
-                        owner: caller.clone(),
-                        name: goal.name.clone(),
-                        final_amount: new_total,
-                        timestamp: now,
-                    },
+                let completed_event = GoalCompletedEvent {
+                    goal_id: item.goal_id,
+                    owner: caller.clone(),
+                    name: goal.name.clone(),
+                    amount: item.amount,
+                    new_total,
+                    timestamp: now,
+                };
+
+                // Standardized event emission for indexers
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::State,
+                    EventPriority::Medium,
+                    GOAL_COMPLETED,
+                    completed_event.clone(),
                 );
+
+                // Goal completion structured event
+                env.events().publish((GOAL_COMPLETED,), completed_event);
 
                 // Module-specific completion event
                 env.events().publish(
@@ -1043,6 +1112,9 @@ impl SavingsGoalContract {
 
             count += 1;
         }
+
+        // Audit once per batch
+        Self::append_audit(&env, symbol_short!("batch_ad"), &caller, true);
 
         RemitwiseEvents::emit(
             &env,
@@ -1338,15 +1410,9 @@ impl SavingsGoalContract {
 
         let mut start_index: u32 = 0;
         if cursor != 0 {
-            let mut found = false;
-            for i in 0..ids.len() {
-                if ids.get(i) == Some(cursor) {
-                    start_index = i + 1;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
+            if let Some(pos) = ids.iter().position(|id| id == cursor) {
+                start_index = (pos as u32) + 1;
+            } else {
                 panic!("Invalid cursor");
             }
         }
@@ -1357,10 +1423,7 @@ impl SavingsGoalContract {
         }
 
         let mut result = Vec::new(&env);
-        for i in start_index..end_index {
-            let goal_id = ids
-                .get(i)
-                .unwrap_or_else(|| panic!("Pagination index out of sync"));
+        for goal_id in ids.iter().skip(start_index as usize).take(limit as usize) {
             let goal = env
                 .storage()
                 .persistent()
@@ -1534,15 +1597,9 @@ impl SavingsGoalContract {
 
         let mut start_index: u32 = 0;
         if cursor != 0 {
-            let mut found = false;
-            for i in 0..ids.len() {
-                if ids.get(i) == Some(cursor) {
-                    start_index = i + 1;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
+            if let Some(pos) = ids.iter().position(|id| id == cursor) {
+                start_index = (pos as u32) + 1;
+            } else {
                 panic!("Invalid cursor");
             }
         }
@@ -1553,10 +1610,7 @@ impl SavingsGoalContract {
         }
 
         let mut result = Vec::new(&env);
-        for i in start_index..end_index {
-            let goal_id = ids
-                .get(i)
-                .unwrap_or_else(|| panic!("Archived pagination index out of sync"));
+        for goal_id in ids.iter().skip(start_index as usize).take(limit as usize) {
             let goal = env
                 .storage()
                 .persistent()
@@ -1599,13 +1653,14 @@ impl SavingsGoalContract {
     }
 
     /// Backward-compatible: returns ALL goals for owner in one Vec.
-    /// Prefer the paginated `get_goals` for production use.
+    /// Prefer the paginated `get_goals` / `get_goals_for_owner` for production use.
     pub fn get_all_goals(env: Env, owner: Address) -> Vec<SavingsGoal> {
         let ids: Vec<u32> = env
             .storage()
             .persistent()
             .get(&DataKey::OwnerGoals(owner.clone()))
             .unwrap_or_else(|| Vec::new(&env));
+
         let mut result = Vec::new(&env);
         for goal_id in ids.iter() {
             if let Some(goal) = env
@@ -1813,13 +1868,7 @@ impl SavingsGoalContract {
             .get(&DataKey::Audit)
             .unwrap_or_else(|| Vec::new(env));
         if log.len() >= MAX_AUDIT_ENTRIES {
-            let mut new_log = Vec::new(env);
-            for i in 1..log.len() {
-                if let Some(entry) = log.get(i) {
-                    new_log.push_back(entry);
-                }
-            }
-            log = new_log;
+            log.remove(0);
         }
         log.push_back(AuditEntry {
             operation,
@@ -2391,36 +2440,6 @@ impl SavingsGoalContract {
             .unwrap_or_else(|| Vec::new(env));
         ids.push_back(schedule_id);
         env.storage().persistent().set(&key, &ids);
-    }
-
-    fn remove_owner_schedule_id(env: &Env, owner: &Address, schedule_id: u32) {
-        let key = DataKey::OwnerSchedules(owner.clone());
-        let ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or_else(|| Vec::new(env));
-
-        let mut out = Vec::new(env);
-        let mut removed = false;
-        for i in 0..ids.len() {
-            let id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
-            if id == schedule_id {
-                removed = true;
-                continue;
-            }
-            out.push_back(id);
-        }
-
-        if !removed {
-            panic!("Schedule index out of sync");
-        }
-
-        if out.is_empty() {
-            env.storage().persistent().remove(&key);
-        } else {
-            env.storage().persistent().set(&key, &out);
-        }
     }
 }
 

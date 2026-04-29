@@ -31,9 +31,6 @@ const KEY_STATS: Symbol = symbol_short!("STOR_STAT");
 const KEY_OWNER_ACTIVE: Symbol = symbol_short!("OWN_ACT");
 const KEY_EXT_REF_IDX: Symbol = symbol_short!("EXT_IDX");
 
-// External reference constants
-const MAX_EXTERNAL_REF_LEN: u32 = 64;
-
 /// Errors returned by the Insurance contract.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -467,6 +464,7 @@ impl Insurance {
                 id: policy.id,
                 owner: policy.owner,
                 name: policy.name,
+                external_ref: policy.external_ref,
                 coverage_type: policy.coverage_type,
                 monthly_premium: policy.monthly_premium,
                 coverage_amount: policy.coverage_amount,
@@ -727,3 +725,9 @@ impl Insurance {
         Self::read_stats(&env)
     }
 }
+
+#[cfg(test)]
+mod test;
+
+#[cfg(test)]
+mod next_payment_scheduling_tests;

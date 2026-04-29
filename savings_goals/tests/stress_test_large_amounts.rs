@@ -640,8 +640,8 @@ fn test_add_to_goal_near_safe_cap_boundary() {
 
 #[test]
 fn test_add_to_goal_just_over_safe_cap_returns_overflow() {
-    /// Test that adding beyond i128::MAX/2 reliably returns Overflow error
-    /// rather than panicking or wrapping around.
+    // Test that adding beyond i128::MAX/2 reliably returns Overflow
+    // rather than panicking or wrapping around.
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
