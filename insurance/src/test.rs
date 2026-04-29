@@ -292,6 +292,259 @@ fn test_set_external_ref_returns_false_for_wrong_caller() {
 }
 
 // ---------------------------------------------------------------------------
+// external_ref authorization and index cleanup tests
+// ---------------------------------------------------------------------------
+
+/// Only the policy owner can set an external_ref on an existing policy.
+/// Non-owners must not be able to update the external_ref.
+#[test]
+fn test_set_external_ref_authorization_non_owner_cannot_set() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let id = create_health_policy(&env, &client, &owner);
+
+    let malicious_ref = String::from_str(&env, "ATTACKER-REF");
+    let result = client.set_external_ref(&attacker, &id, &Some(malicious_ref.clone()));
+    assert!(!result, "non-owner must not be able to set external_ref");
+
+    // Verify the external_ref was not changed
+    let policy = client.get_policy(&id).unwrap();
+    assert!(policy.external_ref.is_none(), "policy external_ref must remain unchanged");
+}
+
+/// Only the policy owner can clear an external_ref on an existing policy.
+/// Non-owners must not be able to clear the external_ref.
+#[test]
+fn test_set_external_ref_authorization_non_owner_cannot_clear() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let ext_ref = String::from_str(&env, "OWNER-REF");
+    let id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(ext_ref.clone()),
+    );
+
+    let result = client.set_external_ref(&attacker, &id, &None);
+    assert!(!result, "non-owner must not be able to clear external_ref");
+
+    // Verify the external_ref still exists
+    let policy = client.get_policy(&id).unwrap();
+    assert_eq!(
+        policy.external_ref, Some(ext_ref),
+        "policy external_ref must remain unchanged"
+    );
+}
+
+/// When a policy owner clears the external_ref, the index entry is removed
+/// so the same external_ref can be safely reused by the owner on a different policy.
+#[test]
+fn test_set_external_ref_clearing_removes_index_entry() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let ref_str = String::from_str(&env, "SHARED-REF");
+
+    // Create policy 1 with the external_ref
+    let id1 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 1"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(ref_str.clone()),
+    );
+
+    // Verify the ref is indexed to id1
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        Some(id1),
+        "external_ref should be indexed to id1"
+    );
+
+    // Clear the external_ref on policy 1
+    let result = client.set_external_ref(&owner, &id1, &None);
+    assert!(result, "owner must be able to clear external_ref");
+
+    // Verify the ref is no longer indexed
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        None,
+        "external_ref index entry must be removed when cleared"
+    );
+
+    // Verify the policy has no external_ref
+    let policy1 = client.get_policy(&id1).unwrap();
+    assert!(
+        policy1.external_ref.is_none(),
+        "policy external_ref must be None after clearing"
+    );
+}
+
+/// After clearing external_ref from policy 1, the owner can safely reuse
+/// that ref on policy 2 (proving the index was properly cleaned up).
+#[test]
+fn test_set_external_ref_cleared_ref_can_be_reused() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let ref_str = String::from_str(&env, "REUSABLE-REF");
+
+    // Create policy 1 with external_ref
+    let id1 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 1"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(ref_str.clone()),
+    );
+
+    // Clear the external_ref on policy 1
+    client.set_external_ref(&owner, &id1, &None);
+
+    // Create policy 2 WITHOUT external_ref
+    let id2 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 2"),
+        &CoverageType::Life,
+        &2_000i128,
+        &20_000i128,
+        &None,
+    );
+
+    // Try to set the same external_ref on policy 2
+    let result = client.set_external_ref(&owner, &id2, &Some(ref_str.clone()));
+    assert!(
+        result,
+        "owner must be able to reuse external_ref after clearing it from policy 1"
+    );
+
+    // Verify policy 2 now has the ref
+    let policy2 = client.get_policy(&id2).unwrap();
+    assert_eq!(
+        policy2.external_ref, Some(ref_str.clone()),
+        "policy 2 must have the reused external_ref"
+    );
+
+    // Verify the ref is indexed to id2 (not id1)
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        Some(id2),
+        "external_ref index must point to policy 2"
+    );
+}
+
+/// When a policy owner changes an external_ref from one value to another,
+/// the old index entry is removed and the new one is added.
+#[test]
+fn test_set_external_ref_index_update_removes_old_adds_new() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let old_ref = String::from_str(&env, "OLD-REF");
+    let new_ref = String::from_str(&env, "NEW-REF");
+
+    // Create policy with old_ref
+    let id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(old_ref.clone()),
+    );
+
+    // Verify old_ref is indexed
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &old_ref),
+        Some(id),
+        "old_ref should be indexed to policy"
+    );
+
+    // Change to new_ref
+    let result = client.set_external_ref(&owner, &id, &Some(new_ref.clone()));
+    assert!(result, "owner must be able to change external_ref");
+
+    // Verify old_ref is no longer indexed
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &old_ref),
+        None,
+        "old_ref index entry must be removed"
+    );
+
+    // Verify new_ref is indexed to the same policy
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &new_ref),
+        Some(id),
+        "new_ref should be indexed to policy"
+    );
+
+    // Verify policy has the new_ref
+    let policy = client.get_policy(&id).unwrap();
+    assert_eq!(
+        policy.external_ref, Some(new_ref),
+        "policy must have new external_ref"
+    );
+}
+
+/// When deactivating a policy with an external_ref, the index entry is removed
+/// so the same ref can be reused on a new active policy.
+#[test]
+fn test_deactivate_policy_removes_external_ref_index() {
+    let (env, client, _) = setup();
+    let owner = Address::generate(&env);
+    let ref_str = String::from_str(&env, "DEACTIVATED-REF");
+
+    // Create policy with external_ref
+    let id1 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 1"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(ref_str.clone()),
+    );
+
+    // Verify ref is indexed
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        Some(id1),
+        "external_ref should be indexed to id1"
+    );
+
+    // Deactivate the policy
+    let result = client.deactivate_policy(&owner, &id1);
+    assert!(result, "owner must be able to deactivate policy");
+
+    // Verify ref is no longer indexed
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        None,
+        "external_ref index entry must be removed when policy is deactivated"
+    );
+
+    // Create a new policy and assign the same ref
+    let id2 = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy 2"),
+        &CoverageType::Health,
+        &1_000i128,
+        &10_000i128,
+        &Some(ref_str.clone()),
+    );
+
+    // Verify the ref is indexed to id2
+    assert_eq!(
+        client.get_policy_id_by_external_ref(&owner, &ref_str),
+        Some(id2),
+        "external_ref must be available for reuse after deactivation"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // batch_pay_premiums — functional tests
 // ---------------------------------------------------------------------------
 
