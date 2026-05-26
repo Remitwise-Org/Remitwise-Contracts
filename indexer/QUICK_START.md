@@ -242,3 +242,6 @@ The indexer will:
 4. Exit cleanly
 
 When restarted, it will resume from the last processed ledger.
+
+## Cursor Tracking
+The indexer tracks the last processed ledger in the DB to resume without gaps upon restart.
