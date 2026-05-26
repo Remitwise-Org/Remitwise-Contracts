@@ -127,8 +127,14 @@ fn test_batch_pay_premiums_advances_each_policy_independently_and_counts() {
 
     assert!(updated_a.next_payment_date > now);
     assert!(updated_b.next_payment_date > now);
-    assert_eq!(updated_a.next_payment_date, p_a.next_payment_date + (3 * PERIOD));
-    assert_eq!(updated_b.next_payment_date, p_b.next_payment_date + (3 * PERIOD));
+    assert_eq!(
+        updated_a.next_payment_date,
+        p_a.next_payment_date + (3 * PERIOD)
+    );
+    assert_eq!(
+        updated_b.next_payment_date,
+        p_b.next_payment_date + (3 * PERIOD)
+    );
     assert_eq!(updated_c.next_payment_date, p_c.next_payment_date);
 }
 

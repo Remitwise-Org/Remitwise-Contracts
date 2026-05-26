@@ -310,7 +310,10 @@ impl Insurance {
             monthly_premium,
             coverage_amount,
             active: true,
-            next_payment_date: env.ledger().timestamp().saturating_add(PAYMENT_PERIOD_SECONDS),
+            next_payment_date: env
+                .ledger()
+                .timestamp()
+                .saturating_add(PAYMENT_PERIOD_SECONDS),
         };
 
         Self::bind_external_ref(&env, &owner, next_id, &external_ref);
