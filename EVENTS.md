@@ -280,6 +280,28 @@ pub struct FundsAddedEvent {
  }
  ```
 
+### `GoalCompletedEvent` (`SavingsEvent::GoalCompleted`)
+
+**Topic:** `completed`  
+**Emitted by:** `add_to_goal`, `batch_add_to_goals`  
+**Trigger:** Emitted exactly **once** per goal, on the contribution that first brings
+`current_amount >= target_amount`.
+
+**Fields:**
+
+| Field          | Type     | Description                              |
+|----------------|----------|------------------------------------------|
+| `goal_id`      | `u32`    | Unique identifier of the completed goal  |
+| `name`         | `String` | Name of the savings goal                 |
+| `final_amount` | `i128`   | Total amount at time of completion       |
+| `timestamp`    | `u64`    | Ledger timestamp when goal was completed |
+
+**Single-emission guarantee:**  
+After `is_goal_completed` returns `true` for a goal, no further
+`GoalCompletedEvent` will be emitted for that goal regardless of
+subsequent contributions. Downstream indexers and notification services
+can rely on receiving this event at most once per goal.
+
 ### Event: Funds Withdrawn
  
  **Topic:** `"withdrawn"` (primary)

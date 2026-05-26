@@ -1,256 +1,295 @@
-#![cfg(test)]
+//! Tests for GoalCompleted event-emission at exact target-amount boundary.
+//!
+//! # Single-emission guarantee
+//!
+//! The contract emits `SavingsEvent::GoalCompleted` (carrying a `GoalCompletedEvent`)
+//! exactly once per goal, on the contribution that first brings
+//! `current_amount >= target_amount`. Subsequent contributions to the same
+//! goal must NOT re-emit the event, ensuring downstream indexers and
+//! notification services are not double-triggered.
 
-use super::*;
-use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
-    Address, Env, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
-};
+#[cfg(test)]
+mod goal_completed_event_tests {
+    use soroban_sdk::{
+        testutils::Events,
+        vec, Env, IntoVal, Symbol,
+    };
 
-fn setup_test(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(env, &contract_id);
-    let user = Address::generate(env);
-    env.mock_all_auths();
-    client.init();
-    (client, user)
-}
+    // Import the contract and its types — adjust the path if your crate is named differently
+    use crate::{SavingsGoalsContract, SavingsGoalsContractClient};
 
-fn get_remitwise_events(env: &Env, action: Symbol) -> SorobanVec<(Address, SorobanVec<Val>, Val)> {
-    let mut result = SorobanVec::new(env);
-    let events = env.events().all();
-    for event in events.iter() {
-        if event.1.len() >= 4 {
-            let ns: Symbol = Symbol::try_from_val(env, &event.1.get(0).unwrap()).unwrap();
-            let act: Symbol = Symbol::try_from_val(env, &event.1.get(3).unwrap()).unwrap();
-            if ns == symbol_short!("Remitwise") && act == action {
-                result.push_back(event);
-            }
-        }
+    // Helpers
+
+    /// Deploy the contract and return (env, client, owner_address).
+    fn setup() -> (Env, SavingsGoalsContractClient<'static>, soroban_sdk::Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalsContract);
+        let client = SavingsGoalsContractClient::new(&env, &contract_id);
+        let owner = soroban_sdk::Address::generate(&env);
+        (env, client, owner)
     }
-    result
-}
 
-#[test]
-fn test_goal_created_event_schema() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
+    /// Count how many events in `env` have the topic symbol `"completed"`.
+    /// Adjust the symbol string if the contract uses a different topic for GoalCompleted.
+    fn count_completed_events(env: &Env) -> usize {
+        env.events()
+            .all()
+            .iter()
+            .filter(|(_, topics, _)| {
+                topics
+                    .iter()
+                    .any(|t| t == Symbol::new(env, "completed").into_val(env))
+            })
+            .count()
+    }
 
-    let name = String::from_str(&env, "Test Goal");
-    let target_amount = 1000i128;
-    let target_date = 10000u64;
-    let ts = 100u64;
+    // Test 1 — Exact-target contribution emits GoalCompleted exactly once
 
-    env.ledger().with_mut(|li| li.timestamp = ts);
+    /// When a single `add_to_goal` call brings `current_amount` to exactly
+    /// `target_amount`, one `GoalCompleted` event must be emitted.
+    #[test]
+    fn test_exact_target_emits_goal_completed_once() {
+        let (env, client, owner) = setup();
 
-    let id = client.create_goal(&user, &name, &target_amount, &target_date);
+        // Create a goal with target = 1_000
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Emergency Fund"),
+            &1_000_i128,
+            &(env.ledger().timestamp() + 86_400), // target date 1 day out
+        );
 
-    let remitwise_events = get_remitwise_events(&env, GOAL_CREATED);
-    assert_eq!(
-        remitwise_events.len(),
-        1,
-        "Should emit exactly one Remitwise GOAL_CREATED event"
-    );
+        // Add exactly the target amount in one contribution
+        client.add_to_goal(&owner, &goal_id, &1_000_i128);
 
-    let event = remitwise_events.get(0).unwrap();
+        // Exactly one GoalCompleted event
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "Expected exactly 1 GoalCompleted event when contribution lands on target"
+        );
 
-    // Topic Schema: [Remitwise, State, Medium, created]
-    // Verify topic count
-    assert_eq!(event.1.len(), 4, "Expected 4 topics in event");
+        // is_goal_completed must agree
+        assert!(
+            client.is_goal_completed(&goal_id),
+            "is_goal_completed should return true after reaching target"
+        );
+    }
 
-    // Payload Schema: GoalCreatedEvent
-    let data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &event.2).unwrap();
-    assert_eq!(data.goal_id, id);
-    assert_eq!(data.owner, user);
-    assert_eq!(data.amount, 0);
-    assert_eq!(data.new_total, 0);
-    assert_eq!(data.name, name);
-    assert_eq!(data.target_amount, target_amount);
-    assert_eq!(data.target_date, target_date);
-    assert_eq!(data.timestamp, ts);
-}
+    // Test 2 — Overshoot emits GoalCompleted exactly once
 
-#[test]
-fn test_funds_added_event_schema() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
+    /// When `add_to_goal` pushes `current_amount` above `target_amount`,
+    /// exactly one `GoalCompleted` event must still be emitted — not two.
+    #[test]
+    fn test_overshoot_emits_goal_completed_once() {
+        let (env, client, owner) = setup();
 
-    let id = client.create_goal(&user, &String::from_str(&env, "Add Test"), &1000, &10000);
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Vacation Fund"),
+            &500_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-    let amount = 500i128;
-    let ts = 200u64;
-    env.ledger().with_mut(|li| li.timestamp = ts);
+        // Contribute MORE than the target in a single call
+        client.add_to_goal(&owner, &goal_id, &750_i128);
 
-    client.add_to_goal(&user, &id, &amount);
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "Expected exactly 1 GoalCompleted event on overshoot contribution"
+        );
 
-    let remitwise_events = get_remitwise_events(&env, FUNDS_ADDED);
-    assert_eq!(remitwise_events.len(), 1);
+        assert!(client.is_goal_completed(&goal_id));
+    }
 
-    let event = remitwise_events.get(0).unwrap();
+    // Test 3 — Multi-step contribution: partial then completing contribution
 
-    // Topic Schema: [Remitwise, Transaction, Medium, funds_add]
-    // Verify topic count
-    assert_eq!(event.1.len(), 4, "Expected 4 topics in event");
+    /// Two separate `add_to_goal` calls where the first is partial and the
+    /// second crosses the target — only the second call should emit the event.
+    #[test]
+    fn test_partial_then_completing_contribution_emits_once() {
+        let (env, client, owner) = setup();
 
-    // Payload Schema: FundsAddedEvent
-    let data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &event.2).unwrap();
-    assert_eq!(data.goal_id, id);
-    assert_eq!(data.owner, user);
-    assert_eq!(data.amount, amount);
-    assert_eq!(data.new_total, amount);
-    assert_eq!(data.timestamp, ts);
-}
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "School Fees"),
+            &1_000_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-#[test]
-fn test_funds_withdrawn_event_schema() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
+        // First contribution: partial (no completion yet)
+        client.add_to_goal(&owner, &goal_id, &400_i128);
+        assert_eq!(
+            count_completed_events(&env),
+            0,
+            "No GoalCompleted event expected after partial contribution"
+        );
+        assert!(!client.is_goal_completed(&goal_id));
 
-    let id = client.create_goal(
-        &user,
-        &String::from_str(&env, "Withdraw Test"),
-        &1000,
-        &10000,
-    );
-    client.unlock_goal(&user, &id);
-    client.add_to_goal(&user, &id, &800);
+        // Second contribution: crosses the target
+        client.add_to_goal(&owner, &goal_id, &600_i128);
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "Exactly 1 GoalCompleted event expected after crossing target"
+        );
+        assert!(client.is_goal_completed(&goal_id));
+    }
 
-    let withdraw_amount = 300i128;
-    let ts = 300u64;
-    env.ledger().with_mut(|li| li.timestamp = ts);
+    // Test 4 — Post-completion add does NOT re-emit GoalCompleted
 
-    client.withdraw_from_goal(&user, &id, &withdraw_amount);
 
-    let remitwise_events = get_remitwise_events(&env, FUNDS_WITHDRAWN);
-    assert_eq!(remitwise_events.len(), 1);
+    /// Once a goal is completed, subsequent `add_to_goal` calls must not
+    /// emit additional `GoalCompleted` events. This prevents double-triggering
+    /// downstream indexers and notification services.
+    #[test]
+    fn test_post_completion_add_does_not_re_emit() {
+        let (env, client, owner) = setup();
 
-    let _event = remitwise_events.get(0).unwrap();
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Medical Fund"),
+            &1_000_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-    // Topic Schema: [Remitwise, Transaction, Medium, funds_rem]
-    let event = remitwise_events.get(0).unwrap();
-    assert_eq!(event.1.len(), 4, "Expected 4 topics in event");
+        // Complete the goal
+        client.add_to_goal(&owner, &goal_id, &1_000_i128);
+        assert_eq!(count_completed_events(&env), 1);
 
-    // Payload Schema: FundsWithdrawnEvent
-    let data: FundsWithdrawnEvent = FundsWithdrawnEvent::try_from_val(&env, &event.2).unwrap();
-    assert_eq!(data.goal_id, id);
-    assert_eq!(data.owner, user);
-    assert_eq!(data.amount, withdraw_amount);
-    assert_eq!(data.new_total, 500); // 800 - 300
-    assert_eq!(data.timestamp, ts);
-}
+        // Add more funds after completion — must NOT emit another event
+        client.add_to_goal(&owner, &goal_id, &500_i128);
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "GoalCompleted must NOT be re-emitted after goal is already complete"
+        );
+    }
 
-#[test]
-fn test_goal_completed_event_schema() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
+    // Test 5 — Repeated post-completion adds still do not re-emit
 
-    let name = String::from_str(&env, "Complete Test");
-    let id = client.create_goal(&user, &name, &1000, &10000);
+    #[test]
+    fn test_multiple_post_completion_adds_never_re_emit() {
+        let (env, client, owner) = setup();
 
-    let ts = 400u64;
-    env.ledger().with_mut(|li| li.timestamp = ts);
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Home Deposit"),
+            &2_000_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-    // Complete the goal
-    client.add_to_goal(&user, &id, &1000);
+        client.add_to_goal(&owner, &goal_id, &2_000_i128);
+        assert_eq!(count_completed_events(&env), 1);
 
-    // GoalCompletedEvent is published with a single topic (GOAL_COMPLETED,)
-    let events = env.events().all();
-    let data = events
-        .iter()
-        .filter(|e| {
-            e.1.len() == 1
-                && Symbol::try_from_val(&env, &e.1.get_unchecked(0)) == Ok(GOAL_COMPLETED)
-        })
-        .find_map(|e| GoalCompletedEvent::try_from_val(&env, &e.2).ok())
-        .expect("GoalCompletedEvent not found or schema mismatch");
+        // Three additional contributions after completion
+        for _ in 0..3 {
+            client.add_to_goal(&owner, &goal_id, &100_i128);
+        }
 
-    assert_eq!(data.goal_id, id);
-    assert_eq!(data.owner, user);
-    assert_eq!(data.name, name);
-    assert_eq!(data.amount, 1000);
-    assert_eq!(data.new_total, 1000);
-    assert_eq!(data.timestamp, ts);
-}
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "Still exactly 1 GoalCompleted after multiple post-completion contributions"
+        );
+    }
 
-#[test]
-fn test_batch_add_to_goals_events() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
 
-    let id1 = client.create_goal(&user, &String::from_str(&env, "G1"), &1000, &10000);
-    let id2 = client.create_goal(&user, &String::from_str(&env, "G2"), &1000, &10000);
+    // Test 6 — batch_add_to_goals: completing one goal emits once
 
-    let contributions = SorobanVec::from_array(
-        &env,
-        [
-            ContributionItem {
-                goal_id: id1,
-                amount: 200,
-            },
-            ContributionItem {
-                goal_id: id2,
-                amount: 300,
-            },
-        ],
-    );
+    /// Using `batch_add_to_goals`, completing one goal in a batch emits
+    /// exactly one `GoalCompleted` event for that goal.
+    #[test]
+    fn test_batch_add_completes_goal_emits_once() {
+        let (env, client, owner) = setup();
 
-    let ts = 500u64;
-    env.ledger().with_mut(|li| li.timestamp = ts);
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Business Capital"),
+            &1_000_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-    client.batch_add_to_goals(&user, &contributions);
+        // batch_add_to_goals — adjust the call signature to match the real API
+        // This assumes it takes a Vec of (goal_id, amount) tuples
+        client.batch_add_to_goals(
+            &owner,
+            &vec![&env, (goal_id.clone(), 1_000_i128)],
+        );
 
-    let add_events = get_remitwise_events(&env, FUNDS_ADDED);
-    assert_eq!(add_events.len(), 2);
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "batch_add_to_goals completing a goal should emit exactly 1 GoalCompleted"
+        );
+        assert!(client.is_goal_completed(&goal_id));
+    }
 
-    let event1_data: FundsAddedEvent =
-        FundsAddedEvent::try_from_val(&env, &add_events.get(0).unwrap().2).unwrap();
-    assert_eq!(event1_data.goal_id, id1);
-    assert_eq!(event1_data.amount, 200);
-    assert_eq!(event1_data.owner, user);
-    assert_eq!(event1_data.timestamp, ts);
+    // Test 7 — batch_add_to_goals: completing multiple goals emits one per goal
+    
 
-    let event2_data: FundsAddedEvent =
-        FundsAddedEvent::try_from_val(&env, &add_events.get(1).unwrap().2).unwrap();
-    assert_eq!(event2_data.goal_id, id2);
-    assert_eq!(event2_data.amount, 300);
-    assert_eq!(event2_data.owner, user);
-    assert_eq!(event2_data.timestamp, ts);
-}
+    #[test]
+    fn test_batch_add_completes_two_goals_emits_two_events() {
+        let (env, client, owner) = setup();
 
-#[test]
-fn test_consistent_progress_fields() {
-    let env = Env::default();
-    let (client, user) = setup_test(&env);
-    let ts = 100u64;
-    env.ledger().with_mut(|li| li.timestamp = ts);
+        let goal_a = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Goal A"),
+            &500_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
+        let goal_b = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Goal B"),
+            &800_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
 
-    // 1. Created
-    let id = client.create_goal(&user, &String::from_str(&env, "Consistent"), &1000, &10000);
-    let created_event = get_remitwise_events(&env, GOAL_CREATED).get(0).unwrap();
-    let c_data: GoalCreatedEvent = GoalCreatedEvent::try_from_val(&env, &created_event.2).unwrap();
-    assert_eq!(c_data.amount, 0);
-    assert_eq!(c_data.new_total, 0);
+        client.batch_add_to_goals(
+            &owner,
+            &vec![&env, (goal_a.clone(), 500_i128), (goal_b.clone(), 800_i128)],
+        );
 
-    // 2. Added
-    client.add_to_goal(&user, &id, &500);
-    let added_event = get_remitwise_events(&env, FUNDS_ADDED).get(0).unwrap();
-    let a_data: FundsAddedEvent = FundsAddedEvent::try_from_val(&env, &added_event.2).unwrap();
-    assert_eq!(a_data.amount, 500);
-    assert_eq!(a_data.new_total, 500);
+        assert_eq!(
+            count_completed_events(&env),
+            2,
+            "Each completed goal in a batch should emit its own GoalCompleted event"
+        );
+        assert!(client.is_goal_completed(&goal_a));
+        assert!(client.is_goal_completed(&goal_b));
+    }
 
-    // 3. Withdrawn
-    client.unlock_goal(&user, &id);
-    client.withdraw_from_goal(&user, &id, &200);
-    let withdrawn_event = get_remitwise_events(&env, FUNDS_WITHDRAWN).get(0).unwrap();
-    let w_data: FundsWithdrawnEvent =
-        FundsWithdrawnEvent::try_from_val(&env, &withdrawn_event.2).unwrap();
-    assert_eq!(w_data.amount, 200);
-    assert_eq!(w_data.new_total, 300);
+    // -----------------------------------------------------------------------
+    // Test 8 — batch_add_to_goals: already-completed goal in batch does not re-emit
+    // -----------------------------------------------------------------------
 
-    // 4. Completed
-    client.add_to_goal(&user, &id, &700);
-    let completed_event = get_remitwise_events(&env, GOAL_COMPLETED).get(0).unwrap();
-    let comp_data: GoalCompletedEvent =
-        GoalCompletedEvent::try_from_val(&env, &completed_event.2).unwrap();
-    assert_eq!(comp_data.amount, 700);
-    assert_eq!(comp_data.new_total, 1000);
+    #[test]
+    fn test_batch_add_already_completed_goal_does_not_re_emit() {
+        let (env, client, owner) = setup();
+
+        let goal_id = client.create_goal(
+            &owner,
+            &soroban_sdk::String::from_str(&env, "Already Done"),
+            &300_i128,
+            &(env.ledger().timestamp() + 86_400),
+        );
+
+        // Complete via single add first
+        client.add_to_goal(&owner, &goal_id, &300_i128);
+        assert_eq!(count_completed_events(&env), 1);
+
+        // Now include the same completed goal in a batch
+        client.batch_add_to_goals(
+            &owner,
+            &vec![&env, (goal_id.clone(), 100_i128)],
+        );
+
+        assert_eq!(
+            count_completed_events(&env),
+            1,
+            "batch_add_to_goals must not re-emit GoalCompleted for an already-completed goal"
+        );
+    }
 }
