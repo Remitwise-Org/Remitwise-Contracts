@@ -3270,7 +3270,13 @@ fn test_emergency_mode_disabled_skips_volume_cap() {
     assert!(!client.is_emergency_mode());
 
     let signers = vec![&env, owner.clone(), member.clone()];
-    client.configure_multisig(&owner, &TransactionType::EmergencyTransfer, &2, &signers, &0);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::EmergencyTransfer,
+        &2,
+        &signers,
+        &0,
+    );
 
     let recipient = Address::generate(&env);
     // Proposal amount far exceeds the daily_limit — must still be accepted as a pending tx

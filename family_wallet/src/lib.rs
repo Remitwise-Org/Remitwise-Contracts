@@ -2150,7 +2150,7 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("EM_VOL"), &new_vol);
     }
-    
+
     fn execute_emergency_transfer_now(
         env: Env,
         proposer: Address,
