@@ -19,11 +19,12 @@ All storage keys follow strict naming conventions to ensure consistency and comp
 
 - **Maximum length:** 9 characters (enforced by `symbol_short!`)
 - **Format:** UPPERCASE_WITH_UNDERSCORES
-- **Valid characters:** A-Z, 0-9, _ (underscore)
+- **Valid characters:** A-Z, 0-9, \_ (underscore)
 
 These conventions are automatically validated in CI. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
 
 **Run validation tests:**
+
 ```bash
 cargo test --package testutils storage_key_naming_test -- --nocapture
 ```
@@ -45,6 +46,18 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
   - `ARCHIVE_BUMP_AMOUNT = 2592000` (~180 days)
 - Important implementation detail:
   - Archive bump helpers still call `instance().extend_ttl(...)`; they extend the contract instance entry TTL, not a separate archive namespace.
+
+### Shared TTL-bump helpers (remitwise-common)
+
+`remitwise-common` exports three helpers that centralise the canonical TTL policy:
+
+| Helper                      | Threshold                                 | Bump                               | Purpose                    |
+| --------------------------- | ----------------------------------------- | ---------------------------------- | -------------------------- |
+| `bump_instance(env)`        | `INSTANCE_LIFETIME_THRESHOLD` (1 day)     | `INSTANCE_BUMP_AMOUNT` (30 days)   | Active instance data       |
+| `bump_persistent(env, key)` | `PERSISTENT_LIFETIME_THRESHOLD` (15 days) | `PERSISTENT_BUMP_AMOUNT` (60 days) | Persistent storage entries |
+| `bump_archive(env)`         | `ARCHIVE_LIFETIME_THRESHOLD` (1 day)      | `ARCHIVE_BUMP_AMOUNT` (150 days)   | Archive instance window    |
+
+Using these helpers prevents the common mistake of swapping `threshold` and `bump` arguments. See [docs/ttl-bump-helpers.md](docs/ttl-bump-helpers.md) for usage guidance.
 
 ### ID allocation patterns
 
@@ -95,7 +108,6 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
 | `UNP_AT`    | `u64`                       | Optional time-locked unpause timestamp |
 | `UPG_ADM`   | `Address`                   | Upgrade admin                          |
 | `VERSION`   | `u32`                       | Contract version                       |
-
 
 | Key       | Type                    | Notes                           |
 | --------- | ----------------------- | ------------------------------- |

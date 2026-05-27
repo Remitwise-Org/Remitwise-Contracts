@@ -5,16 +5,16 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import Database from 'better-sqlite3';
+import Database from "better-sqlite3";
 
 export function initializeDatabase(dbPath: string): Database.Database {
   const db = new Database(dbPath);
-  
+
   // Enable WAL mode for better concurrency
-  db.pragma('journal_mode = WAL');
-  
+  db.pragma("journal_mode = WAL");
+
   createTables(db);
-  
+
   return db;
 }
 
@@ -122,5 +122,68 @@ function createTables(db: Database.Database): void {
     );
   `);
 
-  console.log('Database schema initialized');
+  // Family Wallet events table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS family_wallet_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      contract_address TEXT NOT NULL,
+      member TEXT,
+      role TEXT,
+      spending_limit TEXT,
+      limit_amount TEXT,
+      tx_id TEXT,
+      proposer TEXT,
+      recipient TEXT,
+      amount TEXT,
+      timestamp INTEGER NOT NULL,
+      ledger INTEGER NOT NULL,
+      tx_hash TEXT NOT NULL,
+      raw_data TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_fw_events_type ON family_wallet_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_fw_events_member ON family_wallet_events(member);
+    CREATE INDEX IF NOT EXISTS idx_fw_events_timestamp ON family_wallet_events(timestamp);
+  `);
+
+  // Orchestrator flow events table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS orchestrator_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      contract_address TEXT NOT NULL,
+      executor TEXT,
+      amount TEXT,
+      error_code INTEGER,
+      timestamp INTEGER NOT NULL,
+      ledger INTEGER NOT NULL,
+      tx_hash TEXT NOT NULL,
+      raw_data TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_orch_events_type ON orchestrator_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_orch_events_executor ON orchestrator_events(executor);
+    CREATE INDEX IF NOT EXISTS idx_orch_events_timestamp ON orchestrator_events(timestamp);
+  `);
+
+  // Emergency Killswitch events table — drives alerting hooks
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS killswitch_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      contract_address TEXT NOT NULL,
+      scope TEXT,
+      module_id TEXT,
+      func_name TEXT,
+      timestamp INTEGER NOT NULL,
+      ledger INTEGER NOT NULL,
+      tx_hash TEXT NOT NULL,
+      raw_data TEXT NOT NULL,
+      alert_sent INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_ks_events_type ON killswitch_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_ks_events_timestamp ON killswitch_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ks_events_alert ON killswitch_events(alert_sent);
+  `);
+
+  console.log("Database schema initialized");
 }

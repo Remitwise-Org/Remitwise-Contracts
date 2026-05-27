@@ -280,6 +280,28 @@ pub struct FundsAddedEvent {
  }
  ```
 
+### `GoalCompletedEvent` (`SavingsEvent::GoalCompleted`)
+
+**Topic:** `completed`  
+**Emitted by:** `add_to_goal`, `batch_add_to_goals`  
+**Trigger:** Emitted exactly **once** per goal, on the contribution that first brings
+`current_amount >= target_amount`.
+
+**Fields:**
+
+| Field          | Type     | Description                              |
+|----------------|----------|------------------------------------------|
+| `goal_id`      | `u32`    | Unique identifier of the completed goal  |
+| `name`         | `String` | Name of the savings goal                 |
+| `final_amount` | `i128`   | Total amount at time of completion       |
+| `timestamp`    | `u64`    | Ledger timestamp when goal was completed |
+
+**Single-emission guarantee:**  
+After `is_goal_completed` returns `true` for a goal, no further
+`GoalCompletedEvent` will be emitted for that goal regardless of
+subsequent contributions. Downstream indexers and notification services
+can rely on receiving this event at most once per goal.
+
 ### Event: Funds Withdrawn
  
  **Topic:** `"withdrawn"` (primary)
@@ -387,24 +409,29 @@ pub struct PolicyCreatedEvent {
 ### Event: Premium Paid
 
 **Topic:** `"paid"` (primary)  
-**Secondary Topic:** `("insure", InsuranceEvent::PremiumPaid)`
+**Secondary Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::Low, "paid")`
 
 **Data Structure:**
 ```rust
 pub struct PremiumPaidEvent {
     pub policy_id: u32,             // Policy ID
-    pub name: String,               // Policy name
+    pub owner: Address,             // Policy owner
     pub amount: i128,               // Premium amount paid
-    pub next_payment_date: u64,     // Next payment due date
+    pub next_payment_date: u64,     // Next due date after cadence advancement
     pub timestamp: u64,             // Event timestamp
 }
 ```
+
+**Cadence Rule:**
+- Fixed 30-day cadence (`30 * 86_400` seconds).
+- `pay_premium` and `batch_pay_premiums` both advance per-policy due dates.
+- Late payments always produce `next_payment_date` strictly in the future.
 
 **Example Event:**
 ```json
 {
   "policy_id": 1,
-  "name": "Life Insurance",
+  "owner": "G...",
   "amount": 2000,
   "next_payment_date": 1237246200,
   "timestamp": 1234567850
@@ -607,6 +634,48 @@ pub struct ScheduleCancelledEvent {
     pub timestamp: u64,             // Event timestamp
 }
 ```
+
+### Event: Remittance Schedule Due Execution
+
+**Topic:** `("split", "sch_exec")`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Schedule ID that was executed
+    pub amount: i128,               // Schedule amount (for audit trail)
+)
+```
+
+**Emitted When:** A schedule becomes due (`next_due <= current_time`) and is executed by
+`execute_due_remittance_schedules`. This event tracks the executor's activity for auditing
+and indexing purposes. The actual distribution is still performed separately via `distribute_usdc`.
+
+**Security Notes:**
+- Emitted only after `last_executed` is set, ensuring idempotency.
+- Emitted even if the schedule is one-off and becomes inactive after execution.
+- Permissionless executor ensures this event is auditable on-chain without requiring owner authorization.
+
+### Event: Remittance Schedule Missed Intervals
+
+**Topic:** `("split", "sch_miss")`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Schedule ID
+    pub missed_count: u32,          // Number of intervals that were skipped
+)
+```
+
+**Emitted When:** A recurring schedule is executed, and one or more intervals were missed
+(i.e., execution was delayed). For example, if a schedule is due every 86,400 seconds but
+not executed for 3 intervals, `missed_count = 3` and this event is emitted.
+
+**Drift Handling:**
+- Indicates delayed executor runs or network congestion.
+- Allows off-chain systems to detect and respond to drift.
+- `next_due` is advanced past all missed intervals, so the schedule "catches up."
 
 ### Event: Contract Paused/Unpaused
 

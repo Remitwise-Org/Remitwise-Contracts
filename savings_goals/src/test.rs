@@ -3722,6 +3722,66 @@ fn test_last_executed_set_to_current_time() {
     );
 }
 
+#[test]
+fn test_execute_due_savings_schedules_skips_inactive_schedule() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Inactive Skip"),
+        &10000,
+        &99999,
+    );
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &250, &3000, &86400);
+
+    client.cancel_savings_schedule(&owner, &schedule_id);
+
+    set_ledger_time(&env, 2, 3500);
+    let executed = client.execute_due_savings_schedules();
+    assert_eq!(executed.len(), 0, "inactive schedule must be skipped");
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(
+        goal.current_amount, 0,
+        "inactive schedule must not credit funds"
+    );
+}
+
+#[test]
+fn test_execute_due_savings_schedules_missed_count_multi_interval() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Missed Count"),
+        &10000,
+        &99999,
+    );
+    let schedule_id = client.create_savings_schedule(&owner, &goal_id, &100, &3000, &1000);
+
+    // next_due=3000, current_time=6500 -> missed windows at 4000, 5000, 6000 => missed_count=3
+    set_ledger_time(&env, 2, 6500);
+    let executed = client.execute_due_savings_schedules();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(executed.get(0).unwrap(), schedule_id);
+
+    let schedule = client.get_savings_schedule(&schedule_id).unwrap();
+    assert_eq!(schedule.missed_count, 3);
+    assert_eq!(schedule.next_due, 7000);
+}
+
 // ============================================================================
 // End-to-end migration compatibility tests — savings_goals ↔ data_migration
 //

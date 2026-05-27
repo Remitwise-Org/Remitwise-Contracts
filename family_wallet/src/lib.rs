@@ -844,6 +844,10 @@ impl FamilyWallet {
         true
     }
 
+    /// Withdraw funds using the appropriate spending limit and multi-sig configuration.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn withdraw(
         env: Env,
         proposer: Address,
@@ -851,6 +855,7 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        Self::require_not_paused(&env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -879,6 +884,10 @@ impl FamilyWallet {
         )
     }
 
+    /// Propose a split configuration change.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_split_config_change(
         env: Env,
         proposer: Address,
@@ -887,6 +896,7 @@ impl FamilyWallet {
         bills_percent: u32,
         insurance_percent: u32,
     ) -> u64 {
+        Self::require_not_paused(&env);
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
             panic!("Percentages must sum to 100");
         }
@@ -904,12 +914,17 @@ impl FamilyWallet {
         )
     }
 
+    /// Propose a family member role change.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_role_change(
         env: Env,
         proposer: Address,
         member: Address,
         new_role: FamilyRole,
     ) -> u64 {
+        Self::require_not_paused(&env);
         Self::propose_transaction(
             env,
             proposer,
@@ -918,6 +933,10 @@ impl FamilyWallet {
         )
     }
 
+    /// Propose or execute an emergency transfer.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_emergency_transfer(
         env: Env,
         proposer: Address,
@@ -925,6 +944,7 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        Self::require_not_paused(&env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -979,7 +999,12 @@ impl FamilyWallet {
         tx_id
     }
 
+    /// Propose a policy cancellation.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_policy_cancellation(env: Env, proposer: Address, policy_id: u32) -> u64 {
+        Self::require_not_paused(&env);
         Self::propose_transaction(
             env,
             proposer,
@@ -1680,8 +1705,12 @@ impl FamilyWallet {
     ///
     /// # Security
     /// Only the Owner can set this value, and their role must not be expired.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn set_proposal_expiry(env: Env, caller: Address, expiry: u64) -> bool {
         caller.require_auth();
+        Self::require_not_paused(&env);
         let owner: Address = env
             .storage()
             .instance()
@@ -1870,9 +1899,11 @@ impl FamilyWallet {
     ///
     /// # Panics
     /// - If caller lacks Owner role or higher
+    /// - If the contract is paused
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
+        Self::require_not_paused(&env);
 
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
 
@@ -1898,8 +1929,13 @@ impl FamilyWallet {
         Self::get_upgrade_admin(&env)
     }
 
+    /// Set the contract version (upgrade support).
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> bool {
         caller.require_auth();
+        Self::require_not_paused(&env);
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| {
             env.storage()
                 .instance()
@@ -2039,6 +2075,25 @@ impl FamilyWallet {
 
     // Owner/Admin only: audit data is privacy-sensitive — reveals who accessed
     // what and when, so Members are excluded from reading the full trail.
+    //
+    // ## Pagination cursor semantics
+    //
+    // `from_index` is the **inclusive** zero-based index of the first entry to
+    // return.  `next_cursor` in the returned page is the index to pass as
+    // `from_index` on the next call.
+    //
+    // **Sentinel value:** when `next_cursor == total` (i.e. equals the length
+    // of the log at the time of the call) there are no more entries.  Callers
+    // MUST stop iterating when `next_cursor >= count` returned by a previous
+    // page, or when the returned page is empty.
+    //
+    // **Clamping rules (no panic on adversarial input):**
+    // - `limit == 0`            → silently promoted to `DEFAULT_AUDIT_PAGE_LIMIT`.
+    // - `limit > MAX_AUDIT_PAGE_LIMIT` → clamped to `MAX_AUDIT_PAGE_LIMIT`.
+    // - `from_index >= total`   → returns an empty page with
+    //                             `next_cursor = total` (end-of-log sentinel).
+    // - `from_index = u32::MAX` → handled by the `>= total` check above; no
+    //                             arithmetic overflow is possible.
     pub fn get_access_audit_page(
         env: Env,
         caller: Address,
@@ -2054,13 +2109,27 @@ impl FamilyWallet {
             .get(&symbol_short!("ACC_AUDIT"))
             .unwrap_or_else(|| Vec::new(&env));
 
+        // Clamp limit: 0 → default, oversized → max.
         let capped_limit = if limit == 0 {
             DEFAULT_AUDIT_PAGE_LIMIT
         } else {
             limit.min(MAX_AUDIT_PAGE_LIMIT)
         };
+
         let total = entries.len();
+
+        // Out-of-range offset: return empty page with end-of-log sentinel so
+        // callers can detect exhaustion without a separate length query.
+        if from_index >= total {
+            return AccessAuditPage {
+                items: Vec::new(&env),
+                next_cursor: total, // sentinel: no more entries
+                count: 0,
+            };
+        }
+
         let mut items = Vec::new(&env);
+        // `i` is bounded by `total` (u32), so no overflow risk.
         let mut i = from_index;
         while i < total && items.len() < capped_limit {
             if let Some(e) = entries.get(i) {
@@ -2069,7 +2138,9 @@ impl FamilyWallet {
             i += 1;
         }
         let count = items.len();
-        let next_cursor = if i < total { i } else { 0 };
+        // `next_cursor == total` is the end-of-log sentinel.
+        // Callers iterate while `next_cursor < total` (or while `count > 0`).
+        let next_cursor = i; // equals `total` when the log is exhausted
         AccessAuditPage {
             items,
             next_cursor,
@@ -2080,6 +2151,76 @@ impl FamilyWallet {
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /// Enforces the emergency transfer daily volume cap and persists the updated `EM_VOL`.
+    ///
+    /// # Day-boundary rollover
+    ///
+    /// The window is anchored to **UTC midnight** boundaries derived from `EM_LAST`
+    /// (the timestamp of the most-recently completed emergency transfer):
+    ///
+    /// ```text
+    /// is_new_day = (now / 86_400) > (EM_LAST / 86_400)
+    /// ```
+    ///
+    /// When `is_new_day` is true `EM_VOL` is reset to zero before adding `amount`.
+    /// This prevents the sliding-window attack where an attacker splits transfers
+    /// across an artificial 24-hour boundary to reset the counter early and
+    /// effectively drain up to `2 × daily_limit` across two adjacent calls.
+    ///
+    /// # Checked arithmetic
+    ///
+    /// `checked_add` is used instead of `saturating_add`.  An `i128` overflow would
+    /// silently wrap to a value that passes the cap comparison; `checked_add` panics
+    /// instead, treating overflow as a hard protocol error rather than masking it.
+    ///
+    /// # Panics
+    /// - `"Emergency volume arithmetic overflow"` — `current_vol + amount` overflows `i128`.
+    /// - `"Emergency daily limit exceeded"` — accumulated volume would exceed `daily_limit`.
+    fn check_and_update_emergency_volume(env: &Env, now: u64, amount: i128, daily_limit: i128) {
+        const DAY: u64 = 86_400;
+
+        // EM_LAST: timestamp of the last recorded emergency transfer.
+        // Initialized to 0 in `init`; 0 places the last transfer at the Unix epoch
+        // (day 0), so any transfer at timestamp >= 86_400 triggers a fresh window.
+        let last_ts: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_LAST"))
+            .unwrap_or(0u64);
+
+        // EM_VOL: accumulated volume for the current UTC day.
+        let stored_vol: i128 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_VOL"))
+            .unwrap_or(0i128);
+
+        // Integer division truncates to the start of each UTC day.
+        // e.g. 86_399 / 86_400 = 0  (day 0)
+        //      86_400 / 86_400 = 1  (day 1) ← triggers reset
+        let current_vol = if (now / DAY) > (last_ts / DAY) {
+            0i128 // new UTC day — discard previous window's volume
+        } else {
+            stored_vol
+        };
+
+        // checked_add: overflow is a hard error, not a user-correctable condition.
+        let new_vol = current_vol
+            .checked_add(amount)
+            .unwrap_or_else(|| panic!("Emergency volume arithmetic overflow"));
+
+        if new_vol > daily_limit {
+            panic!("Emergency daily limit exceeded");
+        }
+
+        // Persist updated volume. EM_LAST is written by the caller *after* the
+        // token transfer succeeds, so on the next call this helper sees the correct
+        // "last transfer day" for rollover detection.
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_VOL"), &new_vol);
+    }
 
     fn execute_emergency_transfer_now(
         env: Env,
@@ -2108,21 +2249,8 @@ impl FamilyWallet {
             panic!("Emergency transfer cooldown period not elapsed");
         }
 
-        // Daily Rate Limit Enforcement
-        let day_in_seconds = 86400u64;
-        let mut daily_usage: (i128, u64) = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("EM_VOL"))
-            .unwrap_or((0i128, 0u64));
-
-        if now >= daily_usage.1.saturating_add(day_in_seconds) {
-            daily_usage = (0i128, now);
-        }
-
-        if daily_usage.0.saturating_add(amount) > config.daily_limit {
-            panic!("Emergency daily limit exceeded");
-        }
+        // Enforce daily volume cap — correct day-boundary rollover + checked arithmetic.
+        Self::check_and_update_emergency_volume(&env, now, amount, config.daily_limit);
 
         let token_client = TokenClient::new(&env, &token);
         let current_balance = token_client.balance(&proposer);
@@ -2153,11 +2281,6 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
-
-        daily_usage.0 = daily_usage.0.saturating_add(amount);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("EM_VOL"), &daily_usage);
 
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),

@@ -1,0 +1,33 @@
+name: Batch-B CI Gate
+
+on:
+  pull_request:
+    branches: [ "**" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  # We only list the known, existing on-chain contracts for the WASM compilation step
+  BATCH_B_CONTRACTS: "-p family_wallet -p orchestrator -p data_migration"
+
+jobs:
+  validate:
+    name: Validate and Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        run: |
+          rustup show 
+          rustup component add clippy rustfmt
+          rustup target add wasm32-unknown-unknown
+
+      - name: Execute Native CI Checks
+        # Wires the existing check_ci.sh to handle fmt, clippy, and test
+        # for all batch-B crates, accounting for custom paths/names automatically.
+        run: bash check_ci.sh
+
+      - name: Build Contracts (WASM)
+        # Compiles the known Soroban smart contracts to WebAssembly
+        run: cargo build --release --target wasm32-unknown-unknown ${BATCH_B_CONTRACTS}

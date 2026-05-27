@@ -179,6 +179,123 @@ fn test_batch_add_to_goals_overflow_returns_error() {
     let result = client.try_batch_add_to_goals(&owner, &contributions);
     assert_eq!(result, Err(Ok(SavingsGoalError::Overflow)));
 }
+
+#[test]
+fn test_batch_add_to_goals_duplicate_goal_ids_use_updated_balance() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let safe_cap = i128::MAX / 2;
+    let starting_balance = safe_cap - 2;
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Duplicate Batch Goal"),
+        &i128::MAX,
+        &2000000,
+    );
+
+    env.mock_all_auths();
+    let current = client.add_to_goal(&owner, &goal_id, &starting_balance);
+    assert_eq!(current, starting_balance);
+
+    let mut contributions = Vec::new(&env);
+    contributions.push_back(ContributionItem {
+        goal_id,
+        amount: 1,
+    });
+    contributions.push_back(ContributionItem {
+        goal_id,
+        amount: 1,
+    });
+
+    env.mock_all_auths();
+    let processed = client.batch_add_to_goals(&owner, &contributions);
+    assert_eq!(processed, 2);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, safe_cap);
+    assert_eq!(goal.target_amount, i128::MAX);
+}
+
+#[test]
+fn test_batch_add_to_goals_rejects_zero_and_negative_amounts() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Invalid Amount Goal"),
+        &1000,
+        &2000000,
+    );
+
+    let mut zero_batch = Vec::new(&env);
+    zero_batch.push_back(ContributionItem {
+        goal_id,
+        amount: 0,
+    });
+
+    env.mock_all_auths();
+    let zero_result = client.try_batch_add_to_goals(&owner, &zero_batch);
+    assert_eq!(zero_result, Err(Ok(SavingsGoalError::InvalidAmount)));
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 0);
+
+    let mut negative_batch = Vec::new(&env);
+    negative_batch.push_back(ContributionItem {
+        goal_id,
+        amount: -1,
+    });
+
+    env.mock_all_auths();
+    let negative_result = client.try_batch_add_to_goals(&owner, &negative_batch);
+    assert_eq!(negative_result, Err(Ok(SavingsGoalError::InvalidAmount)));
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 0);
+}
+
+#[test]
+fn test_batch_add_to_goals_rejects_oversized_batch() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Oversized Batch Goal"),
+        &1000,
+        &2000000,
+    );
+
+    let mut contributions = Vec::new(&env);
+    for _ in 0..51 {
+        contributions.push_back(ContributionItem {
+            goal_id,
+            amount: 1,
+        });
+    }
+
+    env.mock_all_auths();
+    let result = client.try_batch_add_to_goals(&owner, &contributions);
+    assert_eq!(result, Err(Ok(SavingsGoalError::BatchTooLarge)));
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.current_amount, 0);
+}
 #[test]
 fn test_withdraw_from_goal_with_large_amount() {
     let env = Env::default();

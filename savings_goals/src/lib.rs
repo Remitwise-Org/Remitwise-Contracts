@@ -1019,6 +1019,22 @@ impl SavingsGoalContract {
         Ok(new_total)
     }
 
+    /// Adds contributions to multiple goals in one call.
+    ///
+    /// Batch semantics are strict and order-sensitive:
+    /// * `contributions.len()` must be at most `MAX_BATCH_SIZE` (50)
+    /// * each `ContributionItem.amount` must be strictly positive
+    /// * duplicate `goal_id` values are allowed and are applied sequentially
+    ///   against the updated balance from earlier items in the same batch
+    /// * per-item balance updates use checked arithmetic and return
+    ///   `SavingsGoalError::Overflow` instead of allowing a host-level panic
+    ///
+    /// # Errors
+    /// * `BatchTooLarge` - If more than 50 contributions are supplied
+    /// * `InvalidAmount` - If any contribution amount is `<= 0`
+    /// * `GoalNotFound` - If any referenced goal does not exist
+    /// * `Unauthorized` - If the caller does not own a referenced goal
+    /// * `Overflow` - If any balance update would overflow i128
     pub fn batch_add_to_goals(
         env: Env,
         caller: Address,
@@ -1054,6 +1070,8 @@ impl SavingsGoalContract {
             }
 
             let previously_completed = goal.current_amount >= goal.target_amount;
+            // Checked arithmetic keeps overflow as a contract error instead of
+            // a panic-abort when balances approach the i128 boundary.
             let new_total = match goal.current_amount.checked_add(item.amount) {
                 Some(v) => v,
                 None => return Err(SavingsGoalError::Overflow),
@@ -2274,7 +2292,7 @@ impl SavingsGoalContract {
     /// A schedule is skipped if its `last_executed` timestamp is greater than or
     /// equal to its `next_due` timestamp at the time of the call.  This prevents
     /// double-crediting a goal when `execute_due_savings_schedules` is invoked
-    /// multiple times within the same execution window – for example, two
+    /// multiple times within the same execution window - for example, two
     /// transactions landing in the same Stellar ledger (which share a ledger
     /// timestamp), or a retry after a transient failure.
     ///
@@ -2337,36 +2355,39 @@ impl SavingsGoalContract {
                 }
             }
 
-            if let Some(mut goal) = env
+            let mut goal = match env
                 .storage()
                 .persistent()
                 .get::<_, SavingsGoal>(&DataKey::Goal(schedule.goal_id))
             {
-                let new_total = match goal.current_amount.checked_add(schedule.amount) {
-                    Some(v) => v,
-                    None => continue, // Skip overflow
-                };
-                if new_total > MAX_SAFE_GOAL_BALANCE {
-                    continue;
-                }
-                goal.current_amount = new_total;
+                Some(g) => g,
+                None => continue,
+            };
 
-                let is_completed = goal.current_amount >= goal.target_amount;
-                env.storage()
-                    .persistent()
-                    .set(&DataKey::Goal(schedule.goal_id), &goal);
+            let new_total = match goal.current_amount.checked_add(schedule.amount) {
+                Some(v) => v,
+                None => continue, // Skip overflow
+            };
+            if new_total > MAX_SAFE_GOAL_BALANCE {
+                continue;
+            }
+            goal.current_amount = new_total;
 
+            let is_completed = goal.current_amount >= goal.target_amount;
+            env.storage()
+                .persistent()
+                .set(&DataKey::Goal(schedule.goal_id), &goal);
+
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::FundsAdded),
+                (schedule.goal_id, goal.owner.clone(), schedule.amount),
+            );
+
+            if is_completed {
                 env.events().publish(
-                    (symbol_short!("savings"), SavingsEvent::FundsAdded),
-                    (schedule.goal_id, goal.owner.clone(), schedule.amount),
+                    (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                    (schedule.goal_id, goal.owner),
                 );
-
-                if is_completed {
-                    env.events().publish(
-                        (symbol_short!("savings"), SavingsEvent::GoalCompleted),
-                        (schedule.goal_id, goal.owner),
-                    );
-                }
             }
 
             schedule.last_executed = Some(current_time);

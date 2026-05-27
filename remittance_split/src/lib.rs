@@ -2099,6 +2099,180 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    /// Execute all due remittance schedules in a permissionless, idempotent manner.
+    ///
+    /// This function is the executor entrypoint for remittance schedules, processing
+    /// all schedules whose `next_due <= ledger().timestamp()` and `active == true`.
+    /// It mirrors the pattern of `savings_goals::execute_due_savings_schedules` but
+    /// tracks execution state without performing fund transfers (which remain the
+    /// responsibility of `distribute_usdc`).
+    ///
+    /// # Security & Idempotency
+    ///
+    /// ## Idempotent next_due advancement
+    /// A key safety property is that `next_due` is **only advanced after**
+    /// `last_executed` is set to the current ledger timestamp. This ensures that:
+    /// * A double-call at the same timestamp sees `next_due > current_time` and skips
+    ///   re-execution (the idempotency guard `if let Some(last) = last_executed; if last >= next_due_original`)
+    /// * If the function crashes mid-execution for a schedule, the next call will
+    ///   retry from the same window (since `next_due` was never advanced)
+    ///
+    /// ## Paused contract rejection
+    /// The function immediately returns an empty Vec if the contract is paused,
+    /// ensuring no schedule state changes during emergency freeze.
+    ///
+    /// ## Re-validation of config
+    /// The CONFIG is re-read at function start to ensure the split contract is
+    /// initialized and the token address is still pinned (no mutation of token
+    /// address happens in this function, but we validate the contract is ready).
+    ///
+    /// # Execution Logic
+    ///
+    /// For each active schedule with `next_due <= current_time`:
+    /// 1. Load the schedule from persistent storage.
+    /// 2. Check if `active == true`; skip if already deactivated.
+    /// 3. **Idempotency check**: If `last_executed >= next_due`, skip (already
+    ///    executed in this due window).
+    /// 4. Set `last_executed = current_time` **before advancing next_due**.
+    /// 5. Advance `next_due`:
+    ///    - **One-off** (`interval == 0`): Deactivate (`active = false`).
+    ///    - **Recurring** (`interval > 0`): Advance `next_due` by interval until
+    ///      it is strictly greater than `current_time`. Count skipped intervals
+    ///      and increment `missed_count`.
+    /// 6. Persist the schedule and emit events.
+    /// 7. Record the executed schedule ID.
+    ///
+    /// # Drift Handling
+    /// If a schedule is delayed (e.g., executor runs 3 intervals late), the function
+    /// will "catch up" by advancing `next_due` through all missed intervals, tracking
+    /// the count. `missed_count` is incremented for each missed interval.
+    ///
+    /// # Events Emitted
+    /// - `ScheduleEvent::Executed` for each successfully executed schedule.
+    /// - `ScheduleEvent::Missed` for each interval missed in a recurring schedule.
+    ///
+    /// # Permissionless Execution
+    /// This function requires **no authorization** — any account may call it. This
+    /// is intentional: the executor is a utility for maintaining schedule state,
+    /// and blocking it would break automation. The schedule modifications
+    /// (`create`, `modify`, `cancel`) remain owner-only and properly authorized.
+    ///
+    /// # Authorization Assumptions
+    /// - Schedule creation/modification/cancellation are guarded by owner authorization.
+    /// - Once a schedule is created, only this function and cancellation can modify
+    ///   its `next_due` and `last_executed` fields.
+    /// - An attacker cannot bypass the idempotency guard by resetting `last_executed`
+    ///   (only `execute_due_remittance_schedules` can set it, and only forward in time).
+    ///
+    /// # Returns
+    /// A vector of schedule IDs that were successfully executed in this call.
+    /// An empty vector means either no schedules were due or the contract was paused.
+    pub fn execute_due_remittance_schedules(env: Env) -> Vec<u32> {
+        Self::extend_instance_ttl(&env);
+
+        // Check if contract is paused; if so, return empty (permissionless safety valve)
+        if Self::get_global_paused(&env) {
+            return Vec::new(&env);
+        }
+
+        // Validate CONFIG exists (ensures contract is initialized)
+        let _config: SplitConfig = match env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+        {
+            Some(c) => c,
+            None => return Vec::new(&env),
+        };
+
+        let current_time = env.ledger().timestamp();
+        let mut executed = Vec::new(&env);
+
+        // Iterate through all schedule IDs
+        let next_schedule_id = env
+            .storage()
+            .instance()
+            .get::<_, u32>(&symbol_short!("NEXT_RSCH"))
+            .unwrap_or(0);
+
+        for schedule_id in 1..=next_schedule_id {
+            let mut schedule = match env
+                .storage()
+                .persistent()
+                .get::<_, RemittanceSchedule>(&DataKey::Schedule(schedule_id))
+            {
+                Some(s) => s,
+                None => continue, // Schedule was never created or was deleted
+            };
+
+            // Skip if not active or not yet due
+            if !schedule.active || schedule.next_due > current_time {
+                continue;
+            }
+
+            // Idempotency check: if we've already executed this schedule in the current
+            // due window, skip it. This prevents double-execution at the same ledger timestamp.
+            if let Some(last_exec) = schedule.last_executed {
+                if last_exec >= schedule.next_due {
+                    continue; // Already executed in this window
+                }
+            }
+
+            // Mark execution timestamp **before** advancing next_due
+            schedule.last_executed = Some(current_time);
+
+            // Advance next_due based on schedule type
+            if schedule.recurring && schedule.interval > 0 {
+                let mut missed = 0u32;
+                let mut next = schedule.next_due + schedule.interval;
+                while next <= current_time {
+                    missed = missed.saturating_add(1);
+                    next = next.saturating_add(schedule.interval);
+                }
+                schedule.missed_count = schedule.missed_count.saturating_add(missed);
+                schedule.next_due = next;
+
+                // Emit missed event if there were skipped intervals
+                if missed > 0 {
+                    RemitwiseEvents::emit(
+                        &env,
+                        EventCategory::State,
+                        EventPriority::Low,
+                        symbol_short!("sch_miss"),
+                        (schedule_id, missed),
+                    );
+                }
+            } else {
+                // One-off schedule: deactivate after execution
+                schedule.active = false;
+            }
+
+            // Persist the updated schedule
+            env.storage()
+                .persistent()
+                .set(&DataKey::Schedule(schedule_id), &schedule);
+            env.storage().persistent().extend_ttl(
+                &DataKey::Schedule(schedule_id),
+                INSTANCE_LIFETIME_THRESHOLD,
+                INSTANCE_BUMP_AMOUNT,
+            );
+
+            // Emit execution event
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                symbol_short!("sch_exec"),
+                (schedule_id, schedule.amount),
+            );
+
+            // Record this schedule as executed
+            executed.push_back(schedule_id);
+        }
+
+        executed
+    }
+
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let schedule_ids: Vec<u32> = env
             .storage()

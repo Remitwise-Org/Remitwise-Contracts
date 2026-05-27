@@ -460,3 +460,6 @@ MIT - See main project LICENSE file
 **Version**: 1.0.0
 
 **Last Updated**: 2026-02-25
+
+## Crash-Safe Resume
+Indexer state is stored in `indexer_state` to prevent data loss.

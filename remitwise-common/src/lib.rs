@@ -140,9 +140,11 @@ impl RemitwiseEvents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::storage::Instance as InstanceStorage;
+    use soroban_sdk::testutils::{Ledger, LedgerInfo};
     use soroban_sdk::{
-        contract, contractimpl, symbol_short, testutils::Events, Address, Env, Symbol, TryFromVal,
-        Val, Vec,
+        contract, contractimpl, symbol_short, testutils::Events, Address, Env, IntoVal, Symbol,
+        TryFromVal, Val, Vec,
     };
 
     #[contract]
@@ -858,6 +860,397 @@ mod tests {
         let _ = a; // Still usable — proves Copy
         assert_eq!(b.to_u32(), 2);
     }
+
+    // -----------------------------------------------------------------------
+    // Round-trip encode/decode tests (IntoVal / TryFromVal)
+    //
+    // These tests prove that every variant of the three shared #[contracttype]
+    // enums survives a full Val round-trip without loss.  A silent encoding
+    // change (e.g. renumbering a discriminant) would corrupt cross-contract
+    // data stored in Soroban persistent/instance storage and event payloads
+    // such as PolicyCreatedEvent.coverage_type.
+    //
+    // Stability guarantee: the discriminant values are pinned by the
+    // `*_discriminants` tests above AND by these round-trip tests.  Both
+    // must pass for a change to be considered safe.
+    // -----------------------------------------------------------------------
+
+    /// Helper: round-trip a contracttype value through Val inside a contract
+    /// context, then assert the decoded value equals the original.
+    fn roundtrip_val<T>(env: &Env, contract_id: &Address, value: T) -> T
+    where
+        T: soroban_sdk::IntoVal<Env, Val>
+            + soroban_sdk::TryFromVal<Env, Val>
+            + Clone
+            + core::fmt::Debug,
+        <T as soroban_sdk::TryFromVal<Env, Val>>::Error: core::fmt::Debug,
+    {
+        // IntoVal must be called inside a contract context for contracttype
+        // enums because the SDK uses the host environment for encoding.
+        let encoded: Val = env.as_contract(contract_id, || value.clone().into_val(env));
+        let decoded: T = env
+            .as_contract(contract_id, || T::try_from_val(env, &encoded))
+            .expect("TryFromVal must succeed for a valid contracttype variant");
+        decoded
+    }
+
+    // --- Category ---
+
+    #[test]
+    fn category_spending_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let original = Category::Spending;
+        let decoded = roundtrip_val(&env, &contract_id, original);
+        assert_eq!(decoded, Category::Spending);
+    }
+
+    #[test]
+    fn category_savings_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, Category::Savings);
+        assert_eq!(decoded, Category::Savings);
+    }
+
+    #[test]
+    fn category_bills_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, Category::Bills);
+        assert_eq!(decoded, Category::Bills);
+    }
+
+    #[test]
+    fn category_insurance_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, Category::Insurance);
+        assert_eq!(decoded, Category::Insurance);
+    }
+
+    #[test]
+    fn category_all_variants_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let variants = [
+            Category::Spending,
+            Category::Savings,
+            Category::Bills,
+            Category::Insurance,
+        ];
+        for variant in variants {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded, variant,
+                "Category::{:?} must survive Val round-trip",
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn category_roundtrip_preserves_discriminant() {
+        let (env, contract_id) = setup_event_env();
+        let pairs = [
+            (Category::Spending, 1u32),
+            (Category::Savings, 2u32),
+            (Category::Bills, 3u32),
+            (Category::Insurance, 4u32),
+        ];
+        for (variant, expected_disc) in pairs {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded as u32, expected_disc,
+                "Category discriminant must be stable after round-trip"
+            );
+        }
+    }
+
+    // --- CoverageType ---
+
+    #[test]
+    fn coverage_type_health_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, CoverageType::Health);
+        assert_eq!(decoded, CoverageType::Health);
+    }
+
+    #[test]
+    fn coverage_type_life_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, CoverageType::Life);
+        assert_eq!(decoded, CoverageType::Life);
+    }
+
+    #[test]
+    fn coverage_type_property_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, CoverageType::Property);
+        assert_eq!(decoded, CoverageType::Property);
+    }
+
+    #[test]
+    fn coverage_type_auto_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, CoverageType::Auto);
+        assert_eq!(decoded, CoverageType::Auto);
+    }
+
+    #[test]
+    fn coverage_type_liability_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, CoverageType::Liability);
+        assert_eq!(decoded, CoverageType::Liability);
+    }
+
+    #[test]
+    fn coverage_type_all_variants_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let variants = [
+            CoverageType::Health,
+            CoverageType::Life,
+            CoverageType::Property,
+            CoverageType::Auto,
+            CoverageType::Liability,
+        ];
+        for variant in variants {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded, variant,
+                "CoverageType::{:?} must survive Val round-trip",
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn coverage_type_roundtrip_preserves_discriminant() {
+        let (env, contract_id) = setup_event_env();
+        let pairs = [
+            (CoverageType::Health, 1u32),
+            (CoverageType::Life, 2u32),
+            (CoverageType::Property, 3u32),
+            (CoverageType::Auto, 4u32),
+            (CoverageType::Liability, 5u32),
+        ];
+        for (variant, expected_disc) in pairs {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded as u32, expected_disc,
+                "CoverageType discriminant must be stable after round-trip"
+            );
+        }
+    }
+
+    // --- FamilyRole ---
+
+    #[test]
+    fn family_role_owner_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, FamilyRole::Owner);
+        assert_eq!(decoded, FamilyRole::Owner);
+    }
+
+    #[test]
+    fn family_role_admin_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, FamilyRole::Admin);
+        assert_eq!(decoded, FamilyRole::Admin);
+    }
+
+    #[test]
+    fn family_role_member_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, FamilyRole::Member);
+        assert_eq!(decoded, FamilyRole::Member);
+    }
+
+    #[test]
+    fn family_role_viewer_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let decoded = roundtrip_val(&env, &contract_id, FamilyRole::Viewer);
+        assert_eq!(decoded, FamilyRole::Viewer);
+    }
+
+    #[test]
+    fn family_role_all_variants_roundtrip() {
+        let (env, contract_id) = setup_event_env();
+        let variants = [
+            FamilyRole::Owner,
+            FamilyRole::Admin,
+            FamilyRole::Member,
+            FamilyRole::Viewer,
+        ];
+        for variant in variants {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded, variant,
+                "FamilyRole::{:?} must survive Val round-trip",
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn family_role_roundtrip_preserves_discriminant() {
+        let (env, contract_id) = setup_event_env();
+        let pairs = [
+            (FamilyRole::Owner, 1u32),
+            (FamilyRole::Admin, 2u32),
+            (FamilyRole::Member, 3u32),
+            (FamilyRole::Viewer, 4u32),
+        ];
+        for (variant, expected_disc) in pairs {
+            let decoded = roundtrip_val(&env, &contract_id, variant);
+            assert_eq!(
+                decoded as u32, expected_disc,
+                "FamilyRole discriminant must be stable after round-trip"
+            );
+        }
+    }
+
+    #[test]
+    fn family_role_roundtrip_preserves_ordering() {
+        // After a round-trip the ordering invariant must still hold.
+        let (env, contract_id) = setup_event_env();
+        let owner = roundtrip_val(&env, &contract_id, FamilyRole::Owner);
+        let admin = roundtrip_val(&env, &contract_id, FamilyRole::Admin);
+        let member = roundtrip_val(&env, &contract_id, FamilyRole::Member);
+        let viewer = roundtrip_val(&env, &contract_id, FamilyRole::Viewer);
+        assert!(owner < admin);
+        assert!(admin < member);
+        assert!(member < viewer);
+    }
+
+    // --- Cross-type: round-trip inside a storage-like tuple payload ---
+
+    #[test]
+    fn coverage_type_roundtrip_in_event_payload() {
+        // Simulates PolicyCreatedEvent.coverage_type being emitted and decoded.
+        let (env, contract_id) = setup_event_env();
+        let variants = [
+            CoverageType::Health,
+            CoverageType::Life,
+            CoverageType::Property,
+            CoverageType::Auto,
+            CoverageType::Liability,
+        ];
+        for variant in variants {
+            // Encode as part of a tuple (policy_id, coverage_type) — mirrors event payload
+            let payload: (u32, CoverageType) = (42u32, variant);
+            let encoded: Val = env.as_contract(&contract_id, || payload.into_val(&env));
+            let decoded: (u32, CoverageType) = env.as_contract(&contract_id, || {
+                <(u32, CoverageType)>::try_from_val(&env, &encoded)
+                    .expect("tuple round-trip must succeed")
+            });
+            assert_eq!(decoded.0, 42u32);
+            assert_eq!(decoded.1, variant);
+        }
+    }
+
+    #[test]
+    fn family_role_roundtrip_in_role_change_payload() {
+        // Simulates a RoleChange transaction data payload being encoded/decoded.
+        let (env, contract_id) = setup_event_env();
+        let roles = [
+            FamilyRole::Owner,
+            FamilyRole::Admin,
+            FamilyRole::Member,
+            FamilyRole::Viewer,
+        ];
+        for role in roles {
+            let payload: (u32, FamilyRole) = (1u32, role);
+            let encoded: Val = env.as_contract(&contract_id, || payload.into_val(&env));
+            let decoded: (u32, FamilyRole) = env.as_contract(&contract_id, || {
+                <(u32, FamilyRole)>::try_from_val(&env, &encoded)
+                    .expect("tuple round-trip must succeed")
+            });
+            assert_eq!(decoded.1, role);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // TTL helper tests
+    //
+    // Verify that bump_instance, bump_persistent, and bump_archive call
+    // extend_ttl with the correct ordered (threshold, bump) arguments.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn bump_instance_extends_instance_ttl() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EventProbe);
+
+        // Set ledger sequence so TTL starts low
+        env.ledger().set(LedgerInfo {
+            protocol_version: 20,
+            sequence_number: 100,
+            timestamp: 1000,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 3_000_000,
+        });
+
+        env.as_contract(&contract_id, || {
+            bump_instance(&env);
+        });
+
+        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+        assert!(
+            ttl >= INSTANCE_BUMP_AMOUNT,
+            "bump_instance must extend TTL to at least INSTANCE_BUMP_AMOUNT ({INSTANCE_BUMP_AMOUNT}), got {ttl}"
+        );
+    }
+
+    #[test]
+    fn bump_archive_extends_instance_ttl_to_archive_amount() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EventProbe);
+
+        env.ledger().set(LedgerInfo {
+            protocol_version: 20,
+            sequence_number: 100,
+            timestamp: 1000,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 3_000_000,
+        });
+
+        env.as_contract(&contract_id, || {
+            bump_archive(&env);
+        });
+
+        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+        assert!(
+            ttl >= ARCHIVE_BUMP_AMOUNT,
+            "bump_archive must extend TTL to at least ARCHIVE_BUMP_AMOUNT ({ARCHIVE_BUMP_AMOUNT}), got {ttl}"
+        );
+    }
+
+    #[test]
+    fn bump_instance_threshold_less_than_bump_invariant() {
+        // Sanity-check the constants used by bump_instance at runtime.
+        assert!(
+            INSTANCE_LIFETIME_THRESHOLD < INSTANCE_BUMP_AMOUNT,
+            "bump_instance: threshold ({INSTANCE_LIFETIME_THRESHOLD}) must be < bump ({INSTANCE_BUMP_AMOUNT})"
+        );
+    }
+
+    #[test]
+    fn bump_persistent_threshold_less_than_bump_invariant() {
+        assert!(
+            PERSISTENT_LIFETIME_THRESHOLD < PERSISTENT_BUMP_AMOUNT,
+            "bump_persistent: threshold ({PERSISTENT_LIFETIME_THRESHOLD}) must be < bump ({PERSISTENT_BUMP_AMOUNT})"
+        );
+    }
+
+    #[test]
+    fn bump_archive_threshold_less_than_bump_invariant() {
+        assert!(
+            ARCHIVE_LIFETIME_THRESHOLD < ARCHIVE_BUMP_AMOUNT,
+            "bump_archive: threshold ({ARCHIVE_LIFETIME_THRESHOLD}) must be < bump ({ARCHIVE_BUMP_AMOUNT})"
+        );
+    }
 }
 
 // Standardized TTL Constants (Ledger Counts)
@@ -872,3 +1265,46 @@ pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 15 * DAY_IN_LEDGERS; // 15 days
 /// Storage TTL for archived contract data (instance/archive bumps).
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
 pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS; // 1 day
+
+// ---------------------------------------------------------------------------
+// Shared TTL-bump helpers
+//
+// These helpers centralise the canonical (threshold, bump) pairs so that
+// every contract calls `extend_ttl` with the correct ordered arguments.
+// The invariant `threshold < bump` is asserted by the constant tests above.
+// ---------------------------------------------------------------------------
+
+/// Extend the **instance** storage entry TTL using the canonical constants.
+///
+/// Call this on every state-changing operation to keep the contract instance
+/// alive for at least `INSTANCE_BUMP_AMOUNT` ledgers.
+pub fn bump_instance(env: &soroban_sdk::Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+/// Extend a **persistent** storage entry TTL using the canonical constants.
+///
+/// Pass the same `key` that was used to write the persistent entry.
+pub fn bump_persistent<K>(env: &soroban_sdk::Env, key: &K)
+where
+    K: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
+{
+    env.storage().persistent().extend_ttl(
+        key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
+
+/// Extend the **instance** storage entry TTL using the archive constants.
+///
+/// Contracts that archive data (e.g. `family_wallet`, `bill_payments`) call
+/// this after writing to their archive maps so the instance entry stays alive
+/// for the longer archive window.
+pub fn bump_archive(env: &soroban_sdk::Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+}

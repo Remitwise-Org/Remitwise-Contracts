@@ -111,3 +111,74 @@ export interface TagsRemovedEvent {
   owner: string;
   tags: string[];
 }
+
+// Family Wallet event types
+export interface FamilyWalletMemberEvent {
+  event_type: "member_added" | "member_removed" | "limit_updated";
+  member: string;
+  role?: string;
+  spending_limit?: string;
+  timestamp: number;
+}
+
+export interface FamilyWalletLimitEvent {
+  event_type: "limit";
+  member: string;
+  limit_amount: string;
+  timestamp: number;
+}
+
+export interface FamilyWalletEmergencyProposalEvent {
+  event_type: "em_prop";
+  proposer: string;
+  recipient: string;
+  amount: string;
+  timestamp: number;
+}
+
+export interface FamilyWalletArchivedEvent {
+  event_type: "archived";
+  tx_id: string;
+  timestamp: number;
+}
+
+// Orchestrator event types
+export interface OrchestratorFlowOkEvent {
+  event_type: "flow_ok";
+  executor: string;
+  amount: string;
+  timestamp: number;
+}
+
+export interface OrchestratorFlowFailEvent {
+  event_type: "flow_fail";
+  executor: string;
+  error_code: number;
+  timestamp: number;
+}
+
+// Emergency Killswitch event types
+export interface KillswitchPausedEvent {
+  event_type: "paused";
+  scope: string;
+  timestamp: number;
+}
+
+export interface KillswitchUnpausedEvent {
+  event_type: "unpaused";
+  scope: string;
+  timestamp: number;
+}
+
+export interface KillswitchFunctionPausedEvent {
+  event_type: "f_paused";
+  module_id: string;
+  func_name: string;
+  timestamp: number;
+}
+
+export interface KillswitchModulePausedEvent {
+  event_type: "m_paused";
+  module_id: string;
+  timestamp: number;
+}
