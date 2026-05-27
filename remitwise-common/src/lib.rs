@@ -99,6 +99,75 @@ pub fn clamp_limit(limit: u32) -> u32 {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tag canonicalization
+// ---------------------------------------------------------------------------
+
+/// Maximum allowed byte length for a single tag.
+pub const TAG_MAX_LEN: u32 = 32;
+
+/// Validates and canonicalizes a batch of tags.
+///
+/// # Rules
+/// - The batch must contain at least one tag (`panic!("Tags cannot be empty")`).
+/// - Each tag must be between 1 and `TAG_MAX_LEN` bytes inclusive
+///   (`panic!("Tag must be between 1 and 32 characters")`).
+/// - Allowed charset: `[a-z0-9\-_]`.  ASCII uppercase letters are silently
+///   folded to lowercase; any other byte causes the supplied `on_invalid_char`
+///   closure to be called (typically `panic_with_error!` or `panic!`).
+///
+/// # Returns
+/// A new `Vec<String>` containing the normalized (lowercased) tags in the
+/// same order as the input.
+///
+/// # Usage
+/// ```ignore
+/// use remitwise_common::canonicalize_tags;
+/// let normalized = canonicalize_tags(&env, &tags, || {
+///     soroban_sdk::panic_with_error!(&env, MyError::InvalidTagContent)
+/// });
+/// ```
+pub fn canonicalize_tags<F>(
+    env: &soroban_sdk::Env,
+    tags: &soroban_sdk::Vec<soroban_sdk::String>,
+    on_invalid_char: F,
+) -> soroban_sdk::Vec<soroban_sdk::String>
+where
+    F: Fn(),
+{
+    if tags.is_empty() {
+        panic!("Tags cannot be empty");
+    }
+    let mut out = soroban_sdk::Vec::new(env);
+    for tag in tags.iter() {
+        let len = tag.len();
+        if len == 0 || len > TAG_MAX_LEN {
+            panic!("Tag must be between 1 and 32 characters");
+        }
+        let mut buf = [0u8; 32];
+        tag.copy_into_slice(&mut buf[..len as usize]);
+        for byte in buf.iter_mut().take(len as usize) {
+            if byte.is_ascii_uppercase() {
+                *byte += b'a' - b'A';
+            }
+            let b = *byte;
+            if !(b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_') {
+                on_invalid_char();
+            }
+        }
+        let s = match core::str::from_utf8(&buf[..len as usize]) {
+            Ok(v) => v,
+            Err(_) => {
+                on_invalid_char();
+                // on_invalid_char must diverge (panic); this is unreachable.
+                ""
+            }
+        };
+        out.push_back(soroban_sdk::String::from_str(env, s));
+    }
+    out
+}
+
 /// Event emission helper
 pub struct RemitwiseEvents;
 

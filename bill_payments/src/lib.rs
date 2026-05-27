@@ -1045,45 +1045,14 @@ impl BillPayments {
     // Tag management
     // -----------------------------------------------------------------------
 
-    /// Validates a tag batch for metadata operations.
+    /// Validates and canonicalizes a tag batch for metadata operations.
     ///
-    /// Requirements:
-    /// - At least one tag must be provided.
-    /// - Each tag length must be between 1 and 32 characters.
-    /// - Allowed charset: [a-z0-9-_]. Uppercase is normalized to lowercase.
+    /// Delegates to the shared [`remitwise_common::canonicalize_tags`] helper.
+    /// Invalid characters are reported as [`BillPaymentsError::InvalidTagContent`].
     fn validate_and_normalize_tags(env: &Env, tags: &Vec<String>) -> Vec<String> {
-        if tags.is_empty() {
-            panic!("Tags cannot be empty");
-        }
-        let mut normalized_tags = Vec::new(env);
-        for tag in tags.iter() {
-            let len = tag.len();
-            if len == 0 || len > 32 {
-                panic!("Tag must be between 1 and 32 characters");
-            }
-            let mut buf = [0u8; 32];
-            tag.copy_into_slice(&mut buf[..len as usize]);
-
-            for c in buf.iter_mut().take(len as usize) {
-                if c.is_ascii_uppercase() {
-                    *c += b'a' - b'A';
-                }
-                let c_val = *c;
-                if !(c_val.is_ascii_lowercase()
-                    || c_val.is_ascii_digit()
-                    || c_val == b'-'
-                    || c_val == b'_')
-                {
-                    soroban_sdk::panic_with_error!(env, BillPaymentsError::InvalidTagContent);
-                }
-            }
-            let s = match core::str::from_utf8(&buf[..len as usize]) {
-                Ok(v) => v,
-                Err(_) => soroban_sdk::panic_with_error!(env, BillPaymentsError::InvalidTagContent),
-            };
-            normalized_tags.push_back(String::from_str(env, s));
-        }
-        normalized_tags
+        remitwise_common::canonicalize_tags(env, tags, || {
+            soroban_sdk::panic_with_error!(env, BillPaymentsError::InvalidTagContent)
+        })
     }
 
     /// Adds tags to a bill's metadata.
