@@ -1,14 +1,3 @@
-// Placeholder test module to satisfy `mod test;` reference in `lib.rs`.
-// Real tests should be added here. Keeping a minimal test ensures CI
-// that expects the module file to exist will succeed.
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn placeholder_orchestrator_test() {
-        assert!(true);
-    }
-}
 #[cfg(test)]
 mod tests {
     use crate::{

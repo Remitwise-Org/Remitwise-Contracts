@@ -1,13 +1,3 @@
-// Placeholder test module to satisfy `mod test;` declaration in `lib.rs`.
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn placeholder_insurance_test() {
-        assert!(true);
-    }
-}
-
 use super::*;
 use remitwise_common::{EventCategory, EventPriority};
 use soroban_sdk::{

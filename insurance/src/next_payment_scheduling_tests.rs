@@ -1,13 +1,3 @@
-// Placeholder module for next_payment_scheduling_tests referenced by `lib.rs`.
-// Populate with the actual scheduling tests when available.
-
-#[cfg(test)]
-mod next_payment_scheduling_tests {
-    #[test]
-    fn placeholder_next_payment_scheduling_test() {
-        assert!(true);
-    }
-}
 // insurance/src/next_payment_scheduling_tests.rs
 //
 // SC-068: Insurance: Add tests for `next_payment_date` behavior under late and missed payments
