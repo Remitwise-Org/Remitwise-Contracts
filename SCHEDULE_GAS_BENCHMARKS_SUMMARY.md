@@ -161,3 +161,6 @@ The implementation provides comprehensive gas regression testing for remittance 
 - ✅ Scalability testing up to realistic maximum loads
 
 The system is ready for deployment once dependency issues are resolved and baseline values are calibrated through actual test execution.
+## Orchestrator & Migration Benchmarks
+- `Orchestrator::execute_remittance_flow`: Budget limit 50M CPU / 2M Mem.
+- `data_migration` export/import paths: Budget limit 20M CPU / 1M Mem.
