@@ -12,6 +12,10 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+/// Maximum allowed recurrence interval in days (100 years = 36 500 days).
+/// Values above this are rejected with `BillPaymentsError::InvalidFrequency`.
+/// The corresponding maximum period in seconds is 36_500 × 86_400 = 3_153_600_000,
+/// which fits comfortably within `u64`.
 const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -40,8 +44,16 @@ pub struct Bill {
     pub name: String,
     pub external_ref: Option<String>,
     pub amount: i128,
+    /// Unix timestamp (seconds) when this bill is due.
+    ///
+    /// Acceptance rule: `due_date >= env.ledger().timestamp()` at creation time.
+    /// `due_date == 0` is always rejected. `due_date == now` is accepted.
     pub due_date: u64,
     pub recurring: bool,
+    /// Recurrence interval in days. Valid range: `[1, MAX_FREQUENCY_DAYS]` (1–36_500).
+    ///
+    /// Ignored when `recurring == false`. A value of `0` on a recurring bill
+    /// returns `BillPaymentsError::InvalidFrequency`.
     pub frequency_days: u32,
     pub paid: bool,
     pub created_at: u64,
@@ -90,7 +102,10 @@ pub enum BillPaymentsError {
     BillAlreadyPaid = 2,
     /// Amount is zero or negative
     InvalidAmount = 3,
-    /// Recurring frequency is invalid
+    /// Recurring frequency is invalid (error code 4).
+    ///
+    /// Triggered when `recurring == true` and `frequency_days == 0` or
+    /// `frequency_days > MAX_FREQUENCY_DAYS` (36_500). Valid range: `[1, 36_500]`.
     InvalidFrequency = 4,
     /// Caller is not authorized for this operation
     Unauthorized = 5,
@@ -106,7 +121,10 @@ pub enum BillPaymentsError {
     BatchValidationFailed = 10,
     /// Pagination limit is out of allowed range
     InvalidLimit = 11,
-    /// Due date is in the past or otherwise invalid
+    /// Due date is in the past or otherwise invalid (error code 12).
+    ///
+    /// Triggered when `due_date == 0` OR `due_date < env.ledger().timestamp()`.
+    /// Boundary: `due_date == now` is **accepted** (strict less-than comparison).
     InvalidDueDate = 12,
     /// Tag string is invalid (empty or too long)
     InvalidTag = 13,
@@ -820,11 +838,19 @@ impl BillPayments {
     /// * `owner` - Address of the bill owner (must authorize)
     /// * `name` - Name of the bill (e.g., "Electricity", "School Fees")
     /// * `amount` - Amount to pay (must be positive)
-    /// * `due_date` - Due date as Unix timestamp (must be in the future)
+    /// * `due_date` - Due date as Unix timestamp (seconds). Must satisfy
+    ///   `due_date >= env.ledger().timestamp()`. `due_date == now` is **accepted**
+    ///   (strict less-than comparison). `due_date == 0` is always rejected.
     /// * `recurring` - Whether this is a recurring bill
-    /// * `frequency_days` - Frequency in days for recurring bills (must be > 0 if recurring)
+    /// * `frequency_days` - Recurrence interval in days. Must be in `[1, MAX_FREQUENCY_DAYS]`
+    ///   when `recurring == true`; ignored otherwise.
     /// * `external_ref` - Optional external system reference ID
     /// * `currency` - Currency code (e.g., "XLM", "USDC", "NGN"). Case-insensitive, whitespace trimmed.
+    ///
+    /// # Due Date Rule
+    /// `due_date` must satisfy `due_date >= current_ledger_timestamp`.
+    /// A `due_date` strictly in the past (`due_date < now`) returns `InvalidDueDate`.
+    /// Boundary: `due_date == now` is **accepted**.
     ///
     /// # Returns
     /// The ID of the created bill
@@ -946,6 +972,27 @@ impl BillPayments {
         Ok(next_id)
     }
 
+    /// Mark a bill as paid. If `bill.recurring == true`, spawns a child bill with:
+    ///
+    /// ```text
+    /// child.due_date = bill.due_date + frequency_days * 86_400
+    /// ```
+    ///
+    /// If the computed `child.due_date` is still `<= current_time` (extremely late payment),
+    /// the formula advances by one additional period repeatedly until the child is strictly
+    /// in the future. This guarantees the child is **never born overdue**.
+    ///
+    /// # Recurring Invariant
+    /// The child due date is computed relative to the **parent's** `due_date`, not the
+    /// payment timestamp (`paid_at`). This ensures the billing schedule is independent
+    /// of when payment actually occurs.
+    ///
+    /// # Errors
+    /// * `BillNotFound` - If no bill with `bill_id` exists
+    /// * `BillAlreadyPaid` - If the bill is already marked paid
+    /// * `Unauthorized` - If `caller != bill.owner`
+    /// * `InvalidDueDate` - If child due_date arithmetic overflows `u64`
+    /// * `InvalidFrequency` - If period arithmetic overflows `u64`
     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;

@@ -18,3 +18,7 @@ testutils = { path = "../testutils" }
 [[test]]
 name = "pagination_gaps"
 path = "tests/pagination_gaps.rs"
+
+[[test]]
+name = "test_recurring_lifecycle"
+path = "tests/test_recurring_lifecycle.rs"
