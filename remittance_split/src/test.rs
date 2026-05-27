@@ -285,3 +285,94 @@ fn test_distribute_usdc_signed_hash_mismatch() {
     let result = client.try_distribute_usdc_signed(&request, &wrong_hash);
     assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
 }
+
+mod dust_policy {
+    use crate::RemittanceSplitError;
+    use soroban_sdk::Env;
+
+    /// Table-driven conservation invariant: for every (amount, percentages) pair,
+    /// spending + savings + bills + insurance == amount, and insurance holds the remainder.
+    #[test]
+    fn test_conservation_invariant() {
+        // (amount, spending%, savings%, bills%, insurance%)
+        let cases: [(i128, u32, u32, u32, u32); 11] = [
+            (1, 25, 25, 25, 25),
+            (1, 50, 50, 0, 0),
+            (3, 33, 33, 33, 1),
+            (7, 40, 30, 20, 10),
+            (11, 34, 33, 33, 0),
+            (97, 33, 33, 33, 1),
+            (100, 50, 50, 0, 0),
+            (999, 33, 33, 33, 1),
+            (i128::MAX / 1_000_000, 25, 25, 25, 25),
+            (i128::MAX / 1_000_000, 33, 33, 33, 1),
+            (i128::MAX / 1_000_000, 40, 30, 20, 10),
+        ];
+
+        for &(amount, sp, sv, bl, ins) in cases.iter() {
+            let env = Env::default();
+            let (client, _, _, _) = super::setup_split(&env, sp, sv, bl, ins);
+
+            // (a) calculate_split returns Ok
+            let result = client.calculate_split(&amount);
+
+            let spending_alloc = result.get(0).unwrap();
+            let savings_alloc = result.get(1).unwrap();
+            let bills_alloc = result.get(2).unwrap();
+            let insurance_alloc = result.get(3).unwrap();
+
+            // (b) conservation: sum of all allocations equals total amount
+            assert_eq!(spending_alloc + savings_alloc + bills_alloc + insurance_alloc, amount);
+
+            // (c) remainder lands in insurance
+            let expected_insurance = amount - (spending_alloc + savings_alloc + bills_alloc);
+            assert_eq!(insurance_alloc, expected_insurance);
+        }
+    }
+
+    /// Isolation test: with amount=10 and 33/33/33/1, all three floor categories get 3
+    /// and the 1-unit remainder goes entirely to insurance.
+    #[test]
+    fn test_remainder_to_insurance_isolation() {
+        let env = Env::default();
+        let amount = 10i128;
+        let (client, _, _, _) = super::setup_split(&env, 33, 33, 33, 1);
+
+        let result = client.calculate_split(&amount);
+        let spending_alloc = result.get(0).unwrap();
+        let savings_alloc = result.get(1).unwrap();
+        let bills_alloc = result.get(2).unwrap();
+        let insurance_alloc = result.get(3).unwrap();
+
+        // floor(10 * 33 / 100) = 3 for each of spending, savings, bills
+        assert_eq!(spending_alloc, 3);
+        assert_eq!(savings_alloc, 3);
+        assert_eq!(bills_alloc, 3);
+
+        // floor share of insurance = floor(10 * 1 / 100) = 0; remainder = 1
+        let floor_insurance: i128 = amount * 1 / 100;
+        let remainder = amount - (spending_alloc + savings_alloc + bills_alloc);
+        assert_eq!(insurance_alloc, floor_insurance + remainder);
+        assert_eq!(insurance_alloc, 1);
+    }
+
+    /// With spending_percent = 50, total_amount * 50 overflows i128 when total_amount = i128::MAX.
+    #[test]
+    fn test_overflow_guard() {
+        let env = Env::default();
+        let (client, _, _, _) = super::setup_split(&env, 50, 50, 0, 0);
+
+        let result = client.try_calculate_split(&i128::MAX);
+        assert_eq!(result, Err(Ok(RemittanceSplitError::Overflow)));
+    }
+
+    /// amount = 0 must be rejected as InvalidAmount before any allocation is attempted.
+    #[test]
+    fn test_zero_amount_rejected() {
+        let env = Env::default();
+        let (client, _, _, _) = super::setup_split(&env, 25, 25, 25, 25);
+
+        let result = client.try_calculate_split(&0i128);
+        assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidAmount)));
+    }
+}

@@ -1699,6 +1699,37 @@ impl RemittanceSplit {
         env.storage().instance().set(&symbol_short!("AUDIT"), &log);
     }
 
+    /// Compute the four split allocations for a given `total_amount`.
+    ///
+    /// # Algorithm
+    /// For spending (index 0), savings (index 1), and bills (index 2), each allocation
+    /// is computed via integer (floor) division:
+    ///
+    /// ```text
+    /// alloc[i] = floor(total_amount * percent[i] / 100)
+    /// ```
+    ///
+    /// Insurance (index 3) receives the **remainder / dust**:
+    ///
+    /// ```text
+    /// remainder = total_amount - alloc[0] - alloc[1] - alloc[2]
+    /// insurance = remainder
+    /// ```
+    ///
+    /// # Remainder / dust policy
+    /// The remainder is ALWAYS assigned to insurance (index 3), regardless of the configured
+    /// insurance percentage. This is the sole mechanism by which integer-division rounding
+    /// losses are recovered.
+    ///
+    /// # Post-conditions (guaranteed on `Ok`)
+    /// - `alloc[0] + alloc[1] + alloc[2] + alloc[3] == total_amount` (conservation invariant)
+    /// - `alloc[3] >= floor(total_amount * insurance_percent / 100)` (insurance ≥ its floor share)
+    ///
+    /// # Errors
+    /// - [`RemittanceSplitError::InvalidAmount`] — `total_amount <= 0`; checked before any
+    ///   allocation is computed.
+    /// - [`RemittanceSplitError::Overflow`] — any `checked_mul` or `checked_sub` step fails;
+    ///   returned immediately before any partial allocation value is produced.
     fn calculate_split_amounts(
         env: &Env,
         total_amount: i128,
