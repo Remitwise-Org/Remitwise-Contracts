@@ -226,6 +226,8 @@ impl Insurance {
             .unwrap_or_else(|| Map::new(env));
         idx.remove(ext_ref.clone());
         env.storage().instance().set(&KEY_EXT_REF_IDX, &idx);
+    }
+
     fn read_stats(env: &Env) -> StorageStats {
         env.storage()
             .instance()
@@ -987,7 +989,6 @@ impl Insurance {
     }
 }
 
-mod test;
 #[cfg(test)]
 mod test;
 
