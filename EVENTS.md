@@ -786,79 +786,134 @@ pub struct EmergencyModeEvent {
 ## Orchestrator Contract
 
 **Contract Name:** `orchestrator`  
-**Primary Topic Prefix:** `"orchestrator"`
+**Primary Topic Prefix:** `"orch"` for direct events, `"Remitwise"` for categorized events  
+**Documentation:** [docs/orchestrator-events.md](docs/orchestrator-events.md)
 
-### Event: Remittance Flow Completed
+### Event: Flow Started
 
-**Topic:** `("orchestrator", "flow_complete")`
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")`  
+**Emitted by:** `execute_remittance_flow`  
+**Trigger:** Emitted when a remittance flow execution begins after passing validation checks
 
 **Data Structure:**
 ```rust
-pub struct RemittanceFlowEvent {
-    pub caller: Address,            // Address that initiated flow
-    pub total_amount: i128,         // Total amount processed
-    pub allocations: Vec<i128>,     // [spending, savings, bills, insurance]
-    pub timestamp: u64,             // Event timestamp
+pub struct FlowStartedEvent {
+    pub executor: Address,     // Address executing the flow
+    pub amount: i128,          // Total amount to be processed
 }
 ```
 
 **Example Event:**
 ```json
 {
-  "caller": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "total_amount": 10000,
-  "allocations": [5000, 3000, 1500, 500],
-  "timestamp": 1234567850
+  "executor": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+  "amount": 10000
 }
 ```
 
-### Event: Remittance Flow Failed
+### Event: Flow Completed Successfully
 
-**Topic:** `("orchestrator", "flow_error")`
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")`  
+**Emitted by:** `execute_remittance_flow`  
+**Trigger:** Emitted when a remittance flow completes successfully
 
 **Data Structure:**
 ```rust
-pub struct RemittanceFlowErrorEvent {
-    pub caller: Address,            // Address that initiated flow
-    pub failed_step: Symbol,        // Step that failed (e.g., "perm_chk", "savings", "bills", "insurance")
-    pub error_code: u32,            // Error code from OrchestratorError
-    pub timestamp: u64,             // Event timestamp
+pub struct FlowCompletedEvent {
+    pub executor: Address,     // Address that executed the flow
+    pub amount: i128,          // Total amount successfully processed
 }
 ```
 
-### Event: Execution Statistics Updated
+**Example Event:**
+```json
+{
+  "executor": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+  "amount": 10000
+}
+```
 
-**Topic:** `("orchestrator", "stats_updated")`
+### Event: Flow Failed
+
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")`  
+**Emitted by:** `execute_remittance_flow`  
+**Trigger:** Emitted when a remittance flow execution fails
 
 **Data Structure:**
 ```rust
-pub struct ExecutionStats {
-    pub total_flows_executed: u64,  // Total successful flows
-    pub total_flows_failed: u64,    // Total failed flows
-    pub total_amount_processed: i128, // Total amount processed
-    pub last_execution: u64,        // Last execution timestamp
+pub struct FlowFailedEvent {
+    pub executor: Address,     // Address that attempted the flow
+    pub error_code: u32,       // Error code from OrchestratorError enum
 }
 ```
 
-### Event: Audit Log Entry
+**Example Event:**
+```json
+{
+  "executor": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+  "error_code": 2
+}
+```
 
-**Topic:** `("orchestrator", "audit")`
+**Error Codes:**
+```rust
+pub enum OrchestratorError {
+    Unauthorized = 1,
+    InvalidAmount = 2,
+    Overflow = 3,
+    CrossContractCallFailed = 4,
+    NonceAlreadyUsed = 5,
+    InvalidNonce = 6,
+    DeadlineExpired = 7,
+    ExecutionLocked = 8,
+    InvalidDependency = 9,
+    DuplicateDependency = 10,
+}
+```
+
+**Security Note:** This event does NOT include the sensitive amount in the payload. Only the error code is included to prevent leaking financial information in failure cases.
+
+### Event: Contract Initialized
+
+**Topic:** `("Remitwise", EventCategory::System, EventPriority::High, "init_ok")`  
+**Emitted by:** `init`  
+**Trigger:** Emitted when the orchestrator contract is successfully initialized
 
 **Data Structure:**
 ```rust
-pub struct OrchestratorAuditEntry {
-    pub caller: Address,            // Address that initiated operation
-    pub operation: Symbol,          // Operation (e.g., "exec_flow", "exec_save", "exec_bill")
-    pub amount: i128,               // Amount involved
-    pub success: bool,              // Operation success status
-    pub timestamp: u64,             // Event timestamp
-    pub error_code: Option<u32>,    // Error code if failed
+pub struct InitCompletedEvent {
+    pub caller: Address,       // Address that initialized the contract
 }
 ```
 
----
+**Example Event:**
+```json
+{
+  "caller": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+}
+```
 
-## Reporting Contract
+### Event: Contract Upgraded
+
+**Topic:** `("orch", "upgraded")`  
+**Emitted by:** `set_version`  
+**Trigger:** Emitted when the contract version is upgraded by the owner
+
+**Data Structure:**
+```rust
+pub struct VersionUpgradeEvent {
+    pub previous_version: u32, // Previous contract version
+    pub new_version: u32,      // New contract version
+}
+```
+
+**Example Event:**
+```json
+{
+  "previous_version": 1,
+  "new_version": 2
+}
+```## Reporting Contract
 
 **Contract Name:** `reporting`  
 **Primary Topic Prefix:** `"reporting"`

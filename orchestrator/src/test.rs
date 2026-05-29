@@ -458,3 +458,495 @@ mod tests {
         assert_eq!(result, Err(Ok(OrchestratorError::ExecutionLocked)));
     }
 }
+
+    #[test]
+    fn test_flow_event_emitted_on_start() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+        let events_after = env.events().all();
+
+        // Find the flow event (should be the first lifecycle event)
+        let flow_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow").into_val(&env)
+            });
+
+        assert!(flow_event.is_some(), "flow event should be emitted");
+    }
+
+    #[test]
+    fn test_flow_ok_event_emitted_on_success() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+        let events_after = env.events().all();
+
+        // Find the flow_ok event
+        let flow_ok_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow_ok").into_val(&env)
+            });
+
+        assert!(flow_ok_event.is_some(), "flow_ok event should be emitted on success");
+
+        // Verify payload contains executor and amount
+        if let Some(event) = flow_ok_event {
+            let payload = event.data;
+            // Payload should be (executor, amount)
+            assert!(payload.clone().into_val::<(soroban_sdk::Address, i128)>(&env).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_flow_fail_event_emitted_on_failure() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = -100i128; // Invalid amount to trigger failure
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        let result = client.try_execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash);
+        assert!(result.is_err());
+        let events_after = env.events().all();
+
+        // Find the flow_fail event
+        let flow_fail_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow_fail").into_val(&env)
+            });
+
+        assert!(flow_fail_event.is_some(), "flow_fail event should be emitted on failure");
+
+        // Verify payload contains executor and error code (not sensitive amount)
+        if let Some(event) = flow_fail_event {
+            let payload = event.data;
+            // Payload should be (executor, error_code)
+            let parsed: Result<(soroban_sdk::Address, u32), _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok(), "flow_fail payload should be (executor, error_code)");
+
+            if let Ok((_, error_code)) = parsed {
+                // Verify it's an error code, not the amount
+                assert!(error_code < 100, "Should be an error code, not a large amount");
+            }
+        }
+    }
+
+    #[test]
+    fn test_orch_upgraded_event_emitted() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        // Get initial version
+        let initial_version = client.get_version();
+
+        // Collect events before upgrade
+        let events_before = env.events().all();
+
+        // Upgrade version
+        let new_version = 2u32;
+        client.set_version(&owner, &new_version).unwrap();
+
+        // Collect events after upgrade
+        let events_after = env.events().all();
+
+        // Find the orch/upgraded event
+        let upgraded_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 2 && topics[0] == soroban_sdk::symbol_short!("orch").into_val(&env)
+                    && topics[1] == soroban_sdk::symbol_short!("upgraded").into_val(&env)
+            });
+
+        assert!(upgraded_event.is_some(), "orch/upgraded event should be emitted");
+
+        // Verify payload contains previous and new version
+        if let Some(event) = upgraded_event {
+            let payload = event.data;
+            let parsed: Result<(u32, u32), _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok());
+
+            if let Ok((prev, new)) = parsed {
+                assert_eq!(prev, initial_version);
+                assert_eq!(new, new_version);
+            }
+        }
+    }
+
+    #[test]
+    fn test_init_ok_event_emitted() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+
+        // Collect events before init
+        let events_before = env.events().all();
+
+        // Initialize orchestrator
+        init_orchestrator(&env, &client, &owner);
+
+        // Collect events after init
+        let events_after = env.events().all();
+
+        // Find the init_ok event
+        let init_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("init_ok").into_val(&env)
+            });
+
+        assert!(init_event.is_some(), "init_ok event should be emitted on initialization");
+
+        // Verify payload contains caller (owner)
+        if let Some(event) = init_event {
+            let payload = event.data;
+            let parsed: Result<soroban_sdk::Address, _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok());
+
+            if let Ok(caller) = parsed {
+                assert_eq!(caller, owner);
+            }
+        }
+    }
+
+    #[test]
+    fn test_flow_lifecycle_events_order() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+
+        // Get all events
+        let events = env.events().all();
+
+
+    #[test]
+    fn test_flow_event_emitted_on_start() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+        let events_after = env.events().all();
+
+        // Find the flow event (should be the first lifecycle event)
+        let flow_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow").into_val(&env)
+            });
+
+        assert!(flow_event.is_some(), "flow event should be emitted");
+    }
+
+    #[test]
+    fn test_flow_ok_event_emitted_on_success() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+        let events_after = env.events().all();
+
+        // Find the flow_ok event
+        let flow_ok_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow_ok").into_val(&env)
+            });
+
+        assert!(flow_ok_event.is_some(), "flow_ok event should be emitted on success");
+
+        // Verify payload contains executor and amount
+        if let Some(event) = flow_ok_event {
+            let payload = event.data;
+            // Payload should be (executor, amount)
+            assert!(payload.clone().into_val::<(soroban_sdk::Address, i128)>(&env).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_flow_fail_event_emitted_on_failure() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = -100i128; // Invalid amount to trigger failure
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow and collect events
+        let events_before = env.events().all();
+        let result = client.try_execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash);
+        assert!(result.is_err());
+        let events_after = env.events().all();
+
+        // Find the flow_fail event
+        let flow_fail_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow_fail").into_val(&env)
+            });
+
+        assert!(flow_fail_event.is_some(), "flow_fail event should be emitted on failure");
+
+        // Verify payload contains executor and error code (not sensitive amount)
+        if let Some(event) = flow_fail_event {
+            let payload = event.data;
+            // Payload should be (executor, error_code)
+            let parsed: Result<(soroban_sdk::Address, u32), _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok(), "flow_fail payload should be (executor, error_code)");
+
+            if let Ok((_, error_code)) = parsed {
+                // Verify it's an error code, not the amount
+                assert!(error_code < 100, "Should be an error code, not a large amount");
+            }
+        }
+    }
+
+    #[test]
+    fn test_orch_upgraded_event_emitted() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        // Get initial version
+        let initial_version = client.get_version();
+
+        // Collect events before upgrade
+        let events_before = env.events().all();
+
+        // Upgrade version
+        let new_version = 2u32;
+        client.set_version(&owner, &new_version).unwrap();
+
+        // Collect events after upgrade
+        let events_after = env.events().all();
+
+        // Find the orch/upgraded event
+        let upgraded_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 2 && topics[0] == soroban_sdk::symbol_short!("orch").into_val(&env)
+                    && topics[1] == soroban_sdk::symbol_short!("upgraded").into_val(&env)
+            });
+
+        assert!(upgraded_event.is_some(), "orch/upgraded event should be emitted");
+
+        // Verify payload contains previous and new version
+        if let Some(event) = upgraded_event {
+            let payload = event.data;
+            let parsed: Result<(u32, u32), _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok());
+
+            if let Ok((prev, new)) = parsed {
+                assert_eq!(prev, initial_version);
+                assert_eq!(new, new_version);
+            }
+        }
+    }
+
+    #[test]
+    fn test_init_ok_event_emitted() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+
+        // Collect events before init
+        let events_before = env.events().all();
+
+        // Initialize orchestrator
+        init_orchestrator(&env, &client, &owner);
+
+        // Collect events after init
+        let events_after = env.events().all();
+
+        // Find the init_ok event
+        let init_event = events_after
+            .iter()
+            .filter(|e| !events_before.contains(e))
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("init_ok").into_val(&env)
+            });
+
+        assert!(init_event.is_some(), "init_ok event should be emitted on initialization");
+
+        // Verify payload contains caller (owner)
+        if let Some(event) = init_event {
+            let payload = event.data;
+            let parsed: Result<soroban_sdk::Address, _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok());
+
+            if let Ok(caller) = parsed {
+                assert_eq!(caller, owner);
+            }
+        }
+    }
+
+    #[test]
+    fn test_flow_lifecycle_events_order() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let amount = 1000i128;
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), nonce, amount, deadline);
+
+        // Execute flow
+        client.execute_remittance_flow(&executor, &amount, &nonce, &deadline, &hash).unwrap();
+
+        // Get all events
+        let events = env.events().all();
+
+        // Find flow lifecycle events in order
+        let flow_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                let topics = e.topics;
+                if topics.len() >= 4 {
+                    let action = topics[3];
+                    action == soroban_sdk::symbol_short!("flow").into_val(&env)
+                        || action == soroban_sdk::symbol_short!("flow_ok").into_val(&env)
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        // Should have both flow and flow_ok events
+        assert_eq!(flow_events.len(), 2, "Should have flow and flow_ok events");
+
+        // flow should come before flow_ok
+        let first_action = flow_events[0].topics[3];
+        let second_action = flow_events[1].topics[3];
+        assert_eq!(first_action, soroban_sdk::symbol_short!("flow").into_val(&env));
+        assert_eq!(second_action, soroban_sdk::symbol_short!("flow_ok").into_val(&env));
+    }
+
+    #[test]
+    fn test_flow_fail_does_not_leak_sensitive_amount() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let sensitive_amount = 999999999999i128; // Large sensitive amount
+        let deadline = env.ledger().timestamp() + 1000;
+        let nonce = 0u64;
+        // Use invalid hash to trigger failure
+        let bad_hash = 12345u64;
+
+        // Execute flow with bad hash to trigger failure
+        let result = client.try_execute_remittance_flow(&executor, &sensitive_amount, &nonce, &deadline, &bad_hash);
+        assert!(result.is_err());
+
+        // Find the flow_fail event
+        let events = env.events().all();
+        let flow_fail_event = events
+            .iter()
+            .find(|e| {
+                let topics = e.topics;
+                topics.len() >= 4 && topics[0] == soroban_sdk::symbol_short!("Remitwise").into_val(&env)
+                    && topics[3] == soroban_sdk::symbol_short!("flow_fail").into_val(&env)
+            });
+
+        assert!(flow_fail_event.is_some());
+
+        // Verify the sensitive amount is NOT in the flow_fail event
+        if let Some(event) = flow_fail_event {
+            let payload = event.data;
+            let parsed: Result<(soroban_sdk::Address, u32), _> = payload.clone().into_val(&env);
+            assert!(parsed.is_ok());
+
+            if let Ok((_, error_code)) = parsed {
+                // Error code should be small (enum discriminant), not the large amount
+                assert!(error_code < 1000, "Error code should be small, not the sensitive amount");
+                assert_ne!(error_code as i128, sensitive_amount, "Error code should not equal the sensitive amount");
+            }
+        }
+    }
+}

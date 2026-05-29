@@ -319,6 +319,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("STATS"), &stats);
 
+        /// Emit orchestrator initialization event
+        /// Topic: ("Remitwise", EventCategory::System, EventPriority::High, "init_ok")
+        /// Payload: (caller: Address)
+        /// Emitted when the orchestrator contract is successfully initialized
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -405,6 +409,18 @@ impl Orchestrator {
             expected_hash,
         )?;
 
+        /// Emit flow lifecycle event - flow started
+        /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")
+        /// Payload: (executor: Address, amount: i128)
+        /// Emitted when a remittance flow execution begins after passing validation
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("flow"),
+            (executor.clone(), amount),
+        );
+
         // 6. Set execution lock
         Self::extend_instance_ttl(&env);
         env.storage()
@@ -426,6 +442,10 @@ impl Orchestrator {
                 Self::update_execution_stats(&env, true);
                 Self::append_audit(&env, symbol_short!("flow_exec"), &executor, true);
 
+                /// Emit flow lifecycle event - flow completed successfully
+                /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")
+                /// Payload: (executor: Address, amount: i128)
+                /// Emitted when a remittance flow completes successfully
                 RemitwiseEvents::emit(
                     &env,
                     EventCategory::Transaction,
@@ -440,6 +460,11 @@ impl Orchestrator {
                 Self::update_execution_stats(&env, false);
                 Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
 
+                /// Emit flow lifecycle event - flow failed
+                /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")
+                /// Payload: (executor: Address, error_code: u32)
+                /// Emitted when a remittance flow fails. Error code corresponds to OrchestratorError enum.
+                /// Does not leak sensitive amounts - only includes error code for debugging.
                 RemitwiseEvents::emit(
                     &env,
                     EventCategory::Transaction,
@@ -522,6 +547,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
 
+        /// Emit orchestrator upgrade event
+        /// Topic: ("orch", "upgraded")
+        /// Payload: (previous_version: u32, new_version: u32)
+        /// Emitted when the contract version is upgraded by the owner
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("upgraded")),
             (prev, new_version),
