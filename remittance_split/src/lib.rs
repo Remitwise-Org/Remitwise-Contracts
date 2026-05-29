@@ -934,6 +934,20 @@ impl RemittanceSplit {
     /// - `InvalidNonce` on replay
     /// - `InvalidAmount` if `total_amount` ≤ 0
     /// - `NotInitialized` if the contract has not been initialized
+    ///
+    /// # Check ordering
+    /// 1. Self-transfer guard — returns SelfTransferNotAllowed if
+    ///    `from == destination`; records audit failure; nonce untouched.
+    /// 2. Nonce retrieval via `get_nonce()`.
+    /// 3. [signed path] Signature verification.
+    /// 4. Nonce mutation via `symbol_short!("NONCES")`.
+    /// 5. Token transfer execution.
+    /// 6. Audit success entry via `append_audit(..., true)`.
+    /// 7. `DistributionCompletedEvent` emission.
+    ///
+    /// # Errors (SelfTransferNotAllowed)
+    /// - `RemittanceSplitError::SelfTransferNotAllowed` (variant 13):
+    ///   returned before any nonce or token side-effects occur.
     pub fn distribute_usdc(
         env: Env,
         usdc_contract: Address,
@@ -1092,6 +1106,20 @@ impl RemittanceSplit {
     /// - `accounts.insurance`: Insurance destination (prevents fund misdirection)
     /// - `total_amount`: Total amount to distribute (prevents amount tampering)
     /// - `deadline`: Expiry time (prevents stale request use)
+    ///
+    /// # Check ordering
+    /// 1. Self-transfer guard — returns SelfTransferNotAllowed if
+    ///    `from == destination`; records audit failure; nonce untouched.
+    /// 2. Nonce retrieval via `get_nonce()`.
+    /// 3. [signed path] Signature verification.
+    /// 4. Nonce mutation via `symbol_short!("NONCES")`.
+    /// 5. Token transfer execution.
+    /// 6. Audit success entry via `append_audit(..., true)`.
+    /// 7. `DistributionCompletedEvent` emission.
+    ///
+    /// # Errors (SelfTransferNotAllowed)
+    /// - `RemittanceSplitError::SelfTransferNotAllowed` (variant 13):
+    ///   returned before any nonce or token side-effects occur.
     pub fn distribute_usdc_signed(
         env: Env,
         request: DistributeUsdcRequest,
@@ -1125,6 +1153,16 @@ impl RemittanceSplit {
 
         // Require authorization from payer
         request.from.require_auth();
+
+        // Self-transfer guard — must precede nonce read and mutation.
+        if request.accounts.spending == request.from
+            || request.accounts.savings == request.from
+            || request.accounts.bills == request.from
+            || request.accounts.insurance == request.from
+        {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::SelfTransferNotAllowed);
+        }
 
         // Verify nonce
         Self::require_nonce(&env, &request.from, request.nonce)?;
