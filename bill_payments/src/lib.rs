@@ -2103,6 +2103,16 @@ impl BillPayments {
         Ok(paid_count)
     }
 
+    /// Sum of all **unpaid** bill amounts for the given `owner`.
+    ///
+    /// # Overflow Behavior
+    /// Uses **saturating addition** to prevent panic on overflow. If the total would
+    /// exceed i128::MAX, returns i128::MAX instead. This ensures the aggregation is
+    /// always bounded and predictable, even with arbitrarily many large bills.
+    ///
+    /// # Performance Note
+    /// Results are cached in an unpaid-totals map for faster repeated queries.
+    /// The cache is invalidated on bill creation/payment.
     pub fn get_total_unpaid(env: Env, owner: Address) -> i128 {
         if let Some(totals) = Self::get_unpaid_totals_map(&env) {
             if let Some(total) = totals.get(owner.clone()) {
@@ -2118,7 +2128,8 @@ impl BillPayments {
         let mut total = 0i128;
         for (_, bill) in bills.iter() {
             if !bill.paid && bill.owner == owner {
-                total += bill.amount;
+                // Use saturating_add to prevent overflow panics
+                total = total.saturating_add(bill.amount);
             }
         }
         total
@@ -2271,6 +2282,11 @@ impl BillPayments {
 
     /// Sum of all **unpaid** bill amounts for `owner` denominated in `currency`.
     ///
+    /// # Overflow Behavior
+    /// Uses **saturating addition** to prevent panic on overflow. If the total would
+    /// exceed i128::MAX, returns i128::MAX instead. This ensures the aggregation is
+    /// always bounded and predictable, even with arbitrarily many large bills.
+    ///
     /// # Arguments
     /// * `owner`    – Address of the bill owner
     /// * `currency` – Currency code to filter by, e.g. `"USDC"`, `"XLM"`
@@ -2300,7 +2316,8 @@ impl BillPayments {
         let mut total = 0i128;
         for (_, bill) in bills.iter() {
             if !bill.paid && bill.owner == owner && bill.currency == normalized_currency {
-                total += bill.amount;
+                // Use saturating_add to prevent overflow panics
+                total = total.saturating_add(bill.amount);
             }
         }
         total

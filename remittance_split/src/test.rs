@@ -651,6 +651,204 @@ fn test_execute_mixed_due_not_due() {
     }
 }
 
+// ============================================================================
+// Pause-Path Coverage Tests (Issue #612)
+// ============================================================================
+// Verify that each state-mutating entrypoint refuses to mutate while paused
+
+#[test]
+fn test_update_split_rejected_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // Attempt to update split while paused — should fail with Unauthorized
+    let nonce = client.get_split_nonce(&owner);
+    let result = client.update_split(&owner, &nonce, &40, &35, &15, &10);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        RemittanceSplitError::Unauthorized,
+        "update_split should reject when paused"
+    );
+
+    // Verify config unchanged
+    let config = client.get_split_config().unwrap();
+    assert_eq!(config.spending_percent, 50);
+}
+
+#[test]
+fn test_create_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // Attempt to create schedule while paused — should fail with Unauthorized
+    let result = client.create_remittance_schedule(&owner, &100, &3_000, &0);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        RemittanceSplitError::Unauthorized,
+        "create_remittance_schedule should reject when paused"
+    );
+}
+
+#[test]
+fn test_modify_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Create schedule first (while not paused)
+    let schedule_id = client.create_remittance_schedule(&owner, &200, &3_000, &0);
+    assert!(schedule_id.is_ok());
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // Attempt to modify schedule while paused — should fail with Unauthorized
+    let result = client.modify_remittance_schedule(&owner, &1, &250, &4_000, &0);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        RemittanceSplitError::Unauthorized,
+        "modify_remittance_schedule should reject when paused"
+    );
+
+    // Verify schedule unchanged
+    let schedule = client.get_remittance_schedule(&1).unwrap();
+    assert_eq!(schedule.amount, 200);
+}
+
+#[test]
+fn test_cancel_remittance_schedule_rejected_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Create schedule first (while not paused)
+    let schedule_id = client.create_remittance_schedule(&owner, &300, &3_000, &0);
+    assert!(schedule_id.is_ok());
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // Attempt to cancel schedule while paused — should fail with Unauthorized
+    let result = client.cancel_remittance_schedule(&owner, &1);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        RemittanceSplitError::Unauthorized,
+        "cancel_remittance_schedule should reject when paused"
+    );
+
+    // Verify schedule still active
+    let schedule = client.get_remittance_schedule(&1).unwrap();
+    assert!(schedule.active);
+}
+
+#[test]
+fn test_import_snapshot_rejected_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Export initial snapshot
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // Attempt to import snapshot while paused — should fail with Unauthorized
+    let nonce = client.get_split_nonce(&owner);
+    let result = client.import_snapshot(&owner, &nonce, &snapshot);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        RemittanceSplitError::Unauthorized,
+        "import_snapshot should reject when paused"
+    );
+}
+
+#[test]
+fn test_getters_remain_callable_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Create schedule
+    let schedule_id = client.create_remittance_schedule(&owner, &500, &3_000, &0);
+    assert_eq!(schedule_id, Ok(1));
+
+    // Pause contract
+    client.pause(&owner).unwrap();
+
+    // All read-only operations should succeed while paused
+    assert!(client.is_paused().unwrap());
+    assert!(client.get_split_config().is_ok());
+    assert!(client.get_split().is_ok());
+    assert!(client.get_remittance_schedule(&1).is_ok());
+    assert!(client.export_snapshot(&owner).is_ok());
+    assert_eq!(client.execute_due_remittance_schedules().len(), 0);
+
+    // Verify nonce is still retrievable
+    let nonce = client.get_split_nonce(&owner);
+    assert!(nonce > 0);
+}
+
+#[test]
+fn test_paused_then_unpaused_resumes_normally() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    // Verify we can mutate before pause
+    let nonce1 = client.get_split_nonce(&owner);
+    assert!(client.update_split(&owner, &nonce1, &45, &30, &15, &10).is_ok());
+
+    // Pause
+    client.pause(&owner).unwrap();
+    assert!(client.is_paused().unwrap());
+
+    // Verify mutation is blocked while paused
+    let nonce2 = client.get_split_nonce(&owner);
+    let result = client.update_split(&owner, &nonce2, &40, &35, &15, &10);
+    assert!(result.is_err());
+
+    // Unpause
+    client.unpause(&owner).unwrap();
+    assert!(!client.is_paused().unwrap());
+
+    // Verify mutation works again
+    let nonce3 = client.get_split_nonce(&owner);
+    let result = client.update_split(&owner, &nonce3, &40, &35, &15, &10);
+    assert!(result.is_ok());
+
+    // Verify final state
+    let config = client.get_split_config().unwrap();
+    assert_eq!(config.spending_percent, 40);
+}
+
 // Helper function to invoke execute_due_remittance_schedules via client
 // (Note: You may need to add this to the RemittanceSplitClient or call directly)
 pub fn set_time(env: &Env, timestamp: u64) {

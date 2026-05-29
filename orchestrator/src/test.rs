@@ -457,6 +457,208 @@ mod tests {
 
         assert_eq!(result, Err(Ok(OrchestratorError::ExecutionLocked)));
     }
+
+    // ============================================================================
+    // Nonce Replay Protection Tests (Issue #648)
+    // ============================================================================
+    // Verify that the NONCES map and USED_N set prevent replay attacks
+
+    #[test]
+    fn test_nonce_starts_at_zero() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let nonce = client.get_nonce(&executor);
+        assert_eq!(nonce, 0, "New address should start with nonce 0");
+    }
+
+    #[test]
+    fn test_nonce_increments_after_successful_execution() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        // First execution with nonce 0
+        let deadline = env.ledger().timestamp() + 1000;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+        let result = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
+        assert!(result.is_ok(), "First execution should succeed");
+
+        // Verify nonce incremented to 1
+        let new_nonce = client.get_nonce(&executor);
+        assert_eq!(new_nonce, 1, "Nonce should increment after successful execution");
+    }
+
+    #[test]
+    fn test_replay_same_nonce_fails() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+        let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+        // First execution with nonce 0
+        let result1 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
+        assert!(result1.is_ok(), "First execution should succeed");
+
+        // Attempt replay with same nonce 0 (nonce should now be 1)
+        let result2 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
+        assert_eq!(
+            result2,
+            Err(Ok(OrchestratorError::InvalidNonce)),
+            "Replay of same nonce should fail (nonce mismatch)"
+        );
+    }
+
+    #[test]
+    fn test_out_of_order_nonce_fails() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+
+        // Attempt to execute with nonce 5 when current nonce is 0
+        let hash = compute_test_hash(&env, symbol_short!("flow"), 5, 1000, deadline);
+        let result = client.try_execute_remittance_flow(&executor, &1000, &5, &deadline, &hash);
+
+        assert_eq!(
+            result,
+            Err(Ok(OrchestratorError::InvalidNonce)),
+            "Out-of-order nonce should fail (must equal current nonce)"
+        );
+    }
+
+    #[test]
+    fn test_skipped_nonce_prevents_reuse() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+
+        // Execute with nonce 0
+        let hash0 = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+        let result0 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash0);
+        assert!(result0.is_ok());
+
+        // Execute with nonce 1
+        let hash1 = compute_test_hash(&env, symbol_short!("flow"), 1, 2000, deadline);
+        let result1 = client.try_execute_remittance_flow(&executor, &2000, &1, &deadline, &hash1);
+        assert!(result1.is_ok());
+
+        // Nonce should now be 2
+        let current_nonce = client.get_nonce(&executor);
+        assert_eq!(current_nonce, 2);
+
+        // Now try to reuse nonce 0 (should fail because it's in USED_N)
+        let hash_old = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+        let result_replay = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash_old);
+        assert_eq!(
+            result_replay,
+            Err(Ok(OrchestratorError::InvalidNonce)),
+            "Reused nonce should fail even if counter was advanced"
+        );
+    }
+
+    #[test]
+    fn test_multiple_addresses_independent_nonces() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor1 = Address::generate(&env);
+        let executor2 = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+
+        // Executor1 starts with nonce 0
+        let nonce1_before = client.get_nonce(&executor1);
+        assert_eq!(nonce1_before, 0);
+
+        // Executor2 starts with nonce 0
+        let nonce2_before = client.get_nonce(&executor2);
+        assert_eq!(nonce2_before, 0);
+
+        // Execute for executor1 with nonce 0
+        let hash1 = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+        let result1 = client.try_execute_remittance_flow(&executor1, &1000, &0, &deadline, &hash1);
+        assert!(result1.is_ok());
+
+        // Executor1 nonce should be 1
+        assert_eq!(client.get_nonce(&executor1), 1);
+
+        // Executor2 nonce should still be 0 (independent)
+        assert_eq!(client.get_nonce(&executor2), 0);
+
+        // Executor2 can execute with nonce 0
+        let hash2 = compute_test_hash(&env, symbol_short!("flow"), 0, 500, deadline);
+        let result2 = client.try_execute_remittance_flow(&executor2, &500, &0, &deadline, &hash2);
+        assert!(result2.is_ok(), "Executor2 should execute with nonce 0");
+    }
+
+    #[test]
+    fn test_request_hash_binding_prevents_parameter_swap() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        let deadline = env.ledger().timestamp() + 1000;
+
+        // Compute hash for amount 1000
+        let hash_1000 = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+        // Try to execute with different amount but using hash from 1000
+        let result = client.try_execute_remittance_flow(&executor, &5000, &0, &deadline, &hash_1000);
+
+        assert_eq!(
+            result,
+            Err(Ok(OrchestratorError::InvalidNonce)),
+            "Parameter swap attempt should fail (hash mismatch)"
+        );
+    }
+
+    #[test]
+    fn test_deadline_window_prevents_old_requests() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        env.mock_all_auths();
+
+        // Create a request with a deadline far in the future
+        let current_time = env.ledger().timestamp();
+        let far_deadline = current_time + 366 * 86400; // 1 year in future (exceeds MAX_DEADLINE_WINDOW_SECS)
+
+        let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, far_deadline);
+        let result = client.try_execute_remittance_flow(&executor, &1000, &0, &far_deadline, &hash);
+
+        assert_eq!(
+            result,
+            Err(Ok(OrchestratorError::DeadlineExpired)),
+            "Request with deadline too far in future should fail"
+        );
+    }
 }
 
     #[test]
