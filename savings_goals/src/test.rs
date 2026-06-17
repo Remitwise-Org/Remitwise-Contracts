@@ -76,7 +76,7 @@ fn test_create_goal_empty_name_fails() {
     assert!(res.is_err());
     assert_eq!(
         res.unwrap_err().unwrap(),
-        SavingsGoalsError::InvalidGoalName
+        SavingsGoalError::InvalidGoalName
     );
 }
 
@@ -104,13 +104,13 @@ fn test_create_goal_over_max_len_fails() {
     let user = Address::generate(&env);
     client.init();
 
-    // 33 chars
-    let name = String::from_str(&env, "Test Goal Name Exactly 33 Chars..");
+    // 129 bytes (exceeds MAX_GOAL_NAME_LEN_BYTES = 128)
+    let name = String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     let res = client.try_create_goal(&user, &name, &1000, &1735689600);
     assert!(res.is_err());
     assert_eq!(
         res.unwrap_err().unwrap(),
-        SavingsGoalsError::InvalidGoalName
+        SavingsGoalError::InvalidGoalName
     );
 }
 
@@ -129,7 +129,7 @@ fn test_create_goal_control_char_fails() {
     assert!(res.is_err());
     assert_eq!(
         res.unwrap_err().unwrap(),
-        SavingsGoalsError::InvalidGoalName
+        SavingsGoalError::InvalidGoalName
     );
 }
 // In production or integration, init() may be called more than once (e.g. by

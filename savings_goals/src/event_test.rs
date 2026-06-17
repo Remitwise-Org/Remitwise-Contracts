@@ -10,37 +10,37 @@
 
 #[cfg(test)]
 mod goal_completed_event_tests {
-    use soroban_sdk::{testutils::Events, vec, Env, IntoVal, Symbol};
+    use soroban_sdk::{
+        testutils::{Address as AddressTrait, Events},
+        vec, Env, Symbol, TryFromVal,
+    };
 
-    // Import the contract and its types — adjust the path if your crate is named differently
-    use crate::{SavingsGoalsContract, SavingsGoalsContractClient};
+    use crate::{SavingsGoalContract, SavingsGoalContractClient};
 
-    // Helpers
-
-    /// Deploy the contract and return (env, client, owner_address).
     fn setup() -> (
         Env,
-        SavingsGoalsContractClient<'static>,
+        SavingsGoalContractClient<'static>,
         soroban_sdk::Address,
     ) {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register_contract(None, SavingsGoalsContract);
-        let client = SavingsGoalsContractClient::new(&env, &contract_id);
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
         let owner = soroban_sdk::Address::generate(&env);
         (env, client, owner)
     }
 
-    /// Count how many events in `env` have the topic symbol `"completed"`.
-    /// Adjust the symbol string if the contract uses a different topic for GoalCompleted.
     fn count_completed_events(env: &Env) -> usize {
         env.events()
             .all()
             .iter()
             .filter(|(_, topics, _)| {
-                topics
-                    .iter()
-                    .any(|t| t == Symbol::new(env, "completed").into_val(env))
+                topics.iter().any(|t| {
+                    Symbol::try_from_val(env, &t)
+                        .ok()
+                        .as_ref()
+                        == Some(&Symbol::new(env, "completed"))
+                })
             })
             .count()
     }
@@ -64,24 +64,24 @@ mod goal_completed_event_tests {
         // Add exactly the target amount in one contribution
         client.add_to_goal(&owner, &goal_id, &1_000_i128);
 
-        // Exactly one GoalCompleted event
+        // Exactly one completion → 2 events (legacy + RemitwiseEvents)
         assert_eq!(
             count_completed_events(&env),
-            1,
-            "Expected exactly 1 GoalCompleted event when contribution lands on target"
+            2,
+            "Expected 2 GoalCompleted events (legacy + RemitwiseEvents) when contribution lands on target"
         );
 
-        // is_goal_completed must agree
         assert!(
             client.is_goal_completed(&goal_id),
             "is_goal_completed should return true after reaching target"
         );
     }
 
-    // Test 2 — Overshoot emits GoalCompleted exactly once
+    // Test 2 — Overshoot emits GoalCompleted events (legacy + RemitwiseEvents)
 
     /// When `add_to_goal` pushes `current_amount` above `target_amount`,
-    /// exactly one `GoalCompleted` event must still be emitted — not two.
+    /// exactly two `GoalCompleted` events must be emitted — the legacy direct
+    /// event and the standardized RemitwiseEvents event.
     #[test]
     fn test_overshoot_emits_goal_completed_once() {
         let (env, client, owner) = setup();
@@ -98,8 +98,8 @@ mod goal_completed_event_tests {
 
         assert_eq!(
             count_completed_events(&env),
-            1,
-            "Expected exactly 1 GoalCompleted event on overshoot contribution"
+            2,
+            "Expected 2 GoalCompleted events (legacy + RemitwiseEvents) on overshoot contribution"
         );
 
         assert!(client.is_goal_completed(&goal_id));
@@ -133,8 +133,8 @@ mod goal_completed_event_tests {
         client.add_to_goal(&owner, &goal_id, &600_i128);
         assert_eq!(
             count_completed_events(&env),
-            1,
-            "Exactly 1 GoalCompleted event expected after crossing target"
+            2,
+            "Expected 2 GoalCompleted events (legacy + RemitwiseEvents) after crossing target"
         );
         assert!(client.is_goal_completed(&goal_id));
     }
@@ -155,15 +155,15 @@ mod goal_completed_event_tests {
             &(env.ledger().timestamp() + 86_400),
         );
 
-        // Complete the goal
+        // Complete the goal → 2 events (legacy + RemitwiseEvents)
         client.add_to_goal(&owner, &goal_id, &1_000_i128);
-        assert_eq!(count_completed_events(&env), 1);
+        assert_eq!(count_completed_events(&env), 2);
 
-        // Add more funds after completion — must NOT emit another event
+        // Add more funds after completion — must NOT emit additional events
         client.add_to_goal(&owner, &goal_id, &500_i128);
         assert_eq!(
             count_completed_events(&env),
-            1,
+            2,
             "GoalCompleted must NOT be re-emitted after goal is already complete"
         );
     }
@@ -182,7 +182,7 @@ mod goal_completed_event_tests {
         );
 
         client.add_to_goal(&owner, &goal_id, &2_000_i128);
-        assert_eq!(count_completed_events(&env), 1);
+        assert_eq!(count_completed_events(&env), 2);
 
         // Three additional contributions after completion
         for _ in 0..3 {
@@ -191,8 +191,8 @@ mod goal_completed_event_tests {
 
         assert_eq!(
             count_completed_events(&env),
-            1,
-            "Still exactly 1 GoalCompleted after multiple post-completion contributions"
+            2,
+            "Still exactly 2 GoalCompleted events after multiple post-completion contributions"
         );
     }
 
@@ -211,19 +211,26 @@ mod goal_completed_event_tests {
             &(env.ledger().timestamp() + 86_400),
         );
 
-        // batch_add_to_goals — adjust the call signature to match the real API
-        // This assumes it takes a Vec of (goal_id, amount) tuples
-        client.batch_add_to_goals(&owner, &vec![&env, (goal_id.clone(), 1_000_i128)]);
+        client.batch_add_to_goals(
+            &owner,
+            &vec![
+                &env,
+                crate::ContributionItem {
+                    goal_id: goal_id,
+                    amount: 1_000_i128,
+                },
+            ],
+        );
 
         assert_eq!(
             count_completed_events(&env),
-            1,
-            "batch_add_to_goals completing a goal should emit exactly 1 GoalCompleted"
+            2,
+            "batch_add_to_goals completing a goal should emit 2 GoalCompleted events (legacy + RemitwiseEvents)"
         );
         assert!(client.is_goal_completed(&goal_id));
     }
 
-    // Test 7 — batch_add_to_goals: completing multiple goals emits one per goal
+    // Test 7 — batch_add_to_goals: completing multiple goals emits two per goal
 
     #[test]
     fn test_batch_add_completes_two_goals_emits_two_events() {
@@ -244,13 +251,23 @@ mod goal_completed_event_tests {
 
         client.batch_add_to_goals(
             &owner,
-            &vec![&env, (goal_a.clone(), 500_i128), (goal_b.clone(), 800_i128)],
+            &vec![
+                &env,
+                crate::ContributionItem {
+                    goal_id: goal_a,
+                    amount: 500_i128,
+                },
+                crate::ContributionItem {
+                    goal_id: goal_b,
+                    amount: 800_i128,
+                },
+            ],
         );
 
         assert_eq!(
             count_completed_events(&env),
-            2,
-            "Each completed goal in a batch should emit its own GoalCompleted event"
+            4,
+            "Two completed goals → 4 events (2 legacy + 2 RemitwiseEvents)"
         );
         assert!(client.is_goal_completed(&goal_a));
         assert!(client.is_goal_completed(&goal_b));
@@ -271,16 +288,25 @@ mod goal_completed_event_tests {
             &(env.ledger().timestamp() + 86_400),
         );
 
-        // Complete via single add first
+        // Complete via single add first → 2 events
         client.add_to_goal(&owner, &goal_id, &300_i128);
-        assert_eq!(count_completed_events(&env), 1);
+        assert_eq!(count_completed_events(&env), 2);
 
         // Now include the same completed goal in a batch
-        client.batch_add_to_goals(&owner, &vec![&env, (goal_id.clone(), 100_i128)]);
+        client.batch_add_to_goals(
+            &owner,
+            &vec![
+                &env,
+                crate::ContributionItem {
+                    goal_id: goal_id,
+                    amount: 100_i128,
+                },
+            ],
+        );
 
         assert_eq!(
             count_completed_events(&env),
-            1,
+            2,
             "batch_add_to_goals must not re-emit GoalCompleted for an already-completed goal"
         );
     }
