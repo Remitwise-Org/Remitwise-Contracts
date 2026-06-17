@@ -671,7 +671,29 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
     Ok(csv_bytes)
 }
 
-/// Encrypted format: store a prefixed base64-encoded payload.
+/// ⚠️ WARNING: This function does NOT encrypt the payload.
+///
+/// The `enc:v1:` format is an **encoding/marker only** and provides no
+/// confidentiality or integrity protection beyond the snapshot checksum.
+///
+/// # Wire format
+///
+/// ```text
+/// enc:v1:<base64>
+/// ```
+///
+/// - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1` = `"enc:v1:"` (line 31).
+/// - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES` (lines 52–53).
+///
+/// # Security
+///
+/// Sensitive data **MUST be encrypted off-chain** before being passed to this
+/// function. A future `enc:v2:` format may add on-chain cryptographic
+/// operations.
+///
+/// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
+/// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
+/// context of data-migration operations.
 pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, MigrationError> {
     if plain_bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
         return Err(MigrationError::PayloadTooLarge {
@@ -686,7 +708,34 @@ pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, Migrati
     Ok(encoded)
 }
 
-/// Decode encrypted payload from prefixed base64.
+/// ⚠️ WARNING: This function does NOT decrypt the payload.
+///
+/// It only strips the `enc:v1:` marker and base64-decodes the remainder.
+/// No cryptographic key, cipher, or on-chain crypto is involved.
+///
+/// The `enc:v1:` format is an **encoding/marker only** and provides no
+/// confidentiality or integrity protection beyond the snapshot checksum.
+///
+/// # Wire format
+///
+/// ```text
+/// enc:v1:<base64>
+/// ```
+///
+/// - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1` = `"enc:v1:"` (line 31).
+/// - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES` (lines 52–53).
+///
+/// # Security
+///
+/// Callers **MUST** assume the decoded bytes are **not confidential**.
+/// Sensitive data should have been encrypted off-chain before export; this
+/// function is the import-side counterpart to [`export_to_encrypted_payload`].
+///
+/// A future `enc:v2:` format may add on-chain cryptographic verification.
+///
+/// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
+/// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
+/// context of data-migration operations.
 pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, MigrationError> {
     // Pre-deserialization check: Ensure the base64-encoded string does not exceed
     // MAX_ENCRYPTED_PAYLOAD_BYTES to prevent DoS from oversized requests before decoding.

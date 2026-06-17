@@ -30,6 +30,38 @@ The checksum provides **integrity** (tamper detection), not **authentication**. 
 
 Every `SnapshotHeader` carries a `hash_algorithm: ChecksumAlgorithm` field. New exports produce `ChecksumAlgorithm::Sha256`, while legacy snapshots without an explicit algorithm field or with `ChecksumAlgorithm::Simple` continue to import successfully. The field is `#[non_exhaustive]` so future algorithm upgrades can be added as new variants without breaking existing importers — which must reject any algorithm they do not recognise rather than silently skipping verification.
 
+## ⚠️ Encrypted payload: encoding-only (no cryptography)
+
+> **The `export_to_encrypted_payload` / `import_from_encrypted_payload` functions do NOT perform encryption.**
+>
+> The `enc:v1:<base64>` format is an **encoding/marker only** and provides no
+> confidentiality or integrity protection beyond the snapshot checksum.
+>
+> **Wire format:** ``enc:v1:` + base64(plain_bytes)``
+>
+> - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1 = "enc:v1:"` (`lib.rs:31`)
+> - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES` (`lib.rs:52–53`)
+>
+> ### Why this matters
+>
+> A developer reading "encrypted" will reasonably assume the payload is
+> confidential. This crate does not use any key, cipher, or on-chain
+> cryptographic operation. Putting sensitive data through this function
+> **leaves it fully visible** to anyone with access to the encoded string.
+>
+> ### What to do instead
+>
+> 1. Encrypt sensitive data off-chain (e.g. AES-256-GCM or
+>    age/chacha20poly1305) **before** calling this function.
+> 2. Decrypt off-chain **after** calling `import_from_encrypted_payload`.
+> 3. A future `enc:v2:` format may add on-chain cryptographic operations.
+>
+> ### Related security context
+>
+> See [`THREAT_MODEL.md`](../THREAT_MODEL.md) §5.1 (Critical Gaps / Weak
+> Checksum) and [`SECURITY_REVIEW_SUMMARY.md`](../SECURITY_REVIEW_SUMMARY.md)
+> (Short-Term / SECURITY-004) for the broader data-migration security picture.
+
 ## API reference
 
 ### Building a snapshot
