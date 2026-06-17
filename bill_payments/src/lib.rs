@@ -686,7 +686,7 @@ impl BillPayments {
     }
 
     /// @notice Pause all state-changing operations.
-    /// @dev Requires the pause admin to authenticate.
+    /// @dev Requires the pause admin to authenticate. Cancels any pending unpause schedule.
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
@@ -697,6 +697,8 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        // Cancel any pending unpause schedule to prevent timelock bypass
+        env.storage().instance().remove(&symbol_short!("UNP_AT"));
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
