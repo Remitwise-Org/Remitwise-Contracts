@@ -36,13 +36,25 @@ pub const DEP_PAGE_LIMIT: u32 = 50;
 /// Maximum number of items included in top-N reports.
 pub const MAX_ITEMS_PER_REPORT: u32 = 10;
 
-/// Financial health score (0-100)
+/// Financial health score (0-100), composed of three weighted components.
+///
+/// - `savings_score`: 0-40, from aggregate savings-goal completion
+/// - `bills_score`: 0-40, from bill-payment compliance (tiered 40/35/20)
+/// - `insurance_score`: 0-20, binary on having an active policy
+/// - `score`: `clamp(savings + bills + insurance, 0, 100)`
+///
+/// See `docs/HEALTH_SCORE.md` (at the repository root) for the full scoring
+/// model, inputs, and worked examples.
 #[contracttype]
 #[derive(Clone)]
 pub struct HealthScore {
+    /// Overall score, clamped to `0..=100`.
     pub score: u32,
+    /// Savings component, `0..=40` (goal completion percentage scaled to 40).
     pub savings_score: u32,
+    /// Bills component, `0..=40` (40 none unpaid, 35 unpaid none overdue, 20 overdue).
     pub bills_score: u32,
+    /// Insurance component, `0..=20` (20 if any active policy, else 0).
     pub insurance_score: u32,
 }
 
@@ -1073,8 +1085,19 @@ impl ReportingContract {
     ///
     /// This function computes a comprehensive financial health score (0-100) based on:
     /// - Savings progress (0-40 points): Based on goal completion percentage
-    /// - Bill payment compliance (0-40 points): Based on unpaid/overdue bills
-    /// - Insurance coverage (0-20 points): Based on active policies
+    /// - Bill payment compliance (0-40 points): tiered 40 (none unpaid) /
+    ///   35 (unpaid, none overdue) / 20 (overdue)
+    /// - Insurance coverage (0-20 points): binary, 20 if any active policy else 0
+    ///
+    /// The final score is `clamp(savings + bills + insurance, 0, 100)`. The
+    /// `_total_remittance` argument is currently unused. When a downstream
+    /// contract has no data the relevant component falls back to its default
+    /// (savings 20, bills 40, insurance 0); if addresses are unconfigured the
+    /// call returns `AddressesNotConfigured` rather than a partial score.
+    ///
+    /// See `docs/HEALTH_SCORE.md` (at the repository root) for the full model,
+    /// the exact input of each component, clamping, the `DataAvailability`
+    /// (Partial/Missing) relationship, and worked examples.
     ///
     /// # Arithmetic Safety
     /// - Uses safe division to prevent overflow

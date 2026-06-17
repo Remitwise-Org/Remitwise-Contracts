@@ -303,6 +303,7 @@ To run an example, use `cargo run --example <example_name>`:
 ## Documentation
 
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
+- [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying

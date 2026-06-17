@@ -11,6 +11,10 @@ Aggregates financial health data from the remittance_split, savings_goals, bill_
 
 ## Financial Health Score
 
+> **Authoritative spec:** [`docs/HEALTH_SCORE.md`](../docs/HEALTH_SCORE.md) documents
+> the exact component weights, the input each consumes, the clamping to `0..=100`,
+> the `DataAvailability` (Partial/Missing) behavior, and worked examples.
+
 The contract calculates a comprehensive financial health score (0-100) based on three components:
 
 ### Score Components
