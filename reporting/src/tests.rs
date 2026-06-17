@@ -7,7 +7,7 @@ use soroban_sdk::{
 use testutils::set_ledger_time;
 
 use crate::{
-    Category, ContractAddresses, CoverageType, DataAvailability, ReportingContract,
+    Category, ContractAddresses, DataAvailability, ReportingContract,
     ReportingContractClient, ReportingError, MAX_DEP_PAGES,
 };
 
@@ -224,6 +224,21 @@ mod insurance {
 
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {
             200
+        }
+    }
+}
+
+mod family_wallet {
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, Address, Env};
+
+    #[contract]
+    pub struct FamilyWallet;
+
+    #[contractimpl]
+    impl FamilyWallet {
+        pub fn get_owner(env: Env) -> Address {
+            Address::generate(&env)
         }
     }
 }
@@ -572,7 +587,7 @@ fn test_get_remittance_summary() {
     let result =
         client.try_get_remittance_summary(&user, &total_amount, &period_start, &period_end);
     assert!(result.is_ok());
-    let summary = result.unwrap();
+    let summary = result.unwrap().unwrap();
 
     assert_eq!(summary.total_received, 10000);
     assert_eq!(summary.total_allocated, 10000);
@@ -698,7 +713,7 @@ fn test_get_savings_report() {
 
     let period_start = 1704067200u64;
     let period_end = 1706745600u64;
-    let report = client.get_savings_report(&user, &period_start, &period_end);
+    let report = client.get_savings_report(&user, &user, &period_start, &period_end);
 
     assert_eq!(report.total_goals, 2);
     assert_eq!(report.completed_goals, 1);
@@ -712,7 +727,7 @@ fn test_get_savings_report_rejects_invalid_period() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
-    let result = client.try_get_savings_report(&user, &200, &100);
+    let result = client.try_get_savings_report(&user, &user, &200, &100);
     assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
@@ -746,7 +761,7 @@ fn test_get_bill_compliance_report() {
     let period_start = 1704067200u64;
     let period_end = 1706745600u64;
 
-    let result = client.try_get_bill_compliance_report(&user, &period_start, &period_end);
+    let result = client.try_get_bill_compliance_report(&user, &user, &period_start, &period_end);
     assert!(result.is_ok());
 }
 
@@ -758,7 +773,7 @@ fn test_get_bill_compliance_report_rejects_invalid_period() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
-    let result = client.try_get_bill_compliance_report(&user, &200, &100);
+    let result = client.try_get_bill_compliance_report(&user, &user, &200, &100);
     assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
@@ -792,7 +807,7 @@ fn test_get_insurance_report() {
     let period_start = 1704067200u64;
     let period_end = 1706745600u64;
 
-    let result = client.try_get_insurance_report(&user, &period_start, &period_end);
+    let result = client.try_get_insurance_report(&user, &user, &period_start, &period_end);
     assert!(result.is_ok());
 }
 
@@ -804,7 +819,7 @@ fn test_get_insurance_report_rejects_invalid_period() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
-    let result = client.try_get_insurance_report(&user, &200, &100);
+    let result = client.try_get_insurance_report(&user, &user, &200, &100);
     assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
@@ -837,7 +852,7 @@ fn test_calculate_health_score() {
 
     let result = client.try_calculate_health_score(&user, &10000);
     assert!(result.is_ok());
-    let health_score = result.unwrap();
+    let health_score = result.unwrap().unwrap();
 
     assert_eq!(health_score.score, 87);
 }
@@ -1058,12 +1073,13 @@ fn test_get_financial_health_report() {
 
     let result = client.try_get_financial_health_report(
         &user,
+        &user,
         &total_remittance,
         &period_start,
         &period_end,
     );
     assert!(result.is_ok());
-    let report = result.unwrap();
+    let report = result.unwrap().unwrap();
 
     assert_eq!(report.health_score.score, 87);
 }
@@ -1076,7 +1092,7 @@ fn test_get_financial_health_report_rejects_invalid_period() {
     let client = ReportingContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
 
-    let result = client.try_get_financial_health_report(&user, &10_000i128, &200, &100);
+    let result = client.try_get_financial_health_report(&user, &user, &10_000i128, &200, &100);
     assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
@@ -1131,12 +1147,13 @@ fn test_store_and_retrieve_report() {
 
     let result = client.try_get_financial_health_report(
         &user,
+        &user,
         &total_remittance,
         &period_start,
         &period_end,
     );
     assert!(result.is_ok());
-    let report = result.unwrap();
+    let report = result.unwrap().unwrap();
 
     let period_key = 202401u64;
     let stored = client.store_report(&user, &report, &period_key);
@@ -1178,18 +1195,18 @@ fn test_archive_old_reports() {
     );
 
     let result =
-        client.try_get_financial_health_report(&user, &10000i128, &1704067200u64, &1706745600u64);
+        client.try_get_financial_health_report(&user, &user, &10000i128, &1704067200u64, &1706745600u64);
     assert!(result.is_ok());
-    let report = result.unwrap();
+    let report = result.unwrap().unwrap();
 
     let period_key = 202401u64;
     client.store_report(&user, &report, &period_key);
 
     let archive_result = client.try_archive_old_reports(&admin, &2000000000);
     assert!(archive_result.is_ok());
-    assert_eq!(archive_result.unwrap(), 1);
+    assert_eq!(archive_result.unwrap().unwrap(), 1);
 
-    assert!(client.get_stored_report(&user, &period_key).is_none());
+    assert!(client.get_stored_report(&user, &user, &period_key).is_none());
 }
 
 #[test]
@@ -1220,9 +1237,9 @@ fn test_cleanup_old_reports() {
     );
 
     let result =
-        client.try_get_financial_health_report(&user, &10000i128, &1704067200u64, &1706745600u64);
+        client.try_get_financial_health_report(&user, &user, &10000i128, &1704067200u64, &1706745600u64);
     assert!(result.is_ok());
-    let report = result.unwrap();
+    let report = result.unwrap().unwrap();
     client.store_report(&user, &report, &202401);
 
     let stats = client.get_storage_stats();
@@ -1234,7 +1251,7 @@ fn test_cleanup_old_reports() {
 
     let cleanup_result = client.try_cleanup_old_reports(&admin, &2000000000);
     assert!(cleanup_result.is_ok());
-    assert_eq!(cleanup_result.unwrap(), 1);
+    assert_eq!(cleanup_result.unwrap().unwrap(), 1);
 }
 
 /// Regression: `get_storage_stats` must stay aligned with real maps across store → archive → cleanup
@@ -1278,7 +1295,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     let base_ts = 1_000_000u64;
     for i in 0..TOTAL {
         set_ledger_time(&env, 10 + i as u32, base_ts + i);
-        let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+        let report = client.get_financial_health_report(&user, &user, &10000, &1704067200, &1706745600);
         client.store_report(&user, &report, &(202_400 + i));
     }
 
@@ -1311,7 +1328,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
 
     // Second cycle: new report increments active; full archive then cleanup returns to zero archived
     set_ledger_time(&env, 700, base_ts + 300);
-    let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+    let report = client.get_financial_health_report(&user, &user, &10000, &1704067200, &1706745600);
     client.store_report(&user, &report, &209_912);
 
     let after_new_store = client.get_storage_stats();
@@ -1465,7 +1482,7 @@ fn make_report(
     client: &ReportingContractClient,
     user: &Address,
 ) -> crate::FinancialHealthReport {
-    client.get_financial_health_report(user, &10_000i128, &1_704_067_200u64, &1_706_745_600u64)
+    client.get_financial_health_report(user, user, &10_000i128, &1_704_067_200u64, &1_706_745_600u64)
 }
 
 // ── store_report authorization ────────────────────────────────────────────────
@@ -1522,14 +1539,14 @@ fn test_store_report_cannot_impersonate_another_user() {
     client.store_report(&user_b, &report_a, &202_401u64);
 
     // user_a's slot must be empty
-    let result_a = client.get_stored_report(&user_a, &202_401u64);
+    let result_a = client.get_stored_report(&user_a, &user_a, &202_401u64);
     assert!(
         result_a.is_none(),
         "user_a's report slot must be empty when stored under user_b"
     );
 
     // user_b's slot has the report
-    let result_b = client.get_stored_report(&user_b, &202_401u64);
+    let result_b = client.get_stored_report(&user_b, &user_b, &202_401u64);
     assert!(
         result_b.is_some(),
         "report stored under user_b must be retrievable by user_b"
@@ -1551,14 +1568,14 @@ fn test_store_report_admin_cannot_bypass_user_auth() {
     client.store_report(&admin, &report, &202_401u64);
 
     // The user's slot must remain empty
-    let user_result = client.get_stored_report(&user, &202_401u64);
+    let user_result = client.get_stored_report(&user, &user, &202_401u64);
     assert!(
         user_result.is_none(),
         "admin storing under their own address must not populate user's slot"
     );
 
     // Admin's own slot has the report
-    let admin_result = client.get_stored_report(&admin, &202_401u64);
+    let admin_result = client.get_stored_report(&admin, &admin, &202_401u64);
     assert!(
         admin_result.is_some(),
         "admin's own report slot must be populated"
@@ -1581,11 +1598,11 @@ fn test_get_stored_report_user_isolation() {
     client.store_report(&user_a, &report_a, &202_401u64);
 
     // user_b queries user_a's period key — must get None
-    let result = client.get_stored_report(&user_a, &202_401u64);
+    let result = client.get_stored_report(&user_a, &user_a, &202_401u64);
     assert!(result.is_some(), "user_a must retrieve their own report");
 
     // Querying with user_b's address for the same period key returns None
-    let result_b = client.get_stored_report(&user_b, &202_401u64);
+    let result_b = client.get_stored_report(&user_b, &user_b, &202_401u64);
     assert!(
         result_b.is_none(),
         "user_b must not see user_a's report — key isolation enforced"
@@ -1609,8 +1626,8 @@ fn test_get_stored_report_same_period_key_different_users() {
     client.store_report(&user_a, &report_a, &period);
     client.store_report(&user_b, &report_b, &period);
 
-    let ra = client.get_stored_report(&user_a, &period).unwrap();
-    let rb = client.get_stored_report(&user_b, &period).unwrap();
+    let ra = client.get_stored_report(&user_a, &user_a, &period).unwrap();
+    let rb = client.get_stored_report(&user_b, &user_b, &period).unwrap();
 
     // Both exist independently
     assert_eq!(ra.generated_at, report_a.generated_at);
@@ -1630,11 +1647,11 @@ fn test_get_stored_report_multiple_periods_same_user() {
     client.store_report(&user, &report, &202_402u64);
     client.store_report(&user, &report, &202_403u64);
 
-    assert!(client.get_stored_report(&user, &202_401u64).is_some());
-    assert!(client.get_stored_report(&user, &202_402u64).is_some());
-    assert!(client.get_stored_report(&user, &202_403u64).is_some());
+    assert!(client.get_stored_report(&user, &user, &202_401u64).is_some());
+    assert!(client.get_stored_report(&user, &user, &202_402u64).is_some());
+    assert!(client.get_stored_report(&user, &user, &202_403u64).is_some());
     // Non-existent period returns None
-    assert!(client.get_stored_report(&user, &202_404u64).is_none());
+    assert!(client.get_stored_report(&user, &user, &202_404u64).is_none());
 }
 
 /// Overwriting a report for the same (user, period) replaces the previous value.
@@ -1675,7 +1692,7 @@ fn test_store_report_overwrite_replaces_previous() {
     let report_v2 = make_report(&env, &client, &user);
     client.store_report(&user, &report_v2, &period);
 
-    let retrieved = client.get_stored_report(&user, &period).unwrap();
+    let retrieved = client.get_stored_report(&user, &user, &period).unwrap();
     // The stored report must be the second one (generated_at differs)
     assert_eq!(
         retrieved.generated_at, report_v2.generated_at,
@@ -1956,8 +1973,8 @@ fn test_multi_user_full_lifecycle_no_data_leakage() {
 
     // Verify isolation before archiving
     for user in &users {
-        assert!(client.get_stored_report(user, &202_401u64).is_some());
-        assert!(client.get_stored_report(user, &202_402u64).is_some());
+        assert!(client.get_stored_report(user, user, &202_401u64).is_some());
+        assert!(client.get_stored_report(user, user, &202_402u64).is_some());
     }
 
     // Archive all
@@ -1969,8 +1986,8 @@ fn test_multi_user_full_lifecycle_no_data_leakage() {
 
     // Active storage must be empty for all users
     for user in &users {
-        assert!(client.get_stored_report(user, &202_401u64).is_none());
-        assert!(client.get_stored_report(user, &202_402u64).is_none());
+        assert!(client.get_stored_report(user, user, &202_401u64).is_none());
+        assert!(client.get_stored_report(user, user, &202_402u64).is_none());
     }
 
     // Each user sees exactly their 2 archived reports
@@ -2016,7 +2033,7 @@ fn test_archive_timestamp_boundary_preserves_recent_reports() {
 
     // Report must still be in active storage
     assert!(
-        client.get_stored_report(&user, &202_401u64).is_some(),
+        client.get_stored_report(&user, &user, &202_401u64).is_some(),
         "recent report must remain in active storage"
     );
 }
@@ -2069,7 +2086,7 @@ fn test_get_stored_report_missing_key_returns_none() {
     client.init(&admin);
 
     let user = Address::generate(&env);
-    let result = client.get_stored_report(&user, &999_999u64);
+    let result = client.get_stored_report(&user, &user, &999_999u64);
     assert!(
         result.is_none(),
         "missing report must return None, not panic"
@@ -2411,7 +2428,7 @@ fn test_bill_paging_terminates_at_cursor_zero() {
     let (client, _) = setup_paging_test(&env, bill_id, ins_id);
 
     let user = Address::generate(&env);
-    let report = client.get_bill_compliance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_bill_compliance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     // All 3 pages fetched — no items are filtered out because created_at == period_start
     assert_eq!(
@@ -2438,7 +2455,7 @@ fn test_bill_paging_terminates_at_cap() {
     let (client, _) = setup_paging_test(&env, bill_id, ins_id);
 
     let user = Address::generate(&env);
-    let report = client.get_bill_compliance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_bill_compliance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     assert_eq!(
         report.data_availability,
@@ -2465,7 +2482,7 @@ fn test_bill_paging_cursor_monotonicity() {
     let user = Address::generate(&env);
     // Each page delivers exactly 1 bill; 3 pages → 3 bills total.
     // If the loop visited the same page twice, count would differ.
-    let report = client.get_bill_compliance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_bill_compliance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
     assert_eq!(
         report.total_bills, 3,
         "cursor must advance monotonically so each page is visited exactly once"
@@ -2485,7 +2502,7 @@ fn test_insurance_paging_terminates_at_cursor_zero() {
     let (client, _) = setup_paging_test(&env, bill_id, ins_id);
 
     let user = Address::generate(&env);
-    let report = client.get_insurance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_insurance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     assert_eq!(
         report.data_availability,
@@ -2511,7 +2528,7 @@ fn test_insurance_paging_terminates_at_cap() {
     let (client, _) = setup_paging_test(&env, bill_id, ins_id);
 
     let user = Address::generate(&env);
-    let report = client.get_insurance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_insurance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     assert_eq!(
         report.data_availability,
@@ -2536,7 +2553,7 @@ fn test_insurance_paging_cursor_monotonicity() {
     let (client, _) = setup_paging_test(&env, bill_id, ins_id);
 
     let user = Address::generate(&env);
-    let report = client.get_insurance_report(&user, &1_704_067_200u64, &1_706_745_600u64);
+    let report = client.get_insurance_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
     assert_eq!(
         report.active_policies, 3,
         "cursor must advance monotonically so each page is visited exactly once"

@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
-    Env, Map, Vec,
+    Env, IntoVal, Map, TryFromVal, Val, Vec,
 };
 
 pub use remitwise_common::{Category, CoverageType};
@@ -381,6 +381,71 @@ pub(crate) fn safe_percent(numerator: i128, denominator: i128, scale: i128) -> i
                 -scale
             }
         }
+    }
+}
+
+/// Result of a generic paginated dependency fetch.
+pub(crate) struct PaginatedResult<T> {
+    pub items: Vec<T>,
+    pub data_availability: DataAvailability,
+}
+
+/// Generic paginated fetch helper.
+///
+/// Repeatedly calls `fetch_page(cursor)` to accumulate items across pages
+/// up to [`MAX_DEP_PAGES`] (20). The loop **always terminates**:
+/// - After `MAX_DEP_PAGES` iterations (cap reached — returns `Partial`).
+/// - When `fetch_page` returns `next_cursor == 0` (end sentinel).
+///
+/// Cursor monotonicity is guaranteed because every iteration increments
+/// `pages_fetched` and the closure is the sole source of the next cursor;
+/// a buggy closure that never returns 0 is still bounded by `MAX_DEP_PAGES`.
+///
+/// # DataAvailability contract
+/// | Return value  | Condition |
+/// |---|---|
+/// | `Complete`    | All pages drained within the page cap (`next_cursor == 0` seen). |
+/// | `Partial`     | The page cap was reached — result may be truncated. |
+/// | `Missing`     | The first page contained zero items. |
+pub(crate) fn paginate_dependency<T>(
+    env: &Env,
+    mut fetch_page: impl FnMut(u32) -> (Vec<T>, u32),
+) -> PaginatedResult<T>
+where
+    T: IntoVal<Env, Val> + TryFromVal<Env, Val> + Clone,
+{
+    let mut items: Vec<T> = Vec::new(env);
+    let mut cursor = 0u32;
+    let mut pages_fetched = 0u32;
+
+    loop {
+        let (page_items, next_cursor) = fetch_page(cursor);
+        for item in page_items.iter() {
+            items.push_back(item);
+        }
+        pages_fetched += 1;
+
+        if next_cursor == 0 {
+            break;
+        }
+        if pages_fetched >= MAX_DEP_PAGES {
+            return PaginatedResult {
+                items,
+                data_availability: DataAvailability::Partial,
+            };
+        }
+        cursor = next_cursor;
+    }
+
+    let data_availability = if items.is_empty() {
+        DataAvailability::Missing
+    } else {
+        DataAvailability::Complete
+    };
+
+    PaginatedResult {
+        items,
+        data_availability,
     }
 }
 
@@ -936,6 +1001,12 @@ impl ReportingContract {
             .ok_or(ReportingError::AddressesNotConfigured)?;
 
         let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
+        let current_time = env.ledger().timestamp();
+
+        let result = paginate_dependency(env, |cursor| {
+            let page = bill_client.get_all_bills_for_owner(&user, &cursor, &DEP_PAGE_LIMIT);
+            (page.items, page.next_cursor)
+        });
 
         let mut total_bills = 0u32;
         let mut paid_bills = 0u32;
@@ -944,39 +1015,23 @@ impl ReportingContract {
         let mut total_amount = 0i128;
         let mut paid_amount = 0i128;
         let mut unpaid_amount = 0i128;
-        let current_time = env.ledger().timestamp();
-        let mut data_availability = DataAvailability::Complete;
 
-        let mut cursor = 0u32;
-        let mut pages_fetched = 0u32;
-        loop {
-            let page = bill_client.get_all_bills_for_owner(&user, &cursor, &DEP_PAGE_LIMIT);
-            for bill in page.items.iter() {
-                if bill.created_at < period_start || bill.created_at > period_end {
-                    continue;
-                }
-                total_bills += 1;
-                total_amount += bill.amount;
-                if bill.paid {
-                    paid_bills += 1;
-                    paid_amount += bill.amount;
-                } else {
-                    unpaid_bills += 1;
-                    unpaid_amount += bill.amount;
-                    if bill.due_date < current_time {
-                        overdue_bills += 1;
-                    }
+        for bill in result.items.iter() {
+            if bill.created_at < period_start || bill.created_at > period_end {
+                continue;
+            }
+            total_bills += 1;
+            total_amount += bill.amount;
+            if bill.paid {
+                paid_bills += 1;
+                paid_amount += bill.amount;
+            } else {
+                unpaid_bills += 1;
+                unpaid_amount += bill.amount;
+                if bill.due_date < current_time {
+                    overdue_bills += 1;
                 }
             }
-            pages_fetched += 1;
-            if page.next_cursor == 0 {
-                break;
-            }
-            if pages_fetched >= MAX_DEP_PAGES {
-                data_availability = DataAvailability::Partial;
-                break;
-            }
-            cursor = page.next_cursor;
         }
 
         let compliance_percentage = if total_bills == 0 {
@@ -996,7 +1051,7 @@ impl ReportingContract {
             compliance_percentage,
             period_start,
             period_end,
-            data_availability,
+            data_availability: result.data_availability,
         })
     }
 
@@ -1030,27 +1085,17 @@ impl ReportingContract {
         let insurance_client = InsuranceClient::new(env, &addresses.insurance);
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
+        let result = paginate_dependency(env, |cursor| {
+            let page = insurance_client.get_active_policies(&user, &cursor, &DEP_PAGE_LIMIT);
+            (page.items, page.next_cursor)
+        });
+
         let mut total_coverage = 0i128;
         let mut active_policies = 0u32;
-        let mut data_availability = DataAvailability::Complete;
 
-        let mut cursor = 0u32;
-        let mut pages_fetched = 0u32;
-        loop {
-            let page = insurance_client.get_active_policies(&user, &cursor, &DEP_PAGE_LIMIT);
-            for policy in page.items.iter() {
-                active_policies += 1;
-                total_coverage += policy.coverage_amount;
-            }
-            pages_fetched += 1;
-            if page.next_cursor == 0 {
-                break;
-            }
-            if pages_fetched >= MAX_DEP_PAGES {
-                data_availability = DataAvailability::Partial;
-                break;
-            }
-            cursor = page.next_cursor;
+        for policy in result.items.iter() {
+            active_policies += 1;
+            total_coverage += policy.coverage_amount;
         }
 
         let annual_premium = monthly_premium.saturating_mul(12);
@@ -1065,7 +1110,7 @@ impl ReportingContract {
             coverage_to_premium_ratio,
             period_start,
             period_end,
-            data_availability,
+            data_availability: result.data_availability,
         })
     }
 
@@ -1309,51 +1354,42 @@ impl ReportingContract {
 
         let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
 
+        let result = paginate_dependency(env, |cursor| {
+            let page = bill_client.get_all_bills_for_owner(&user, &cursor, &DEP_PAGE_LIMIT);
+            (page.items, page.next_cursor)
+        });
+
         let mut total_amount = 0i128;
         let mut total_count = 0u32;
-        let mut availability = DataAvailability::Complete;
+        let mut availability = result.data_availability;
         let mut top_bills: Vec<Bill> = Vec::new(env);
 
-        let mut cursor = 0u32;
-        let mut pages_fetched = 0u32;
-        loop {
-            let page = bill_client.get_all_bills_for_owner(&user, &cursor, &50u32);
-            for bill in page.items.iter() {
-                if bill.created_at < period_start || bill.created_at > period_end {
-                    continue;
-                }
-                total_amount += bill.amount;
-                total_count += 1;
+        for bill in result.items.iter() {
+            if bill.created_at < period_start || bill.created_at > period_end {
+                continue;
+            }
+            total_amount += bill.amount;
+            total_count += 1;
 
-                // Sorted insertion for Top-N
-                let mut inserted = false;
-                for i in 0..top_bills.len() {
-                    let existing_bill_amount = match top_bills.get(i) {
-                        Some(b) => b.amount,
-                        None => 0,
-                    };
-                    if bill.amount > existing_bill_amount {
-                        top_bills.insert(i, bill.clone());
-                        inserted = true;
-                        break;
-                    }
-                }
-                if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
-                    top_bills.push_back(bill);
-                } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
-                    top_bills.remove(MAX_ITEMS_PER_REPORT);
-                    availability = DataAvailability::Partial;
+            // Sorted insertion for Top-N
+            let mut inserted = false;
+            for i in 0..top_bills.len() {
+                let existing_bill_amount = match top_bills.get(i) {
+                    Some(b) => b.amount,
+                    None => 0,
+                };
+                if bill.amount > existing_bill_amount {
+                    top_bills.insert(i, bill.clone());
+                    inserted = true;
+                    break;
                 }
             }
-            pages_fetched += 1;
-            if page.next_cursor == 0 {
-                break;
-            }
-            if pages_fetched >= MAX_DEP_PAGES {
+            if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
+                top_bills.push_back(bill);
+            } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
+                top_bills.remove(MAX_ITEMS_PER_REPORT);
                 availability = DataAvailability::Partial;
-                break;
             }
-            cursor = page.next_cursor;
         }
 
         TopNBillsReport {
@@ -1397,52 +1433,43 @@ impl ReportingContract {
 
         let savings_client = SavingsGoalsClient::new(env, &addresses.savings_goals);
 
+        let result = paginate_dependency(env, |cursor| {
+            let page = savings_client.get_goals(&user, &cursor, &DEP_PAGE_LIMIT);
+            (page.items, page.next_cursor)
+        });
+
         let mut total_target = 0i128;
         let mut total_saved = 0i128;
         let mut total_count = 0u32;
-        let mut availability = DataAvailability::Complete;
+        let mut availability = result.data_availability;
         let mut top_goals: Vec<SavingsGoal> = Vec::new(env);
 
-        let mut cursor = 0u32;
-        let mut pages_fetched = 0u32;
-        loop {
-            let page = savings_client.get_goals(&user, &cursor, &50u32);
-            for goal in page.items.iter() {
-                // Goals don't have created_at in the struct, using target_date for period filtering if appropriate
-                // But typically goals are active across periods. For now, we take all active goals.
-                total_target += goal.target_amount;
-                total_saved += goal.current_amount;
-                total_count += 1;
+        for goal in result.items.iter() {
+            // Goals don't have created_at in the struct, using target_date for period filtering if appropriate
+            // But typically goals are active across periods. For now, we take all active goals.
+            total_target += goal.target_amount;
+            total_saved += goal.current_amount;
+            total_count += 1;
 
-                // Sorted insertion for Top-N
-                let mut inserted = false;
-                for i in 0..top_goals.len() {
-                    let existing_goal_target = match top_goals.get(i) {
-                        Some(g) => g.target_amount,
-                        None => 0,
-                    };
-                    if goal.target_amount > existing_goal_target {
-                        top_goals.insert(i, goal.clone());
-                        inserted = true;
-                        break;
-                    }
-                }
-                if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {
-                    top_goals.push_back(goal);
-                } else if top_goals.len() > MAX_ITEMS_PER_REPORT {
-                    top_goals.remove(MAX_ITEMS_PER_REPORT);
-                    availability = DataAvailability::Partial;
+            // Sorted insertion for Top-N
+            let mut inserted = false;
+            for i in 0..top_goals.len() {
+                let existing_goal_target = match top_goals.get(i) {
+                    Some(g) => g.target_amount,
+                    None => 0,
+                };
+                if goal.target_amount > existing_goal_target {
+                    top_goals.insert(i, goal.clone());
+                    inserted = true;
+                    break;
                 }
             }
-            pages_fetched += 1;
-            if page.next_cursor == 0 {
-                break;
-            }
-            if pages_fetched >= MAX_DEP_PAGES {
+            if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {
+                top_goals.push_back(goal);
+            } else if top_goals.len() > MAX_ITEMS_PER_REPORT {
+                top_goals.remove(MAX_ITEMS_PER_REPORT);
                 availability = DataAvailability::Partial;
-                break;
             }
-            cursor = page.next_cursor;
         }
 
         TopNSavingsReport {
@@ -1943,3 +1970,6 @@ mod tests;
 
 #[cfg(test)]
 mod tests_auth_acl;
+
+#[cfg(test)]
+mod paginate_dependency_tests;
