@@ -1,61 +1,9 @@
-use family_wallet::{FamilyRole, FamilyWallet, FamilyWalletClient, TransactionType};
+use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionType};
 use soroban_sdk::{
     testutils::Address as _,
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env,
 };
-
-struct RotationFixture {
-    env: Env,
-    client: FamilyWalletClient<'static>,
-    owner: Address,
-    signer_a: Address,
-    signer_b: Address,
-    signer_c: Address,
-    token: Address,
-    recipient: Address,
-}
-
-fn setup_rotation_fixture(threshold: u32, initial_signers: soroban_sdk::Vec<Address>) -> RotationFixture {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register_contract(None, FamilyWallet);
-    let client = FamilyWalletClient::new(&env, &contract_id);
-
-    let owner = Address::generate(&env);
-    let signer_a = Address::generate(&env);
-    let signer_b = Address::generate(&env);
-    let signer_c = Address::generate(&env);
-    let recipient = Address::generate(&env);
-
-    let initial_members = vec![&env, signer_a.clone(), signer_b.clone(), signer_c.clone()];
-    client.init(&owner, &initial_members);
-
-    let token_admin = Address::generate(&env);
-    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
-    let token = token_contract.address();
-    StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
-
-    client.configure_multisig(
-        &owner,
-        &TransactionType::LargeWithdrawal,
-        &threshold,
-        &initial_signers,
-        &1_000_0000000,
-    );
-
-    RotationFixture {
-        env,
-        client,
-        owner,
-        signer_a,
-        signer_b,
-        signer_c,
-        token,
-        recipient,
-    }
-}
 
 /// Attack/safety property: a signature collected before signer rotation must not
 /// count toward quorum after that signer is removed from the configured signer set.
