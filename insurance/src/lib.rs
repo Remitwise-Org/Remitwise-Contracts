@@ -160,9 +160,13 @@ pub struct Insurance;
 impl Insurance {
     // ── Initialization ───────────────────────────────────────────────────────
 
-    pub fn init(env: Env, owner: Address) {
+    /// Initialize the insurance contract with the given owner.
+    /// 
+    /// # Errors
+    /// - `AlreadyInitialized` if the contract has already been initialized
+    pub fn init(env: Env, owner: Address) -> Result<(), InsuranceError> {
         if env.storage().instance().has(&DataKey::Initialized) {
-            panic!("already initialized");
+            return Err(InsuranceError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Initialized, &true);
         env.storage().instance().set(&DataKey::Owner, &owner);
@@ -171,13 +175,16 @@ impl Insurance {
             .instance()
             .set(&DataKey::ActivePolicies, &Vec::<u32>::new(&env));
         Self::extend_instance_ttl(&env);
+        Ok(())
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
-    fn require_initialized(env: &Env) {
+    fn require_initialized(env: &Env) -> Result<(), InsuranceError> {
         if !env.storage().instance().has(&DataKey::Initialized) {
-            panic!("not initialized");
+            Err(InsuranceError::NotInitialized)
+        } else {
+            Ok(())
         }
     }
 
@@ -187,30 +194,40 @@ impl Insurance {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
-    fn get_owner(env: &Env) -> Address {
+    fn get_owner(env: &Env) -> Result<Address, InsuranceError> {
         env.storage()
             .instance()
             .get(&DataKey::Owner)
-            .unwrap_or_else(|| panic!("contract not initialized"))
+            .ok_or(InsuranceError::NotInitialized)
     }
 
-    fn load_policy(env: &Env, policy_id: u32) -> Policy {
+    fn load_policy(env: &Env, policy_id: u32) -> Result<Policy, InsuranceError> {
         env.storage()
             .instance()
             .get(&DataKey::Policy(policy_id))
-            .unwrap_or_else(|| panic!("policy not found"))
+            .ok_or(InsuranceError::PolicyNotFound)
     }
 
-    fn validate_ext_ref(ext_ref: &core::option::Option<String>) {
+    fn validate_ext_ref(ext_ref: &core::option::Option<String>) -> Result<(), InsuranceError> {
         if let Some(r) = ext_ref {
             if r.len() == 0 || r.len() > MAX_EXT_REF_LEN {
-                panic!("external_ref length out of range");
+                return Err(InsuranceError::InvalidExternalRef);
             }
         }
+        Ok(())
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
 
+    /// Create a new insurance policy.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `InvalidName` if the name is empty or too long
+    /// - `InvalidPremium` if the monthly premium is not positive or out of range for the coverage type
+    /// - `InvalidCoverageAmount` if the coverage amount is not positive or out of range for the coverage type
+    /// - `UnsupportedCombination` if the coverage amount is too high relative to the premium
+    /// - `MaxPoliciesReached` if the maximum number of policies has been reached
     pub fn create_policy(
         env: Env,
         caller: Address,
@@ -218,30 +235,30 @@ impl Insurance {
         coverage_type: CoverageType,
         monthly_premium: i128,
         coverage_amount: i128,
-    ) -> u32 {
-        Self::require_initialized(&env);
+    ) -> Result<u32, InsuranceError> {
+        Self::require_initialized(&env)?;
         caller.require_auth();
 
         if name.len() == 0 {
-            panic!("name cannot be empty");
+            return Err(InsuranceError::InvalidName);
         }
         if name.len() > MAX_NAME_LEN {
-            panic!("name too long");
+            return Err(InsuranceError::InvalidName);
         }
         if monthly_premium <= 0 {
-            panic!("monthly_premium must be positive");
+            return Err(InsuranceError::InvalidPremium);
         }
         if coverage_amount <= 0 {
-            panic!("coverage_amount must be positive");
+            return Err(InsuranceError::InvalidCoverageAmount);
         }
 
         let constraints = TypeConstraints::for_type(&coverage_type);
         if monthly_premium < constraints.min_premium || monthly_premium > constraints.max_premium {
-            panic!("monthly_premium out of range for coverage type");
+            return Err(InsuranceError::InvalidPremium);
         }
         if coverage_amount < constraints.min_coverage || coverage_amount > constraints.max_coverage
         {
-            panic!("coverage_amount out of range for coverage type");
+            return Err(InsuranceError::InvalidCoverageAmount);
         }
 
         let max_ratio = monthly_premium
@@ -249,16 +266,16 @@ impl Insurance {
             .and_then(|v| v.checked_mul(500))
             .unwrap_or(i128::MAX);
         if coverage_amount > max_ratio {
-            panic!("unsupported combination: coverage_amount too high relative to premium");
+            return Err(InsuranceError::UnsupportedCombination);
         }
 
         let mut active = env
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
-            .unwrap_or_else(|| panic!("contract not initialized"));
+            .ok_or(InsuranceError::NotInitialized)?;
         if active.len() >= MAX_POLICIES {
-            panic!("max policies reached");
+            return Err(InsuranceError::MaxPoliciesReached);
         }
 
         let next_id = env
@@ -316,19 +333,26 @@ impl Insurance {
             },
         );
 
-        next_id
+        Ok(next_id)
     }
 
-    pub fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool {
-        Self::require_initialized(&env);
+    /// Pay the premium for a policy.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `PolicyNotFound` if the policy does not exist
+    /// - `PolicyInactive` if the policy is not active
+    /// - `Unauthorized` if the caller is not the policy owner
+    pub fn pay_premium(env: Env, caller: Address, policy_id: u32) -> Result<bool, InsuranceError> {
+        Self::require_initialized(&env)?;
         caller.require_auth();
 
-        let mut policy = Self::load_policy(&env, policy_id);
+        let mut policy = Self::load_policy(&env, policy_id)?;
         if !policy.active {
-            panic!("policy inactive");
+            return Err(InsuranceError::PolicyInactive);
         }
         if caller != policy.owner {
-            panic!("Only the policy owner can pay premiums");
+            return Err(InsuranceError::Unauthorized);
         }
 
         let now = env.ledger().timestamp();
@@ -351,19 +375,21 @@ impl Insurance {
             },
         );
 
-        true
+        Ok(true)
     }
 
-    pub fn batch_pay_premiums(env: Env, caller: Address, ids: Vec<u32>) -> u32 {
-        Self::require_initialized(&env);
+    /// Pay premiums for multiple policies in a single transaction.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `PolicyNotFound` if any policy does not exist
+    pub fn batch_pay_premiums(env: Env, caller: Address, ids: Vec<u32>) -> Result<u32, InsuranceError> {
+        Self::require_initialized(&env)?;
         caller.require_auth();
-        if ids.len() > MAX_BATCH_SIZE {
-            panic!("batch too large");
-        }
 
         let mut count = 0u32;
         for id in ids.iter() {
-            let mut policy = Self::load_policy(&env, id);
+            let mut policy = Self::load_policy(&env, id)?;
             if policy.active && policy.owner == caller {
                 let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
@@ -373,39 +399,55 @@ impl Insurance {
             }
         }
         Self::extend_instance_ttl(&env);
-        count
+        Ok(count)
     }
 
+    /// Set an external reference for a policy (admin only).
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `Unauthorized` if the caller is not the contract owner
+    /// - `PolicyNotFound` if the policy does not exist
+    /// - `InvalidExternalRef` if the external reference is empty or too long
     pub fn set_external_ref(
         env: Env,
         caller: Address,
         policy_id: u32,
         ext_ref: core::option::Option<String>,
-    ) -> bool {
-        Self::require_initialized(&env);
+    ) -> Result<bool, InsuranceError> {
+        Self::require_initialized(&env)?;
         caller.require_auth();
-        if caller != Self::get_owner(&env) {
-            panic!("unauthorized");
+        let owner = Self::get_owner(&env)?;
+        if caller != owner {
+            return Err(InsuranceError::Unauthorized);
         }
 
-        let mut policy = Self::load_policy(&env, policy_id);
-        Self::validate_ext_ref(&ext_ref);
+        let mut policy = Self::load_policy(&env, policy_id)?;
+        Self::validate_ext_ref(&ext_ref)?;
         policy.external_ref = ext_ref;
         env.storage()
             .instance()
             .set(&DataKey::Policy(policy_id), &policy);
-        true
+        Ok(true)
     }
 
-    pub fn deactivate_policy(env: Env, caller: Address, policy_id: u32) -> bool {
-        Self::require_initialized(&env);
+    /// Deactivate a policy.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `PolicyNotFound` if the policy does not exist
+    /// - `Unauthorized` if the caller is not the policy owner or contract owner
+    /// - `PolicyInactive` if the policy is already inactive
+    pub fn deactivate_policy(env: Env, caller: Address, policy_id: u32) -> Result<bool, InsuranceError> {
+        Self::require_initialized(&env)?;
         caller.require_auth();
-        let mut policy = Self::load_policy(&env, policy_id);
-        if caller != policy.owner && caller != Self::get_owner(&env) {
-            panic!("unauthorized");
+        let mut policy = Self::load_policy(&env, policy_id)?;
+        let owner = Self::get_owner(&env)?;
+        if caller != policy.owner && caller != owner {
+            return Err(InsuranceError::Unauthorized);
         }
         if !policy.active {
-            panic!("already inactive");
+            return Err(InsuranceError::PolicyInactive);
         }
 
         policy.active = false;
@@ -417,7 +459,7 @@ impl Insurance {
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
-            .unwrap_or_else(|| panic!("contract not initialized"));
+            .ok_or(InsuranceError::NotInitialized)?;
         let mut new_active = Vec::new(&env);
         for id in active.iter() {
             if id != policy_id {
@@ -436,11 +478,15 @@ impl Insurance {
                 timestamp: env.ledger().timestamp(),
             },
         );
-        true
+        Ok(true)
     }
 
-    pub fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage {
-        Self::require_initialized(&env);
+    /// Get a paginated list of active policies for an owner.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    pub fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> Result<PolicyPage, InsuranceError> {
+        Self::require_initialized(&env)?;
         let owner_ids = env
             .storage()
             .instance()
@@ -475,20 +521,28 @@ impl Insurance {
             }
         }
         let count = items.len();
-        PolicyPage {
+        Ok(PolicyPage {
             items,
             next_cursor,
             count,
-        }
+        })
     }
 
-    pub fn get_policy(env: Env, policy_id: u32) -> core::option::Option<Policy> {
-        Self::require_initialized(&env);
-        env.storage().instance().get(&DataKey::Policy(policy_id))
+    /// Get a policy by ID.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    pub fn get_policy(env: Env, policy_id: u32) -> Result<core::option::Option<Policy>, InsuranceError> {
+        Self::require_initialized(&env)?;
+        Ok(env.storage().instance().get(&DataKey::Policy(policy_id)))
     }
 
-    pub fn get_total_monthly_premium(env: Env, owner: Address) -> i128 {
-        Self::require_initialized(&env);
+    /// Get the total monthly premium for all active policies owned by an address.
+    /// 
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    pub fn get_total_monthly_premium(env: Env, owner: Address) -> Result<i128, InsuranceError> {
+        Self::require_initialized(&env)?;
         let owner_ids = env
             .storage()
             .instance()
@@ -506,6 +560,6 @@ impl Insurance {
                 }
             }
         }
-        total
+        Ok(total)
     }
 }
