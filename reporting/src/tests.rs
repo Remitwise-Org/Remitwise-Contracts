@@ -2154,6 +2154,52 @@ fn test_check_dependencies_succeeds_with_configured_contracts() {
 }
 
 #[test]
+fn test_check_dependencies_returns_one_status_per_configured_dependency() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet_id = env.register_contract(None, family_wallet::FamilyWallet);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet_id,
+    );
+
+    let statuses = client.check_dependencies(&admin);
+    let expected_names = [
+        "remittance_split",
+        "savings_goals",
+        "bill_payments",
+        "insurance",
+        "family_wallet",
+    ];
+
+    assert_eq!(statuses.len(), expected_names.len() as u32);
+
+    for (index, expected_name) in expected_names.iter().enumerate() {
+        let status = statuses.get(index as u32).unwrap();
+
+        assert_eq!(
+            status.name,
+            soroban_sdk::String::from_str(&env, expected_name)
+        );
+        assert!(status.ok);
+        assert_eq!(status.error_category, None);
+    }
+}
+
+#[test]
 fn test_check_dependencies_fails_for_non_admin() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
