@@ -1162,7 +1162,7 @@ impl RemittanceSplit {
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        if config.usdc_contract != request.usdc_contract {
+        if config.usdc_contract.ne(&request.usdc_contract) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::UntrustedTokenContract);
         }
