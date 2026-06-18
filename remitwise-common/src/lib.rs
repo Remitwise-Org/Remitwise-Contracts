@@ -37,7 +37,10 @@ pub enum CoverageType {
     Liability = 5,
 }
 
-/// Event categories for logging
+/// Event categories used for logging across all contracts.
+///
+/// Determines the high-level classification of an event. The taxonomy is documented in
+/// `docs/EVENT_TAXONOMY.md`.
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 #[repr(u32)]
@@ -49,7 +52,9 @@ pub enum EventCategory {
     Access = 4,
 }
 
-/// Event priorities for logging
+/// Priority levels for events emitted by contracts.
+/// Determines the importance of the event. Lower numbers represent lower priority.
+/// See `docs/EVENT_TAXONOMY.md` for full taxonomy details.
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 #[repr(u32)]
@@ -188,15 +193,23 @@ where
 pub struct RemitwiseEvents;
 
 impl RemitwiseEvents {
-    pub fn emit<T>(
-        env: &soroban_sdk::Env,
-        category: EventCategory,
-        priority: EventPriority,
-        action: Symbol,
-        data: T,
-    ) where
-        T: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
-    {
+    /// Emits a single event with the given category, priority, and action.
+///
+/// * `category` – The `EventCategory` describing the type of event.
+/// * `priority` – The `EventPriority` indicating the importance level.
+/// * `action` – A short `Symbol` identifying the specific action.
+/// * `data` – The event payload implementing `IntoVal`.
+///
+/// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
+pub fn emit<T>(
+    env: &soroban_sdk::Env,
+    category: EventCategory,
+    priority: EventPriority,
+    action: Symbol,
+    data: T,
+) where
+    T: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
+{
         let topics = (
             symbol_short!("Remitwise"),
             category.to_u32(),
@@ -206,7 +219,14 @@ impl RemitwiseEvents {
         env.events().publish(topics, data);
     }
 
-    pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbol, count: u32) {
+    /// Emits a batch event for the given category and action with a count.
+///
+/// * `category` – The `EventCategory` of the batched events.
+/// * `action` – Symbol representing the batch action.
+/// * `count` – Number of events in the batch.
+///
+/// This always uses `EventPriority::Low` for batch events.
+pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbol, count: u32) {
         let topics = (
             symbol_short!("Remitwise"),
             category.to_u32(),
