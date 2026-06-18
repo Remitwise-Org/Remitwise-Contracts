@@ -1135,7 +1135,7 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::InvalidDeadline);
         }
-        if current_time > request.deadline {
+        if current_time >= request.deadline {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::DeadlineExpired);
         }
@@ -1157,6 +1157,16 @@ impl RemittanceSplit {
         // Require authorization from payer
         request.from.require_auth();
 
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        if config.usdc_contract != request.usdc_contract {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
         // Self-transfer guard — must precede nonce read and mutation.
         if request.accounts.spending == request.from
             || request.accounts.savings == request.from
@@ -1168,6 +1178,10 @@ impl RemittanceSplit {
         }
 
         // Verify nonce
+        if Self::is_nonce_used(&env, &request.from, request.nonce) {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::NonceAlreadyUsed);
+        }
         Self::require_nonce(&env, &request.from, request.nonce)?;
 
         // Calculate split amounts

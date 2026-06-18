@@ -638,7 +638,9 @@ fn test_request_hash_cross_call_consistency() {
 //
 // Hash preimage ordering (see get_request_hash):
 //   DISTRIBUTE_USDC_DOMAIN | domain_id("distrib") | from | usdc_contract
-//   | total_amount (16 LE) | nonce (8 LE) | deadline (8 LE)
+//   | accounts.spending | accounts.savings | accounts.bills
+//   | accounts.insurance | total_amount (16 LE) | nonce (8 LE)
+//   | deadline (8 LE)
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn base_request(env: &Env) -> DistributeUsdcRequest {
@@ -843,6 +845,206 @@ fn test_request_hash_mismatch_nonce_reuse_new_deadline() {
         Err(Ok(RemittanceSplitError::RequestHashMismatch)),
         "Same nonce with new deadline must be rejected"
     );
+}
+
+fn setup_request_hash_distribution(env: &Env) -> (
+    RemittanceSplitClient<'_>,
+    Address,
+    Address,
+    StellarAssetClient<'_>,
+) {
+    env.mock_all_auths();
+    set_time(env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(env, &contract_id);
+    let owner = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
+    let stellar_client = StellarAssetClient::new(env, &token_addr);
+
+    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+
+    (client, owner, token_addr, stellar_client)
+}
+
+fn request_hash_distribution_request(
+    env: &Env,
+    usdc_contract: Address,
+    from: Address,
+    nonce: u64,
+) -> DistributeUsdcRequest {
+    DistributeUsdcRequest {
+        usdc_contract,
+        from,
+        nonce,
+        accounts: sample_accounts(env),
+        total_amount: 1_000i128,
+        deadline: env.ledger().timestamp() + 1_800,
+    }
+}
+
+fn assert_distribution_request_tamper_rejected(
+    env: &Env,
+    mutate: impl FnOnce(&mut DistributeUsdcRequest),
+    field_name: &str,
+) {
+    let (client, owner, token_addr, _stellar_client) = setup_request_hash_distribution(env);
+    let original = request_hash_distribution_request(env, token_addr, owner, 1);
+    let hash = client.get_request_hash(&original);
+
+    let mut tampered = original.clone();
+    mutate(&mut tampered);
+
+    let result = client.try_distribute_usdc_hashed(&tampered, &hash);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::RequestHashMismatch)),
+        "Tampered `{}` must yield RequestHashMismatch",
+        field_name
+    );
+}
+
+#[test]
+fn test_request_hash_distribution_happy_path_succeeds() {
+    let env = Env::default();
+    let (client, owner, token_addr, stellar_client) = setup_request_hash_distribution(&env);
+    let request = request_hash_distribution_request(&env, token_addr, owner.clone(), 1);
+    stellar_client.mint(&owner, &request.total_amount);
+    let hash = client.get_request_hash(&request);
+
+    let result = client.try_distribute_usdc_hashed(&request, &hash);
+
+    assert_eq!(result, Ok(Ok(true)));
+}
+
+/// Tamper field: `accounts.spending`.
+#[test]
+fn test_request_hash_mismatch_on_spending_account_tamper() {
+    let env = Env::default();
+    assert_distribution_request_tamper_rejected(
+        &env,
+        |request| request.accounts.spending = Address::generate(&env),
+        "accounts.spending",
+    );
+}
+
+/// Tamper field: `accounts.savings`.
+#[test]
+fn test_request_hash_mismatch_on_savings_account_tamper() {
+    let env = Env::default();
+    assert_distribution_request_tamper_rejected(
+        &env,
+        |request| request.accounts.savings = Address::generate(&env),
+        "accounts.savings",
+    );
+}
+
+/// Tamper field: `accounts.bills`.
+#[test]
+fn test_request_hash_mismatch_on_bills_account_tamper() {
+    let env = Env::default();
+    assert_distribution_request_tamper_rejected(
+        &env,
+        |request| request.accounts.bills = Address::generate(&env),
+        "accounts.bills",
+    );
+}
+
+/// Tamper field: `accounts.insurance`.
+#[test]
+fn test_request_hash_mismatch_on_insurance_account_tamper() {
+    let env = Env::default();
+    assert_distribution_request_tamper_rejected(
+        &env,
+        |request| request.accounts.insurance = Address::generate(&env),
+        "accounts.insurance",
+    );
+}
+
+/// Tamper fields: reorder `accounts.spending` and `accounts.savings`.
+#[test]
+fn test_request_hash_mismatch_on_account_reordering() {
+    let env = Env::default();
+    assert_distribution_request_tamper_rejected(
+        &env,
+        |request| {
+            let spending = request.accounts.spending.clone();
+            request.accounts.spending = request.accounts.savings.clone();
+            request.accounts.savings = spending;
+        },
+        "accounts",
+    );
+}
+
+#[test]
+fn test_request_hash_hashed_path_rejects_used_nonce() {
+    let env = Env::default();
+    let (client, owner, token_addr, stellar_client) = setup_request_hash_distribution(&env);
+    let request = request_hash_distribution_request(&env, token_addr, owner.clone(), 1);
+    stellar_client.mint(&owner, &(request.total_amount * 2));
+    let hash = client.get_request_hash(&request);
+
+    assert_eq!(client.try_distribute_usdc_hashed(&request, &hash), Ok(Ok(true)));
+
+    let replay = client.try_distribute_usdc_hashed(&request, &hash);
+    assert_eq!(replay, Err(Ok(RemittanceSplitError::NonceAlreadyUsed)));
+}
+
+#[test]
+fn test_request_hash_hashed_path_rejects_expired_deadline() {
+    let env = Env::default();
+    let (client, owner, token_addr, _stellar_client) = setup_request_hash_distribution(&env);
+    let mut request = request_hash_distribution_request(&env, token_addr, owner, 1);
+    request.deadline = env.ledger().timestamp() - 1;
+    let hash = client.get_request_hash(&request);
+
+    let result = client.try_distribute_usdc_hashed(&request, &hash);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
+}
+
+#[test]
+fn test_request_hash_hashed_path_rejects_invalid_deadline() {
+    let env = Env::default();
+    let (client, owner, token_addr, _stellar_client) = setup_request_hash_distribution(&env);
+    let mut request = request_hash_distribution_request(&env, token_addr, owner, 1);
+    request.deadline = env.ledger().timestamp() + MAX_DEADLINE_WINDOW_SECS + 1;
+    let hash = client.get_request_hash(&request);
+
+    let result = client.try_distribute_usdc_hashed(&request, &hash);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
+}
+
+#[test]
+fn test_request_hash_hashed_path_rejects_self_transfer() {
+    let env = Env::default();
+    let (client, owner, token_addr, _stellar_client) = setup_request_hash_distribution(&env);
+    let mut request = request_hash_distribution_request(&env, token_addr, owner.clone(), 1);
+    request.accounts.spending = owner;
+    let hash = client.get_request_hash(&request);
+
+    let result = client.try_distribute_usdc_hashed(&request, &hash);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+}
+
+#[test]
+fn test_request_hash_hashed_path_rejects_untrusted_token_contract() {
+    let env = Env::default();
+    let (client, owner, _trusted_token_addr, _stellar_client) =
+        setup_request_hash_distribution(&env);
+    let token_admin = Address::generate(&env);
+    let untrusted_token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let request =
+        request_hash_distribution_request(&env, untrusted_token_contract.address(), owner, 1);
+    let hash = client.get_request_hash(&request);
+
+    let result = client.try_distribute_usdc_hashed(&request, &hash);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::UntrustedTokenContract)));
 }
 
 // ============================================================================
