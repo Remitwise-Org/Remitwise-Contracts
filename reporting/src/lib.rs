@@ -261,12 +261,28 @@ pub struct StorageStats {
     pub last_updated: u64,
 }
 
-/// Dependency health status for monitoring
+/// Health-check result for one configured downstream reporting dependency.
+///
+/// `ReportingContract::check_dependencies` returns one `DependencyStatus`
+/// for each address slot in `ContractAddresses`, in fixed slot order. A
+/// healthy status means the lightweight probe call completed successfully.
+/// A failed status means the dependency probe failed; operators should fix the
+/// dependency before trusting reports that read from that contract.
 #[contracttype]
 #[derive(Clone)]
 pub struct DependencyStatus {
+    /// Stable dependency slot name from `ContractAddresses`.
+    ///
+    /// Current values are `remittance_split`, `savings_goals`,
+    /// `bill_payments`, `insurance`, and `family_wallet`.
     pub name: soroban_sdk::String,
+    /// `true` when the lightweight probe call succeeds.
     pub ok: bool,
+    /// `None` when `ok` is true; otherwise the probe failure category.
+    ///
+    /// Current values are `get_split_failed`, `get_all_goals_failed`,
+    /// `get_total_unpaid_failed`, `get_total_monthly_premium_failed`, and
+    /// `get_owner_failed`.
     pub error_category: Option<soroban_sdk::String>,
 }
 
@@ -702,15 +718,29 @@ impl ReportingContract {
 
     /// Check health of all configured dependencies (admin only).
     ///
-    /// Performs minimal try_* calls against each configured contract to verify
-    /// they are responsive and properly configured. Returns a status list for
-    /// monitoring and debugging.
+    /// Performs minimal `try_*` calls against each configured contract to
+    /// verify that the address is responsive and exposes the expected method.
+    /// The call is side-effect free: it reads admin/address configuration and
+    /// does not write contract storage.
+    ///
+    /// Returns exactly one `DependencyStatus` per `ContractAddresses` slot, in
+    /// this order:
+    ///
+    /// 1. `remittance_split`
+    /// 2. `savings_goals`
+    /// 3. `bill_payments`
+    /// 4. `insurance`
+    /// 5. `family_wallet`
+    ///
+    /// Status values are encoded as `ok == true` with `error_category == None`
+    /// for a healthy probe, or `ok == false` with a concrete
+    /// `error_category` when the probe fails.
     ///
     /// # Arguments
     /// * `caller` - Address of the administrator (must authorize)
     ///
     /// # Returns
-    /// Vec of DependencyStatus for each configured contract
+    /// Vec of DependencyStatus for each configured contract.
     ///
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
