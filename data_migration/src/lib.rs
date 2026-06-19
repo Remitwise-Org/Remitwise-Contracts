@@ -392,6 +392,19 @@ impl ExportSnapshot {
         Ok(())
     }
 
+    /// Validate the snapshot for import and capture rollback metadata for the
+    /// current on-chain state. This helper combines validation (version,
+    /// payload bounds, checksum) with a pre-mutation capture so callers can
+    /// obtain `RollbackMetadata` before they perform any irreversible steps.
+    pub fn validate_and_capture(
+        &self,
+        current_state: Option<&ExportSnapshot>,
+        timestamp_ms: u64,
+    ) -> Result<RollbackMetadata, MigrationError> {
+        self.validate_for_import()?;
+        Ok(RollbackMetadata::capture(current_state, self, timestamp_ms))
+    }
+
     /// Build a new snapshot with correct version, algorithm, and checksum.
     pub fn new(payload: SnapshotPayload, format: ExportFormat) -> Self {
         let format_str = format_label(format);
@@ -569,6 +582,15 @@ impl MigrationTracker {
     pub fn is_imported(&self, snapshot: &ExportSnapshot) -> bool {
         let identity = (snapshot.header.checksum.clone(), snapshot.header.version);
         self.imported_payloads.contains_key(&identity)
+    }
+
+    /// Remove a previously-recorded imported snapshot from the tracker by
+    /// checksum/version identity. This is idempotent: removing a non-existent
+    /// identity is a no-op. This helper is used during rollback to allow retry
+    /// of a failed import.
+    pub fn unmark_imported_by_identity(&mut self, checksum: &str, version: u32) {
+        let identity = (checksum.to_string(), version);
+        self.imported_payloads.remove(&identity);
     }
 }
 
@@ -968,11 +990,93 @@ pub fn build_savings_snapshot(
 }
 
 /// Rollback metadata (for migration scripts to record last good state).
+///
+/// This struct captures enough pre-import information for an operator to
+/// deterministically return the contract to the exact pre-import state if an
+/// import fails partway through. The recovery contract is:
+///
+/// - `capture` MUST be called *before* any irreversible operation occurs
+///   (validation-only operations are OK) so that the previous state is
+///   snapshotted deterministically.
+/// - `restore` MUST restore the captured `previous_snapshot` (if present),
+///   and must also remove any replay-tracking entry for the failed
+///   `attempted_snapshot` so the operator can safely retry the import.
+/// - `restore` MUST be idempotent: calling it multiple times is a no-op after
+///   the first successful restore.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RollbackMetadata {
+    /// The full previous snapshot (if any). `None` indicates the contract had
+    /// no snapshot / empty state prior to the attempted import.
+    pub previous_snapshot: Option<ExportSnapshot>,
+
+    /// The schema version of the previous snapshot, or `0` if none.
     pub previous_version: u32,
+
+    /// The checksum of the previous snapshot, or empty string if none.
     pub previous_checksum: String,
+
+    /// Timestamp when the capture occurred (ms since epoch). This is an
+    /// operator-facing field for auditing/recovery logging.
     pub timestamp_ms: u64,
+
+    /// Identity of the attempted import that triggered this capture. Used by
+    /// `restore` to remove any replay-tracking entry created for the failed
+    /// import so retries are permitted.
+    pub attempted_checksum: String,
+    pub attempted_version: u32,
+}
+
+impl RollbackMetadata {
+    /// Capture rollback metadata from the current on-chain state and the
+    /// snapshot that will be attempted for import. This must be invoked
+    /// *before* any irreversible mutation occurs.
+    pub fn capture(
+        current_state: Option<&ExportSnapshot>,
+        attempted_snapshot: &ExportSnapshot,
+        timestamp_ms: u64,
+    ) -> Self {
+        let (prev_snapshot, prev_version, prev_checksum) = if let Some(s) = current_state {
+            (Some(s.clone()), s.header.version, s.header.checksum.clone())
+        } else {
+            (None, 0u32, String::new())
+        };
+
+        RollbackMetadata {
+            previous_snapshot: prev_snapshot,
+            previous_version: prev_version,
+            previous_checksum: prev_checksum,
+            timestamp_ms,
+            attempted_checksum: attempted_snapshot.header.checksum.clone(),
+            attempted_version: attempted_snapshot.header.version,
+        }
+    }
+
+    /// Restore the captured pre-import state into `state` and reconcile the
+    /// `tracker` so replay protection remains sound.
+    ///
+    /// Behaviour:
+    /// - If `previous_snapshot` is `Some`, set `state` to that snapshot.
+    /// - Otherwise set `state` to `None` (empty state).
+    /// - Remove the replay-tracking entry for the attempted snapshot so the
+    ///   operator may safely retry the import. This operation is idempotent.
+    pub fn restore(
+        &self,
+        state: &mut Option<ExportSnapshot>,
+        tracker: &mut MigrationTracker,
+    ) -> Result<(), MigrationError> {
+        // Revert the on-chain state representation.
+        *state = self.previous_snapshot.clone();
+
+        // Ensure the attempted import's replay marker is removed so retries
+        // are possible. `unmark_imported` is idempotent.
+        if self.attempted_checksum.is_empty() && self.attempted_version == 0 {
+            // Nothing to unmark.
+            return Ok(());
+        }
+
+        tracker.unmark_imported_by_identity(&self.attempted_checksum, self.attempted_version);
+        Ok(())
+    }
 }
 
 // Minimal hex encoder used by compute_checksum.
@@ -1596,6 +1700,102 @@ mod tests {
             result
         );
         assert_eq!(result.unwrap(), plain);
+    }
+
+    fn assert_snapshot_equal(a: &Option<ExportSnapshot>, b: &Option<ExportSnapshot>) {
+        match (a, b) {
+            (None, None) => return,
+            (Some(_), None) | (None, Some(_)) => panic!("snapshot mismatch: one is None"),
+            (Some(a_snap), Some(b_snap)) => {
+                assert_eq!(a_snap.header.version, b_snap.header.version);
+                assert_eq!(a_snap.header.checksum, b_snap.header.checksum);
+                let a_bytes = canonical_payload_bytes(&a_snap.payload).unwrap();
+                let b_bytes = canonical_payload_bytes(&b_snap.payload).unwrap();
+                assert_eq!(a_bytes, b_bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn test_failed_import_restores_state_exactly() {
+        // Prepare previous state and attempted snapshot
+        let prev = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+
+        // Simulated on-chain state and tracker
+        let mut state: Option<ExportSnapshot> = Some(prev.clone());
+        let mut tracker = MigrationTracker::new();
+
+        // Simulate that previous snapshot was already imported earlier
+        tracker.mark_imported(&prev, 1_000).unwrap();
+
+        // Capture rollback metadata BEFORE attempting import
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 2_000);
+
+        // Begin import: we simulate a partial apply that sets state and marks tracker
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 2_001).unwrap();
+
+        // Now a downstream validation fails and we must restore
+        rb.restore(&mut state, &mut tracker).unwrap();
+
+        // State should equal previous snapshot
+        assert_snapshot_equal(&state, &Some(prev.clone()));
+
+        // The attempted snapshot must no longer be marked as imported
+        assert!(!tracker.is_imported(&attempted));
+
+        // The original previous import marker remains intact
+        assert!(tracker.is_imported(&prev));
+    }
+
+    #[test]
+    fn test_successful_import_discards_rollback_metadata() {
+        let prev: Option<ExportSnapshot> = None;
+        let attempted = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+
+        let mut state: Option<ExportSnapshot> = prev.clone();
+        let mut tracker = MigrationTracker::new();
+
+        // Capture before import
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 1_000);
+
+        // Successful import: apply state and mark imported
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 1_001).unwrap();
+
+        // Operator discards rollback metadata on success; attempting to restore
+        // after successful completion should be a no-op (we consider metadata
+        // discarded by convention). For the purpose of the test we simply drop
+        // the metadata and assert state remains the imported snapshot.
+        drop(rb);
+        assert_snapshot_equal(&state, &Some(attempted.clone()));
+        assert!(tracker.is_imported(&attempted));
+    }
+
+    #[test]
+    fn test_double_rollback_is_idempotent() {
+        let prev = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+
+        let mut state: Option<ExportSnapshot> = Some(prev.clone());
+        let mut tracker = MigrationTracker::new();
+
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 5_000);
+
+        // Simulate partial apply
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 6_000).unwrap();
+
+        // First restore
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert_snapshot_equal(&state, &Some(prev.clone()));
+        assert!(!tracker.is_imported(&attempted));
+
+        // Second restore should be a no-op and not panic
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert_snapshot_equal(&state, &Some(prev.clone()));
+        assert!(!tracker.is_imported(&attempted));
     }
 
     #[test]
