@@ -50,6 +50,31 @@ struct TypeConstraints {
 }
 
 impl TypeConstraints {
+    /// Return the allowed premium and coverage bounds for a given [`CoverageType`].
+    ///
+    /// All values are in **stroops** (1 XLM = 10 000 000 stroops).
+    /// `create_policy` uses these bounds to gate [`InsuranceError::InvalidPremium`],
+    /// [`InsuranceError::InvalidCoverageAmount`], and [`InsuranceError::UnsupportedCombination`].
+    ///
+    /// # Per-type bounds table
+    ///
+    /// | CoverageType | min_premium | max_premium        | min_coverage | max_coverage             |
+    /// |--------------|------------:|--------------------|-------------:|--------------------------|
+    /// | Health       |           1 | 500 000 000 000    |            1 | 100 000 000 000 000      |
+    /// | Life         |           1 | 1 000 000 000 000  |            1 | 500 000 000 000 000      |
+    /// | Property     |           1 | 2 000 000 000 000  |            1 | 1 000 000 000 000 000    |
+    /// | Auto         |           1 | 750 000 000 000    |            1 | 200 000 000 000 000      |
+    /// | Liability    |           1 | 400 000 000 000    |            1 | 50 000 000 000 000       |
+    ///
+    /// # Overflow safety
+    ///
+    /// The UnsupportedCombination check (`coverage_amount > premium * 12 * 500`) uses
+    /// `checked_mul` and saturates to `i128::MAX` on overflow, so passing values near
+    /// `i128::MAX` as the premium does not cause a panic — it simply results in a comparison
+    /// against `i128::MAX` which the coverage amount cannot exceed.
+    ///
+    /// Even the largest `max_premium` (Property: 2 × 10¹²) × 12 × 500 = 1.2 × 10¹⁶,
+    /// well within `i128::MAX` (≈ 1.7 × 10³⁸).
     fn for_type(t: &CoverageType) -> Self {
         match t {
             CoverageType::Health => Self {
@@ -563,3 +588,6 @@ impl Insurance {
         Ok(total)
     }
 }
+
+#[cfg(test)]
+mod test;
