@@ -2606,3 +2606,5 @@ mod event_test;
 mod events_schema_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod tests_schedule_exec;
