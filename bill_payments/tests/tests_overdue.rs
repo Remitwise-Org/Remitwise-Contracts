@@ -235,10 +235,7 @@ fn test_overdue_empty_when_all_bills_paid() {
     client.pay_bill(&owner, &id2);
 
     let page = client.get_overdue_bills(&0, &100);
-    assert_eq!(
-        page.count, 0,
-        "all bills paid: overdue list must be empty"
-    );
+    assert_eq!(page.count, 0, "all bills paid: overdue list must be empty");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,7 +371,10 @@ fn test_overdue_owner_isolation_no_cross_contamination() {
     set_time(&env, BASE_TIME);
 
     let page = client.get_overdue_bills(&0, &100);
-    assert_eq!(page.count, 3, "all 3 overdue bills must appear in global list");
+    assert_eq!(
+        page.count, 3,
+        "all 3 overdue bills must appear in global list"
+    );
 
     let mut a_count = 0u32;
     let mut b_count = 0u32;
@@ -395,8 +395,14 @@ fn test_overdue_owner_isolation_no_cross_contamination() {
             panic!("unexpected owner in overdue list");
         }
     }
-    assert_eq!(a_count, 2, "owner A must have 2 overdue bills in global list");
-    assert_eq!(b_count, 1, "owner B must have 1 overdue bill in global list");
+    assert_eq!(
+        a_count, 2,
+        "owner A must have 2 overdue bills in global list"
+    );
+    assert_eq!(
+        b_count, 1,
+        "owner B must have 1 overdue bill in global list"
+    );
 }
 
 /// Paying one owner's overdue bill does not affect the other owner's overdue count.

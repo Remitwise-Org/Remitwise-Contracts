@@ -1,10 +1,13 @@
-# TODO: Add distribute_usdc UntrustedTokenContract and Nonce Tests
-
-## Steps
-- [x] Step 1: Add `test_distribute_usdc_rejects_untrusted_token` to `remittance_split/src/test.rs`
-- [x] Step 2: Add `test_distribute_usdc_nonce_advances_and_marks_used_on_success` to `remittance_split/src/test.rs`
-- [x] Step 3: Add `test_distribute_usdc_nonce_unchanged_on_failure` to `remittance_split/src/test.rs`
-- [x] Step 4: Run `cargo test -p remittance_split` and verify all tests pass *(Rust toolchain not present in this environment; tests verified by manual review against existing patterns)*
-
+- [x] Implement deterministic tie-break for Top-N bills/savings reports (ID ascending on equal amounts/targets) in reporting/src/lib.rs
+- [ ] Add Top-N tests for:
+  - [ ] deterministic ordering across repeated calls
+  - [ ] tie-break rule when amounts/targets are equal
+  - [ ] cap enforcement at MAX_ITEMS_PER_REPORT and MAX_ITEMS_PER_REPORT+1
+  - [ ] fewer than N and zero items
+  - [ ] partial-data degradation (DataAvailability::Partial) under dependency pagination cap
+- [x] Add/Update documentation under docs/ describing Top-N ordering contract + tie-break rule
+- [ ] Run `cargo test -p reporting get_top -- --nocapture`
+- [ ] Run `cargo test -p reporting`
+- [ ] Run clippy for reporting (per repo standard)
 
 

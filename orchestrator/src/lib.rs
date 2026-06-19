@@ -437,11 +437,11 @@ impl Orchestrator {
                 Self::update_execution_stats(&env, false);
                 Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
 
-                /// Emit flow lifecycle event - flow failed
-                /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")
-                /// Payload: (executor: Address, error_code: u32)
-                /// Emitted when a remittance flow fails. Error code corresponds to OrchestratorError enum.
-                /// Does not leak sensitive amounts - only includes error code for debugging.
+                // Emit flow lifecycle event - flow failed
+                // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")
+                // Payload: (executor: Address, error_code: u32)
+                // Emitted when a remittance flow fails. Error code corresponds to OrchestratorError enum.
+                // Does not leak sensitive amounts - only includes error code for debugging.
                 RemitwiseEvents::emit(
                     &env,
                     EventCategory::Transaction,

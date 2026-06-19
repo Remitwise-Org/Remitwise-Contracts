@@ -2211,7 +2211,11 @@ mod tests {
         let result = import_from_json(&bytes, &mut tracker, 123_456);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 0, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 0,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2224,7 +2228,11 @@ mod tests {
         let result = import_from_json(&bytes, &mut tracker, 123_456);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 2, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 2,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2247,7 +2255,11 @@ mod tests {
         let result = import_from_binary(&bytes, &mut tracker, 123_456);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 0, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 0,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2260,7 +2272,11 @@ mod tests {
         let result = import_from_binary(&bytes, &mut tracker, 123_456);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 2, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 2,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2282,7 +2298,11 @@ mod tests {
         let result = import_from_json_untracked(&bytes);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 0, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 0,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2294,7 +2314,11 @@ mod tests {
         let result = import_from_json_untracked(&bytes);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 2, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 2,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2315,7 +2339,11 @@ mod tests {
         let result = import_from_binary_untracked(&bytes);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 0, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 0,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2327,7 +2355,11 @@ mod tests {
         let result = import_from_binary_untracked(&bytes);
         assert!(matches!(
             result.unwrap_err(),
-            MigrationError::IncompatibleVersion { found: 2, min: 1, max: 1 }
+            MigrationError::IncompatibleVersion {
+                found: 2,
+                min: 1,
+                max: 1
+            }
         ));
     }
 
@@ -2566,7 +2598,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Tab is not a formula injection character, so it should not be escaped
-        assert!(csv_string.contains("\tSUM(A1:A10)"), "Tab should not be escaped");
+        assert!(
+            csv_string.contains("\tSUM(A1:A10)"),
+            "Tab should not be escaped"
+        );
     }
 
     #[test]
@@ -2588,7 +2623,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Backslash is not a formula injection character, so it should not be escaped
-        assert!(csv_string.contains("\\SUM(A1:A10)"), "Backslash should not be escaped");
+        assert!(
+            csv_string.contains("\\SUM(A1:A10)"),
+            "Backslash should not be escaped"
+        );
     }
 
     #[test]
@@ -2610,7 +2648,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Pipe is not a formula injection character, so it should not be escaped
-        assert!(csv_string.contains("|SUM(A1:A10)"), "Pipe should not be escaped");
+        assert!(
+            csv_string.contains("|SUM(A1:A10)"),
+            "Pipe should not be escaped"
+        );
     }
 
     #[test]

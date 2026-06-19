@@ -225,7 +225,10 @@ fn aggregation_is_active_only() {
 
     let report = rc.get_insurance_report(&caller, &user, &0u64, &100u64);
 
-    assert_eq!(report.active_policies, 1, "inactive policy must not be counted");
+    assert_eq!(
+        report.active_policies, 1,
+        "inactive policy must not be counted"
+    );
     assert_eq!(
         report.total_coverage, 500_000_000,
         "inactive coverage must be excluded"

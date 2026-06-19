@@ -51,12 +51,7 @@ fn setup(env: &Env) -> (SavingsGoalContractClient, Address) {
     (client, owner)
 }
 
-fn make_goal(
-    env: &Env,
-    client: &SavingsGoalContractClient,
-    owner: &Address,
-    target: i128,
-) -> u32 {
+fn make_goal(env: &Env, client: &SavingsGoalContractClient, owner: &Address, target: i128) -> u32 {
     client.create_goal(
         owner,
         &String::from_str(env, "Test Goal"),
@@ -104,7 +99,10 @@ fn test_single_due_schedule_credits_exactly_once() {
     assert_eq!(executed.get(0).unwrap(), sched_id);
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.current_amount, 500, "goal must be credited exactly once");
+    assert_eq!(
+        goal.current_amount, 500,
+        "goal must be credited exactly once"
+    );
 }
 
 /// Calling `execute_due_savings_schedules` a second time within the same ledger
@@ -228,7 +226,11 @@ fn test_overflow_near_limit_schedule_skipped() {
     set_ledger_time(&env, 2, 3_500);
     let executed = client.execute_due_savings_schedules();
 
-    assert_eq!(executed.len(), 0, "overflow schedule must be silently skipped");
+    assert_eq!(
+        executed.len(),
+        0,
+        "overflow schedule must be silently skipped"
+    );
 
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(
@@ -334,8 +336,7 @@ fn test_archived_goal_schedule_skipped_missed_count_not_incremented() {
     client.add_to_goal(&owner, &goal_id, &500);
 
     // Create a schedule while the goal is still active.
-    let sched_id =
-        client.create_savings_schedule(&owner, &goal_id, &100, &3_000, &86_400);
+    let sched_id = client.create_savings_schedule(&owner, &goal_id, &100, &3_000, &86_400);
 
     // Archive the goal — removes it from DataKey::Goal storage.
     client.archive_goal(&owner, &goal_id);
@@ -571,15 +572,17 @@ fn test_missed_count_increments_for_skipped_intervals() {
     // next_due=3000, interval=1000; execute at t=6500.
     // Intervals skipped: 4000, 5000, 6000 (all ≤ 6500) → 3 missed.
     // next_due advances to 7000.
-    let sched_id =
-        client.create_savings_schedule(&owner, &goal_id, &500, &3_000, &1_000);
+    let sched_id = client.create_savings_schedule(&owner, &goal_id, &500, &3_000, &1_000);
 
     set_ledger_time(&env, 2, 6_500);
     client.execute_due_savings_schedules();
 
     let sched = client.get_savings_schedule(&sched_id).unwrap();
     assert_eq!(sched.missed_count, 3, "three intervals were skipped");
-    assert_eq!(sched.next_due, 7_000, "next_due must be at the next future slot");
+    assert_eq!(
+        sched.next_due, 7_000,
+        "next_due must be at the next future slot"
+    );
 
     // Only one credit is applied regardless of how many intervals were missed.
     let goal = client.get_goal(&goal_id).unwrap();
@@ -597,8 +600,7 @@ fn test_missed_count_accumulates_across_multiple_passes() {
 
     let goal_id = make_goal(&env, &client, &owner, 100_000);
     // next_due=2000, interval=1000
-    let sched_id =
-        client.create_savings_schedule(&owner, &goal_id, &100, &2_000, &1_000);
+    let sched_id = client.create_savings_schedule(&owner, &goal_id, &100, &2_000, &1_000);
 
     // Pass 1 at t=5000:
     // Skipped intervals: 3000, 4000, 5000 (all ≤ 5000) → 3 missed.
@@ -615,7 +617,10 @@ fn test_missed_count_accumulates_across_multiple_passes() {
     set_ledger_time(&env, 3, 7_500);
     client.execute_due_savings_schedules();
     let s2 = client.get_savings_schedule(&sched_id).unwrap();
-    assert_eq!(s2.missed_count, 4, "missed_count must accumulate across passes");
+    assert_eq!(
+        s2.missed_count, 4,
+        "missed_count must accumulate across passes"
+    );
     assert_eq!(s2.next_due, 8_000);
 
     // Two executor passes → two credits.
