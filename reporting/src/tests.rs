@@ -1026,11 +1026,13 @@ fn test_calculate_health_score_bounds_guarantee() {
     for _ in 0..10 {
         let health_score = client.calculate_health_score(&user, &10000);
 
-        // All scores must be within bounds
-        assert!(health_score.score >= 0 && health_score.score <= 100);
-        assert!(health_score.savings_score >= 0 && health_score.savings_score <= 40);
-        assert!(health_score.bills_score >= 0 && health_score.bills_score <= 40);
-        assert!(health_score.insurance_score >= 0 && health_score.insurance_score <= 20);
+        // All scores must be within bounds (fields are unsigned, so only the
+        // upper bound is meaningful — a `>= 0` check is always true and is
+        // rejected by clippy's `absurd_extreme_comparisons` correctness lint).
+        assert!(health_score.score <= 100);
+        assert!(health_score.savings_score <= 40);
+        assert!(health_score.bills_score <= 40);
+        assert!(health_score.insurance_score <= 20);
 
         // Total should equal sum of components
         assert_eq!(
