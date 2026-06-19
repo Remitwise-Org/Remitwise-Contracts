@@ -4280,6 +4280,256 @@ fn test_audit_page_cursor_stable_across_calls() {
 }
 
 // ============================================================================
+// Access-Audit Ring-Eviction & Cross-Read Tests
+//
+// These pin the bounded ring-buffer behaviour of the `ACC_AUDIT` log: once it
+// exceeds MAX_ACCESS_AUDIT_ENTRIES (200) the oldest entries are evicted and the
+// retained set is re-indexed from 0. Pagination must reflect that post-eviction
+// state with a monotonic cursor and never surface (or skip) entries. They also
+// pin the documented Admin-only authorization policy and the consistency
+// between `get_access_audit` (tail read) and the paginated full view.
+// ============================================================================
+
+/// Helper: seed `n` audit entries via emergency-mode toggles, advancing the
+/// ledger timestamp by 1 before each append so that entry `i` (0-based in
+/// insertion order) carries `timestamp == base + i`. Unique, monotonically
+/// increasing timestamps let eviction tests identify exactly which entries
+/// survived the ring-buffer wrap.
+fn seed_audit_entries_ts(
+    env: &Env,
+    client: &FamilyWalletClient,
+    owner: &Address,
+    base: u64,
+    n: u32,
+) {
+    for i in 0..n {
+        let mut ledger = env.ledger().get();
+        ledger.timestamp = base + i as u64;
+        env.ledger().set(ledger);
+        client.set_emergency_mode(owner, &(i % 2 == 0));
+    }
+}
+
+/// Helper: page through the entire retained log from index 0 using `page_size`
+/// and return every entry's timestamp in cursor order. Asserts the cursor is
+/// strictly monotonic (no dupes, no skips) as it walks. Returns a Soroban
+/// `Vec<u64>` (this is a `#![no_std]` crate, so `std::vec` is unavailable here).
+fn collect_all_audit_timestamps(
+    env: &Env,
+    client: &FamilyWalletClient,
+    caller: &Address,
+    page_size: u32,
+) -> Vec<u64> {
+    let mut out = Vec::new(env);
+    let mut cursor: u32 = 0;
+    loop {
+        let page = client.get_access_audit_page(caller, &cursor, &page_size);
+        if page.count == 0 {
+            break;
+        }
+        // Cursor must advance by exactly the number of items consumed.
+        assert_eq!(page.next_cursor, cursor + page.count);
+        for idx in 0..page.count {
+            out.push_back(page.items.get(idx).unwrap().timestamp);
+        }
+        cursor = page.next_cursor;
+    }
+    out
+}
+
+/// Fills the trail past the 200-entry cap and asserts the oldest entries are
+/// evicted while the newest are retained: total stays pinned at the cap, the
+/// retained timestamps are exactly the most-recent 200, and the evicted prefix
+/// never appears on any page.
+#[test]
+fn test_audit_ring_evicts_oldest_retains_newest() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // Rebuilding the 200-entry ring on every append is budget-heavy; lift the
+    // default metering so the stress seeding does not hit ExceededLimit.
+    env.budget().reset_unlimited();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    // Seed 250 entries with timestamps 1000..=1249.
+    let base: u64 = 1000;
+    let seeded: u32 = 250;
+    seed_audit_entries_ts(&env, &client, &owner, base, seeded);
+
+    // The log is capped: the retained set is exactly MAX_ACCESS_AUDIT_ENTRIES.
+    let first_page = client.get_access_audit_page(&owner, &0, &1);
+    // next_cursor on an out-of-range read reveals total; read past the end.
+    let probe = client.get_access_audit_page(&owner, &u32::MAX, &1);
+    assert_eq!(probe.next_cursor, MAX_ACCESS_AUDIT_ENTRIES);
+
+    // Collect every retained timestamp by paging the whole log.
+    let timestamps = collect_all_audit_timestamps(&env, &client, &owner, MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(timestamps.len(), MAX_ACCESS_AUDIT_ENTRIES);
+
+    // Oldest 50 entries (timestamps 1000..=1049) were evicted; newest retained.
+    let oldest_retained = base + (seeded - MAX_ACCESS_AUDIT_ENTRIES) as u64; // 1050
+    let newest_retained = base + (seeded - 1) as u64; // 1249
+    assert_eq!(timestamps.get(0).unwrap(), oldest_retained);
+    assert_eq!(timestamps.get(timestamps.len() - 1).unwrap(), newest_retained);
+    assert_eq!(first_page.items.get(0).unwrap().timestamp, oldest_retained);
+
+    // Post-eviction state: no page references an evicted entry, and the
+    // retained sequence is strictly increasing (no dupes / no gaps).
+    for i in 0..timestamps.len() {
+        let ts = timestamps.get(i).unwrap();
+        assert!(ts >= oldest_retained, "evicted entry leaked into page");
+        assert_eq!(ts, oldest_retained + i as u64, "non-contiguous retained set");
+    }
+}
+
+/// Exactly at the cap: seeding precisely MAX_ACCESS_AUDIT_ENTRIES evicts
+/// nothing — the full range is retained and the oldest entry is still present.
+#[test]
+fn test_audit_ring_exactly_at_max_evicts_nothing() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let base: u64 = 5000;
+    seed_audit_entries_ts(&env, &client, &owner, base, MAX_ACCESS_AUDIT_ENTRIES);
+
+    let timestamps = collect_all_audit_timestamps(&env, &client, &owner, MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(timestamps.len(), MAX_ACCESS_AUDIT_ENTRIES);
+    // Nothing evicted: oldest is still the very first entry.
+    assert_eq!(timestamps.get(0).unwrap(), base);
+    assert_eq!(
+        timestamps.get(timestamps.len() - 1).unwrap(),
+        base + (MAX_ACCESS_AUDIT_ENTRIES - 1) as u64
+    );
+}
+
+/// One over the cap: seeding MAX_ACCESS_AUDIT_ENTRIES + 1 evicts exactly the
+/// single oldest entry; the new oldest is `base + 1`.
+#[test]
+fn test_audit_ring_one_over_max_evicts_single_oldest() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let base: u64 = 9000;
+    seed_audit_entries_ts(&env, &client, &owner, base, MAX_ACCESS_AUDIT_ENTRIES + 1);
+
+    let timestamps = collect_all_audit_timestamps(&env, &client, &owner, MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(timestamps.len(), MAX_ACCESS_AUDIT_ENTRIES);
+    // The single oldest (timestamp == base) was evicted.
+    assert_eq!(timestamps.get(0).unwrap(), base + 1);
+    let mut found_base = false;
+    for i in 0..timestamps.len() {
+        if timestamps.get(i).unwrap() == base {
+            found_base = true;
+        }
+    }
+    assert!(!found_base, "oldest entry should be evicted");
+    assert_eq!(
+        timestamps.get(timestamps.len() - 1).unwrap(),
+        base + MAX_ACCESS_AUDIT_ENTRIES as u64
+    );
+}
+
+/// After eviction, paging across the wrap boundary with a small page size still
+/// yields a monotonic cursor and the exact retained set — proving pagination is
+/// computed over post-eviction indices, not stale absolute positions.
+#[test]
+fn test_audit_page_post_eviction_no_skip_no_duplicate() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let base: u64 = 200_000;
+    seed_audit_entries_ts(&env, &client, &owner, base, 230);
+
+    // Page with size 7 (does not divide 200 evenly) to stress boundary maths.
+    let timestamps = collect_all_audit_timestamps(&env, &client, &owner, 7);
+    assert_eq!(timestamps.len(), MAX_ACCESS_AUDIT_ENTRIES);
+
+    let oldest_retained = base + (230 - MAX_ACCESS_AUDIT_ENTRIES) as u64; // 200_030
+    for i in 0..timestamps.len() {
+        assert_eq!(timestamps.get(i).unwrap(), oldest_retained + i as u64);
+    }
+}
+
+/// Authorization policy: `get_access_audit_page` is Owner/Admin only. Owner and
+/// Admin succeed; a `Member` and a non-member are rejected. (Auth is mocked, so
+/// the rejection comes from the role gate, matching the documented policy.)
+#[test]
+fn test_audit_page_authorization_matches_policy() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let admin = Address::generate(&env);
+    let member = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    client.add_family_member(&owner, &admin, &FamilyRole::Admin);
+    client.add_family_member(&owner, &member, &FamilyRole::Member);
+
+    // Owner and Admin may read the audit page.
+    assert!(client.try_get_access_audit_page(&owner, &0, &10).is_ok());
+    assert!(client.try_get_access_audit_page(&admin, &0, &10).is_ok());
+
+    // Member and non-member are rejected by the Admin role gate.
+    assert!(client.try_get_access_audit_page(&member, &0, &10).is_err());
+    assert!(client.try_get_access_audit_page(&stranger, &0, &10).is_err());
+}
+
+/// Cross-read consistency: `get_access_audit(limit)` returns the newest `limit`
+/// entries (the tail), which must match the tail of the fully-paginated view —
+/// same entries, same order, including across an eviction wrap.
+#[test]
+fn test_get_access_audit_consistent_with_paginated_view() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    // Seed past the cap so the comparison also exercises post-eviction state.
+    let base: u64 = 700_000;
+    seed_audit_entries_ts(&env, &client, &owner, base, 210);
+
+    let full = collect_all_audit_timestamps(&env, &client, &owner, MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(full.len(), MAX_ACCESS_AUDIT_ENTRIES);
+
+    // For several limits, the tail read must equal the suffix of the page view.
+    for limit in [1u32, 10, MAX_AUDIT_PAGE_LIMIT, MAX_ACCESS_AUDIT_ENTRIES, 1000] {
+        let tail = client.get_access_audit(&limit);
+        let expected_len = limit.min(MAX_ACCESS_AUDIT_ENTRIES);
+        assert_eq!(tail.len(), expected_len);
+        let start = full.len() - expected_len;
+        for j in 0..expected_len {
+            assert_eq!(
+                tail.get(j).unwrap().timestamp,
+                full.get(start + j).unwrap()
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Quorum Re-validation Tests
 //
 // Verify that removing members invalidates in-flight proposals that can no
