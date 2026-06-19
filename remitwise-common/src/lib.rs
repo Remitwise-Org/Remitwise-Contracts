@@ -192,6 +192,9 @@ where
 /// Event emission helper
 pub struct RemitwiseEvents;
 
+#[cfg(test)]
+mod tests;
+
 impl RemitwiseEvents {
     /// Emits a single event with the given category, priority, and action.
 ///
