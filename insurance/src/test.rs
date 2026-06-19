@@ -10,7 +10,7 @@ mod tests {
     fn setup(env: &Env) -> InsuranceClient {
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
-        c.init(&Address::generate(env)).unwrap();
+        c.init(&Address::generate(env));
         c
     }
 
@@ -35,9 +35,9 @@ mod tests {
         env.mock_all_auths();
         let c = setup(&env);
         let caller = Address::generate(&env);
-        let id = c.create_policy(&caller, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128).unwrap();
+        let id = c.create_policy(&caller, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         assert_eq!(id, 1);
-        let p = c.get_policy(&id).unwrap().unwrap();
+        let p = c.get_policy(&id).unwrap();
         assert_eq!(p.monthly_premium, 5_000_000);
     }
 
@@ -48,9 +48,9 @@ mod tests {
         let c = setup(&env);
         let owner = Address::generate(&env);
         for _ in 0..10 {
-            c.create_policy(&owner, &n(&env, "P"), &CoverageType::Health, &5_000_000i128, &50_000_000i128).unwrap();
+            c.create_policy(&owner, &n(&env, "P"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         }
-        let page = c.get_active_policies(&owner, &0, &5).unwrap();
+        let page = c.get_active_policies(&owner, &0, &5);
         assert_eq!(page.items.len(), 5);
         assert_eq!(page.count, 5);
         assert_eq!(page.next_cursor, 5);
@@ -63,10 +63,10 @@ mod tests {
         let c = setup(&env);
         let u1 = Address::generate(&env);
         let u2 = Address::generate(&env);
-        c.create_policy(&u1, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128).unwrap();
-        c.create_policy(&u2, &n(&env, "P2"), &CoverageType::Health, &6_000_000i128, &50_000_000i128).unwrap();
-        assert_eq!(c.get_total_monthly_premium(&u1).unwrap(), 5_000_000);
-        assert_eq!(c.get_total_monthly_premium(&u2).unwrap(), 6_000_000);
+        c.create_policy(&u1, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        c.create_policy(&u2, &n(&env, "P2"), &CoverageType::Health, &6_000_000i128, &50_000_000i128);
+        assert_eq!(c.get_total_monthly_premium(&u1), 5_000_000);
+        assert_eq!(c.get_total_monthly_premium(&u2), 6_000_000);
     }
 
     #[test]
@@ -75,12 +75,12 @@ mod tests {
         env.mock_all_auths();
         let c = setup(&env);
         let owner = Address::generate(&env);
-        let id1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128).unwrap();
-        let id2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128).unwrap();
+        let id1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let id2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         let mut ids = Vec::new(&env);
         ids.push_back(id1);
         ids.push_back(id2);
-        assert_eq!(c.batch_pay_premiums(&owner, &ids).unwrap(), 2);
+        assert_eq!(c.batch_pay_premiums(&owner, &ids), 2);
     }
 
     // ── Per-CoverageType boundary tests ──────────────────────────────────────
@@ -114,10 +114,10 @@ mod tests {
         let b = Bounds::for_type(&ct);
 
         // min_premium + min_coverage → accept
-        c.create_policy(&Address::generate(&env), &n(&env, "T"), &ct, &b.min_premium, &b.min_coverage).unwrap();
+        c.create_policy(&Address::generate(&env), &n(&env, "T"), &ct, &b.min_premium, &b.min_coverage);
 
         // max_premium + max_coverage → accept
-        c.create_policy(&Address::generate(&env), &n(&env, "T"), &ct, &b.max_premium, &b.max_coverage).unwrap();
+        c.create_policy(&Address::generate(&env), &n(&env, "T"), &ct, &b.max_premium, &b.max_coverage);
 
         // premium = 0 (min_premium - 1) → InvalidPremium
         assert_eq!(
@@ -164,7 +164,7 @@ mod tests {
         let max_ratio = premium * 12 * 500;
 
         // exactly at the ratio limit → accept
-        c.create_policy(&Address::generate(&env), &n(&env, "T"), &CoverageType::Health, &premium, &max_ratio).unwrap();
+        c.create_policy(&Address::generate(&env), &n(&env, "T"), &CoverageType::Health, &premium, &max_ratio);
 
         // one over → UnsupportedCombination
         assert_eq!(
