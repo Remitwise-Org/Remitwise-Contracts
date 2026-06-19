@@ -16,6 +16,7 @@
 extern crate std;
 
 use super::*;
+use proptest::prelude::*;
 use soroban_sdk::{Env, String, Vec};
 
 // helper: build a single-element tag Vec
@@ -292,4 +293,38 @@ fn test_clamp_limit_one_above_max_clamped() {
 #[test]
 fn test_clamp_limit_u32_max_clamped() {
     assert_eq!(clamp_limit(u32::MAX), MAX_PAGE_LIMIT);
+}
+
+proptest! {
+    /// Property test for the shared pagination limit normalizer.
+    ///
+    /// This pins the full contract consumed by paginated reads across contracts:
+    /// zero selects the default, oversized limits clamp to the maximum, in-range
+    /// values pass through, output remains bounded, and normalization is idempotent.
+    #[test]
+    fn proptest_clamp_limit_contract(limit in any::<u32>()) {
+        let clamped = clamp_limit(limit);
+
+        if limit == 0 {
+            prop_assert_eq!(clamped, DEFAULT_PAGE_LIMIT);
+        } else if limit > MAX_PAGE_LIMIT {
+            prop_assert_eq!(clamped, MAX_PAGE_LIMIT);
+        } else {
+            prop_assert_eq!(clamped, limit);
+        }
+
+        prop_assert!((1..=MAX_PAGE_LIMIT).contains(&clamped));
+        prop_assert_eq!(clamp_limit(clamped), clamped);
+    }
+}
+
+/// Explicit regression pin for the largest u32 input: it must clamp without
+/// overflow or special-case caller handling.
+#[test]
+fn test_clamp_limit_u32_max_contract_regression() {
+    let clamped = clamp_limit(u32::MAX);
+
+    assert_eq!(clamped, MAX_PAGE_LIMIT);
+    assert!((1..=MAX_PAGE_LIMIT).contains(&clamped));
+    assert_eq!(clamp_limit(clamped), clamped);
 }

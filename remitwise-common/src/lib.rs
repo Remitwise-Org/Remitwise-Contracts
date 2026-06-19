@@ -104,12 +104,17 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
-/// Clamps a pagination limit to ensure it falls within the allowed boundaries.
+/// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
-/// # Behavior
+/// # Contract
 /// - `0` is treated as a request for the default limit and returns `DEFAULT_PAGE_LIMIT`.
 /// - Values between `1` and `MAX_PAGE_LIMIT` (inclusive) are passed through unchanged.
 /// - Values greater than `MAX_PAGE_LIMIT` are capped at `MAX_PAGE_LIMIT`.
+/// - The returned value is always in `1..=MAX_PAGE_LIMIT`.
+/// - The function is idempotent: applying it to an already-normalized value returns
+///   the same value.
+/// - Extremely large inputs, including `u32::MAX`, clamp without arithmetic and
+///   cannot overflow.
 pub fn clamp_limit(limit: u32) -> u32 {
     if limit == 0 {
         DEFAULT_PAGE_LIMIT
