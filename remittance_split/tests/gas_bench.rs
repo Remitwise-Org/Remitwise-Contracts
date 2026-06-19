@@ -1,4 +1,6 @@
-use remittance_split::{AccountGroup, RemittanceSplit, RemittanceSplitClient};
+use remittance_split::{
+    AccountGroup, RemittanceSplit, RemittanceSplitClient, MAX_SCHEDULES_PER_OWNER,
+};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{symbol_short, Address, Env};
@@ -35,6 +37,39 @@ where
     let cpu = budget.cpu_instruction_cost();
     let mem = budget.memory_bytes_cost();
     (cpu, mem, result)
+}
+
+fn initialize_schedule_bench(env: &Env) -> (RemittanceSplitClient<'_>, Address) {
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(env, &contract_id);
+
+    let owner = <Address as AddressTrait>::generate(env);
+    let token_admin = <Address as AddressTrait>::generate(env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let init_ok = client.initialize_split(
+        &owner,
+        &0,
+        &token_contract.address(),
+        &50,
+        &30,
+        &15,
+        &5,
+    );
+    assert!(init_ok);
+
+    (client, owner)
+}
+
+fn seed_schedules(client: &RemittanceSplitClient<'_>, env: &Env, owner: &Address, count: u32) {
+    let amount = 1_000i128;
+    let next_due = env.ledger().timestamp() + 86_400;
+    let interval = 2_592_000u64;
+
+    for i in 0..count {
+        let schedule_id =
+            client.create_remittance_schedule(owner, &amount, &(next_due + i as u64), &interval);
+        assert_eq!(schedule_id, i + 1);
+    }
 }
 
 #[test]
@@ -421,4 +456,79 @@ fn bench_schedule_operations_worst_case() {
         r#"{{"contract":"remittance_split","method":"get_remittance_schedules","scenario":"50_schedules_worst_case","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
+}
+
+/// Benchmark: paginated schedule listing at owner cap scale.
+///
+/// Measures N=1, N=25, and N=MAX_SCHEDULES_PER_OWNER using the same page size
+/// across the owner's cursor range. The assertions pin cursor advancement and
+/// guard against cursor-position gas growth for polling clients.
+#[test]
+fn bench_get_schedules_paginated_cursor_positions() {
+    const PAGE_LIMIT: u32 = 10;
+    const CPU_BOUND_NUMERATOR: u64 = 13;
+    const MEM_BOUND_NUMERATOR: u64 = 13;
+    const BOUND_DENOMINATOR: u64 = 10;
+
+    for schedule_count in [1u32, 25u32, MAX_SCHEDULES_PER_OWNER] {
+        let env = bench_env();
+        let (client, owner) = initialize_schedule_bench(&env);
+        seed_schedules(&client, &env, &owner, schedule_count);
+
+        let mut cursor = 0u32;
+        let mut first_page_cpu = 0u64;
+        let mut first_page_mem = 0u64;
+        let mut page_index = 0u32;
+        let mut seen_count = 0u32;
+
+        loop {
+            let measured_cursor = cursor;
+            let (cpu, mem, page) =
+                measure(&env, || client.get_schedules_paginated(&owner, &cursor, &PAGE_LIMIT));
+
+            if page_index == 0 {
+                first_page_cpu = cpu;
+                first_page_mem = mem;
+            } else {
+                assert!(
+                    cpu <= first_page_cpu * CPU_BOUND_NUMERATOR / BOUND_DENOMINATOR,
+                    "cursor {} CPU {} exceeded first-page bound {} for N={}",
+                    measured_cursor,
+                    cpu,
+                    first_page_cpu,
+                    schedule_count
+                );
+                assert!(
+                    mem <= first_page_mem * MEM_BOUND_NUMERATOR / BOUND_DENOMINATOR,
+                    "cursor {} mem {} exceeded first-page bound {} for N={}",
+                    measured_cursor,
+                    mem,
+                    first_page_mem,
+                    schedule_count
+                );
+            }
+
+            assert!(page.count <= PAGE_LIMIT);
+            assert_eq!(page.count, page.items.len());
+            seen_count += page.count;
+
+            println!(
+                r#"{{"contract":"remittance_split","method":"get_schedules_paginated","scenario":"n{}_cursor{}_limit{}","cpu":{},"mem":{}}}"#,
+                schedule_count, measured_cursor, PAGE_LIMIT, cpu, mem
+            );
+
+            if page.next_cursor == 0 {
+                break;
+            }
+            assert!(
+                page.next_cursor > measured_cursor,
+                "cursor must advance for N={}",
+                schedule_count
+            );
+            cursor = page.next_cursor;
+            page_index += 1;
+        }
+
+        assert_eq!(seen_count, schedule_count);
+    }
 }

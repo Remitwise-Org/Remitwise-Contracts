@@ -1955,23 +1955,6 @@ impl RemittanceSplit {
         );
     }
 
-    fn sort_u32_vec(v: &mut Vec<u32>) {
-        let len = v.len();
-        for i in 1..len {
-            let key = v.get(i).unwrap_or(0);
-            let mut j = i;
-            while j > 0 {
-                let prev = v.get(j - 1).unwrap_or(0);
-                if prev <= key {
-                    break;
-                }
-                v.set(j, prev);
-                j -= 1;
-            }
-            v.set(j, key);
-        }
-    }
-
     /// Create a new automatic remittance schedule for the split owner.
     ///
     /// # Arguments
@@ -2396,11 +2379,9 @@ impl RemittanceSplit {
 
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key) else {
+            return Vec::new(&env);
+        };
         Self::extend_persistent_ttl(&env, &index_key);
 
         // Ensure deterministic ordering by sorting IDs ascending
@@ -2451,11 +2432,13 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key) else {
+            return SchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        };
         Self::extend_persistent_ttl(&env, &index_key);
 
         // Vec items are already retrieved in order; ensure deterministic traversal
@@ -2526,11 +2509,14 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let mut schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+        let Some(mut schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key)
+        else {
+            return SchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        };
         Self::extend_persistent_ttl(&env, &index_key);
 
         sort_u32_vec_ascending(&mut schedule_ids);

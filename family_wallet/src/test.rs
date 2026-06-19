@@ -1053,8 +1053,12 @@ fn test_emergency_transfer_min_balance_boundary_exact_floor_succeeds() {
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);
-    let result =
-        client.try_propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &amount);
+    let result = client.try_propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &amount,
+    );
 
     assert!(result.is_ok());
     assert_eq!(token_client.balance(&owner), min_balance);
@@ -1086,8 +1090,12 @@ fn test_emergency_transfer_min_balance_boundary_one_stroop_under_floor_rejected(
     client.set_emergency_mode(&owner, &true);
 
     let recipient = Address::generate(&env);
-    let result =
-        client.try_propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &amount);
+    let result = client.try_propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &amount,
+    );
 
     assert_eq!(result, emergency_error(Error::MinBalanceViolation));
     assert_eq!(token_client.balance(&owner), total);
@@ -1118,8 +1126,12 @@ fn test_emergency_transfer_zero_min_balance_disables_floor() {
 
     let recipient = Address::generate(&env);
     // Drain the entire balance — leaves exactly 0, which satisfies `>= 0`.
-    let result =
-        client.try_propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &total);
+    let result = client.try_propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &recipient,
+        &total,
+    );
 
     assert!(result.is_ok());
     assert_eq!(token_client.balance(&owner), 0);
@@ -1162,7 +1174,13 @@ fn test_emergency_transfer_min_balance_interacts_with_daily_limit() {
         .unwrap_or(0i128)
     };
 
-    client.configure_emergency(&owner, &5_000_0000000, &0u64, &9_500_0000000, &10_000_0000000);
+    client.configure_emergency(
+        &owner,
+        &5_000_0000000,
+        &0u64,
+        &9_500_0000000,
+        &10_000_0000000,
+    );
     client.set_emergency_mode(&owner, &true);
     let recipient = Address::generate(&env);
 
@@ -1228,7 +1246,11 @@ fn test_emergency_transfer_min_balance_interacts_with_daily_limit() {
         emergency_error(Error::MinBalanceViolation),
         "this rejection should come from the daily cap, not the min_balance floor"
     );
-    assert_eq!(read_em_vol(), 800_0000000, "a cap-rejected transfer must not mutate EM_VOL");
+    assert_eq!(
+        read_em_vol(),
+        800_0000000,
+        "a cap-rejected transfer must not mutate EM_VOL"
+    );
 }
 
 /// The min_balance floor and the cooldown timer are independent checks. A
@@ -1256,7 +1278,13 @@ fn test_emergency_transfer_min_balance_interacts_with_cooldown() {
 
     let min_balance = 4_000_0000000;
     let cooldown = 3_600u64;
-    client.configure_emergency(&owner, &2_000_0000000, &cooldown, &min_balance, &10_000_0000000);
+    client.configure_emergency(
+        &owner,
+        &2_000_0000000,
+        &cooldown,
+        &min_balance,
+        &10_000_0000000,
+    );
     client.set_emergency_mode(&owner, &true);
     let recipient = Address::generate(&env);
 
@@ -3539,8 +3567,6 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
     assert!(result.is_err());
 }
 
-
-
 // ============================================================================
 // Role Expiry Enforcement Tests (#494)
 // ============================================================================
@@ -5204,14 +5230,14 @@ fn test_precision_spending_overflow_graceful() {
     let env = Env::default();
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);
-    
+
     let admin = Address::generate(&env);
     let member = Address::generate(&env);
     let mut initial_members = Vec::new(&env);
     initial_members.push_back(member.clone());
-    
+
     client.init(&admin, &initial_members);
-    
+
     // Assert that calling with near i128::MAX returns a graceful error or handles it cleanly
     let result = client.try_validate_precision_spending(&member, &i128::MAX);
     assert!(result.is_err());

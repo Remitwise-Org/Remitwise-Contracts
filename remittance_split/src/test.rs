@@ -247,7 +247,7 @@ fn test_ttl_extensions() {
     let threshold = INSTANCE_LIFETIME_THRESHOLD;
 
     // Advance to threshold - 1
-    env.ledger().set_sequence(threshold - 1);
+    env.ledger().set_sequence_number(threshold - 1);
 
     // Access CONFIG
     let config = client.get_config();
@@ -255,7 +255,7 @@ fn test_ttl_extensions() {
 
     // After access, TTL should be bumped to INSTANCE_BUMP_AMOUNT
     // If we advance to threshold + 1, it should still exist
-    env.ledger().set_sequence(threshold + 1);
+    env.ledger().set_sequence_number(threshold + 1);
     let config = client.get_config();
     assert!(config.is_some(), "Config should exist after TTL bump");
 
@@ -270,7 +270,8 @@ fn test_ttl_extensions() {
 
     // Advance to p_threshold - 1 from current sequence
     let current_seq = env.ledger().sequence();
-    env.ledger().set_sequence(current_seq + p_threshold - 1);
+    env.ledger()
+        .set_sequence_number(current_seq + p_threshold - 1);
 
     // Access Schedule
     let schedule = client.get_remittance_schedule(&schedule_id);
@@ -280,14 +281,15 @@ fn test_ttl_extensions() {
     );
 
     // Advance beyond original threshold
-    env.ledger().set_sequence(current_seq + p_threshold + 1);
+    env.ledger()
+        .set_sequence_number(current_seq + p_threshold + 1);
     let schedule = client.get_remittance_schedule(&schedule_id);
     assert!(schedule.is_some(), "Schedule should exist after TTL bump");
 
     // 3. Multiple sequential bumps
     for _ in 0..3 {
         let seq = env.ledger().sequence();
-        env.ledger().set_sequence(seq + p_threshold - 1);
+        env.ledger().set_sequence_number(seq + p_threshold - 1);
         assert!(client.get_remittance_schedule(&schedule_id).is_some());
     }
 
@@ -847,7 +849,9 @@ fn test_request_hash_mismatch_nonce_reuse_new_deadline() {
     );
 }
 
-fn setup_request_hash_distribution(env: &Env) -> (
+fn setup_request_hash_distribution(
+    env: &Env,
+) -> (
     RemittanceSplitClient<'_>,
     Address,
     Address,
@@ -986,7 +990,10 @@ fn test_request_hash_hashed_path_rejects_used_nonce() {
     stellar_client.mint(&owner, &(request.total_amount * 2));
     let hash = client.get_request_hash(&request);
 
-    assert_eq!(client.try_distribute_usdc_hashed(&request, &hash), Ok(Ok(true)));
+    assert_eq!(
+        client.try_distribute_usdc_hashed(&request, &hash),
+        Ok(Ok(true))
+    );
 
     let replay = client.try_distribute_usdc_hashed(&request, &hash);
     assert_eq!(replay, Err(Ok(RemittanceSplitError::NonceAlreadyUsed)));
@@ -1028,7 +1035,10 @@ fn test_request_hash_hashed_path_rejects_self_transfer() {
 
     let result = client.try_distribute_usdc_hashed(&request, &hash);
 
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -1044,7 +1054,10 @@ fn test_request_hash_hashed_path_rejects_untrusted_token_contract() {
 
     let result = client.try_distribute_usdc_hashed(&request, &hash);
 
-    assert_eq!(result, Err(Ok(RemittanceSplitError::UntrustedTokenContract)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UntrustedTokenContract))
+    );
 }
 
 // ============================================================================
@@ -1424,7 +1437,9 @@ fn test_execute_mixed_due_not_due() {
 //
 // Security: expired/invalid deadlines must NOT advance the nonce.
 
-fn setup_signed_distribution(env: &Env) -> (
+fn setup_signed_distribution(
+    env: &Env,
+) -> (
     RemittanceSplitClient<'_>,
     Address,
     Address,
@@ -1478,11 +1493,11 @@ fn test_deadline_zero_is_invalid() {
     let now = env.ledger().timestamp();
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, 0);
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
-    assert_eq!(
-        result,
-        Err(Ok(RemittanceSplitError::InvalidDeadline))
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
     );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
 }
 
 /// deadline == now must be rejected (DeadlineExpired)
@@ -1493,11 +1508,11 @@ fn test_deadline_equal_to_now_is_expired() {
     let now = env.ledger().timestamp();
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, now);
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
-    assert_eq!(
-        result,
-        Err(Ok(RemittanceSplitError::DeadlineExpired))
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
     );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
 }
 
 /// deadline == now - 1 must be rejected (DeadlineExpired)
@@ -1508,11 +1523,11 @@ fn test_deadline_one_second_past_is_expired() {
     let now = env.ledger().timestamp();
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, now - 1);
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
-    assert_eq!(
-        result,
-        Err(Ok(RemittanceSplitError::DeadlineExpired))
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
     );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
 }
 
 /// deadline == now + 1 must be accepted (valid boundary)
@@ -1524,7 +1539,10 @@ fn test_deadline_one_second_future_is_accepted() {
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, now + 1);
     // Should not return DeadlineExpired or InvalidDeadline
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
+    );
     assert!(
         result != Err(Ok(RemittanceSplitError::DeadlineExpired))
             && result != Err(Ok(RemittanceSplitError::InvalidDeadline)),
@@ -1546,7 +1564,10 @@ fn test_deadline_at_max_window_is_accepted() {
         1,
         now + MAX_DEADLINE_WINDOW_SECS,
     );
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
+    );
     assert!(
         result != Err(Ok(RemittanceSplitError::DeadlineExpired))
             && result != Err(Ok(RemittanceSplitError::InvalidDeadline)),
@@ -1568,11 +1589,11 @@ fn test_deadline_beyond_max_window_is_invalid() {
         1,
         now + MAX_DEADLINE_WINDOW_SECS + 1,
     );
-    let result = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
-    assert_eq!(
-        result,
-        Err(Ok(RemittanceSplitError::InvalidDeadline))
+    let result = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
     );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
 }
 
 /// Expired deadline must NOT advance the nonce (replay-window safety)
@@ -1585,7 +1606,10 @@ fn test_expired_deadline_does_not_advance_nonce() {
     let nonce_before = client.get_nonce(&owner);
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, now - 1);
-    let _ = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
+    let _ = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
+    );
 
     let nonce_after = client.get_nonce(&owner);
     assert_eq!(
@@ -1603,11 +1627,104 @@ fn test_invalid_deadline_does_not_advance_nonce() {
     let nonce_before = client.get_nonce(&owner);
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, 0);
-    let _ = client.try_distribute_usdc_hashed(&request, &RemittanceSplit::get_request_hash(env.clone(), request.clone()));
+    let _ = client.try_distribute_usdc_hashed(
+        &request,
+        &RemittanceSplit::get_request_hash(env.clone(), request.clone()),
+    );
 
     let nonce_after = client.get_nonce(&owner);
     assert_eq!(
         nonce_before, nonce_after,
         "nonce must not advance on invalid deadline"
     );
+}
+
+/// get_schedules_paginated must terminate, preserve ID order, and return each
+/// schedule exactly once when traversing a full owner schedule set.
+#[test]
+fn test_get_schedules_paginated_full_scale_cursor_monotonicity() {
+    let env = Env::default();
+    let (client, owner, _, _) = setup_split(&env, 50, 30, 15, 5);
+    let other_owner = Address::generate(&env);
+
+    let amount = 1_000i128;
+    let next_due = env.ledger().timestamp() + 86_400;
+    let interval = MIN_SCHEDULE_INTERVAL;
+
+    let first_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+    assert_eq!(first_id, 1);
+
+    let single_page = client.get_schedules_paginated(&owner, &0, &1);
+    assert_eq!(single_page.count, 1);
+    assert_eq!(single_page.items.len(), 1);
+    assert_eq!(single_page.items.get(0).unwrap().id, first_id);
+    assert_eq!(single_page.next_cursor, 0);
+
+    for i in 1..MAX_SCHEDULES_PER_OWNER {
+        let id =
+            client.create_remittance_schedule(&owner, &amount, &(next_due + i as u64), &interval);
+        assert_eq!(id, i + 1);
+    }
+
+    let isolated_page = client.get_schedules_paginated(&other_owner, &0, &50);
+    assert_eq!(isolated_page.count, 0);
+    assert_eq!(isolated_page.items.len(), 0);
+    assert_eq!(isolated_page.next_cursor, 0);
+
+    let clamped_page = client.get_schedules_paginated(&owner, &0, &u32::MAX);
+    assert_eq!(clamped_page.count, MAX_SCHEDULES_PER_OWNER);
+    assert_eq!(clamped_page.items.len(), MAX_SCHEDULES_PER_OWNER);
+    assert_eq!(clamped_page.next_cursor, 0);
+
+    let mut last_id = 0u32;
+    for i in 0..clamped_page.items.len() {
+        let schedule = clamped_page.items.get(i).unwrap();
+        assert!(schedule.id > last_id, "schedules must be ordered by ID");
+        last_id = schedule.id;
+    }
+
+    let mut seen = [false; (MAX_SCHEDULES_PER_OWNER as usize) + 1];
+    let mut seen_count = 0u32;
+    let mut cursor = 0u32;
+    let mut pages = 0u32;
+    let page_limit = 7u32;
+
+    loop {
+        let page = client.get_schedules_paginated(&owner, &cursor, &page_limit);
+        assert!(page.count <= page_limit);
+        assert_eq!(page.count, page.items.len());
+
+        let mut previous_id = 0u32;
+        for i in 0..page.items.len() {
+            let schedule = page.items.get(i).unwrap();
+            assert!(schedule.id > previous_id, "page IDs must be ascending");
+            let seen_index = schedule.id as usize;
+            assert!(!seen[seen_index], "schedule {} appeared on multiple pages", schedule.id);
+            seen[seen_index] = true;
+            seen_count += 1;
+            previous_id = schedule.id;
+        }
+
+        pages += 1;
+        if page.next_cursor == 0 {
+            break;
+        }
+
+        assert!(
+            page.next_cursor > cursor,
+            "cursor must strictly advance before termination"
+        );
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(pages, 8);
+    assert_eq!(seen_count, MAX_SCHEDULES_PER_OWNER);
+    for id in 1..=MAX_SCHEDULES_PER_OWNER {
+        assert!(seen[id as usize], "missing schedule id {}", id);
+    }
+
+    let beyond_end = client.get_schedules_paginated(&owner, &MAX_SCHEDULES_PER_OWNER, &page_limit);
+    assert_eq!(beyond_end.count, 0);
+    assert_eq!(beyond_end.items.len(), 0);
+    assert_eq!(beyond_end.next_cursor, 0);
 }

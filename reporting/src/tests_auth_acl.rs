@@ -294,8 +294,7 @@ fn test_all_report_endpoints_accessible() {
     let _ = client.try_get_stored_report(&user, &user, &1u64);
     let _ = client.get_archived_reports(&user);
 
-    // No panics = all accessible
-    assert!(true);
+    // No panics means the endpoints remained callable through the auth path.
 }
 
 /// Test 14: Authorization call count validates enforcement
