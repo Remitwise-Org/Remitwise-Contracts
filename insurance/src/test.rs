@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use remitwise_common::CoverageType;
     use soroban_sdk::{
         testutils::Address as _,
