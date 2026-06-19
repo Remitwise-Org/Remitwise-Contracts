@@ -2607,6 +2607,190 @@ fn test_insurance_paging_cursor_monotonicity() {
     assert_eq!(report.data_availability, DataAvailability::Complete);
 }
 
+mod topn_tie_bills {
+    use crate::{Bill, BillPage, BillPaymentsTrait};
+    use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
+
+    #[contract]
+    pub struct BillsTieAllEqual;
+
+    // Always return 1 page for simplicity.
+    #[contractimpl]
+    impl BillPaymentsTrait for BillsTieAllEqual {
+        fn get_unpaid_bills(_env: Env, _owner: Address, _c: u32, _l: u32) -> BillPage {
+            BillPage {
+                items: Vec::new(&_env),
+                next_cursor: 0,
+                count: 0,
+            }
+        }
+
+        fn get_total_unpaid(_env: Env, _owner: Address) -> i128 {
+            0
+        }
+
+        fn get_all_bills_for_owner(env: Env, owner: Address, _cursor: u32, _limit: u32) -> BillPage {
+            // All equal amounts => order must be ID ascending due to tie-break.
+            // Also intentionally insert in descending id order to catch non-determinism.
+            let mut items = Vec::new(&env);
+            let amount: i128 = 100;
+            let ids = [5u32, 4, 3, 2, 1];
+            for id in ids.iter() {
+                items.push_back(Bill {
+                    id: *id,
+                    owner: owner.clone(),
+                    name: SorobanString::from_str(&env, "B"),
+                    external_ref: None,
+                    amount,
+                    due_date: 1_735_689_600,
+                    recurring: false,
+                    frequency_days: 0,
+                    paid: false,
+                    created_at: 1_704_067_200,
+                    paid_at: None,
+                    schedule_id: None,
+                    tags: Vec::new(&env),
+                    currency: SorobanString::from_str(&env, "XLM"),
+                });
+            }
+            BillPage { items, next_cursor: 0, count: ids.len() as u32 }
+        }
+    }
+}
+
+mod topn_tie_savings {
+    use crate::{GoalPage, SavingsGoal, SavingsGoalsTrait};
+    use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
+
+    #[contract]
+    pub struct SavingsTieAllEqual;
+
+    #[contractimpl]
+    impl SavingsGoalsTrait for SavingsTieAllEqual {
+        fn get_all_goals(_env: Env, _owner: Address) -> Vec<SavingsGoal> {
+            // Not used by Top-N path (uses paginated get_goals).
+            Vec::new(&_env)
+        }
+
+        fn get_goals(env: Env, owner: Address, _cursor: u32, _limit: u32) -> GoalPage {
+            // All equal target_amount => order must be ID ascending.
+            let mut items = Vec::new(&env);
+            let target_amount: i128 = 10_000;
+            let ids = [5u32, 4, 3, 2, 1];
+            for id in ids.iter() {
+                items.push_back(SavingsGoal {
+                    id: *id,
+                    owner: owner.clone(),
+                    name: SorobanString::from_str(&env, "G"),
+                    target_amount,
+                    current_amount: 1_000,
+                    target_date: 1_735_689_600,
+                    locked: false,
+                    unlock_date: None,
+                    tags: Vec::new(&env),
+                });
+            }
+            GoalPage { items, next_cursor: 0, count: ids.len() as u32 }
+        }
+
+        fn is_goal_completed(_env: Env, _goal_id: u32) -> bool {
+            false
+        }
+    }
+}
+
+#[test]
+fn test_top_n_reports_tie_break_is_deterministic_bills() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1704067200);
+
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, topn_tie_bills::BillsTieAllEqual);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(&env);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    let period_start = 1704067200u64;
+    let period_end = 1706745600u64;
+
+    let r1 = client.get_top_bills_report(&user, &period_start, &period_end);
+    let r2 = client.get_top_bills_report(&user, &period_start, &period_end);
+    assert!(r1.items.len() <= crate::MAX_ITEMS_PER_REPORT as usize);
+
+    // Deterministic across repeated calls.
+    assert_eq!(r1.items.len(), r2.items.len());
+    for i in 0..r1.items.len() {
+        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+    }
+
+    // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
+    // Our mock returns 5 items; MAX is 10, so all 5 should be present.
+    let expected_ids = [1u32, 2, 3, 4, 5];
+    assert_eq!(r1.items.len(), expected_ids.len());
+    for (i, expected) in expected_ids.iter().enumerate() {
+        assert_eq!(r1.items.get(i as u32).unwrap().id, *expected);
+    }
+}
+
+#[test]
+fn test_top_n_reports_tie_break_is_deterministic_savings() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1704067200);
+
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, topn_tie_savings::SavingsTieAllEqual);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet = Address::generate(&env);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet,
+    );
+
+    let period_start = 1704067200u64;
+    let period_end = 1706745600u64;
+
+    let r1 = client.get_top_savings_report(&user, &period_start, &period_end);
+    let r2 = client.get_top_savings_report(&user, &period_start, &period_end);
+
+    assert_eq!(r1.items.len(), r2.items.len());
+    for i in 0..r1.items.len() {
+        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+    }
+
+    let expected_ids = [1u32, 2, 3, 4, 5];
+    assert_eq!(r1.items.len(), expected_ids.len());
+    for (i, expected) in expected_ids.iter().enumerate() {
+        assert_eq!(r1.items.get(i as u32).unwrap().id, *expected);
+    }
+}
+
 #[test]
 fn test_top_n_reports() {
     let env = create_test_env();
@@ -2655,3 +2839,4 @@ fn test_top_n_reports() {
     assert_eq!(savings_report.items.get(0).unwrap().target_amount, 10000);
     assert_eq!(savings_report.items.get(1).unwrap().target_amount, 5000);
 }
+

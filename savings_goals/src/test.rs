@@ -3461,6 +3461,170 @@ fn test_remove_tags_from_goal_nonexistent_goal_panics() {
     client.remove_tags_from_goal(&user, &999, &tags);
 }
 
+/// Removing a tag that is not present on the goal must be a no-op (no error)
+/// and must not affect other tag entries or the tag index.
+#[test]
+fn test_remove_tags_absent_tag_is_noop_and_does_not_touch_index() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "Tagged"), &1000, &2000000000);
+
+    // Add two tags.
+    let mut add_tags = SorobanVec::new(&env);
+    add_tags.push_back(String::from_str(&env, "rent"));
+    add_tags.push_back(String::from_str(&env, "food"));
+    client.add_tags_to_goal(&user, &goal_id, &add_tags);
+
+    // Verify both are indexed.
+    let page_rent = client.get_goals_by_tag(&user, &String::from_str(&env, "rent"), &0, &50);
+    let page_food = client.get_goals_by_tag(&user, &String::from_str(&env, "food"), &0, &50);
+    assert_eq!(page_rent.count, 1);
+    assert_eq!(page_food.count, 1);
+
+    // Remove a tag that is NOT present.
+    let mut remove_missing = SorobanVec::new(&env);
+    remove_missing.push_back(String::from_str(&env, "travel"));
+    client.remove_tags_from_goal(&user, &goal_id, &remove_missing);
+
+    // Goal tags unchanged.
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.tags.len(), 2);
+
+    // Tag indexes for existing tags unchanged.
+    let page_rent_after = client.get_goals_by_tag(&user, &String::from_str(&env, "rent"), &0, &50);
+    let page_food_after = client.get_goals_by_tag(&user, &String::from_str(&env, "food"), &0, &50);
+    assert_eq!(page_rent_after.count, 1);
+    assert_eq!(page_food_after.count, 1);
+}
+
+/// Removing the same tag twice must be idempotent.
+/// The second call must be a no-op and must not reintroduce the goal into
+/// the tag index.
+#[test]
+fn test_remove_tags_same_tag_twice_is_idempotent_and_index_clean() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "DoubleRemove"), &1000, &2000000000);
+
+    // Add a tag.
+    let mut add_tags = SorobanVec::new(&env);
+    add_tags.push_back(String::from_str(&env, "urgent"));
+    client.add_tags_to_goal(&user, &goal_id, &add_tags);
+
+    // Sanity: indexed.
+    let page_before = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
+    assert_eq!(page_before.count, 1);
+
+    // Remove using mixed-case input to exercise canonicalization.
+    let mut remove_tag = SorobanVec::new(&env);
+    remove_tag.push_back(String::from_str(&env, "URGENT"));
+
+    client.remove_tags_from_goal(&user, &goal_id, &remove_tag);
+
+    // Removed: goal has no tags, and tag index is cleaned.
+    let goal_after_first = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after_first.tags.len(), 0);
+    let page_after_first = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
+    assert_eq!(page_after_first.count, 0);
+
+    // Remove again (idempotent no-op)
+    client.remove_tags_from_goal(&user, &goal_id, &remove_tag);
+
+    let goal_after_second = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after_second.tags.len(), 0);
+
+    let page_after_second = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
+    assert_eq!(page_after_second.count, 0);
+}
+
+/// Removing the last remaining tag must leave the goal with an empty tag set
+/// and must also delete the corresponding (owner, tag) tag-index entry.
+#[test]
+fn test_remove_last_tag_leaves_empty_tags_and_cleans_index() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "LastTag"), &1000, &2000000000);
+
+    // Add exactly one tag.
+    let mut add_tags = SorobanVec::new(&env);
+    add_tags.push_back(String::from_str(&env, "Emergency"));
+    client.add_tags_to_goal(&user, &goal_id, &add_tags);
+
+    // Confirm indexed.
+    let page_before = client.get_goals_by_tag(&user, &String::from_str(&env, "emergency"), &0, &50);
+    assert_eq!(page_before.count, 1);
+
+    // Remove the last tag with canonicalized casing.
+    let mut remove_tags = SorobanVec::new(&env);
+    remove_tags.push_back(String::from_str(&env, "eMeRgEnCy"));
+    client.remove_tags_from_goal(&user, &goal_id, &remove_tags);
+
+    // Goal has empty tag set.
+    let goal_after = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after.tags.len(), 0);
+
+    // Tag index should be removed.
+    let page_after = client.get_goals_by_tag(&user, &String::from_str(&env, "emergency"), &0, &50);
+    assert_eq!(page_after.count, 0);
+}
+
+/// Owner-only authorization: a non-owner must not be able to remove tags.
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_remove_tags_from_goal_non_owner_auth_failure() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    let other = Address::generate(&env);
+
+    client.init();
+    client.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &user,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "create_goal",
+            args: (
+                &user,
+                String::from_str(&env, "Auth"),
+                1000i128,
+                2000000000u64,
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let goal_id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
+
+    let mut add_tags = SorobanVec::new(&env);
+    add_tags.push_back(String::from_str(&env, "urgent"));
+    client.add_tags_to_goal(&user, &goal_id, &add_tags);
+
+    // Attempt removal with a non-owner.
+    client.remove_tags_from_goal(&other, &goal_id, &add_tags);
+}
+
+
 #[test]
 fn test_add_and_remove_tags_to_goal_success() {
     let env = Env::default();

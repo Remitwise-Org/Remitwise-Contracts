@@ -168,7 +168,14 @@ pub struct FinancialHealthReport {
     pub generated_at: u64,
 }
 
-/// Top-N bills by amount or due date
+
+/// Top-N bills sorted deterministically.
+///
+/// Ordering contract (reproducible across calls/networks):
+/// - Primary sort: `amount` descending
+/// - Tie-break (when `amount` is equal): `id` ascending
+///
+/// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
 #[derive(Clone)]
 pub struct TopNBillsReport {
@@ -180,7 +187,13 @@ pub struct TopNBillsReport {
     pub data_availability: DataAvailability,
 }
 
-/// Top-N savings goals by target amount or progress
+/// Top-N savings goals sorted deterministically.
+///
+/// Ordering contract (reproducible across calls/networks):
+/// - Primary sort: `target_amount` descending
+/// - Tie-break (when `target_amount` is equal): `id` ascending
+///
+/// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
 #[derive(Clone)]
 pub struct TopNSavingsReport {
@@ -192,6 +205,7 @@ pub struct TopNSavingsReport {
     pub period_end: u64,
     pub data_availability: DataAvailability,
 }
+
 
 /// Contract addresses configuration
 #[contracttype]
@@ -1424,19 +1438,30 @@ impl ReportingContract {
             total_amount += bill.amount;
             total_count += 1;
 
-            // Sorted insertion for Top-N
+            // Sorted insertion for Top-N (bounded)
+            //
+            // Ordering contract (deterministic):
+            // 1) Primary: amount descending
+            // 2) Tie-break: bill id ascending
             let mut inserted = false;
             for i in 0..top_bills.len() {
-                let existing_bill_amount = match top_bills.get(i) {
-                    Some(b) => b.amount,
-                    None => 0,
+                let existing = top_bills.get(i).unwrap();
+                let should_insert = if bill.amount > existing.amount {
+                    true
+                } else if bill.amount < existing.amount {
+                    false
+                } else {
+                    // Equal amounts → deterministic tie-break by id ascending
+                    bill.id < existing.id
                 };
-                if bill.amount > existing_bill_amount {
+
+                if should_insert {
                     top_bills.insert(i, bill.clone());
                     inserted = true;
                     break;
                 }
             }
+
             if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
                 top_bills.push_back(bill);
             } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
@@ -1504,14 +1529,24 @@ impl ReportingContract {
             total_saved += goal.current_amount;
             total_count += 1;
 
-            // Sorted insertion for Top-N
+            // Sorted insertion for Top-N (bounded)
+            //
+            // Ordering contract (deterministic):
+            // 1) Primary: target amount descending
+            // 2) Tie-break: savings goal id ascending
             let mut inserted = false;
             for i in 0..top_goals.len() {
-                let existing_goal_target = match top_goals.get(i) {
-                    Some(g) => g.target_amount,
-                    None => 0,
+                let existing = top_goals.get(i).unwrap();
+                let should_insert = if goal.target_amount > existing.target_amount {
+                    true
+                } else if goal.target_amount < existing.target_amount {
+                    false
+                } else {
+                    // Equal targets → deterministic tie-break by id ascending
+                    goal.id < existing.id
                 };
-                if goal.target_amount > existing_goal_target {
+
+                if should_insert {
                     top_goals.insert(i, goal.clone());
                     inserted = true;
                     break;
