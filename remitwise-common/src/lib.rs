@@ -194,22 +194,22 @@ pub struct RemitwiseEvents;
 
 impl RemitwiseEvents {
     /// Emits a single event with the given category, priority, and action.
-///
-/// * `category` – The `EventCategory` describing the type of event.
-/// * `priority` – The `EventPriority` indicating the importance level.
-/// * `action` – A short `Symbol` identifying the specific action.
-/// * `data` – The event payload implementing `IntoVal`.
-///
-/// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
-pub fn emit<T>(
-    env: &soroban_sdk::Env,
-    category: EventCategory,
-    priority: EventPriority,
-    action: Symbol,
-    data: T,
-) where
-    T: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
-{
+    ///
+    /// * `category` – The `EventCategory` describing the type of event.
+    /// * `priority` – The `EventPriority` indicating the importance level.
+    /// * `action` – A short `Symbol` identifying the specific action.
+    /// * `data` – The event payload implementing `IntoVal`.
+    ///
+    /// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
+    pub fn emit<T>(
+        env: &soroban_sdk::Env,
+        category: EventCategory,
+        priority: EventPriority,
+        action: Symbol,
+        data: T,
+    ) where
+        T: soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>,
+    {
         let topics = (
             symbol_short!("Remitwise"),
             category.to_u32(),
@@ -220,13 +220,13 @@ pub fn emit<T>(
     }
 
     /// Emits a batch event for the given category and action with a count.
-///
-/// * `category` – The `EventCategory` of the batched events.
-/// * `action` – Symbol representing the batch action.
-/// * `count` – Number of events in the batch.
-///
-/// This always uses `EventPriority::Low` for batch events.
-pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbol, count: u32) {
+    ///
+    /// * `category` – The `EventCategory` of the batched events.
+    /// * `action` – Symbol representing the batch action.
+    /// * `count` – Number of events in the batch.
+    ///
+    /// This always uses `EventPriority::Low` for batch events.
+    pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbol, count: u32) {
         let topics = (
             symbol_short!("Remitwise"),
             category.to_u32(),
@@ -235,5 +235,114 @@ pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbo
         );
         let data = (action, count);
         env.events().publish(topics, data);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{symbol_short, testutils::Events, vec, Env, FromVal, IntoVal};
+
+    #[soroban_sdk::contract]
+    pub struct EventCaptureContract;
+
+    /// Every category discriminant is part of the public Remitwise event topic
+    /// schema and must stay stable for indexer filters.
+    #[test]
+    fn event_category_to_u32_is_stable_and_exhaustive() {
+        let categories = [
+            (EventCategory::Transaction, 0u32),
+            (EventCategory::State, 1u32),
+            (EventCategory::Alert, 2u32),
+            (EventCategory::System, 3u32),
+            (EventCategory::Access, 4u32),
+        ];
+
+        assert_eq!(categories.len(), 5, "EventCategory variant count drifted");
+        for (category, encoded) in categories {
+            assert_eq!(category.to_u32(), encoded);
+        }
+    }
+
+    /// Every priority discriminant is part of the public Remitwise event topic
+    /// schema and must stay stable for indexer filters.
+    #[test]
+    fn event_priority_to_u32_is_stable_and_exhaustive() {
+        let priorities = [
+            (EventPriority::Low, 0u32),
+            (EventPriority::Medium, 1u32),
+            (EventPriority::High, 2u32),
+        ];
+
+        assert_eq!(priorities.len(), 3, "EventPriority variant count drifted");
+        for (priority, encoded) in priorities {
+            assert_eq!(priority.to_u32(), encoded);
+        }
+    }
+
+    /// `emit_batch` publishes the frozen topic tuple
+    /// `(Remitwise, category, Low, batch)` and payload `(action, count)`.
+    #[test]
+    fn emit_batch_schema_is_stable_for_every_category() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EventCaptureContract);
+        let cases = [
+            (EventCategory::Transaction, 0u32, symbol_short!("txn")),
+            (EventCategory::State, 1u32, symbol_short!("state")),
+            (EventCategory::Alert, 2u32, symbol_short!("alert")),
+            (EventCategory::System, 3u32, symbol_short!("system")),
+            (EventCategory::Access, 4u32, symbol_short!("access")),
+        ];
+
+        for (index, (category, encoded_category, action)) in cases.iter().enumerate() {
+            let count = (index as u32) + 1;
+            env.as_contract(&contract_id, || {
+                RemitwiseEvents::emit_batch(&env, *category, action.clone(), count);
+            });
+
+            let event = env.events().all().last().unwrap();
+            let expected_topics = vec![
+                &env,
+                symbol_short!("Remitwise").into_val(&env),
+                (*encoded_category).into_val(&env),
+                EventPriority::Low.to_u32().into_val(&env),
+                symbol_short!("batch").into_val(&env),
+            ];
+            assert_eq!(event.1, expected_topics);
+
+            let payload: (Symbol, u32) = FromVal::from_val(&env, &event.2);
+            assert_eq!(payload, (action.clone(), count));
+        }
+    }
+
+    /// Batch counts at the lower and upper `u32` bounds must serialize as the
+    /// same `(action, count)` payload tuple used by ordinary counts.
+    #[test]
+    fn emit_batch_count_bounds_are_well_formed() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EventCaptureContract);
+        let cases = [
+            (symbol_short!("zero"), 0u32),
+            (symbol_short!("max"), u32::MAX),
+        ];
+
+        for (action, count) in cases {
+            env.as_contract(&contract_id, || {
+                RemitwiseEvents::emit_batch(&env, EventCategory::System, action.clone(), count);
+            });
+
+            let event = env.events().all().last().unwrap();
+            let expected_topics = vec![
+                &env,
+                symbol_short!("Remitwise").into_val(&env),
+                EventCategory::System.to_u32().into_val(&env),
+                EventPriority::Low.to_u32().into_val(&env),
+                symbol_short!("batch").into_val(&env),
+            ];
+            assert_eq!(event.1, expected_topics);
+
+            let payload: (Symbol, u32) = FromVal::from_val(&env, &event.2);
+            assert_eq!(payload, (action, count));
+        }
     }
 }

@@ -18,6 +18,20 @@ let topics = (
 );
 ```
 
+Batch-summary events emitted through `RemitwiseEvents::emit_batch` use the same
+category encoding, always use `EventPriority::Low`, and publish the fixed topic
+tuple:
+
+```rust
+let topics = (
+    symbol_short!("Remitwise"),
+    category.to_u32(),
+    EventPriority::Low.to_u32(),
+    symbol_short!("batch"),
+);
+let data = (action, count);
+```
+
 The taxonomy enables off‑chain indexers and alerting services to reliably filter, sort, and interpret events across contracts.
 
 ---

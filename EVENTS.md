@@ -1000,6 +1000,30 @@ Each contract maintains a version number that can be queried via `get_version()`
 - Indexers should monitor `upgraded` events for version changes
 - Contract upgrades are announced via `set_version()` calls
 
+### Common Batch Event Schema
+
+`RemitwiseEvents::emit_batch` emits a common summary event for batch workflows
+that need one aggregate record instead of one event per item.
+
+**Topic:** `("Remitwise", EventCategory::<category>, EventPriority::Low, "batch")`
+
+**Encoded Topic Values:**
+- `EventCategory::Transaction` = `0`
+- `EventCategory::State` = `1`
+- `EventCategory::Alert` = `2`
+- `EventCategory::System` = `3`
+- `EventCategory::Access` = `4`
+- `EventPriority::Low` = `0`
+- `EventPriority::Medium` = `1`
+- `EventPriority::High` = `2`
+
+**Payload:** `(action: Symbol, count: u32)`
+
+Indexers should subscribe to the fixed `Remitwise` / category / `Low` /
+`batch` topic tuple and read the action symbol plus count from the payload.
+The schema permits `count == 0` and `count == u32::MAX`; producers remain
+responsible for applying any business-level batch-size limits before emitting.
+
 ### Migration Path
 
 When upgrading contracts:
@@ -1038,6 +1062,7 @@ Per-contract:
 | `remittance_split` | [remittance_split/src/events_schema_test.rs](remittance_split/src/events_schema_test.rs) |
 | `reporting` | [reporting/src/events_schema_test.rs](reporting/src/events_schema_test.rs) |
 | `savings_goals` | [savings_goals/src/events_schema_test.rs](savings_goals/src/events_schema_test.rs) |
+| `remitwise-common` | [remitwise-common/src/lib.rs](remitwise-common/src/lib.rs) |
 
 A failing schema test is the signal that **a change is breaking for indexers**.
 The required workflow is:
