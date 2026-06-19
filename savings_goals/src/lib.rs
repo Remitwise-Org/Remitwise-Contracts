@@ -344,7 +344,7 @@ impl SavingsGoalContract {
             .persistent()
             .get(&DataKey::ArchivedGoalsIndex(owner.clone()))
             .unwrap_or_else(|| Vec::new(env));
-        active_ids.len() + archived_ids.len()
+        active_ids.len().saturating_add(archived_ids.len())
     }
 
     fn is_function_paused(env: &Env, func: Symbol) -> bool {
@@ -394,7 +394,6 @@ impl SavingsGoalContract {
 
         let end = (offset + limit).min(total_count);
         let mut result = Vec::new(&env);
-
         for i in offset..end {
             let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
             if let Some(goal) = env

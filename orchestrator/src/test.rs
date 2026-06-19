@@ -68,9 +68,18 @@ fn do_flow(env: &Env, client: &OrchestratorClient, executor: &Address, _nonce: u
     // register a new contract on every call as that exhausts the budget.
     let mock_id = env.register_contract(None, MockContract);
     env.budget().reset_unlimited();
-    client.execute_remittance_flow(
-        executor, &1000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
-    );
+        client.execute_remittance_flow(&RemittanceFlowParams {
+            caller: executor.clone(),
+            total_amount: 1000i128,
+            family_wallet: mock_id.clone(),
+            remittance_split: mock_id.clone(),
+            savings: mock_id.clone(),
+            bills: mock_id.clone(),
+            insurance: mock_id.clone(),
+            goal_id: 1,
+            bill_id: 1,
+            policy_id: 1,
+        });
 }
 
 /// Mirror of `Orchestrator::compute_request_hash` for test use.
@@ -107,12 +116,21 @@ fn test_execute_flow_success() {
     let mock_id = env.register_contract(None, MockContract);
     let caller = Address::generate(&env);
 
-    client.execute_remittance_flow(
-        &caller, &10000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
-    );
+    client.execute_remittance_flow(&RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10000i128,
+        family_wallet: mock_id.clone(),
+        remittance_split: mock_id.clone(),
+        savings: mock_id.clone(),
+        bills: mock_id.clone(),
+        insurance: mock_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
 
     // Check lock is released
-    assert_eq!(client.get_execution_state(), false);
+    assert!(!client.get_execution_state());
 }
 
 #[test]
@@ -127,12 +145,21 @@ fn test_lock_released_on_invalid_amount() {
     let caller = Address::generate(&env);
 
     // Should return Err(InvalidAmount)
-    let result = client.try_execute_remittance_flow(
-        &caller, &-100i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
-    );
+    let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: -100i128,
+        family_wallet: mock_id.clone(),
+        remittance_split: mock_id.clone(),
+        savings: mock_id.clone(),
+        bills: mock_id.clone(),
+        insurance: mock_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
 
     assert!(result.is_err());
-    assert_eq!(client.get_execution_state(), false);
+    assert!(!client.get_execution_state());
 }
 
 #[test]
@@ -151,9 +178,18 @@ fn test_reentrancy_rejection() {
     });
 
     let mock_id = Address::generate(&env);
-    let result = client.try_execute_remittance_flow(
-        &caller, &1000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
-    );
+    let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 1000i128,
+        family_wallet: mock_id.clone(),
+        remittance_split: mock_id.clone(),
+        savings: mock_id.clone(),
+        bills: mock_id.clone(),
+        insurance: mock_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
 
     match result {
         Err(Ok(OrchestratorError::ExecutionLocked)) => (),
@@ -176,25 +212,25 @@ fn test_lock_recovery_after_failure() {
     let caller = Address::generate(&env);
 
     // A panic in Soroban rolls back everything, including the lock.
-    let result = client.try_execute_remittance_flow(
-        &caller,
-        &1000i128,
-        &failing_id,
-        &failing_id,
-        &failing_id,
-        &failing_id,
-        &failing_id,
-        &1,
-        &1,
-        &1,
-    );
+    let result = client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 1000i128,
+        family_wallet: failing_id.clone(),
+        remittance_split: failing_id.clone(),
+        savings: failing_id.clone(),
+        bills: failing_id.clone(),
+        insurance: failing_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
 
     assert!(result.is_err());
     // In Soroban, if the transaction panics, the state is rolled back.
     // In a test, if we use `try_`, it might behave differently depending on where the panic happens.
     // But since `perform_remittance_flow` is called within the orchestrator, a panic there
     // will roll back the `EXEC_LOCK` set by the orchestrator.
-    assert_eq!(client.get_execution_state(), false);
+    assert!(!client.get_execution_state());
 }
 
 // ---------------------------------------------------------------------------

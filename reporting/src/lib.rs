@@ -1604,20 +1604,24 @@ impl ReportingContract {
             // 2) Tie-break: bill id ascending
             let mut inserted = false;
             for i in 0..top_bills.len() {
-                let existing = top_bills.get(i).unwrap();
-                let should_insert = if bill.amount > existing.amount {
-                    true
-                } else if bill.amount < existing.amount {
-                    false
-                } else {
-                    // Equal amounts → deterministic tie-break by id ascending
-                    bill.id < existing.id
-                };
+                if let Some(existing) = top_bills.get(i) {
+                    let should_insert = if bill.amount > existing.amount {
+                        true
+                    } else if bill.amount < existing.amount {
+                        false
+                    } else {
+                        // Equal amounts → deterministic tie-break by id ascending
+                        bill.id < existing.id
+                    };
 
-                if should_insert {
-                    top_bills.insert(i, bill.clone());
-                    inserted = true;
-                    break;
+                    if should_insert {
+                        top_bills.insert(i, bill.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
 
@@ -1695,20 +1699,24 @@ impl ReportingContract {
             // 2) Tie-break: savings goal id ascending
             let mut inserted = false;
             for i in 0..top_goals.len() {
-                let existing = top_goals.get(i).unwrap();
-                let should_insert = if goal.target_amount > existing.target_amount {
-                    true
-                } else if goal.target_amount < existing.target_amount {
-                    false
-                } else {
-                    // Equal targets → deterministic tie-break by id ascending
-                    goal.id < existing.id
-                };
+                if let Some(existing) = top_goals.get(i) {
+                    let should_insert = if goal.target_amount > existing.target_amount {
+                        true
+                    } else if goal.target_amount < existing.target_amount {
+                        false
+                    } else {
+                        // Equal targets → deterministic tie-break by id ascending
+                        goal.id < existing.id
+                    };
 
-                if should_insert {
-                    top_goals.insert(i, goal.clone());
-                    inserted = true;
-                    break;
+                    if should_insert {
+                        top_goals.insert(i, goal.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
             if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {

@@ -124,16 +124,18 @@ fn test_orchestrated_multisig_flow() {
     /// Since the user is not yet an Admin, the Orchestrator check fails.
     let total_amount = 5000i128;
     let result = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
 
     match result {
@@ -158,16 +160,18 @@ fn test_orchestrated_multisig_flow() {
 
     // Assert flow still fails (quorum not yet met)
     let result_still_fails = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
     assert!(result_still_fails.is_err());
 
@@ -178,18 +182,18 @@ fn test_orchestrated_multisig_flow() {
 
     // Now quorum is met, user is Admin, flow should succeed
     orchestrator_client
-        .execute_remittance_flow(
-            &user,
-            &total_amount,
-            &family_wallet_id,
-            &remittance_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &goal_id,
-            &bill_id,
-            &policy_id,
-        )
+        .execute_remittance_flow(&RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        })
         .unwrap();
 
     // 5. Scenario: Paused Orchestrator (Downstream contract paused)
@@ -199,16 +203,18 @@ fn test_orchestrated_multisig_flow() {
     savings_client.pause(&admin);
 
     let result_paused = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
     assert!(
         result_paused.is_err(),
@@ -228,16 +234,18 @@ fn test_orchestrated_multisig_flow() {
     });
 
     let result_locked = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
 
     match result_locked {
