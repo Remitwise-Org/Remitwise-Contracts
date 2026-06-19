@@ -247,7 +247,7 @@ fn test_ttl_extensions() {
     let threshold = INSTANCE_LIFETIME_THRESHOLD;
 
     // Advance to threshold - 1
-    env.ledger().set_sequence(threshold - 1);
+    env.ledger().set_sequence_number(threshold - 1);
 
     // Access CONFIG
     let config = client.get_config();
@@ -255,7 +255,7 @@ fn test_ttl_extensions() {
 
     // After access, TTL should be bumped to INSTANCE_BUMP_AMOUNT
     // If we advance to threshold + 1, it should still exist
-    env.ledger().set_sequence(threshold + 1);
+    env.ledger().set_sequence_number(threshold + 1);
     let config = client.get_config();
     assert!(config.is_some(), "Config should exist after TTL bump");
 
@@ -270,7 +270,7 @@ fn test_ttl_extensions() {
 
     // Advance to p_threshold - 1 from current sequence
     let current_seq = env.ledger().sequence();
-    env.ledger().set_sequence(current_seq + p_threshold - 1);
+    env.ledger().set_sequence_number(current_seq + p_threshold - 1);
 
     // Access Schedule
     let schedule = client.get_remittance_schedule(&schedule_id);
@@ -280,14 +280,14 @@ fn test_ttl_extensions() {
     );
 
     // Advance beyond original threshold
-    env.ledger().set_sequence(current_seq + p_threshold + 1);
+    env.ledger().set_sequence_number(current_seq + p_threshold + 1);
     let schedule = client.get_remittance_schedule(&schedule_id);
     assert!(schedule.is_some(), "Schedule should exist after TTL bump");
 
     // 3. Multiple sequential bumps
     for _ in 0..3 {
         let seq = env.ledger().sequence();
-        env.ledger().set_sequence(seq + p_threshold - 1);
+        env.ledger().set_sequence_number(seq + p_threshold - 1);
         assert!(client.get_remittance_schedule(&schedule_id).is_some());
     }
 
@@ -1610,4 +1610,462 @@ fn test_invalid_deadline_does_not_advance_nonce() {
         nonce_before, nonce_after,
         "nonce must not advance on invalid deadline"
     );
+}
+
+
+// ============================================================================
+// verify_snapshot — adversarial bit-mutation property suite
+//
+// `verify_snapshot` is the standalone, read-only preflight an integrator calls
+// before trusting a snapshot in `import_snapshot`. This module generates valid
+// `ExportSnapshot` values and mutates them field-by-field to prove which
+// mutations the verifier rejects — and, where it does NOT reject, to pin the
+// gap as a documented finding (see `docs/remittance-verify-snapshot.md`).
+//
+// FINDING (see the `finding_*` tests below): `compute_checksum` is a linear
+// digest over `(schema_version, spending%, savings%, bills%, insurance%,
+// schedule_count) * 31`. Because the four percentages of any *valid* snapshot
+// always sum to 100, the checksum is effectively a function of
+// `(schema_version, schedule_count)` only. It therefore does NOT bind the split
+// distribution, `config.owner`, `config.timestamp`, `config.usdc_contract`,
+// `exported_at`, or individual schedule contents — contradicting the
+// `ExportSnapshot` doc comment that claims an "FNV-1a digest covering every
+// scalar field". This is test-only documentation; the checksum is not patched.
+// ============================================================================
+#[cfg(test)]
+mod verify_snapshot_tamper {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Bounded seed budget, consistent with the existing fuzz suites.
+    const PROPTEST_CASES: u32 = 48;
+
+    /// Strategy: four percentages that sum to exactly 100 (a valid config).
+    fn valid_percentages() -> impl Strategy<Value = (u32, u32, u32, u32)> {
+        (0u32..=100u32, 0u32..=100u32, 0u32..=100u32).prop_filter_map(
+            "reject triples that exceed 100",
+            |(a, b, c)| {
+                if a + b + c <= 100 {
+                    Some((a, b, c, 100 - a - b - c))
+                } else {
+                    None
+                }
+            },
+        )
+    }
+
+    /// Build an initialized contract with the given percentages and
+    /// `n_schedules` schedules, then assemble a valid snapshot (correct checksum
+    /// over the live config + schedules, current SCHEMA_VERSION).
+    ///
+    /// The snapshot is assembled directly (mirroring `export_snapshot`) rather
+    /// than via the `export_snapshot` entry point, because that entry point
+    /// panics for an owner with zero schedules: `get_remittance_schedules`
+    /// bumps the TTL of the never-written `OwnerSchedules` key (`Storage,
+    /// MissingValue`). That is a separate latent bug, noted in
+    /// `docs/remittance-verify-snapshot.md`; assembling here keeps the
+    /// empty-schedule edge case testable. `test_real_export_snapshot_verifies`
+    /// covers the production `export_snapshot` path for `n >= 1`.
+    fn make_valid_snapshot(
+        sp: u32,
+        sg: u32,
+        sb: u32,
+        si: u32,
+        n_schedules: u32,
+    ) -> (Env, RemittanceSplitClient<'static>, Address, ExportSnapshot) {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000);
+
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        client.initialize_split(&owner, &0, &token, &sp, &sg, &sb, &si);
+        for i in 0..n_schedules {
+            // amount > 0, next_due in the future, non-recurring.
+            client.create_remittance_schedule(&owner, &((i as i128) + 1), &3_000, &0);
+        }
+
+        let config = client.get_config().expect("config present after init");
+        let schedules = if n_schedules == 0 {
+            Vec::new(&env)
+        } else {
+            client.get_remittance_schedules(&owner)
+        };
+        // Use the contract's own private digest so verify_snapshot recomputes an
+        // identical value over an untampered snapshot.
+        let checksum =
+            RemittanceSplit::compute_checksum(SCHEMA_VERSION, &config, &schedules);
+        let snap = ExportSnapshot {
+            schema_version: SCHEMA_VERSION,
+            checksum,
+            config,
+            schedules,
+            exported_at: env.ledger().timestamp(),
+        };
+        (env, client, owner, snap)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(PROPTEST_CASES))]
+
+        /// Positive control + checksum binding: an untouched snapshot verifies,
+        /// and flipping ANY single bit of the checksum is rejected with
+        /// `ChecksumMismatch` (the verifier recomputes the digest from the
+        /// remaining fields, so any altered checksum no longer matches).
+        #[test]
+        fn prop_checksum_single_bit_flip_rejected(
+            (sp, sg, sb, si) in valid_percentages(),
+            n in 0u32..6,
+            bit in 0u32..64,
+        ) {
+            let (_env, client, _owner, snap) = make_valid_snapshot(sp, sg, sb, si, n);
+
+            // Positive control: the pristine snapshot passes.
+            prop_assert_eq!(client.verify_snapshot(&snap), true);
+
+            // Flip exactly one bit of the checksum word.
+            let mut tampered = snap.clone();
+            tampered.checksum ^= 1u64 << bit;
+            prop_assert_eq!(
+                client.try_verify_snapshot(&tampered),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+        }
+
+        /// SCHEMA_VERSION mutation is detected. Out-of-range versions are
+        /// rejected by the boundary check (`UnsupportedVersion`); an in-range
+        /// version that differs from the one the checksum was computed over is
+        /// rejected by the checksum check (`ChecksumMismatch`).
+        #[test]
+        fn prop_schema_version_mutation_rejected(
+            (sp, sg, sb, si) in valid_percentages(),
+            n in 0u32..4,
+            bad in prop_oneof![Just(0u32), Just(3u32), Just(100u32), Just(u32::MAX)],
+        ) {
+            let (_env, client, _owner, snap) = make_valid_snapshot(sp, sg, sb, si, n);
+
+            // Out-of-range version: caught by the boundary check first.
+            let mut out_of_range = snap.clone();
+            out_of_range.schema_version = bad;
+            prop_assert_eq!(
+                client.try_verify_snapshot(&out_of_range),
+                Err(Ok(RemittanceSplitError::UnsupportedVersion))
+            );
+
+            // In-range but wrong version (2 -> 1): the checksum no longer binds.
+            let mut wrong_in_range = snap.clone();
+            wrong_in_range.schema_version = MIN_SUPPORTED_SCHEMA_VERSION; // 1, != exported 2
+            prop_assert_eq!(
+                client.try_verify_snapshot(&wrong_in_range),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+        }
+
+        /// Percentage mutation that changes the sum is detected. Adding a
+        /// non-zero delta to one bucket changes the digest input, so the stale
+        /// checksum no longer matches (`ChecksumMismatch` is evaluated before
+        /// the per-field range / sum checks).
+        #[test]
+        fn prop_percentage_field_mutation_rejected(
+            (sp, sg, sb, si) in valid_percentages(),
+            n in 0u32..4,
+            delta in 1u32..40,
+        ) {
+            let (_env, client, _owner, snap) = make_valid_snapshot(sp, sg, sb, si, n);
+
+            let mut tampered = snap.clone();
+            tampered.config.spending_percent =
+                tampered.config.spending_percent.saturating_add(delta);
+            prop_assert_eq!(
+                client.try_verify_snapshot(&tampered),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+        }
+
+        /// Schedule-count mutation is detected: the digest includes the schedule
+        /// count, so dropping a schedule (without re-checksumming) is rejected.
+        #[test]
+        fn prop_schedule_count_mutation_rejected(
+            (sp, sg, sb, si) in valid_percentages(),
+            n in 1u32..6,
+        ) {
+            let (_env, client, _owner, snap) = make_valid_snapshot(sp, sg, sb, si, n);
+
+            let mut tampered = snap.clone();
+            tampered.schedules.pop_back(); // count decreases by 1
+            prop_assert_eq!(
+                client.try_verify_snapshot(&tampered),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+        }
+
+        /// Cross-check: a snapshot rejected by `verify_snapshot` is rejected by
+        /// `import_snapshot` with the SAME error code, for both the checksum and
+        /// version mutation classes. (`require_nonce` is a pure compare, so the
+        /// failed imports do not consume the nonce.)
+        #[test]
+        fn prop_verify_and_import_agree_on_rejection(
+            (sp, sg, sb, si) in valid_percentages(),
+            n in 0u32..4,
+        ) {
+            let (_env, client, owner, snap) = make_valid_snapshot(sp, sg, sb, si, n);
+            let nonce = client.get_nonce(&owner);
+
+            // Checksum tamper.
+            let mut bad_checksum = snap.clone();
+            bad_checksum.checksum ^= 1;
+            prop_assert_eq!(
+                client.try_verify_snapshot(&bad_checksum),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+            prop_assert_eq!(
+                client.try_import_snapshot(&owner, &nonce, &bad_checksum),
+                Err(Ok(RemittanceSplitError::ChecksumMismatch))
+            );
+
+            // Version tamper.
+            let mut bad_version = snap.clone();
+            bad_version.schema_version = 0;
+            prop_assert_eq!(
+                client.try_verify_snapshot(&bad_version),
+                Err(Ok(RemittanceSplitError::UnsupportedVersion))
+            );
+            prop_assert_eq!(
+                client.try_import_snapshot(&owner, &nonce, &bad_version),
+                Err(Ok(RemittanceSplitError::UnsupportedVersion))
+            );
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Deterministic edge cases
+    // ------------------------------------------------------------------------
+
+    /// Edge: empty schedule list. A snapshot with zero schedules verifies, and a
+    /// checksum flip is still rejected.
+    #[test]
+    fn test_verify_empty_schedule_list() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(25, 25, 25, 25, 0);
+        assert_eq!(snap.schedules.len(), 0);
+        assert!(client.verify_snapshot(&snap));
+
+        let mut tampered = snap.clone();
+        tampered.checksum = tampered.checksum.wrapping_add(1);
+        assert_eq!(
+            client.try_verify_snapshot(&tampered),
+            Err(Ok(RemittanceSplitError::ChecksumMismatch))
+        );
+    }
+
+    /// Edge: SCHEMA_VERSION exactly at MIN_SUPPORTED_SCHEMA_VERSION. A snapshot
+    /// re-tagged to the minimum supported version, re-checksummed for that
+    /// version, passes the boundary and checksum checks.
+    #[test]
+    fn test_verify_min_supported_schema_version_accepted() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 2);
+
+        let mut v1 = snap.clone();
+        v1.schema_version = MIN_SUPPORTED_SCHEMA_VERSION;
+        // Re-derive the checksum for the v1 tag so the snapshot is internally
+        // consistent (uses the same private digest the verifier recomputes).
+        v1.checksum =
+            RemittanceSplit::compute_checksum(MIN_SUPPORTED_SCHEMA_VERSION, &v1.config, &v1.schedules);
+
+        assert!(
+            client.verify_snapshot(&v1),
+            "a consistent snapshot at MIN_SUPPORTED_SCHEMA_VERSION must verify"
+        );
+    }
+
+    /// Realistic path: a snapshot produced by the production `export_snapshot`
+    /// entry point (for an owner with schedules) passes `verify_snapshot`.
+    #[test]
+    fn test_real_export_snapshot_verifies() {
+        let (_env, client, owner, _assembled) = make_valid_snapshot(40, 30, 20, 10, 2);
+        let exported = client
+            .export_snapshot(&owner)
+            .expect("export_snapshot returns Some for an owner with schedules");
+        assert!(
+            client.verify_snapshot(&exported),
+            "a freshly exported snapshot must verify"
+        );
+    }
+
+    /// Edge: maximum-length config (MAX_SCHEDULES_PER_OWNER schedules). The
+    /// snapshot verifies, and a checksum flip is still rejected at full size.
+    #[test]
+    fn test_verify_max_length_schedule_config() {
+        let (_env, client, _owner, snap) =
+            make_valid_snapshot(40, 30, 20, 10, MAX_SCHEDULES_PER_OWNER);
+        assert_eq!(snap.schedules.len(), MAX_SCHEDULES_PER_OWNER);
+        assert!(client.verify_snapshot(&snap));
+
+        let mut tampered = snap.clone();
+        tampered.checksum ^= 1u64 << 40;
+        assert_eq!(
+            client.try_verify_snapshot(&tampered),
+            Err(Ok(RemittanceSplitError::ChecksumMismatch))
+        );
+    }
+
+    // ------------------------------------------------------------------------
+    // Side-effect-free + caller-agnostic
+    // ------------------------------------------------------------------------
+
+    /// `verify_snapshot` writes no storage and requires no authorization. We
+    /// assert observable state (config, nonce, audit-log length) is unchanged
+    /// across many calls, and that the call still succeeds with an EMPTY auth
+    /// set (it takes no caller argument and calls no `require_auth`).
+    #[test]
+    fn test_verify_snapshot_is_side_effect_free_and_callerless() {
+        let (env, client, owner, snap) = make_valid_snapshot(40, 30, 20, 10, 3);
+
+        // SplitConfig derives neither PartialEq nor Debug, so compare the
+        // stable scalar/address fields individually.
+        let config_before = client.get_config().expect("config present after init");
+        let nonce_before = client.get_nonce(&owner);
+        let audit_before = client.get_audit_log(&0, &100).count;
+
+        // Many verifications, including rejected ones, must not mutate state.
+        for _ in 0..5 {
+            assert!(client.verify_snapshot(&snap));
+            let mut bad = snap.clone();
+            bad.checksum ^= 1;
+            let _ = client.try_verify_snapshot(&bad);
+        }
+
+        let config_after = client.get_config().expect("config present");
+        assert_eq!(config_after.owner, config_before.owner, "config.owner must be unchanged");
+        assert_eq!(config_after.usdc_contract, config_before.usdc_contract);
+        assert_eq!(config_after.spending_percent, config_before.spending_percent);
+        assert_eq!(config_after.savings_percent, config_before.savings_percent);
+        assert_eq!(config_after.bills_percent, config_before.bills_percent);
+        assert_eq!(config_after.insurance_percent, config_before.insurance_percent);
+        assert_eq!(config_after.timestamp, config_before.timestamp);
+        assert_eq!(config_after.initialized, config_before.initialized);
+        assert_eq!(client.get_nonce(&owner), nonce_before, "nonce must be unchanged");
+        assert_eq!(
+            client.get_audit_log(&0, &100).count,
+            audit_before,
+            "verify_snapshot must not append audit entries"
+        );
+
+        // Caller-agnostic: with no authorizations mocked, verify still works.
+        env.set_auths(&[]);
+        assert!(
+            client.verify_snapshot(&snap),
+            "verify_snapshot must not require any authorization"
+        );
+    }
+
+    // ------------------------------------------------------------------------
+    // FINDING characterization tests
+    //
+    // These pin the CURRENT (insecure) behavior: the checksum does not bind
+    // these field classes, so the listed tampered snapshots are ACCEPTED by
+    // verify_snapshot. They are documentation/regression anchors for the
+    // finding in docs/remittance-verify-snapshot.md, NOT an endorsement. If the
+    // checksum is hardened to cover these fields, these assertions should flip
+    // to expect `ChecksumMismatch`.
+    // ------------------------------------------------------------------------
+
+    /// FINDING: the split distribution is not bound. Swapping two percentages
+    /// (sum preserved at 100) leaves the checksum valid, so a snapshot that
+    /// reroutes funds passes verification.
+    #[test]
+    fn finding_sum_preserving_percentage_rebalance_accepted() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(50, 30, 10, 10, 1);
+
+        let mut rebalanced = snap.clone();
+        // Swap spending (50) and savings (30): still sums to 100.
+        core::mem::swap(
+            &mut rebalanced.config.spending_percent,
+            &mut rebalanced.config.savings_percent,
+        );
+        assert_ne!(
+            rebalanced.config.spending_percent,
+            snap.config.spending_percent,
+            "the distribution actually changed"
+        );
+        assert!(
+            client.verify_snapshot(&rebalanced),
+            "FINDING: checksum does not bind the split distribution"
+        );
+    }
+
+    /// FINDING: `config.timestamp` is not bound. Re-dating the config to any
+    /// other value <= the current ledger time is accepted.
+    #[test]
+    fn finding_config_timestamp_tamper_accepted() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 1);
+
+        let mut tampered = snap.clone();
+        tampered.config.timestamp = snap.config.timestamp.saturating_sub(1);
+        assert!(
+            client.verify_snapshot(&tampered),
+            "FINDING: checksum does not bind config.timestamp"
+        );
+    }
+
+    /// FINDING: `config.usdc_contract` is not bound. The token address — the
+    /// field whose stated purpose is to prevent substitution attacks — can be
+    /// swapped for an arbitrary address and still verifies.
+    #[test]
+    fn finding_usdc_contract_substitution_accepted() {
+        let (env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 1);
+
+        let mut tampered = snap.clone();
+        tampered.config.usdc_contract = Address::generate(&env);
+        assert!(
+            client.verify_snapshot(&tampered),
+            "FINDING: checksum does not bind config.usdc_contract (substitution risk)"
+        );
+    }
+
+    /// FINDING: `config.owner` is not bound by the checksum (verify_snapshot
+    /// also performs no ownership check — that is left to import_snapshot).
+    #[test]
+    fn finding_config_owner_tamper_accepted_by_verify() {
+        let (env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 1);
+
+        let mut tampered = snap.clone();
+        tampered.config.owner = Address::generate(&env);
+        assert!(
+            client.verify_snapshot(&tampered),
+            "FINDING: verify_snapshot does not bind/validate config.owner"
+        );
+    }
+
+    /// FINDING: `exported_at` is neither covered by the checksum nor validated,
+    /// so any value is accepted.
+    #[test]
+    fn finding_exported_at_tamper_accepted() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 1);
+
+        let mut tampered = snap.clone();
+        tampered.exported_at = snap.exported_at.wrapping_add(123_456);
+        assert!(
+            client.verify_snapshot(&tampered),
+            "FINDING: checksum/verify does not bind exported_at"
+        );
+    }
+
+    /// FINDING: schedule *contents* are not bound — only the count is. Mutating
+    /// a schedule's amount while keeping the count is accepted.
+    #[test]
+    fn finding_schedule_content_tamper_accepted() {
+        let (_env, client, _owner, snap) = make_valid_snapshot(40, 30, 20, 10, 2);
+
+        let mut tampered = snap.clone();
+        let mut sched = tampered.schedules.get(0).expect("schedule 0 exists");
+        sched.amount = sched.amount.wrapping_add(1_000_000);
+        tampered.schedules.set(0, sched);
+        assert!(
+            client.verify_snapshot(&tampered),
+            "FINDING: checksum binds only schedule count, not schedule contents"
+        );
+    }
 }
