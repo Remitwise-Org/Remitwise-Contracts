@@ -849,10 +849,7 @@ mod tests_nonce_eviction {
         deadline: u64,
     ) {
         let hash = request_hash(executor, amount, nonce, deadline);
-        assert_eq!(
-            client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash),
-            true
-        );
+        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash));
     }
 
     #[test]
