@@ -606,6 +606,94 @@ fn test_set_time_lock_succeeds() {
 }
 
 #[test]
+fn test_set_time_lock_monotonicity_boundary_equal_current_unlock_accepted() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Equal"),
+        &10000,
+        &5000,
+    );
+
+    // Set initial time-lock to a future timestamp.
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Attempt to set the same unlock_date again (no-op) while active.
+    let ok = client.set_time_lock(&owner, &goal_id, &current_unlock);
+    assert!(ok);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.unlock_date, Some(current_unlock));
+}
+
+#[test]
+fn test_set_time_lock_monotonicity_boundary_shortening_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Shorten"),
+        &10000,
+        &5000,
+    );
+
+    // Active lock
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Shorten while active should be rejected.
+    let shorter = 1500u64;
+    let res = client.try_set_time_lock(&owner, &goal_id, &shorter);
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::TimeLockShortening);
+}
+
+#[test]
+fn test_set_time_lock_monotonicity_boundary_extend_accepted() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Extend"),
+        &10000,
+        &5000,
+    );
+
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Extend while active should be accepted.
+    let extended = 3000u64;
+    let ok = client.set_time_lock(&owner, &goal_id, &extended);
+    assert!(ok);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.unlock_date, Some(extended));
+}
+
+#[test]
 fn test_withdraw_time_locked_goal_before_unlock() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
