@@ -49,6 +49,23 @@ stateDiagram-v2
 - `Error::Unauthorized` (1): Returned when the caller is not the admin, or if `unpause()` is called before the scheduled timelock expires.
 - `Error::InvalidSchedule` (5): Returned when `schedule_unpause()` is called with a past-dated timestamp, or when `unpause()` is called without a valid scheduled time.
 
+### E. Pause Precedence and Scope
+The `emergency_killswitch` implements layered pause scopes with the following precedence:
+- `pause()` (global pause) dominates all module and function pause state.
+- `pause_module(module)` pauses every function in the named module.
+- `pause_function(module, fn)` pauses an individual function only.
+
+`is_function_paused(env, module, fn)` returns `true` when any of these conditions are met:
+1. The contract is globally paused.
+2. The module is paused.
+3. The function is individually paused.
+
+Module-level pause is a blanket override but does not clear per-function pause flags. After `unpause_module(module)`, each function returns to its prior individual state:
+- Functions explicitly paused before or during a module pause remain paused.
+- Functions that were not individually paused before the module pause return to unpaused.
+
+These semantics are verified by unit tests in `emergency_killswitch/tests/test_killswitch.rs`.
+
 ---
 
 ## Security Verification and Testing
