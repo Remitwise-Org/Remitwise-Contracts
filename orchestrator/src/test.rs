@@ -602,3 +602,171 @@ fn test_deadline_window_prevents_old_requests() {
         "Request with deadline too far in future should fail"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Signed-flow deadline window boundary tests
+//
+// The signed entrypoint `execute_remittance_flow_signed` bounds the validity
+// of a signed authorization to `MAX_DEADLINE_WINDOW_SECS` (1 hour) past the
+// ledger timestamp. The boundary semantics enforced by
+// `require_nonce_hardened` (orchestrator/src/lib.rs) are:
+//
+//   deadline <  now                          -> DeadlineExpired (past)
+//   deadline == now                          -> DeadlineExpired (not strictly future)
+//   deadline == now + 1                      -> Accepted
+//   deadline == now + MAX_DEADLINE_..SECS    -> Accepted  (inclusive upper edge)
+//   deadline == now + MAX_DEADLINE_..SECS+1  -> DeadlineExpired (beyond window)
+//
+// The comparisons are `deadline <= now` (reject) and
+// `deadline > now + MAX_DEADLINE_WINDOW_SECS` (reject), so the upper edge is
+// inclusive. These tests pin each edge exactly so an off-by-one regression in
+// either comparison is caught. See docs/orchestrator-deadline-window.md.
+// ---------------------------------------------------------------------------
+
+/// A signed deadline exactly at `now + MAX_DEADLINE_WINDOW_SECS` is the
+/// inclusive upper edge of the window and MUST be accepted: the window check is
+/// `deadline > now + MAX_DEADLINE_WINDOW_SECS`, so equality passes through.
+#[test]
+fn test_signed_deadline_at_window_edge_accepted() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Use a non-zero ledger time so the edge arithmetic is unambiguous.
+    env.ledger().set_timestamp(1_000);
+    let executor = Address::generate(&env);
+
+    let now = env.ledger().timestamp();
+    let deadline = now + MAX_DEADLINE_WINDOW_SECS; // exactly at the edge
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+    let result =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "deadline == now + MAX_DEADLINE_WINDOW_SECS is the inclusive edge and must be accepted"
+    );
+    // Nonce advanced, confirming the flow actually executed (not silently no-op'd).
+    assert_eq!(client.get_nonce(&executor), 1);
+}
+
+/// One second beyond the window edge MUST be rejected with the typed
+/// `DeadlineExpired` error and MUST NOT advance the nonce.
+#[test]
+fn test_signed_deadline_one_past_window_rejected() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    env.ledger().set_timestamp(1_000);
+    let executor = Address::generate(&env);
+
+    let now = env.ledger().timestamp();
+    let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1; // one second too far
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+    let result =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::DeadlineExpired)),
+        "deadline one second beyond the window must be rejected with DeadlineExpired"
+    );
+    // A rejected call must leave the nonce counter untouched.
+    assert_eq!(client.get_nonce(&executor), 0);
+}
+
+/// A deadline strictly in the past MUST be rejected with `DeadlineExpired`.
+#[test]
+fn test_signed_deadline_in_past_rejected() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    env.ledger().set_timestamp(5_000);
+    let executor = Address::generate(&env);
+
+    let now = env.ledger().timestamp();
+    let deadline = now - 1; // strictly in the past
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+    let result =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::DeadlineExpired)),
+        "deadline in the past must be rejected with DeadlineExpired"
+    );
+    assert_eq!(client.get_nonce(&executor), 0);
+}
+
+/// The signed flow enforces nonce uniqueness alongside the deadline check: a
+/// signature that is still inside its deadline window cannot be replayed once
+/// its nonce has been consumed. After a successful execution the per-address
+/// counter advances, so re-submitting the identical (still-in-window) request
+/// is rejected even though the deadline itself remains valid.
+#[test]
+fn test_signed_in_window_replay_with_used_nonce_rejected() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    env.ledger().set_timestamp(1_000);
+    let executor = Address::generate(&env);
+
+    let now = env.ledger().timestamp();
+    let deadline = now + MAX_DEADLINE_WINDOW_SECS; // valid, in-window
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+    // First call succeeds and consumes nonce 0.
+    let first =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    assert_eq!(first, Ok(Ok(true)));
+    assert_eq!(client.get_nonce(&executor), 1);
+
+    // Replay the identical request while the deadline is still in-window. The
+    // deadline check passes, but the advanced counter rejects the stale nonce.
+    let replay =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    assert_eq!(
+        replay,
+        Err(Ok(OrchestratorError::InvalidNonce)),
+        "in-window replay of a consumed nonce must be rejected"
+    );
+    // The counter does not advance again on the rejected replay.
+    assert_eq!(client.get_nonce(&executor), 1);
+}
+
+/// A deadline-rejected signed call MUST NOT mutate `ExecutionStats`. The stats
+/// counters are only touched after the validation gate in
+/// `require_nonce_hardened` passes, so a deadline rejection (which returns
+/// before the lock/execute path) must leave every counter untouched.
+#[test]
+fn test_signed_deadline_rejected_does_not_mutate_stats() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    env.ledger().set_timestamp(1_000);
+    let executor = Address::generate(&env);
+
+    let before = client.get_execution_stats().unwrap();
+
+    // Beyond-window deadline -> DeadlineExpired before any stats mutation.
+    let now = env.ledger().timestamp();
+    let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+    let result =
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
+
+    let after = client.get_execution_stats().unwrap();
+    assert_eq!(
+        before, after,
+        "deadline-rejected signed call must not mutate ExecutionStats"
+    );
+}

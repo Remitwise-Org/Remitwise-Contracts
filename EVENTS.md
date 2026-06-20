@@ -789,6 +789,12 @@ pub struct EmergencyModeEvent {
 **Primary Topic Prefix:** `"orch"` for direct events, `"Remitwise"` for categorized events  
 **Documentation:** [docs/orchestrator-events.md](docs/orchestrator-events.md)
 
+> **Note:** Signed flows (`execute_remittance_flow_signed`) only emit the `flow`
+> lifecycle events below after passing the deadline-window and nonce checks. A
+> request rejected for an expired/out-of-window deadline returns
+> `DeadlineExpired` before emitting any flow event. See
+> [docs/orchestrator-deadline-window.md](docs/orchestrator-deadline-window.md).
+
 ### Event: Flow Started
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")`  
