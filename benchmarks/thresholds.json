@@ -52,6 +52,11 @@
       "mem_percent": 12,
       "description": "Cleanup iterates archived records and removes matched entries"
     },
+    "batch_add_to_goals": {
+      "cpu_percent": 15,
+      "mem_percent": 15,
+      "description": "Savings goals batch_add_to_goals scaling: amortized per-item should stay bounded"
+    },
     "batch_pay_bills": {
       "cpu_percent": 15,
       "mem_percent": 12,

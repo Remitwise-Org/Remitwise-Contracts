@@ -104,12 +104,17 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
-/// Clamps a pagination limit to ensure it falls within the allowed boundaries.
+/// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
-/// # Behavior
+/// # Contract
 /// - `0` is treated as a request for the default limit and returns `DEFAULT_PAGE_LIMIT`.
 /// - Values between `1` and `MAX_PAGE_LIMIT` (inclusive) are passed through unchanged.
 /// - Values greater than `MAX_PAGE_LIMIT` are capped at `MAX_PAGE_LIMIT`.
+/// - The returned value is always in `1..=MAX_PAGE_LIMIT`.
+/// - The function is idempotent: applying it to an already-normalized value returns
+///   the same value.
+/// - Extremely large inputs, including `u32::MAX`, clamp without arithmetic and
+///   cannot overflow.
 pub fn clamp_limit(limit: u32) -> u32 {
     if limit == 0 {
         DEFAULT_PAGE_LIMIT
@@ -240,3 +245,194 @@ impl RemitwiseEvents {
         env.events().publish(topics, data);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Encoding stability tests (cross-contract ABI)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod encoding_stability_tests {
+    use super::{Category, CoverageType, FamilyRole};
+    use soroban_sdk::{Env, Map, Vec};
+
+    fn round_trip<T>(env: &Env, v: T) -> T
+    where
+        T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+            + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+    {
+        let val = v.into_val(env);
+        T::try_from_val(env, &val).unwrap()
+    }
+
+    fn assert_encoding_matches_discriminant<T>(env: &Env, v: T, expected: u32)
+    where
+        T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+            + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+            + core::fmt::Debug
+            + PartialEq,
+    {
+        let val = v.into_val(env);
+
+        // `#[repr(u32)]` + `#[contracttype]` should encode via a stable u32 discriminant.
+        // We pin the expected discriminant by decoding the value as `u32`.
+        let actual_u32: u32 = soroban_sdk::TryFromVal::try_from_val(env, &val)
+            .unwrap_or_else(|_| panic!("unexpected Val for encoding: {val:?}"));
+        assert_eq!(actual_u32, expected, "encoding mismatch");
+
+        // And ensure round-trip identity.
+        let decoded = T::try_from_val(env, &val).unwrap();
+        assert_eq!(decoded, v, "round-trip mismatch");
+    }
+
+    #[test]
+    fn category_round_trip_and_encoding_stability() {
+        let env = Env::default();
+
+        assert_encoding_matches_discriminant(&env, Category::Spending, 1);
+        assert_encoding_matches_discriminant(&env, Category::Savings, 2);
+        assert_encoding_matches_discriminant(&env, Category::Bills, 3);
+        assert_encoding_matches_discriminant(&env, Category::Insurance, 4);
+
+        // Exhaustiveness enforcement: every variant must be explicitly handled.
+        fn cover_all_variants(v: Category) {
+            match v {
+                Category::Spending => {}
+                Category::Savings => {}
+                Category::Bills => {}
+                Category::Insurance => {}
+            }
+        }
+
+        for v in [
+            Category::Spending,
+            Category::Savings,
+            Category::Bills,
+            Category::Insurance,
+        ] {
+            cover_all_variants(v);
+        }
+
+        // Container round-trips
+        let vec = Vec::from_array(&env, [Category::Spending, Category::Savings, Category::Bills]);
+        let mut out = Vec::<Category>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, Category>::new(&env);
+        map.set(1u32, Category::Spending);
+        map.set(2u32, Category::Savings);
+        map.set(3u32, Category::Bills);
+
+        let mut out_map = Map::<u32, Category>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
+    }
+
+    #[test]
+    fn family_role_round_trip_and_encoding_stability() {
+        let env = Env::default();
+
+        assert_encoding_matches_discriminant(&env, FamilyRole::Owner, 1);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Admin, 2);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Member, 3);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Viewer, 4);
+
+        fn cover_all_variants(v: FamilyRole) {
+            match v {
+                FamilyRole::Owner => {}
+                FamilyRole::Admin => {}
+                FamilyRole::Member => {}
+                FamilyRole::Viewer => {}
+            }
+        }
+
+        for v in [
+            FamilyRole::Owner,
+            FamilyRole::Admin,
+            FamilyRole::Member,
+            FamilyRole::Viewer,
+        ] {
+            cover_all_variants(v);
+        }
+
+        let vec = Vec::from_array(&env, [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer]);
+        let mut out = Vec::<FamilyRole>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, FamilyRole>::new(&env);
+        map.set(1u32, FamilyRole::Owner);
+        map.set(2u32, FamilyRole::Admin);
+        map.set(3u32, FamilyRole::Viewer);
+
+        let mut out_map = Map::<u32, FamilyRole>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
+    }
+
+    #[test]
+    fn coverage_type_round_trip_and_encoding_stability() {
+        let env = Env::default();
+
+        assert_encoding_matches_discriminant(&env, CoverageType::Health, 1);
+        assert_encoding_matches_discriminant(&env, CoverageType::Life, 2);
+        assert_encoding_matches_discriminant(&env, CoverageType::Property, 3);
+        assert_encoding_matches_discriminant(&env, CoverageType::Auto, 4);
+        assert_encoding_matches_discriminant(&env, CoverageType::Liability, 5);
+
+        fn cover_all_variants(v: CoverageType) {
+            match v {
+                CoverageType::Health => {}
+                CoverageType::Life => {}
+                CoverageType::Property => {}
+                CoverageType::Auto => {}
+                CoverageType::Liability => {}
+            }
+        }
+
+        for v in [
+            CoverageType::Health,
+            CoverageType::Life,
+            CoverageType::Property,
+            CoverageType::Auto,
+            CoverageType::Liability,
+        ] {
+            cover_all_variants(v);
+        }
+
+        let vec = Vec::from_array(
+            &env,
+            [
+                CoverageType::Health,
+                CoverageType::Life,
+                CoverageType::Property,
+                CoverageType::Auto,
+            ],
+        );
+        let mut out = Vec::<CoverageType>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, CoverageType>::new(&env);
+        map.set(1u32, CoverageType::Health);
+        map.set(2u32, CoverageType::Life);
+        map.set(3u32, CoverageType::Liability);
+
+        let mut out_map = Map::<u32, CoverageType>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
+    }
+}
+

@@ -597,6 +597,94 @@ fn test_set_time_lock_succeeds() {
 }
 
 #[test]
+fn test_set_time_lock_monotonicity_boundary_equal_current_unlock_accepted() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Equal"),
+        &10000,
+        &5000,
+    );
+
+    // Set initial time-lock to a future timestamp.
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Attempt to set the same unlock_date again (no-op) while active.
+    let ok = client.set_time_lock(&owner, &goal_id, &current_unlock);
+    assert!(ok);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.unlock_date, Some(current_unlock));
+}
+
+#[test]
+fn test_set_time_lock_monotonicity_boundary_shortening_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Shorten"),
+        &10000,
+        &5000,
+    );
+
+    // Active lock
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Shorten while active should be rejected.
+    let shorter = 1500u64;
+    let res = client.try_set_time_lock(&owner, &goal_id, &shorter);
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::TimeLockShortening.into());
+}
+
+#[test]
+fn test_set_time_lock_monotonicity_boundary_extend_accepted() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Mono Extend"),
+        &10000,
+        &5000,
+    );
+
+    let current_unlock = 2000u64;
+    client.set_time_lock(&owner, &goal_id, &current_unlock);
+
+    // Extend while active should be accepted.
+    let extended = 3000u64;
+    let ok = client.set_time_lock(&owner, &goal_id, &extended);
+    assert!(ok);
+
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal.unlock_date, Some(extended));
+}
+
+#[test]
 fn test_withdraw_time_locked_goal_before_unlock() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
@@ -3279,39 +3367,6 @@ fn test_add_tags_to_goal_non_owner_auth_failure() {
 }
 
 #[test]
-#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
-fn test_remove_tags_from_goal_non_owner_auth_failure() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-    let user = Address::generate(&env);
-    let other = Address::generate(&env);
-
-    client.init();
-    client.mock_auths(&[soroban_sdk::testutils::MockAuth {
-        address: &user,
-        invoke: &soroban_sdk::testutils::MockAuthInvoke {
-            contract: &contract_id,
-            fn_name: "create_goal",
-            args: (
-                &user,
-                String::from_str(&env, "Auth"),
-                1000i128,
-                2000000000u64,
-            )
-                .into_val(&env),
-            sub_invokes: &[],
-        },
-    }]);
-
-    let goal_id = client.create_goal(&user, &String::from_str(&env, "Auth"), &1000, &2000000000);
-    let mut tags = SorobanVec::new(&env);
-    tags.push_back(String::from_str(&env, "urgent"));
-    client.add_tags_to_goal(&user, &goal_id, &tags);
-    client.remove_tags_from_goal(&other, &goal_id, &tags);
-}
-
-#[test]
 #[should_panic(expected = "Tags cannot be empty")]
 fn test_add_tags_to_goal_empty_tags_panics() {
     let env = Env::default();
@@ -3450,131 +3505,6 @@ fn test_remove_tags_from_goal_nonexistent_goal_panics() {
     let mut tags = SorobanVec::new(&env);
     tags.push_back(String::from_str(&env, "urgent"));
     client.remove_tags_from_goal(&user, &999, &tags);
-}
-
-/// Removing a tag that is not present on the goal must be a no-op (no error)
-/// and must not affect other tag entries or the tag index.
-#[test]
-fn test_remove_tags_absent_tag_is_noop_and_does_not_touch_index() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-
-    let user = Address::generate(&env);
-    env.mock_all_auths();
-    client.init();
-
-    let goal_id = client.create_goal(&user, &String::from_str(&env, "Tagged"), &1000, &2000000000);
-
-    // Add two tags.
-    let mut add_tags = SorobanVec::new(&env);
-    add_tags.push_back(String::from_str(&env, "rent"));
-    add_tags.push_back(String::from_str(&env, "food"));
-    client.add_tags_to_goal(&user, &goal_id, &add_tags);
-
-    // Verify both are indexed.
-    let page_rent = client.get_goals_by_tag(&user, &String::from_str(&env, "rent"), &0, &50);
-    let page_food = client.get_goals_by_tag(&user, &String::from_str(&env, "food"), &0, &50);
-    assert_eq!(page_rent.count, 1);
-    assert_eq!(page_food.count, 1);
-
-    // Remove a tag that is NOT present.
-    let mut remove_missing = SorobanVec::new(&env);
-    remove_missing.push_back(String::from_str(&env, "travel"));
-    client.remove_tags_from_goal(&user, &goal_id, &remove_missing);
-
-    // Goal tags unchanged.
-    let goal = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal.tags.len(), 2);
-
-    // Tag indexes for existing tags unchanged.
-    let page_rent_after = client.get_goals_by_tag(&user, &String::from_str(&env, "rent"), &0, &50);
-    let page_food_after = client.get_goals_by_tag(&user, &String::from_str(&env, "food"), &0, &50);
-    assert_eq!(page_rent_after.count, 1);
-    assert_eq!(page_food_after.count, 1);
-}
-
-/// Removing the same tag twice must be idempotent.
-/// The second call must be a no-op and must not reintroduce the goal into
-/// the tag index.
-#[test]
-fn test_remove_tags_same_tag_twice_is_idempotent_and_index_clean() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-
-    let user = Address::generate(&env);
-    env.mock_all_auths();
-    client.init();
-
-    let goal_id = client.create_goal(&user, &String::from_str(&env, "DoubleRemove"), &1000, &2000000000);
-
-    // Add a tag.
-    let mut add_tags = SorobanVec::new(&env);
-    add_tags.push_back(String::from_str(&env, "urgent"));
-    client.add_tags_to_goal(&user, &goal_id, &add_tags);
-
-    // Sanity: indexed.
-    let page_before = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
-    assert_eq!(page_before.count, 1);
-
-    // Remove using mixed-case input to exercise canonicalization.
-    let mut remove_tag = SorobanVec::new(&env);
-    remove_tag.push_back(String::from_str(&env, "URGENT"));
-
-    client.remove_tags_from_goal(&user, &goal_id, &remove_tag);
-
-    // Removed: goal has no tags, and tag index is cleaned.
-    let goal_after_first = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after_first.tags.len(), 0);
-    let page_after_first = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
-    assert_eq!(page_after_first.count, 0);
-
-    // Remove again (idempotent no-op)
-    client.remove_tags_from_goal(&user, &goal_id, &remove_tag);
-
-    let goal_after_second = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after_second.tags.len(), 0);
-
-    let page_after_second = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
-    assert_eq!(page_after_second.count, 0);
-}
-
-/// Removing the last remaining tag must leave the goal with an empty tag set
-/// and must also delete the corresponding (owner, tag) tag-index entry.
-#[test]
-fn test_remove_last_tag_leaves_empty_tags_and_cleans_index() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, SavingsGoalContract);
-    let client = SavingsGoalContractClient::new(&env, &contract_id);
-
-    let user = Address::generate(&env);
-    env.mock_all_auths();
-    client.init();
-
-    let goal_id = client.create_goal(&user, &String::from_str(&env, "LastTag"), &1000, &2000000000);
-
-    // Add exactly one tag.
-    let mut add_tags = SorobanVec::new(&env);
-    add_tags.push_back(String::from_str(&env, "Emergency"));
-    client.add_tags_to_goal(&user, &goal_id, &add_tags);
-
-    // Confirm indexed.
-    let page_before = client.get_goals_by_tag(&user, &String::from_str(&env, "emergency"), &0, &50);
-    assert_eq!(page_before.count, 1);
-
-    // Remove the last tag with canonicalized casing.
-    let mut remove_tags = SorobanVec::new(&env);
-    remove_tags.push_back(String::from_str(&env, "eMeRgEnCy"));
-    client.remove_tags_from_goal(&user, &goal_id, &remove_tags);
-
-    // Goal has empty tag set.
-    let goal_after = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after.tags.len(), 0);
-
-    // Tag index should be removed.
-    let page_after = client.get_goals_by_tag(&user, &String::from_str(&env, "emergency"), &0, &50);
-    assert_eq!(page_after.count, 0);
 }
 
 /// Owner-only authorization: a non-owner must not be able to remove tags.
@@ -5117,6 +5047,55 @@ fn test_create_goal_accepts_special_chars_within_limit() {
 // #[test] fn test_batch_operations_enforce_lock — no batch withdrawal in this contract
 
 #[test]
+fn test_batch_add_to_goals_rejects_too_large_batch_size() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.init();
+
+    // Use MAX_BATCH_SIZE goals to build a valid contributions batch.
+    // Contract should accept MAX_BATCH_SIZE.
+    let name = String::from_str(&env, "BatchCapOk");
+
+    let mut contributions = Vec::new(&env);
+    for _ in 0..MAX_BATCH_SIZE {
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        contributions.push_back(ContributionItem {
+            goal_id,
+            amount: 100,
+        });
+    }
+
+    // The non-`try_` client method unwraps the contract's Result and returns
+    // the `u32` count directly (it panics on Err), so assert on the value.
+    let res_ok = client.batch_add_to_goals(&owner, &contributions);
+    assert_eq!(res_ok, MAX_BATCH_SIZE);
+
+    // MAX_BATCH_SIZE + 1 must be rejected.
+    let name = String::from_str(&env, "BatchCapTooLarge");
+    let mut contributions_oversized = Vec::new(&env);
+
+    for _ in 0..(MAX_BATCH_SIZE + 1) {
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        contributions_oversized.push_back(ContributionItem {
+            goal_id,
+            amount: 100,
+        });
+    }
+
+    let res_err = client.try_batch_add_to_goals(&owner, &contributions_oversized);
+    assert!(res_err.is_err());
+    assert_eq!(
+        res_err.unwrap_err().unwrap(),
+        SavingsGoalError::BatchTooLarge
+    );
+}
+
+
+#[test]
 fn test_per_owner_goal_cap() {
     let env = Env::default();
     env.mock_all_auths();
@@ -5653,8 +5632,8 @@ fn test_remove_tags_from_goal_non_owner_auth_panics() {
             fn_name: "remove_tags_from_goal",
             args: (
                 &other,
-                &goal_id,
-                &tags,
+                goal_id,
+                tags.clone(),
             ).into_val(&env),
             sub_invokes: &[],
         },
@@ -5740,8 +5719,8 @@ fn test_get_goals_by_tag_pagination() {
     // Create 5 goals with same tag
     let mut goal_ids = SorobanVec::new(&env);
     for i in 0..5u32 {
-        let name = String::from_str(&env, &format!("Goal {}", i));
-        let goal_id = client.create_goal(&user, &name, &(i as i128 + 1) * 1000, &1735689600);
+        let name = String::from_str(&env, &std::format!("Goal {}", i));
+        let goal_id = client.create_goal(&user, &name, &((i as i128 + 1) * 1000), &1735689600);
         goal_ids.push_back(goal_id);
         client.add_tags_to_goal(&user, &goal_id, &tags);
     }

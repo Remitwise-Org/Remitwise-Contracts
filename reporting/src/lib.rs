@@ -249,7 +249,7 @@ pub enum ReportingError {
     InvalidDependencyAddressConfiguration = 6,
     /// Report period range is invalid (`period_start` is greater than `period_end`).
     InvalidPeriod = 7,
-    /// Invalid percentage split summing to > 10000 or != 10000
+    /// Invalid percentage split summing to > 100 or != 100
     InvalidPercentageSplit = 8,
 }
 
@@ -342,6 +342,7 @@ pub trait BillPaymentsTrait {
 #[contractclient(name = "InsuranceClient")]
 pub trait InsuranceTrait {
     fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
+    fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy>;
     fn get_total_monthly_premium(env: Env, owner: Address) -> i128;
 }
 
@@ -402,24 +403,35 @@ pub struct BillPage {
     pub count: u32,
 }
 
+/// Mirror of the real `insurance::Policy` struct.
+///
+/// Field order and types MUST match `insurance::Policy` exactly so a real
+/// `Policy` returned by `get_policy` deserializes into this type without a
+/// `ConversionError`.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
-    pub external_ref: Option<soroban_sdk::String>,
     pub coverage_type: CoverageType,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
+    pub external_ref: Option<soroban_sdk::String>,
     pub active: bool,
+    pub created_at: u64,
+    pub last_payment_at: u64,
     pub next_payment_date: u64,
 }
 
+/// Mirror of the real `insurance::PolicyPage`.
+///
+/// `items` is a list of policy IDs (`Vec<u32>`); fetch each full policy with
+/// `InsuranceClient::get_policy`.
 #[contracttype]
 #[derive(Clone)]
 pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
+    pub items: Vec<u32>,
     pub next_cursor: u32,
     pub count: u32,
 }
@@ -961,22 +973,22 @@ impl ReportingContract {
         let mut split_amounts = Vec::new(env);
         if availability == DataAvailability::Complete {
             let mut sum = 0u32;
-            // Percentages are stored as basis points (bps), where 10000 = 100.00%
+            // Percentages are whole-number percents that must sum to 100 (100 = 100%)
             for i in 0..split_percentages.len() {
                 let p = split_percentages.get(i).unwrap_or(0);
                 sum = sum
                     .checked_add(p)
                     .ok_or(ReportingError::InvalidPercentageSplit)?;
-                if sum > 10000 {
+                if sum > 100 {
                     return Err(ReportingError::InvalidPercentageSplit);
                 }
 
-                // Formula used is (amount * percentage) / 10000
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10000;
+                // Formula used is (amount * percentage) / 100
+                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 100;
                 split_amounts.push_back(amount);
             }
 
-            if sum != 10000 {
+            if sum != 100 {
                 return Err(ReportingError::InvalidPercentageSplit);
             }
         }
@@ -1177,6 +1189,8 @@ impl ReportingContract {
         let insurance_client = InsuranceClient::new(env, &addresses.insurance);
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
+        // The insurance contract's `get_active_policies` returns policy IDs only.
+        // Page through the IDs, then resolve each to a full policy via `get_policy`.
         let result = paginate_dependency(env, |cursor| {
             let page = insurance_client.get_active_policies(&user, &cursor, &DEP_PAGE_LIMIT);
             (page.items, page.next_cursor)
@@ -1185,9 +1199,11 @@ impl ReportingContract {
         let mut total_coverage = 0i128;
         let mut active_policies = 0u32;
 
-        for policy in result.items.iter() {
-            active_policies += 1;
-            total_coverage += policy.coverage_amount;
+        for policy_id in result.items.iter() {
+            if let Some(policy) = insurance_client.get_policy(&policy_id) {
+                active_policies += 1;
+                total_coverage += policy.coverage_amount;
+            }
         }
 
         let annual_premium = monthly_premium.saturating_mul(12);
@@ -1604,20 +1620,24 @@ impl ReportingContract {
             // 2) Tie-break: bill id ascending
             let mut inserted = false;
             for i in 0..top_bills.len() {
-                let existing = top_bills.get(i).unwrap();
-                let should_insert = if bill.amount > existing.amount {
-                    true
-                } else if bill.amount < existing.amount {
-                    false
-                } else {
-                    // Equal amounts → deterministic tie-break by id ascending
-                    bill.id < existing.id
-                };
+                if let Some(existing) = top_bills.get(i) {
+                    let should_insert = if bill.amount > existing.amount {
+                        true
+                    } else if bill.amount < existing.amount {
+                        false
+                    } else {
+                        // Equal amounts → deterministic tie-break by id ascending
+                        bill.id < existing.id
+                    };
 
-                if should_insert {
-                    top_bills.insert(i, bill.clone());
-                    inserted = true;
-                    break;
+                    if should_insert {
+                        top_bills.insert(i, bill.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
 
@@ -1695,20 +1715,24 @@ impl ReportingContract {
             // 2) Tie-break: savings goal id ascending
             let mut inserted = false;
             for i in 0..top_goals.len() {
-                let existing = top_goals.get(i).unwrap();
-                let should_insert = if goal.target_amount > existing.target_amount {
-                    true
-                } else if goal.target_amount < existing.target_amount {
-                    false
-                } else {
-                    // Equal targets → deterministic tie-break by id ascending
-                    goal.id < existing.id
-                };
+                if let Some(existing) = top_goals.get(i) {
+                    let should_insert = if goal.target_amount > existing.target_amount {
+                        true
+                    } else if goal.target_amount < existing.target_amount {
+                        false
+                    } else {
+                        // Equal targets → deterministic tie-break by id ascending
+                        goal.id < existing.id
+                    };
 
-                if should_insert {
-                    top_goals.insert(i, goal.clone());
-                    inserted = true;
-                    break;
+                    if should_insert {
+                        top_goals.insert(i, goal.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
             if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {

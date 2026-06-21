@@ -29,19 +29,19 @@ mod remittance_split {
     impl RemittanceSplit {
         pub fn get_split(env: &Env) -> Vec<u32> {
             let mut split = Vec::new(env);
-            split.push_back(5000);
-            split.push_back(3000);
-            split.push_back(1500);
-            split.push_back(500);
+            split.push_back(50);
+            split.push_back(30);
+            split.push_back(15);
+            split.push_back(5);
             split
         }
 
         pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
             let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 5000 / 10000);
-            amounts.push_back(total_amount * 3000 / 10000);
-            amounts.push_back(total_amount * 1500 / 10000);
-            amounts.push_back(total_amount * 500 / 10000);
+            amounts.push_back(total_amount * 50 / 100);
+            amounts.push_back(total_amount * 30 / 100);
+            amounts.push_back(total_amount * 15 / 100);
+            amounts.push_back(total_amount * 5 / 100);
             amounts
         }
     }
@@ -190,6 +190,7 @@ mod bill_payments {
 mod insurance {
     use crate::{InsurancePolicy, InsuranceTrait};
     use remitwise_common::CoverageType;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -203,22 +204,32 @@ mod insurance {
             _cursor: u32,
             _limit: u32,
         ) -> crate::PolicyPage {
-            let mut policies = Vec::new(&env);
-            policies.push_back(InsurancePolicy {
-                id: 1,
-                owner: _owner,
-                name: SorobanString::from_str(&env, "Health Insurance"),
-                coverage_type: CoverageType::Health,
-                monthly_premium: 200,
-                coverage_amount: 50000,
-                active: true,
-                next_payment_date: 1735689600,
-                external_ref: None,
-            });
+            let mut items = Vec::new(&env);
+            items.push_back(1u32);
             crate::PolicyPage {
-                items: policies,
+                count: items.len(),
+                items,
                 next_cursor: 0,
-                count: 1,
+            }
+        }
+
+        fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+            if policy_id == 1 {
+                Some(InsurancePolicy {
+                    id: 1,
+                    owner: Address::generate(&env),
+                    name: SorobanString::from_str(&env, "Health Insurance"),
+                    coverage_type: CoverageType::Health,
+                    monthly_premium: 200,
+                    coverage_amount: 50000,
+                    external_ref: None,
+                    active: true,
+                    created_at: 1704067200,
+                    last_payment_at: 0,
+                    next_payment_date: 1735689600,
+                })
+            } else {
+                None
             }
         }
 
@@ -655,14 +666,17 @@ fn test_verify_dependency_address_set_does_not_write_storage() {
 
     let _ = client.try_verify_dependency_address_set(&addrs);
 
-    let instance_snapshot: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
+    // Instance storage is only accessible inside a contract context, so the
+    // post-condition reads must run within `env.as_contract`.
+    let instance_snapshot: Option<Address> =
+        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADMIN")));
     assert!(instance_snapshot.is_some(), "ADMIN should still exist");
 
     let stored_addrs: Option<ContractAddresses> =
-        env.storage().instance().get(&symbol_short!("ADDRESSES"));
+        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADDRS")));
     assert!(
         stored_addrs.is_none(),
-        "ADDRESSES must not be written by preflight"
+        "ADDRS must not be written by preflight"
     );
 }
 
@@ -765,7 +779,7 @@ fn test_get_remittance_summary() {
     let spending = summary.category_breakdown.get(0).unwrap();
     assert_eq!(spending.category, Category::Spending);
     assert_eq!(spending.amount, 5000);
-    assert_eq!(spending.percentage, 5000);
+    assert_eq!(spending.percentage, 50);
 }
 
 #[test]
@@ -2812,6 +2826,7 @@ mod bills_infinite {
 // ── Mock: insurance returning exactly 3 pages then cursor = 0 ─────────────
 mod insurance_three_pages {
     use crate::{CoverageType, InsurancePolicy, InsuranceTrait, PolicyPage};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -2819,29 +2834,34 @@ mod insurance_three_pages {
 
     #[contractimpl]
     impl InsuranceTrait for InsuranceThreePages {
-        fn get_active_policies(env: Env, owner: Address, cursor: u32, _limit: u32) -> PolicyPage {
+        fn get_active_policies(env: Env, _owner: Address, cursor: u32, _limit: u32) -> PolicyPage {
             let (policy_id, next_cursor) = match cursor {
                 0 => (1u32, 7u32),
                 7 => (2, 14),
                 _ => (3, 0),
             };
             let mut items = Vec::new(&env);
-            items.push_back(InsurancePolicy {
-                id: policy_id,
-                owner,
-                name: SorobanString::from_str(&env, "P"),
-                external_ref: None,
-                coverage_type: CoverageType::Health,
-                monthly_premium: 100,
-                coverage_amount: 10_000,
-                active: true,
-                next_payment_date: 1_735_689_600,
-            });
+            items.push_back(policy_id);
             PolicyPage {
-                count: 1,
+                count: items.len(),
                 items,
                 next_cursor,
             }
+        }
+        fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+            Some(InsurancePolicy {
+                id: policy_id,
+                owner: Address::generate(&env),
+                name: SorobanString::from_str(&env, "P"),
+                coverage_type: CoverageType::Health,
+                monthly_premium: 100,
+                coverage_amount: 10_000,
+                external_ref: None,
+                active: true,
+                created_at: 0,
+                last_payment_at: 0,
+                next_payment_date: 1_735_689_600,
+            })
         }
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {
             300
@@ -2852,6 +2872,7 @@ mod insurance_three_pages {
 // ── Mock: insurance that never returns cursor = 0 ─────────────────────────
 mod insurance_infinite {
     use crate::{CoverageType, InsurancePolicy, InsuranceTrait, PolicyPage};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -2859,24 +2880,29 @@ mod insurance_infinite {
 
     #[contractimpl]
     impl InsuranceTrait for InsuranceInfinite {
-        fn get_active_policies(env: Env, owner: Address, cursor: u32, _limit: u32) -> PolicyPage {
+        fn get_active_policies(env: Env, _owner: Address, cursor: u32, _limit: u32) -> PolicyPage {
             let mut items = Vec::new(&env);
-            items.push_back(InsurancePolicy {
-                id: cursor,
-                owner,
-                name: SorobanString::from_str(&env, "P"),
-                external_ref: None,
-                coverage_type: CoverageType::Health,
-                monthly_premium: 100,
-                coverage_amount: 10_000,
-                active: true,
-                next_payment_date: 1_735_689_600,
-            });
+            items.push_back(cursor);
             PolicyPage {
-                count: 1,
+                count: items.len(),
                 items,
                 next_cursor: cursor + 1,
             }
+        }
+        fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+            Some(InsurancePolicy {
+                id: policy_id,
+                owner: Address::generate(&env),
+                name: SorobanString::from_str(&env, "P"),
+                coverage_type: CoverageType::Health,
+                monthly_premium: 100,
+                coverage_amount: 10_000,
+                external_ref: None,
+                active: true,
+                created_at: 0,
+                last_payment_at: 0,
+                next_payment_date: 1_735_689_600,
+            })
         }
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {
             0
@@ -3182,7 +3208,7 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
 
     let r1 = client.get_top_bills_report(&user, &period_start, &period_end);
     let r2 = client.get_top_bills_report(&user, &period_start, &period_end);
-    assert!(r1.items.len() <= crate::MAX_ITEMS_PER_REPORT as usize);
+    assert!(r1.items.len() <= crate::MAX_ITEMS_PER_REPORT);
 
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
@@ -3193,7 +3219,7 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
     // Our mock returns 5 items; MAX is 10, so all 5 should be present.
     let expected_ids = [1u32, 2, 3, 4, 5];
-    assert_eq!(r1.items.len(), expected_ids.len());
+    assert_eq!(r1.items.len(), expected_ids.len() as u32);
     for (i, expected) in expected_ids.iter().enumerate() {
         assert_eq!(r1.items.get(i as u32).unwrap().id, *expected);
     }
@@ -3237,7 +3263,7 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];
-    assert_eq!(r1.items.len(), expected_ids.len());
+    assert_eq!(r1.items.len(), expected_ids.len() as u32);
     for (i, expected) in expected_ids.iter().enumerate() {
         assert_eq!(r1.items.get(i as u32).unwrap().id, *expected);
     }

@@ -1,7 +1,7 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
 use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionData, TransactionType};
 use insurance::{Insurance, InsuranceClient};
-use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
+use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError, RemittanceFlowParams};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::{CoverageType, FamilyRole};
 use reporting::{ReportingContract, ReportingContractClient};
@@ -64,11 +64,12 @@ fn test_orchestrated_multisig_flow() {
     family_wallet_client.update_spending_limit(&admin, &user, &100i128);
 
     let mock_usdc = Address::generate(&env);
-    remittance_client
-        .initialize_split(&admin, &0u64, &mock_usdc, &40u32, &30u32, &20u32, &10u32)
-        .unwrap();
+    remittance_client.initialize_split(&admin, &0u64, &mock_usdc, &40u32, &30u32, &20u32, &10u32);
 
     savings_client.init();
+
+    // `create_policy` requires the insurance contract to be initialized first.
+    insurance_client.init(&admin);
 
     reporting_client.init(&admin);
     reporting_client.configure_addresses(
@@ -90,14 +91,12 @@ fn test_orchestrated_multisig_flow() {
     );
 
     // Setup goals/bills/policies for the user
-    let goal_id = savings_client
-        .create_goal(
-            &user,
-            &SorobanString::from_str(&env, "Test Goal"),
-            &10000i128,
-            &2000000000u64,
-        )
-        .unwrap();
+    let goal_id = savings_client.create_goal(
+        &user,
+        &SorobanString::from_str(&env, "Test Goal"),
+        &10000i128,
+        &2000000000u64,
+    );
     let bill_id = bills_client.create_bill(
         &user,
         &SorobanString::from_str(&env, "Test Bill"),
@@ -115,7 +114,6 @@ fn test_orchestrated_multisig_flow() {
         &CoverageType::Health,
         &100i128,
         &50000i128,
-        &None,
     );
 
     // 3. Scenario: Quorum not met
@@ -124,16 +122,18 @@ fn test_orchestrated_multisig_flow() {
     /// Since the user is not yet an Admin, the Orchestrator check fails.
     let total_amount = 5000i128;
     let result = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
 
     match result {
@@ -144,53 +144,50 @@ fn test_orchestrated_multisig_flow() {
     // 4. Scenario: Reaching Quorum
     /// Scenario: Propose and sign a role change to elevate the user to Admin.
     /// This demonstrates the multisig quorum logic in FamilyWallet.
-    family_wallet_client
-        .configure_multisig(
-            &admin,
-            &TransactionType::RoleChange,
-            &2, // Threshold of 2
-            &soroban_sdk::vec![&env, admin.clone(), member1.clone(), member2.clone()],
-            &0,
-        )
-        .unwrap();
+    family_wallet_client.configure_multisig(
+        &admin,
+        &TransactionType::RoleChange,
+        &2, // Threshold of 2
+        &soroban_sdk::vec![&env, admin.clone(), member1.clone(), member2.clone()],
+        &0,
+    );
 
     let tx_id = family_wallet_client.propose_role_change(&admin, &user, &FamilyRole::Admin);
 
     // Assert flow still fails (quorum not yet met)
     let result_still_fails = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
     assert!(result_still_fails.is_err());
 
     // Sign to reach quorum
-    family_wallet_client
-        .sign_transaction(&member1, &tx_id)
-        .unwrap();
+    family_wallet_client.sign_transaction(&member1, &tx_id);
 
-    // Now quorum is met, user is Admin, flow should succeed
-    orchestrator_client
-        .execute_remittance_flow(
-            &user,
-            &total_amount,
-            &family_wallet_id,
-            &remittance_id,
-            &savings_id,
-            &bills_id,
-            &insurance_id,
-            &goal_id,
-            &bill_id,
-            &policy_id,
-        )
-        .unwrap();
+    // Now quorum is met, user is Admin, flow should succeed.
+    // The non-`try_` client method panics on Err, so a bare call asserts success.
+    orchestrator_client.execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
 
     // 5. Scenario: Paused Orchestrator (Downstream contract paused)
     /// Scenario: Pause the SavingsGoalContract.
@@ -199,16 +196,18 @@ fn test_orchestrated_multisig_flow() {
     savings_client.pause(&admin);
 
     let result_paused = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
     assert!(
         result_paused.is_err(),
@@ -228,16 +227,18 @@ fn test_orchestrated_multisig_flow() {
     });
 
     let result_locked = orchestrator_client.try_execute_remittance_flow(
-        &user,
-        &total_amount,
-        &family_wallet_id,
-        &remittance_id,
-        &savings_id,
-        &bills_id,
-        &insurance_id,
-        &goal_id,
-        &bill_id,
-        &policy_id,
+        &RemittanceFlowParams {
+            caller: user.clone(),
+            total_amount,
+            family_wallet: family_wallet_id.clone(),
+            remittance_split: remittance_id.clone(),
+            savings: savings_id.clone(),
+            bills: bills_id.clone(),
+            insurance: insurance_id.clone(),
+            goal_id,
+            bill_id,
+            policy_id,
+        },
     );
 
     match result_locked {

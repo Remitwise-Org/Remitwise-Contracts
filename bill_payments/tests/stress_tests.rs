@@ -569,11 +569,21 @@ fn bench_get_unpaid_bills_last_page_of_max() {
         );
     }
 
-    // Navigate to the last page cursor
-    let page1 = client.get_unpaid_bills(&owner, &0u32, &50u32);
-    let cursor2 = page1.next_cursor;
+    // Walk forward to the cursor that yields the final page. With
+    // MAX_BILLS_PER_OWNER bills and a page size of 50, this advances through
+    // every page until the one whose `next_cursor` is 0.
+    let mut last_cursor = 0u32;
+    loop {
+        let page = client.get_unpaid_bills(&owner, &last_cursor, &50u32);
+        if page.next_cursor == 0 {
+            // `last_cursor` already addresses the final page.
+            break;
+        }
+        last_cursor = page.next_cursor;
+    }
 
-    let (cpu, mem, last_page) = measure(&env, || client.get_unpaid_bills(&owner, &cursor2, &50u32));
+    let (cpu, mem, last_page) =
+        measure(&env, || client.get_unpaid_bills(&owner, &last_cursor, &50u32));
     assert_eq!(last_page.count, 50, "Last page must return 50 bills");
     assert_eq!(last_page.next_cursor, 0, "No more pages after last page");
 

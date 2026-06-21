@@ -1,11 +1,13 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Env, Map,
     Symbol, Vec,
 };
 
+#[allow(dead_code)]
 mod interface {
     use soroban_sdk::{contractclient, Address, Env, Vec};
 
@@ -21,17 +23,17 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
+        fn pay_bill(env: Env, caller: Address, bill_id: u32);
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
     }
 }
 
@@ -95,6 +97,21 @@ pub struct ExecutionStats {
     pub evicted_entries: u32,
 }
 
+#[contracttype]
+#[derive(Clone)]
+pub struct RemittanceFlowParams {
+    pub caller: Address,
+    pub total_amount: i128,
+    pub family_wallet: Address,
+    pub remittance_split: Address,
+    pub savings: Address,
+    pub bills: Address,
+    pub insurance: Address,
+    pub goal_id: u32,
+    pub bill_id: u32,
+    pub policy_id: u32,
+}
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -118,78 +135,41 @@ pub struct Orchestrator;
 impl Orchestrator {
     /// Executes the full remittance flow across multiple contracts.
     /// This is protected against reentrancy.
-    pub fn execute_remittance_flow(
-        env: Env,
-        caller: Address,
-        total_amount: i128,
-        family_wallet: Address,
-        remittance_split: Address,
-        savings: Address,
-        bills: Address,
-        insurance: Address,
-        goal_id: u32,
-        bill_id: u32,
-        policy_id: u32,
-    ) -> Result<(), OrchestratorError> {
-        caller.require_auth();
+    pub fn execute_remittance_flow(env: Env, params: RemittanceFlowParams) -> Result<(), OrchestratorError> {
+        params.caller.require_auth();
 
-        if total_amount <= 0 {
+        if params.total_amount <= 0 {
             return Err(OrchestratorError::InvalidAmount);
         }
 
         // Use a scope to ensure the guard is dropped (and lock released)
         // before we audit and return.
         let result = {
-            /// The guard acquires the lock on creation and releases it on drop.
-            /// This ensures the lock is released even if we return early via `?`.
+            // The guard acquires the lock on creation and releases it on drop.
+            // This ensures the lock is released even if we return early via `?`.
             let _guard = Self::acquire_execution_lock(&env)?;
 
-            Self::perform_remittance_flow(
-                &env,
-                &caller,
-                total_amount,
-                &family_wallet,
-                &remittance_split,
-                &savings,
-                &bills,
-                &insurance,
-                goal_id,
-                bill_id,
-                policy_id,
-            )
+            Self::perform_remittance_flow(&env, &params)
         };
 
         // 4. Audit result (lock is already released here)
-        Self::append_audit(&env, symbol_short!("remit"), &caller, result.is_ok());
+        Self::append_audit(&env, symbol_short!("remit"), &params.caller, result.is_ok());
 
         result
     }
 
-    fn perform_remittance_flow(
-        env: &Env,
-        caller: &Address,
-        total_amount: i128,
-        family_wallet: &Address,
-        remittance_split: &Address,
-        savings: &Address,
-        bills: &Address,
-        insurance: &Address,
-        goal_id: u32,
-        bill_id: u32,
-        policy_id: u32,
-    ) -> Result<(), OrchestratorError> {
+    fn perform_remittance_flow(env: &Env, params: &RemittanceFlowParams) -> Result<(), OrchestratorError> {
         // Use interfaces to call downstream contracts
         // This is a simplified implementation of the flow logic
-
         // 1. Check permission/spending limit
-        let fw_client = interface::FamilyWalletClient::new(env, family_wallet);
-        if !fw_client.check_spending_limit(caller, &total_amount) {
+        let fw_client = interface::FamilyWalletClient::new(env, &params.family_wallet);
+        if !fw_client.check_spending_limit(&params.caller, &params.total_amount) {
             return Err(OrchestratorError::Unauthorized);
         }
 
         // 2. Calculate split
-        let rs_client = interface::RemittanceSplitClient::new(env, remittance_split);
-        let allocations = rs_client.calculate_split(&total_amount);
+        let rs_client = interface::RemittanceSplitClient::new(env, &params.remittance_split);
+        let allocations = rs_client.calculate_split(&params.total_amount);
 
         if allocations.len() < 4 {
             return Err(OrchestratorError::InvalidAmount);
@@ -202,18 +182,18 @@ impl Orchestrator {
 
         // 3. Downstream calls
         if savings_amt > 0 {
-            let s_client = interface::SavingsGoalsClient::new(env, savings);
-            s_client.add_to_goal(caller, &goal_id, &savings_amt);
+            let s_client = interface::SavingsGoalsClient::new(env, &params.savings);
+            s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt);
         }
 
         if bills_amt > 0 {
-            let b_client = interface::BillPaymentsClient::new(env, bills);
-            b_client.pay_bill(caller, &bill_id, &bills_amt);
+            let b_client = interface::BillPaymentsClient::new(env, &params.bills);
+            b_client.pay_bill(&params.caller, &params.bill_id);
         }
 
         if insurance_amt > 0 {
-            let i_client = interface::InsuranceClient::new(env, insurance);
-            i_client.pay_premium(caller, &policy_id, &insurance_amt);
+            let i_client = interface::InsuranceClient::new(env, &params.insurance);
+            i_client.pay_premium(&params.caller, &params.policy_id);
         }
 
         Ok(())
@@ -303,10 +283,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("STATS"), &stats);
 
-        /// Emit orchestrator initialization event
-        /// Topic: ("Remitwise", EventCategory::System, EventPriority::High, "init_ok")
-        /// Payload: (caller: Address)
-        /// Emitted when the orchestrator contract is successfully initialized
+        // Emit orchestrator initialization event
+        // Topic: ("Remitwise", EventCategory::System, EventPriority::High, "init_ok")
+        // Payload: (caller: Address)
+        // Emitted when the orchestrator contract is successfully initialized
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -386,10 +366,10 @@ impl Orchestrator {
             expected_hash,
         )?;
 
-        /// Emit flow lifecycle event - flow started
-        /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")
-        /// Payload: (executor: Address, amount: i128)
-        /// Emitted when a remittance flow execution begins after passing validation
+        // Emit flow lifecycle event - flow started
+        // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")
+        // Payload: (executor: Address, amount: i128)
+        // Emitted when a remittance flow execution begins after passing validation
         RemitwiseEvents::emit(
             &env,
             EventCategory::Transaction,
@@ -419,10 +399,10 @@ impl Orchestrator {
                 Self::update_execution_stats(&env, true);
                 Self::append_audit(&env, symbol_short!("flow_exec"), &executor, true);
 
-                /// Emit flow lifecycle event - flow completed successfully
-                /// Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")
-                /// Payload: (executor: Address, amount: i128)
-                /// Emitted when a remittance flow completes successfully
+                // Emit flow lifecycle event - flow completed successfully
+                // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")
+                // Payload: (executor: Address, amount: i128)
+                // Emitted when a remittance flow completes successfully
                 RemitwiseEvents::emit(
                     &env,
                     EventCategory::Transaction,
@@ -532,10 +512,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
 
-        /// Emit orchestrator upgrade event
-        /// Topic: ("orch", "upgraded")
-        /// Payload: (previous_version: u32, new_version: u32)
-        /// Emitted when the contract version is upgraded by the owner
+                // Emit orchestrator upgrade event
+                // Topic: ("orch", "upgraded")
+                // Payload: (previous_version: u32, new_version: u32)
+                // Emitted when the contract version is upgraded by the owner
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("upgraded")),
             (prev, new_version),
@@ -580,8 +560,8 @@ impl Orchestrator {
 
     /// Hardened nonce validation:
     /// 1. Deadline must be in the future and within `MAX_DEADLINE_WINDOW_SECS`
-    /// 2. Sequential counter check
-    /// 3. Used-nonce double-spend check
+    /// 2. Used-nonce double-spend check
+    /// 3. Sequential counter check
     /// 4. Request hash binding
     fn require_nonce_hardened(
         env: &Env,
@@ -600,11 +580,11 @@ impl Orchestrator {
             return Err(OrchestratorError::DeadlineExpired);
         }
 
-        Self::require_nonce(env, address, nonce)?;
-
         if Self::is_nonce_used(env, address, nonce) {
             return Err(OrchestratorError::NonceAlreadyUsed);
         }
+
+        Self::require_nonce(env, address, nonce)?;
 
         if request_hash != expected_hash {
             return Err(OrchestratorError::InvalidNonce);
@@ -781,6 +761,240 @@ impl Orchestrator {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    }
+}
+
+#[cfg(test)]
+mod tests_nonce_eviction {
+    use super::*;
+    use soroban_sdk::{
+        symbol_short,
+        testutils::{Address as _, Ledger as _},
+        Address, Env,
+    };
+
+    const BASE_TIME: u64 = 1_000;
+    const FLOW_AMOUNT: i128 = 1_000;
+
+    struct SignedFlowHarness {
+        env: Env,
+        contract_id: Address,
+    }
+
+    fn setup_signed_flow() -> SignedFlowHarness {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.budget().reset_unlimited();
+        env.ledger().set_timestamp(BASE_TIME);
+
+        let contract_id = env.register_contract(None, Orchestrator);
+        let client = OrchestratorClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        client.init(
+            &owner,
+            &Address::generate(&env),
+            &Address::generate(&env),
+            &Address::generate(&env),
+            &Address::generate(&env),
+            &Address::generate(&env),
+        );
+
+        SignedFlowHarness { env, contract_id }
+    }
+
+    fn client(harness: &SignedFlowHarness) -> OrchestratorClient<'_> {
+        OrchestratorClient::new(&harness.env, &harness.contract_id)
+    }
+
+    fn valid_deadline() -> u64 {
+        BASE_TIME + MAX_DEADLINE_WINDOW_SECS
+    }
+
+    fn request_hash(executor: &Address, amount: i128, nonce: u64, deadline: u64) -> u64 {
+        Orchestrator::compute_request_hash(
+            symbol_short!("flow"),
+            executor.clone(),
+            nonce,
+            amount,
+            deadline,
+        )
+    }
+
+    fn execute_signed_flow(
+        client: &OrchestratorClient,
+        executor: &Address,
+        amount: i128,
+        nonce: u64,
+        deadline: u64,
+    ) {
+        let hash = request_hash(executor, amount, nonce, deadline);
+        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash));
+    }
+
+    #[test]
+    fn used_nonce_set_rejects_current_nonce_before_hash_binding() {
+        let harness = setup_signed_flow();
+        let client = client(&harness);
+        let executor = Address::generate(&harness.env);
+        let nonce = 0;
+        let deadline = valid_deadline();
+        let hash = request_hash(&executor, FLOW_AMOUNT, nonce, deadline);
+
+        let replay = harness.env.as_contract(&harness.contract_id, || {
+            Orchestrator::mark_nonce_used(&harness.env, &executor, nonce);
+            Orchestrator::require_nonce_hardened(
+                &harness.env,
+                &executor,
+                nonce,
+                deadline,
+                hash,
+                hash,
+            )
+        });
+        assert_eq!(replay, Err(OrchestratorError::NonceAlreadyUsed));
+        assert_eq!(client.get_nonce(&executor), 0);
+    }
+
+    #[test]
+    fn signed_flow_replay_uses_used_set_and_old_nonce_uses_sequential_counter() {
+        let harness = setup_signed_flow();
+        let client = client(&harness);
+        let executor = Address::generate(&harness.env);
+        let deadline = valid_deadline();
+
+        execute_signed_flow(&client, &executor, FLOW_AMOUNT, 0, deadline);
+        assert_eq!(client.get_nonce(&executor), 1);
+
+        let replay_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let replay = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &0,
+            &deadline,
+            &replay_hash,
+        );
+        assert_eq!(replay, Err(Ok(OrchestratorError::NonceAlreadyUsed)));
+
+        let skipped_hash = request_hash(&executor, FLOW_AMOUNT, 3, deadline);
+        let skipped = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &3,
+            &deadline,
+            &skipped_hash,
+        );
+        assert_eq!(skipped, Err(Ok(OrchestratorError::InvalidNonce)));
+        assert_eq!(client.get_nonce(&executor), 1);
+    }
+
+    #[test]
+    fn used_nonce_eviction_keeps_stale_replay_closed() {
+        let harness = setup_signed_flow();
+        let client = client(&harness);
+        let executor = Address::generate(&harness.env);
+        let independent_executor = Address::generate(&harness.env);
+        let deadline = valid_deadline();
+
+        for nonce in 0..u64::from(MAX_USED_NONCES_PER_ADDR) {
+            execute_signed_flow(&client, &executor, FLOW_AMOUNT, nonce, deadline);
+        }
+
+        let cap_nonce = u64::from(MAX_USED_NONCES_PER_ADDR);
+        assert_eq!(client.get_nonce(&executor), cap_nonce);
+
+        let oldest_before_eviction_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let oldest_before_eviction_replay = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &0,
+            &deadline,
+            &oldest_before_eviction_hash,
+        );
+        assert_eq!(
+            oldest_before_eviction_replay,
+            Err(Ok(OrchestratorError::NonceAlreadyUsed))
+        );
+
+        execute_signed_flow(&client, &executor, FLOW_AMOUNT, cap_nonce, deadline);
+
+        let next_nonce = u64::from(MAX_USED_NONCES_PER_ADDR) + 1;
+        assert_eq!(client.get_nonce(&executor), next_nonce);
+
+        let evicted_nonce_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let evicted_nonce_replay = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &0,
+            &deadline,
+            &evicted_nonce_hash,
+        );
+        assert_eq!(
+            evicted_nonce_replay,
+            Err(Ok(OrchestratorError::InvalidNonce))
+        );
+        assert_eq!(client.get_nonce(&executor), next_nonce);
+
+        execute_signed_flow(&client, &independent_executor, FLOW_AMOUNT, 0, deadline);
+        assert_eq!(client.get_nonce(&independent_executor), 1);
+    }
+
+    #[test]
+    fn deadline_window_rejections_do_not_consume_nonce() {
+        let harness = setup_signed_flow();
+        let client = client(&harness);
+        let executor = Address::generate(&harness.env);
+
+        let expired_deadline = BASE_TIME;
+        let expired_hash = request_hash(&executor, FLOW_AMOUNT, 0, expired_deadline);
+        let expired = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &0,
+            &expired_deadline,
+            &expired_hash,
+        );
+        assert_eq!(expired, Err(Ok(OrchestratorError::DeadlineExpired)));
+        assert_eq!(client.get_nonce(&executor), 0);
+
+        let beyond_window_deadline = BASE_TIME + MAX_DEADLINE_WINDOW_SECS + 1;
+        let beyond_window_hash = request_hash(&executor, FLOW_AMOUNT, 0, beyond_window_deadline);
+        let beyond_window = client.try_execute_remittance_flow_signed(
+            &executor,
+            &FLOW_AMOUNT,
+            &0,
+            &beyond_window_deadline,
+            &beyond_window_hash,
+        );
+        assert_eq!(beyond_window, Err(Ok(OrchestratorError::DeadlineExpired)));
+        assert_eq!(client.get_nonce(&executor), 0);
+
+        execute_signed_flow(&client, &executor, FLOW_AMOUNT, 0, valid_deadline());
+        assert_eq!(client.get_nonce(&executor), 1);
+    }
+
+    #[test]
+    fn request_hash_binding_rejects_parameter_swap_without_consuming_nonce() {
+        let harness = setup_signed_flow();
+        let client = client(&harness);
+        let executor = Address::generate(&harness.env);
+        let nonce = 0;
+        let deadline = valid_deadline();
+        let original_hash = request_hash(&executor, FLOW_AMOUNT, nonce, deadline);
+        let swapped_amount = FLOW_AMOUNT + 1;
+
+        let swapped = client.try_execute_remittance_flow_signed(
+            &executor,
+            &swapped_amount,
+            &nonce,
+            &deadline,
+            &original_hash,
+        );
+        assert_eq!(swapped, Err(Ok(OrchestratorError::InvalidNonce)));
+        assert_eq!(client.get_nonce(&executor), 0);
+
+        execute_signed_flow(&client, &executor, FLOW_AMOUNT, nonce, deadline);
+        assert_eq!(client.get_nonce(&executor), 1);
     }
 }
 

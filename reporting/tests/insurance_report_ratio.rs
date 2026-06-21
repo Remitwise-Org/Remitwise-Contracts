@@ -13,12 +13,15 @@
 //! aggregated premium is `0`.
 //!
 //! These tests drive the reporting contract against a lightweight insurance
-//! stub that implements the cross-contract interface reporting expects
-//! (`get_active_policies -> PolicyPage<InsurancePolicy>` and
-//! `get_total_monthly_premium`). A stub is required because the real insurance
-//! contract's `get_active_policies` returns `Vec<u32>` (ids only), which does
-//! not match reporting's `Vec<InsurancePolicy>` client expectation — a latent
-//! cross-contract type mismatch worth flagging separately.
+//! stub that implements the cross-contract interface reporting expects. The
+//! interface now matches the real insurance contract exactly:
+//! `get_active_policies -> PolicyPage { items: Vec<u32> (ids), .. }` plus
+//! `get_policy(id) -> Option<InsurancePolicy>` and `get_total_monthly_premium`.
+//!
+//! The previously-latent cross-contract type mismatch is now FIXED: reporting
+//! pages through policy IDs from `get_active_policies` and resolves each full
+//! policy (with its `coverage_amount`) via `get_policy`, mirroring the real
+//! `insurance` contract whose `get_active_policies` returns ids only.
 
 use reporting::{
     CoverageType, InsurancePolicy, PolicyPage, ReportingContract, ReportingContractClient,
@@ -53,7 +56,7 @@ impl InsuranceStub {
         let mut items = Vec::new(&env);
         for p in all.iter() {
             if p.active {
-                items.push_back(p);
+                items.push_back(p.id);
             }
         }
         let count = items.len();
@@ -62,6 +65,20 @@ impl InsuranceStub {
             next_cursor: 0,
             count,
         }
+    }
+
+    pub fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+        let all: Vec<InsurancePolicy> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POLICIES"))
+            .unwrap_or_else(|| Vec::new(&env));
+        for p in all.iter() {
+            if p.id == policy_id {
+                return Some(p);
+            }
+        }
+        None
     }
 
     pub fn get_total_monthly_premium(env: Env, _owner: Address) -> i128 {
@@ -96,11 +113,13 @@ fn policy(
         id,
         owner: owner.clone(),
         name: String::from_str(env, "P"),
-        external_ref: None,
         coverage_type: CoverageType::Health,
         monthly_premium,
         coverage_amount,
+        external_ref: None,
         active,
+        created_at: 0,
+        last_payment_at: 0,
         next_payment_date: 0,
     }
 }

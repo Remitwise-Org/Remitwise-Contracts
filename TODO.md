@@ -1,13 +1,11 @@
-- [x] Implement deterministic tie-break for Top-N bills/savings reports (ID ascending on equal amounts/targets) in reporting/src/lib.rs
-- [ ] Add Top-N tests for:
-  - [ ] deterministic ordering across repeated calls
-  - [ ] tie-break rule when amounts/targets are equal
-  - [ ] cap enforcement at MAX_ITEMS_PER_REPORT and MAX_ITEMS_PER_REPORT+1
-  - [ ] fewer than N and zero items
-  - [ ] partial-data degradation (DataAvailability::Partial) under dependency pagination cap
-- [x] Add/Update documentation under docs/ describing Top-N ordering contract + tie-break rule
-- [ ] Run `cargo test -p reporting get_top -- --nocapture`
-- [ ] Run `cargo test -p reporting`
-- [ ] Run clippy for reporting (per repo standard)
+- [ ] Add quorum unreachable -> revalidate_proposals invalidation tests (events, return count, untouched-reachable, idempotency, auth) to family_wallet/src/test.rs
+- [ ] Add edge-case tests: threshold vs signer count; signer already signed; no pending proposals returns 0
+- [ ] Add docs note describing revalidate_proposals semantics + event emission + idempotency
+- [x] Add quorum unreachable -> revalidate_proposals invalidation tests (events, return count, untouched-reachable, idempotency, auth) to family_wallet/src/test.rs
+- [x] Add edge-case tests: threshold vs signer count; signer already signed; no pending proposals returns 0
+- [x] Add docs note describing revalidate_proposals semantics + event emission + idempotency
+- [ ] Run: cargo test -p family_wallet revalidate_proposals -- --nocapture
+- [ ] Run: cargo test -p family_wallet
+- [ ] Run: cargo clippy -p family_wallet (ensure clean)
 
 

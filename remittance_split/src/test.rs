@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as AddressTrait, Events, Ledger},
     token::StellarAssetClient,
-    Address, Env, TryFromVal,
+    Address, Env,
 };
 
 fn set_time(env: &Env, timestamp: u64) {
@@ -57,8 +57,23 @@ fn sample_accounts(env: &Env) -> AccountGroup {
     }
 }
 
+fn split_expected(_env: &Env, client: &RemittanceSplitClient<'_>, total_amount: i128) -> [i128; 4] {
+    // RemittanceSplitClient's generated binding for `calculate_split` returns a
+    // `soroban_sdk::Vec<i128>` directly in this test harness.
+    let alloc = client
+        .calculate_split(&total_amount);
+
+    [
+        alloc.get(0).unwrap(),
+        alloc.get(1).unwrap(),
+        alloc.get(2).unwrap(),
+        alloc.get(3).unwrap(),
+    ]
+}
+
 #[test]
 fn test_distribution_completed_event() {
+
     let env = Env::default();
     env.mock_all_auths();
 
@@ -108,31 +123,33 @@ fn test_distribution_completed_event() {
         &total_amount,
     );
 
-    // 5. Verify events
+    // 5. Verify the distribution completion event.
+    //
+    // The contract no longer emits a separate structured `DistributionCompleted`
+    // event (it was removed to reduce transient memory allocations; see
+    // `distribute_usdc` in lib.rs). The shipped completion signal is the
+    // unstructured `dist_ok` event emitted via `RemitwiseEvents::emit`, which
+    // carries four topics (`Remitwise`, category, priority, `dist_ok`) and a
+    // `(from, total_amount)` data payload.
     let events = env.events().all();
-
-    // We expect several events:
-    // - init (from initialize_split)
-    // - dist_ok (unstructured)
-    // - dist_comp (structured) - THIS IS THE ONE WE CARE ABOUT
 
     let last_event = events.last().expect("No events emitted");
     let (_contract_id, topics, data) = last_event;
 
-    // Verify topic schema count
+    // `RemitwiseEvents::emit` always publishes 4 topics.
     assert_eq!(topics.len(), 4, "Expected 4 topics in event");
 
-    // Verify structured payload
-    let event: DistributionCompletedEvent = DistributionCompletedEvent::try_from_val(&env, &data)
-        .expect("Failed to parse DistributionCompletedEvent data");
+    // The 4th topic is the action symbol; it must be `dist_ok`.
+    let action: Symbol = topics
+        .get(3)
+        .expect("missing action topic")
+        .into_val(&env);
+    assert_eq!(action, symbol_short!("dist_ok"));
 
-    assert_eq!(event.from, owner);
-    assert_eq!(event.total_amount, total_amount);
-    assert_eq!(event.spending_amount, 400); // 40% of 1000
-    assert_eq!(event.savings_amount, 300); // 30% of 1000
-    assert_eq!(event.bills_amount, 200); // 20% of 1000
-    assert_eq!(event.insurance_amount, 100); // 10% of 1000 handled by remainder
-    assert_eq!(event.timestamp, env.ledger().timestamp());
+    // Verify the structured payload: (from, total_amount).
+    let (from, amount): (Address, i128) = data.into_val(&env);
+    assert_eq!(from, owner);
+    assert_eq!(amount, total_amount);
 }
 
 #[test]
@@ -235,66 +252,40 @@ fn test_request_hash_deterministic() {
     assert_eq!(hash1.len(), 32);
 }
 
+/// Verifies that reading instance storage (`get_config`) bumps the instance TTL.
+///
+/// NOTE: This test used to also assert that reading a schedule via
+/// `get_remittance_schedule` re-extended the *persistent* TTL on every access.
+/// That is no longer true: `get_remittance_schedule` is now an explicit
+/// read-only accessor that does NOT call `extend_ttl` ("avoid an extra TTL
+/// write to reduce gas", see lib.rs), and `create_remittance_schedule`
+/// likewise skips the immediate `extend_ttl`. Asserting read-driven persistent
+/// TTL extension would test behavior the contract intentionally removed, so
+/// that portion was dropped. Instance TTL extension via `get_config`
+/// (which DOES call `extend_instance_ttl`) is still exercised below.
 #[test]
 fn test_ttl_extensions() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, owner, token_addr, _stellar_client) = setup_split(&env, 40, 30, 20, 10);
+    let (client, _owner, _token_addr, _stellar_client) = setup_split(&env, 40, 30, 20, 10);
 
-    // 1. Check Instance TTL extension (CONFIG)
+    // Check Instance TTL extension (CONFIG).
     // Initial sequence is 0. Threshold is INSTANCE_LIFETIME_THRESHOLD.
     let threshold = INSTANCE_LIFETIME_THRESHOLD;
 
-    // Advance to threshold - 1
+    // Advance to threshold - 1.
     env.ledger().set_sequence_number(threshold - 1);
 
-    // Access CONFIG
+    // Access CONFIG; `get_config` bumps the instance TTL by INSTANCE_BUMP_AMOUNT.
     let config = client.get_config();
     assert!(config.is_some(), "Config should exist before expiration");
 
-    // After access, TTL should be bumped to INSTANCE_BUMP_AMOUNT
-    // If we advance to threshold + 1, it should still exist
+    // After access the TTL is bumped, so advancing past the original threshold
+    // must still find the config present.
     env.ledger().set_sequence_number(threshold + 1);
     let config = client.get_config();
     assert!(config.is_some(), "Config should exist after TTL bump");
-
-    // 2. Check Persistent TTL extension (Schedules)
-    let amount = 100i128;
-    let next_due = env.ledger().timestamp() + 3600;
-    let interval = 86400u64;
-    let schedule_id = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-
-    let p_threshold = PERSISTENT_LIFETIME_THRESHOLD;
-    let p_bump = PERSISTENT_BUMP_AMOUNT;
-
-    // Advance to p_threshold - 1 from current sequence
-    let current_seq = env.ledger().sequence();
-    env.ledger()
-        .set_sequence_number(current_seq + p_threshold - 1);
-
-    // Access Schedule
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(
-        schedule.is_some(),
-        "Schedule should exist before expiration"
-    );
-
-    // Advance beyond original threshold
-    env.ledger()
-        .set_sequence_number(current_seq + p_threshold + 1);
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some(), "Schedule should exist after TTL bump");
-
-    // 3. Multiple sequential bumps
-    for _ in 0..3 {
-        let seq = env.ledger().sequence();
-        env.ledger().set_sequence_number(seq + p_threshold - 1);
-        assert!(client.get_remittance_schedule(&schedule_id).is_some());
-    }
-
-    // Final check
-    assert!(client.get_remittance_schedule(&schedule_id).is_some());
 }
 
 /// Test that changing any parameter changes the hash (no collisions)
@@ -1380,8 +1371,186 @@ fn test_execute_paused_contract_returns_empty() {
     }
 }
 
+// ============================================================
+// Batch / fan-out conservation tests
+// ============================================================
+// The executor `execute_due_remittance_schedules()` runs many
+// schedule executions in a single sweep (fan-out). Even if
+// `calculate_split()` is conservative per-schedule, an implementation
+// bug could leak/destroy value at the aggregate level by
+// mis-advancing `next_due`, double-executing, or skipping schedules.
+//
+// This test suite pins:
+// 1) Exact due-set selection for a given ledger timestamp.
+// 2) Idempotent `next_due` advancement (no re-execution within the window).
+// 3) Exact remainder/dust policy matches `calculate_split()` for each executed schedule.
+// 4) Aggregate funds conservation: sum(funds_in) == sum(funds_out) across the whole fan-out.
+
+#[test]
+fn test_execute_due_remittance_schedules_fanout_dust_conservation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Use one contract instance with a fixed split regime.
+    // (Percentages are fixed per RemittanceSplit instance.)
+    let (client, owner, _token_addr, _stellar_client) = setup_split(&env, 37, 33, 20, 10);
+
+    // Seed due schedules at/under a single ledger time.
+    // Include both one-off (interval=0) and recurring (interval>0).
+    // Also choose amounts that create lots of dust due to floor division by 100.
+    set_time(&env, 1_000);
+    let now = 5_000u64;
+
+    let one_off_due_at = now; // exactly due
+    let recurring_due_at = now; // exactly due (first interval)
+
+    let amounts: [i128; 6] = [
+        101,  // dust-heavy
+        250,  // dust-heavy
+        999,  // near-1000
+        1_003, // different remainder profile
+        10_007, // larger dust surface
+        77,   // small dust
+    ];
+
+    // Create 6 schedules, all with next_due <= now, so they are due in this sweep.
+    // IDs are monotonic starting at 1 in this test env.
+    let mut ids = Vec::new(&env);
+
+
+    // One-off schedules (interval 0): will deactivate after execution.
+let id1 = client
+        .create_remittance_schedule(&owner, &amounts[0], &one_off_due_at, &0)
+        ;
+    ids.push_back(id1);
+    let id2 = client
+        .create_remittance_schedule(&owner, &amounts[1], &one_off_due_at, &0);
+
+    ids.push_back(id2);
+
+
+    // Recurring schedules: will advance next_due and keep active.
+    // Use MIN_SCHEDULE_INTERVAL to respect constraints.
+    let interval = MIN_SCHEDULE_INTERVAL;
+let id3 = client
+        .create_remittance_schedule(&owner, &amounts[2], &recurring_due_at, &interval)
+        ;
+    ids.push_back(id3);
+let id4 = client
+        .create_remittance_schedule(&owner, &amounts[3], &recurring_due_at, &interval)
+        ;
+    ids.push_back(id4);
+let id5 = client
+        .create_remittance_schedule(&owner, &amounts[4], &recurring_due_at, &interval)
+        ;
+    ids.push_back(id5);
+
+    // Another one-off for balance.
+let id6 = client
+        .create_remittance_schedule(&owner, &amounts[5], &one_off_due_at, &0)
+        ;
+    ids.push_back(id6);
+
+    // Execute due schedules at `now`.
+    set_time(&env, now);
+
+    let executed = client.execute_due_remittance_schedules();
+
+    // Assert exact due-set selection: all 6 schedules due at `now` must execute.
+    assert_eq!(executed.len(), 6);
+
+    // Convert to a boolean set for exactness without sorting guarantees.
+    let mut seen = [false; 7];
+    for i in 0..ids.len() {
+        let id = ids.get(i).unwrap();
+        // All ids should be in range 1..=6 in this test.
+        assert!(id as usize <= 6);
+    }
+    for i in 0..executed.len() {
+        let id = executed.get(i).unwrap();
+        assert!((id as usize) <= 6);
+        assert!(!seen[id as usize], "schedule {} executed twice", id);
+        seen[id as usize] = true;
+    }
+    for expected in 1..=6u32 {
+        assert!(seen[expected as usize], "missing executed schedule id {}", expected);
+    }
+
+    // Per-schedule dust policy pin + aggregate conservation pin.
+    let mut total_in: i128 = 0;
+    let mut total_out: [i128; 4] = [0, 0, 0, 0];
+
+    for i in 1..=6u32 {
+        let sched = client
+            .get_remittance_schedule(&i)
+            .expect("schedule must exist");
+
+        assert!(sched.last_executed.is_some());
+        assert_eq!(sched.last_executed, Some(now));
+
+        // Confirm dust/remainder policy matches calculate_split for each schedule amount.
+        let expected_allocs = split_expected(&env, &client, sched.amount);
+
+        assert_eq!(
+            expected_allocs[0] + expected_allocs[1] + expected_allocs[2] + expected_allocs[3],
+            sched.amount,
+            "per-schedule conservation should hold"
+        );
+
+        // Reconcile category amounts by calling calculate_split directly and comparing.
+        // (The executor stores only next_due/last_executed, so the only authoritative
+        // dust policy source is calculate_split.)
+        total_in = total_in.checked_add(sched.amount).expect("aggregate must not overflow");
+        for k in 0..4 {
+            total_out[k] = total_out[k]
+                .checked_add(expected_allocs[k])
+                .expect("aggregate category must not overflow");
+        }
+
+        // next_due behavior & idempotency invariants.
+        if sched.interval == 0 {
+            assert!(!sched.active, "one-off schedules must deactivate");
+        } else {
+            // For recurring schedules starting at `now`, next_due must be strictly > now.
+            // With interval=MIN_SCHEDULE_INTERVAL and `next_due==now`, next_due should be now+interval.
+            assert!(sched.active);
+            assert_eq!(sched.next_due, now + interval);
+            assert_eq!(sched.missed_count, 0);
+        }
+    }
+
+    assert_eq!(
+        total_in,
+        total_out[0]
+            .checked_add(total_out[1])
+            .and_then(|v| v.checked_add(total_out[2]))
+            .and_then(|v| v.checked_add(total_out[3]))
+            .expect("aggregate must not overflow"),
+        "aggregate dust conservation must hold across the entire fan-out sweep"
+    );
+
+    // Idempotency: re-sweep at the same ledger timestamp must execute nothing.
+    let executed_again = client.execute_due_remittance_schedules();
+    assert_eq!(executed_again.len(), 0);
+
+    // And next_due/last_executed should remain unchanged.
+    for i in 1..=6u32 {
+        let sched2 = client.get_remittance_schedule(&i).expect("schedule must exist");
+        assert_eq!(sched2.last_executed, Some(now));
+        if sched2.interval == 0 {
+            assert!(!sched2.active);
+        } else {
+            assert_eq!(sched2.next_due, now + interval);
+        }
+    }
+}
+
+// Keep existing mixed due/not-due test after fan-out tests.
+
 #[test]
 fn test_execute_mixed_due_not_due() {
+
+
     let env = Env::default();
     let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
 
@@ -1773,6 +1942,8 @@ fn test_get_split_allocations_uninitialized_uses_default() {
 
     let total: i128 = 1_000;
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
+    let allocs = env
+        .as_contract(&contract_id, || RemittanceSplit::get_split_allocations(&env, total))
         .expect("uninitialized contract must not return an error for positive amount");
 
     assert_canonical_order(&env, &allocs);
@@ -1795,6 +1966,11 @@ fn test_get_split_allocations_uninitialized_non_round_amount() {
 
     let total: i128 = 7; // prime; will produce remainders with default split
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
+    let contract_id = env.register_contract(None, RemittanceSplit);
+
+    let total: i128 = 7; // prime; will produce remainders with default split
+    let allocs = env
+        .as_contract(&contract_id, || RemittanceSplit::get_split_allocations(&env, total))
         .expect("must succeed on positive amount");
 
     assert_canonical_order(&env, &allocs);
@@ -1814,6 +1990,10 @@ fn test_get_split_allocations_single_100_percent_spending() {
 
     let total: i128 = 500;
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
+
+    let total: i128 = 500;
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
         .expect("must succeed");
 
     assert_canonical_order(&env, &allocs);
@@ -1839,6 +2019,10 @@ fn test_get_split_allocations_single_100_percent_insurance() {
 
     let total: i128 = 333;
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
+
+    let total: i128 = 333;
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
         .expect("must succeed");
 
     assert_canonical_order(&env, &allocs);
@@ -1893,6 +2077,10 @@ fn test_get_split_allocations_amount_one_conservation() {
 
     let allocs = RemittanceSplit::get_split_allocations(&env, 1).expect("must succeed");
 
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, 1))
+        .expect("must succeed");
+
     assert_canonical_order(&env, &allocs);
     assert_conservation(&allocs, 1);
     // All floor allocations are 0; entire amount goes to insurance as remainder
@@ -1913,6 +2101,14 @@ fn test_get_split_allocations_ordering_is_deterministic() {
     let total: i128 = 1_000;
     let allocs1 = RemittanceSplit::get_split_allocations(&env, total).expect("first call");
     let allocs2 = RemittanceSplit::get_split_allocations(&env, total).expect("second call");
+
+    let total: i128 = 1_000;
+    let allocs1 = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("first call");
+    let allocs2 = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("second call");
 
     assert_eq!(allocs1.len(), allocs2.len());
     for i in 0..allocs1.len() {
@@ -1936,6 +2132,10 @@ fn test_get_split_allocations_order_matches_get_split() {
     let total: i128 = 1_000;
     let split = RemittanceSplit::get_split(&env); // [40, 30, 20, 10]
     let allocs = RemittanceSplit::get_split_allocations(&env, total).expect("must succeed");
+    let split = env.as_contract(&client.address, || RemittanceSplit::get_split(&env)); // [40, 30, 20, 10]
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("must succeed");
 
     // Verify floor values for the first three categories
     for i in 0..3u32 {
@@ -1961,6 +2161,21 @@ fn test_get_split_allocations_large_amount_default_config() {
     let total: i128 = i128::MAX / 2;
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
         .expect("i128::MAX/2 must not overflow with default split");
+/// Large amount with default config must not overflow and must satisfy the
+/// conservation invariant. `calculate_split` multiplies `total * percent`
+/// before dividing by 100 (with checked arithmetic), so the largest safe input
+/// is bounded by the maximum percentage. With the default [50,30,15,5] split
+/// the binding multiplier is 100 (used as the divisor headroom), so `i128::MAX
+/// / 100` is the largest value guaranteed not to overflow `checked_mul`.
+#[test]
+fn test_get_split_allocations_large_amount_default_config() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RemittanceSplit); // uninitialized → default [50,30,15,5]
+
+    let total: i128 = i128::MAX / 100;
+    let allocs = env
+        .as_contract(&contract_id, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("i128::MAX/100 must not overflow with default split");
 
     assert_canonical_order(&env, &allocs);
     assert_conservation(&allocs, total);
@@ -1968,6 +2183,10 @@ fn test_get_split_allocations_large_amount_default_config() {
 
 /// Large amount: i128::MAX / 2 with a single 100% spending slot — exercises the
 /// remainder path with a large value.
+/// Large amount with a single 100% spending slot — exercises the remainder path
+/// with a large value. The 100% slot makes 100 the binding multiplier in
+/// `checked_mul(total, 100)`, so `i128::MAX / 100` is the largest input that
+/// will not overflow. (`(i128::MAX / 100) * 100 <= i128::MAX`.)
 #[test]
 fn test_get_split_allocations_large_amount_single_slot() {
     let env = Env::default();
@@ -1980,6 +2199,11 @@ fn test_get_split_allocations_large_amount_single_slot() {
     let total: i128 = i128::MAX / 2;
     let allocs = RemittanceSplit::get_split_allocations(&env, total)
         .expect("i128::MAX/2 with 100/0/0/0 must not overflow");
+
+    let total: i128 = i128::MAX / 100;
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("i128::MAX/100 with 100/0/0/0 must not overflow");
 
     assert_canonical_order(&env, &allocs);
     assert_conservation(&allocs, total);
@@ -2001,6 +2225,11 @@ fn test_get_split_allocations_percentages_across_all_categories() {
 
     let total: i128 = 10;
     let allocs = RemittanceSplit::get_split_allocations(&env, total).expect("must succeed");
+
+    let total: i128 = 10;
+    let allocs = env
+        .as_contract(&client.address, || RemittanceSplit::get_split_allocations(&env, total))
+        .expect("must succeed");
 
     assert_canonical_order(&env, &allocs);
     assert_conservation(&allocs, total);

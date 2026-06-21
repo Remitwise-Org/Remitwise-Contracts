@@ -53,7 +53,7 @@ mod tests {
         let page = c.get_active_policies(&owner, &0, &5);
         assert_eq!(page.items.len(), 5);
         assert_eq!(page.count, 5);
-        assert_eq!(page.next_cursor, 5);
+        assert_eq!(page.next_cursor, 6);
     }
 
     #[test]

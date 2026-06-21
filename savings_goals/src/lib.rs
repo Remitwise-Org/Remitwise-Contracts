@@ -255,6 +255,11 @@ pub enum SavingsGoalError {
     InvalidGoalName = 11,
     GoalCapReached = 12,
     BatchTooLarge = 14,
+    /// Attempted to shorten an already-active time-lock (unlock_date).
+    ///
+    /// Time-locks are monotonic while active: they may be extended forward,
+    /// but never shortened backward.
+    TimeLockShortening = 15,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -344,7 +349,7 @@ impl SavingsGoalContract {
             .persistent()
             .get(&DataKey::ArchivedGoalsIndex(owner.clone()))
             .unwrap_or_else(|| Vec::new(env));
-        active_ids.len() + archived_ids.len()
+        active_ids.len().saturating_add(archived_ids.len())
     }
 
     fn is_function_paused(env: &Env, func: Symbol) -> bool {
@@ -394,7 +399,6 @@ impl SavingsGoalContract {
 
         let end = (offset + limit).min(total_count);
         let mut result = Vec::new(&env);
-
         for i in offset..end {
             let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
             if let Some(goal) = env
@@ -2194,13 +2198,25 @@ impl SavingsGoalContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
-    /// Set time-lock on a goal
-    /// Sets a time-lock on a savings goal.
+    /// Set or extend the time-lock on a goal.
+    ///
+    /// # Monotonicity rule (forward-only)
+    /// While a time-lock is active (i.e. `unlock_date` is set to a timestamp
+    /// strictly greater than the current ledger time), `set_time_lock` **may
+    /// only move `unlock_date` forward** (extend), never backward (shorten).
+    ///
+    /// - `new_unlock == current_unlock`: no-op (accepted)
+    /// - `new_unlock > current_unlock`: extend (accepted)
+    /// - `new_unlock < current_unlock`: rejected
     ///
     /// # Arguments
     /// * `caller` - Address of the goal owner
     /// * `goal_id` - ID of the goal
     /// * `unlock_date` - Unix timestamp when the goal becomes withdrawable
+    ///
+    /// # Errors
+    /// Returns [`SavingsGoalError::TimeLockShortening`] when attempting to
+    /// shorten an already-active time-lock.
     ///
     /// # Panics
     /// - If caller is not the owner or goal not found.
@@ -2231,6 +2247,29 @@ impl SavingsGoalContract {
             panic!("Unlock date must be in the future");
         }
 
+        // Monotonicity guard: while an existing time-lock is active,
+        // only allow extending unlock_date (never shortening).
+        if let Some(prev_unlock) = goal.unlock_date {
+            // Active iff unlock_date is strictly in the future.
+            if prev_unlock > current_time {
+                if unlock_date < prev_unlock {
+                    Self::append_audit(
+                        &env,
+                        symbol_short!("timelock"),
+                        &caller,
+                        false,
+                    );
+                    soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
+                }
+            }
+        }
+
+        // Even if there is an active time-lock, extending to the same value
+        // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
+        // Any other extension (`new_unlock > prev_unlock`) updates the lock.
+        
+
+        // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);
         env.storage()
             .persistent()

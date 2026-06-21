@@ -24,6 +24,10 @@ name = "test_recurring_lifecycle"
 path = "tests/test_recurring_lifecycle.rs"
 
 [[test]]
+name = "tests_recurring"
+path = "tests/tests_recurring.rs"
+
+[[test]]
 name = "tests_overdue"
 path = "tests/tests_overdue.rs"
 

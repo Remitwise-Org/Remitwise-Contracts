@@ -153,6 +153,93 @@ fn test_per_function_pause() {
     assert!(!client.is_function_paused(&module, &func));
 }
 
+/// Verify that a function pause works independently when its module is not paused.
+#[test]
+fn test_function_pause_independent_when_module_not_paused() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let module = symbol_short!("bill");
+    let paused_fn = symbol_short!("pay");
+    let other_fn = symbol_short!("refund");
+
+    assert!(!client.is_function_paused(&module, &paused_fn));
+    assert!(!client.is_function_paused(&module, &other_fn));
+
+    client.pause_function(&module, &paused_fn);
+
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(!client.is_function_paused(&module, &other_fn));
+
+    client.unpause_function(&module, &paused_fn);
+    assert!(!client.is_function_paused(&module, &paused_fn));
+}
+
+/// Assert that module-level pause overrides function-level flags and that per-function state is preserved across module unpause.
+#[test]
+fn test_module_pause_precedence_over_function_and_restore_on_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let module = symbol_short!("bill");
+    let paused_fn = symbol_short!("pay");
+    let unpaused_fn = symbol_short!("refund");
+
+    assert!(!client.is_function_paused(&module, &paused_fn));
+    assert!(!client.is_function_paused(&module, &unpaused_fn));
+
+    client.pause_function(&module, &paused_fn);
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(!client.is_function_paused(&module, &unpaused_fn));
+
+    client.pause_module(&module);
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(client.is_function_paused(&module, &unpaused_fn));
+
+    client.unpause_module(&module);
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(!client.is_function_paused(&module, &unpaused_fn));
+}
+
+/// Assert that a global pause dominates both module and function pause scopes.
+#[test]
+fn test_global_pause_dominates_module_and_function_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let module = symbol_short!("bill");
+    let paused_fn = symbol_short!("pay");
+    let other_fn = symbol_short!("refund");
+
+    client.pause_function(&module, &paused_fn);
+    client.pause_module(&module);
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(client.is_function_paused(&module, &other_fn));
+
+    client.pause();
+    assert!(client.is_paused());
+    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(client.is_function_paused(&module, &other_fn));
+}
+
 #[test]
 fn test_max_paused_functions_limit() {
     let env = Env::default();
