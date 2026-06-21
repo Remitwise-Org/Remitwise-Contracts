@@ -1704,7 +1704,7 @@ mod tests {
 
     fn assert_snapshot_equal(a: &Option<ExportSnapshot>, b: &Option<ExportSnapshot>) {
         match (a, b) {
-            (None, None) => return,
+            (None, None) => {}
             (Some(_), None) | (None, Some(_)) => panic!("snapshot mismatch: one is None"),
             (Some(a_snap), Some(b_snap)) => {
                 assert_eq!(a_snap.header.version, b_snap.header.version);
@@ -2922,7 +2922,7 @@ mod tests {
 
     #[test]
     fn test_binary_roundtrip_remittance_split_byte_identity() {
-        /// Export -> Import -> Export should yield byte-identical output.
+        // Export -> Import -> Export should yield byte-identical output.
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
         let bytes1 = export_to_binary(&snapshot).unwrap();
 
@@ -2963,7 +2963,7 @@ mod tests {
 
     #[test]
     fn test_binary_determinism_same_snapshot_twice() {
-        /// Re-exporting the same snapshot twice must yield byte-identical output (determinism).
+        // Re-exporting the same snapshot twice must yield byte-identical output (determinism).
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
 
         let bytes_a = export_to_binary(&snapshot).unwrap();
@@ -2977,7 +2977,7 @@ mod tests {
 
     #[test]
     fn test_binary_determinism_remittance_split_three_exports() {
-        /// Export the same RemittanceSplit snapshot three times; all must be identical.
+        // Export the same RemittanceSplit snapshot three times; all must be identical.
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
 
         let bytes_1 = export_to_binary(&snapshot).unwrap();
@@ -2990,7 +2990,7 @@ mod tests {
 
     #[test]
     fn test_binary_determinism_large_generic_payload() {
-        /// Determinism test with a larger Generic payload (many fields).
+        // Determinism test with a larger Generic payload (many fields).
         let mut entries = HashMap::new();
         for i in 0..50 {
             entries.insert(
@@ -3008,10 +3008,9 @@ mod tests {
 
     #[test]
     fn test_binary_golden_vector_imports_to_expected_payload() {
-        /// Load a frozen golden binary vector (checked into repo as base64) and verify
-        /// it imports to the expected `SnapshotPayload` (SavingsGoals).
-        ///
-        /// This ensures that serialization changes don't silently break existing backups.
+        // Load a frozen golden binary vector (checked into repo as base64) and verify
+        // it imports to the expected `SnapshotPayload` (SavingsGoals).
+        // This ensures that serialization changes don't silently break existing backups.
         let b64 = include_str!("../tests/golden_snapshot.bin.b64").trim();
         
         // Generate the golden snapshot if not already present in tests/
@@ -3021,7 +3020,7 @@ mod tests {
             ExportFormat::Binary,
         );
         let expected_bytes = export_to_binary(&expected_snapshot).unwrap();
-        let expected_b64 = base64::engine::general_purpose::STANDARD.encode(&expected_bytes);
+        let _expected_b64 = base64::engine::general_purpose::STANDARD.encode(&expected_bytes);
         
         // Try to decode the placeholder/golden vector
         let bytes_result = base64::engine::general_purpose::STANDARD.decode(b64);
@@ -3048,7 +3047,7 @@ mod tests {
 
     #[test]
     fn test_binary_golden_vector_checksum_stable() {
-        /// The frozen golden vector's checksum must remain stable across releases.
+        // The frozen golden vector's checksum must remain stable across releases.
         let b64 = include_str!("../tests/golden_snapshot.bin.b64");
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(b64.trim())
@@ -3071,7 +3070,7 @@ mod tests {
 
     #[test]
     fn test_binary_truncated_snapshot_rejected_deserialize_error() {
-        /// Truncated binary blobs must be rejected with `DeserializeError`.
+        // Truncated binary blobs must be rejected with `DeserializeError`.
         let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
         let bytes = export_to_binary(&snapshot).unwrap();
         let truncated = &bytes[..bytes.len().saturating_sub(10)]; // Remove last 10 bytes
@@ -3086,7 +3085,7 @@ mod tests {
 
     #[test]
     fn test_binary_empty_blob_rejected_deserialize_error() {
-        /// Empty binary blob must be rejected with `DeserializeError`.
+        // Empty binary blob must be rejected with `DeserializeError`.
         let result = import_from_binary_untracked(&[]);
         assert!(
             matches!(result, Err(MigrationError::DeserializeError(_))),
@@ -3097,8 +3096,8 @@ mod tests {
 
     #[test]
     fn test_binary_oversized_snapshot_rejected_before_deserialize() {
-        /// Snapshot oversized beyond `MAX_MIGRATION_SNAPSHOT_BYTES` must be rejected
-        /// before deserialization to prevent DoS.
+        // Snapshot oversized beyond `MAX_MIGRATION_SNAPSHOT_BYTES` must be rejected
+        // before deserialization to prevent DoS.
         let oversized = vec![0u8; MAX_MIGRATION_SNAPSHOT_BYTES + 1];
 
         let result = import_from_binary_untracked(&oversized);
@@ -3111,8 +3110,8 @@ mod tests {
 
     #[test]
     fn test_binary_snapshot_at_size_limit_accepted() {
-        /// A snapshot exactly at `MAX_MIGRATION_SNAPSHOT_BYTES` should be accepted
-        /// (pre-validation should not reject it).
+        // A snapshot exactly at `MAX_MIGRATION_SNAPSHOT_BYTES` should be accepted
+        // (pre-validation should not reject it).
         let mut entries = HashMap::new();
         // Create a payload close to the size limit
         let large_value = "x".repeat(MAX_MIGRATION_PAYLOAD_BYTES / 2);
@@ -3140,7 +3139,7 @@ mod tests {
 
     #[test]
     fn test_binary_round_trip_preserves_checksum() {
-        /// After round-trip (export -> import), the checksum must be valid.
+        // After round-trip (export -> import), the checksum must be valid.
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
         let bytes = export_to_binary(&snapshot).unwrap();
 
@@ -3153,7 +3152,7 @@ mod tests {
 
     #[test]
     fn test_binary_determinism_empty_goals_list() {
-        /// Determinism test with an empty SavingsGoals list (edge case).
+        // Determinism test with an empty SavingsGoals list (edge case).
         let payload = SnapshotPayload::SavingsGoals(SavingsGoalsExport {
             next_id: 0,
             goals: Vec::new(),
@@ -3168,7 +3167,7 @@ mod tests {
 
     #[test]
     fn test_binary_roundtrip_with_max_records() {
-        /// Round-trip test at `MAX_MIGRATION_RECORDS` boundary.
+        // Round-trip test at `MAX_MIGRATION_RECORDS` boundary.
         let goals_payload = SnapshotPayload::SavingsGoals(sample_goals_export(MAX_MIGRATION_RECORDS));
         let snapshot = ExportSnapshot::new(goals_payload, ExportFormat::Binary);
         let bytes1 = export_to_binary(&snapshot).unwrap();
@@ -3182,17 +3181,17 @@ mod tests {
 
     #[test]
     fn test_binary_roundtrip_consistency_across_formats() {
-        /// Verify that binary roundtrip is consistent when exported/imported multiple times.
-        /// (This is a stronger form of determinism: consistency across multiple cycles.)
+        // Verify that binary roundtrip is consistent when exported/imported multiple times.
+        // (This is a stronger form of determinism: consistency across multiple cycles.)
         let original = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
 
         let mut current_bytes = export_to_binary(&original).unwrap();
         for cycle in 0..3 {
             let mut tracker = MigrationTracker::new();
             let loaded = import_from_binary(&current_bytes, &mut tracker, (cycle as u64) * 1000)
-                .expect(&format!("cycle {}: import failed", cycle));
+                .unwrap_or_else(|_| panic!("cycle {}: import failed", cycle));
             current_bytes = export_to_binary(&loaded)
-                .expect(&format!("cycle {}: export failed", cycle));
+                .unwrap_or_else(|_| panic!("cycle {}: export failed", cycle));
         }
 
         // After 3 cycles, we should still have the original bytes
@@ -3202,8 +3201,8 @@ mod tests {
 
     #[test]
     fn test_binary_determinism_with_metadata_fields() {
-        /// Determinism test ensuring metadata (e.g., `created_at_ms`) doesn't affect
-        /// serialization or breaks determinism.
+        // Determinism test ensuring metadata (e.g., `created_at_ms`) doesn't affect
+        // serialization or breaks determinism.
         let mut snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
         snapshot.header.created_at_ms = Some(1_700_000_000);
 

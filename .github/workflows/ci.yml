@@ -18,7 +18,7 @@ jobs:
   build:
     name: Build and Test
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -102,14 +102,14 @@ jobs:
             echo "✓ Found: $wasm_file ($(du -h $wasm_file | cut -f1))"
           done
 
-      - name: Run Cargo tests
+      - name: Run workspace tests
         run: |
-          cargo test -p orchestrator --verbose
+          cargo test --all-features --verbose
         continue-on-error: false
 
       - name: Run Clippy
         run: |
-          cargo clippy -p orchestrator --all-targets -- -D warnings
+          cargo clippy --all-targets --all-features -- -D warnings
         continue-on-error: false
 
       - name: Check formatting
@@ -231,6 +231,20 @@ jobs:
       - name: Run storage key naming convention tests
         run: |
           cargo test --package testutils storage_key_naming_test -- --nocapture
+        continue-on-error: false
+
+  cross-contract-invariants:
+    name: Cross-Contract Invariant Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run cross-contract invariant verification
+        run: |
+          python3 scripts/verify_cross_contract_invariants.py
         continue-on-error: false
 
   gas-benchmarks:

@@ -46,7 +46,7 @@ fn set_time(env: &Env, timestamp: u64) {
     });
 }
 
-fn setup_contract(env: &Env) -> BillPaymentsClient {
+fn setup_contract(env: &Env) -> BillPaymentsClient<'_> {
     let id = env.register_contract(None, BillPayments);
     BillPaymentsClient::new(env, &id)
 }

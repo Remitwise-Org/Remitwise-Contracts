@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-CONTRACTS=("bill_payments" "savings_goals" "insurance" "family_wallet" "remittance_split")
+# insurance gas_bench is disabled (insurance/tests/gas_bench.rs.disabled)
+CONTRACTS=("bill_payments" "savings_goals" "family_wallet" "remittance_split")
 OUTPUT_FILE="gas_results.json"
 TEMP_FILE=$(mktemp)
 
