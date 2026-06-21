@@ -2259,7 +2259,7 @@ impl SavingsGoalContract {
                         &caller,
                         false,
                     );
-                    panic_with_error!(env, SavingsGoalError::TimeLockShortening);
+                    soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
                 }
             }
         }
