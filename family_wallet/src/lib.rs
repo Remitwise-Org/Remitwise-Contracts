@@ -593,7 +593,7 @@ impl FamilyWallet {
             return Err(Error::Unauthorized);
         }
 
-        Ok(())
+        Self::validate_precision_spending_internal(env, caller, amount)
     }
 
     /// @notice Configure multisig parameters for a given transaction type.
