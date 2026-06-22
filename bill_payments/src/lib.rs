@@ -388,7 +388,7 @@ impl BillPayments {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
         let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
-        
+
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);
         let mut inserted = false;
@@ -1535,7 +1535,9 @@ impl BillPayments {
         }
     }
 
-    /// Set or clear an external reference ID for a bill
+    /// Set or clear an external reference ID for a bill.
+    ///
+    /// Emits `BillEvent::ExternalRefUpdated` after a successful update.
     ///
     /// # Arguments
     /// * `caller` - Address of the caller (must be the bill owner)
@@ -1589,6 +1591,15 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ExternalRefUpdated),
+            (
+                bill_id,
+                caller.clone(),
+                validated_ext_ref.clone(),
+                env.ledger().timestamp(),
+            ),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -1781,6 +1792,9 @@ impl BillPayments {
     // Remaining operations
     // -----------------------------------------------------------------------
 
+    /// Cancel an active bill.
+    ///
+    /// Emits `BillEvent::Cancelled` after a successful cancellation.
     pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
@@ -1812,12 +1826,16 @@ impl BillPayments {
         Self::index_remove_active(&env, &caller, bill_id);
         // Remove from currency index
         Self::index_remove_currency(&env, &caller, &bill_currency, bill_id);
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Cancelled),
+            (bill_id, caller.clone(), env.ledger().timestamp()),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
-            symbol_short!("canceled"),
-            bill_id,
+            pause_functions::CANCEL_BILL,
+            (bill_id, caller, env.ledger().timestamp()),
         );
         Ok(())
     }
@@ -1932,6 +1950,9 @@ impl BillPayments {
         Ok(archived_count)
     }
 
+    /// Restore an archived bill into active bill storage.
+    ///
+    /// Emits `BillEvent::Restored` after a successful restore.
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE)?;
@@ -1994,12 +2015,16 @@ impl BillPayments {
 
         Self::update_storage_stats(&env);
 
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Restored),
+            (bill_id, caller.clone(), env.ledger().timestamp()),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
-            symbol_short!("restored"),
-            bill_id,
+            pause_functions::RESTORE,
+            (bill_id, caller, env.ledger().timestamp()),
         );
         Ok(())
     }
@@ -2147,9 +2172,14 @@ impl BillPayments {
                 unpaid_delta = unpaid_delta.saturating_sub(amount);
             }
 
+            let bill_ext_ref = bill.external_ref.clone();
             bills.set(bill_id, bill);
             success_count += 1;
 
+            env.events().publish(
+                (symbol_short!("bill"), BillEvent::Paid),
+                (bill_id, caller.clone(), bill_ext_ref),
+            );
             RemitwiseEvents::emit(
                 &env,
                 EventCategory::Transaction,
@@ -2479,5 +2509,7 @@ impl BillPayments {
     }
 }
 
+#[cfg(test)]
+mod events_schema_test;
 #[cfg(test)]
 mod test;

@@ -46,7 +46,7 @@ Smart contracts emit events but don't provide efficient querying capabilities. T
 | Contract | Events Tracked | Entities |
 |----------|----------------|----------|
 | Savings Goals | goal_created, goal_deposit, goal_withdraw, tags_add, tags_rem | SavingsGoal |
-| Bill Payments | bill_created, bill_paid, tags_add, tags_rem | Bill |
+| Bill Payments | bill_created, bill_paid, bill_external_ref_updated, bill_cancelled, bill_restored, tags_add, tags_rem | Bill |
 | Insurance | policy_created, tags_add, tags_rem | InsurancePolicy |
 | Remittance Split | split_created, split_executed | RemittanceSplit |
 

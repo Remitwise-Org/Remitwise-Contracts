@@ -22,6 +22,16 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Bill Payments (`bill_payments`)
 
+### Unreleased
+
+- **Summary**: Aligns Bill Payments event emissions with the declared `BillEvent` taxonomy.
+- **Indexer Notes**:
+  - `cancel_bill` now emits `BillEvent::Cancelled` with `(bill_id, owner, cancelled_at)`.
+  - `restore_bill` now emits `BillEvent::Restored` with `(bill_id, owner, restored_at)`.
+  - `set_external_ref` now emits `BillEvent::ExternalRefUpdated` with `(bill_id, owner, external_ref, updated_at)`.
+  - `batch_pay_bills` emits per-bill `BillEvent::Paid` events for successful items, matching `pay_bill`.
+- **Migration Notes**: Indexers should subscribe to the direct `("bill", BillEvent::...)` topics for canonical bill lifecycle events; generic `Remitwise` audit topics remain available for compatibility.
+
 ### v0.1.0
 
 - **Summary**: Initial release of the Bill Payments contract.

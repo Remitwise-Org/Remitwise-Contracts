@@ -100,17 +100,18 @@ pub struct Bill {
 
 ### Event: Bill Paid
 
-**Topic:** `"Remitwise"` (category: Transaction, priority: High)  
-**Action Symbol:** `"pay_bill"`
+**BillEvent Topic:** `("bill", BillEvent::Paid)`
+**Remitwise Topic:** `"Remitwise"` (category: Transaction, priority: High)
+**Remitwise Action Symbol:** `"paid"`
+**Emitted by:** `pay_bill`; each successful item in `batch_pay_bills`
 
 **Data Structure:**
 ```rust
-pub struct BillPaidEvent {
-    pub bill_id: u32,               // ID of paid bill
-    pub owner: Address,             // Bill owner
-    pub amount: i128,               // Amount paid
-    pub paid_at: u64,               // Payment timestamp
-}
+// BillEvent payload
+(bill_id: u32, owner: Address, external_ref: Option<String>)
+
+// Remitwise action payload
+(bill_id: u32, owner: Address, amount: i128)
 ```
 
 **Example Event:**
@@ -118,23 +119,44 @@ pub struct BillPaidEvent {
 {
   "bill_id": 1,
   "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "amount": 1000,
-  "paid_at": 1234567850
+  "external_ref": null
+}
+```
+
+### Event: Bill External Reference Updated
+
+**BillEvent Topic:** `("bill", BillEvent::ExternalRefUpdated)`
+**Remitwise Topic:** `"Remitwise"` (category: State, priority: Medium)
+**Remitwise Action Symbol:** `"ext_ref"`
+
+**Data Structure:**
+```rust
+// BillEvent payload
+(bill_id: u32, owner: Address, external_ref: Option<String>, updated_at: u64)
+
+// Remitwise action payload
+(bill_id: u32, owner: Address, external_ref: Option<String>)
+```
+
+**Example Event:**
+```json
+{
+  "bill_id": 1,
+  "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+  "external_ref": "INV-2026-001",
+  "updated_at": 1234567900
 }
 ```
 
 ### Event: Bill Cancelled
 
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"can_bill"`
+**BillEvent Topic:** `("bill", BillEvent::Cancelled)`
+**Remitwise Topic:** `"Remitwise"` (category: State, priority: Medium)
+**Remitwise Action Symbol:** `"can_bill"`
 
 **Data Structure:**
 ```rust
-pub struct BillCancelledEvent {
-    pub bill_id: u32,               // ID of cancelled bill
-    pub owner: Address,             // Bill owner
-    pub cancelled_at: u64,          // Cancellation timestamp
-}
+(bill_id: u32, owner: Address, cancelled_at: u64)
 ```
 
 ### Event: Bills Archived
@@ -152,16 +174,13 @@ pub struct BillsArchivedEvent {
 
 ### Event: Bill Restored
 
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"restore"`
+**BillEvent Topic:** `("bill", BillEvent::Restored)`
+**Remitwise Topic:** `"Remitwise"` (category: State, priority: Medium)
+**Remitwise Action Symbol:** `"restore"`
 
 **Data Structure:**
 ```rust
-pub struct BillRestoredEvent {
-    pub bill_id: u32,               // ID of restored bill
-    pub owner: Address,             // Bill owner
-    pub restored_at: u64,           // Restoration timestamp
-}
+(bill_id: u32, owner: Address, restored_at: u64)
 ```
 
 ### Event: Contract Paused/Unpaused

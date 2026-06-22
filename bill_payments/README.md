@@ -333,6 +333,11 @@ let overdue_page = bill_payments::get_overdue_bills(env, 0, 10);
 The contract emits events for audit trails:
 - `BillEvent::Created`: When a bill is created
 - `BillEvent::Paid`: When a bill is paid
+- `BillEvent::ExternalRefUpdated`: When a bill external reference is set or cleared
+- `BillEvent::Cancelled`: When an active bill is cancelled
+- `BillEvent::Restored`: When an archived bill is restored
+
+`batch_pay_bills` emits one `BillEvent::Paid` event for each successfully paid bill, matching the single-bill `pay_bill` event shape.
 
 ## Integration Patterns
 
