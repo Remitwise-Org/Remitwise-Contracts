@@ -553,7 +553,7 @@ impl BillPayments {
     /// Length must be within `[MIN_EXTERNAL_REF_LEN, MAX_EXTERNAL_REF_LEN]`.
     fn validate_external_ref(_env: &Env, ext_ref: &String) -> Result<String, BillPaymentsError> {
         let len = ext_ref.len();
-        if len < MIN_EXTERNAL_REF_LEN || len > MAX_EXTERNAL_REF_LEN {
+        if !(MIN_EXTERNAL_REF_LEN..=MAX_EXTERNAL_REF_LEN).contains(&len) {
             return Err(BillPaymentsError::InvalidExternalRef);
         }
 
@@ -1158,6 +1158,10 @@ impl BillPayments {
             Self::index_add_active(&env, &caller, next_id);
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
+            env.events().publish(
+                (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                (next_id, bill_id, next_due_date),
+            );
         }
 
         let paid_amount = bill.amount;
@@ -2102,14 +2106,18 @@ impl BillPayments {
 
             if bill.recurring {
                 next_id = next_id.saturating_add(1);
-                let next_due_date = bill
+                let period = (bill.frequency_days as u64)
+                    .checked_mul(SECONDS_PER_DAY)
+                    .ok_or(Error::InvalidFrequency)?;
+                let mut next_due_date = bill
                     .due_date
-                    .checked_add(
-                        (bill.frequency_days as u64)
-                            .checked_mul(SECONDS_PER_DAY)
-                            .ok_or(Error::InvalidFrequency)?,
-                    )
+                    .checked_add(period)
                     .ok_or(Error::InvalidDueDate)?;
+                while next_due_date <= current_time {
+                    next_due_date = next_due_date
+                        .checked_add(period)
+                        .ok_or(Error::InvalidDueDate)?;
+                }
                 let next_bill = Bill {
                     id: next_id,
                     owner: bill.owner.clone(),
@@ -2131,6 +2139,10 @@ impl BillPayments {
                 Self::index_add_active(&env, &caller, next_id);
                 // Update currency index for the newly spawned recurring bill
                 Self::index_add_currency(&env, &caller, &bill.currency, next_id);
+                env.events().publish(
+                    (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                    (next_id, bill_id, next_due_date),
+                );
             } else {
                 unpaid_delta = unpaid_delta.saturating_sub(amount);
             }
@@ -2459,10 +2471,7 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = match current.checked_add(delta) {
-            Option::Some(n) => n,
-            Option::None => panic!("overflow"),
-        };
+        let next = current.saturating_add(delta);
         totals.set(owner.clone(), next);
         env.storage()
             .instance()

@@ -272,7 +272,7 @@ pub struct RemittanceSchedulePage {
 
 /// Split allocation output item for UI/analytics consumers.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Allocation {
     pub category: Symbol,
     pub amount: i128,
@@ -2436,7 +2436,11 @@ impl RemittanceSplit {
         // Iterate using the host Vec iterator with skip/take to avoid repeated
         // indexed `get` calls and reduce host op overhead. Avoid per-schedule
         // TTL bumps in this read-only accessor to cut storage write gas.
-        for id in schedule_ids.iter().skip(from_index as usize).take(cap as usize) {
+        for id in schedule_ids
+            .iter()
+            .skip(from_index as usize)
+            .take(cap as usize)
+        {
             let sch_key = DataKey::Schedule(id);
             if let Some(schedule) = env.storage().persistent().get(&sch_key) {
                 items.push_back(schedule);

@@ -46,15 +46,7 @@ fn initialize_schedule_bench(env: &Env) -> (RemittanceSplitClient<'_>, Address) 
     let owner = <Address as AddressTrait>::generate(env);
     let token_admin = <Address as AddressTrait>::generate(env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
-    let init_ok = client.initialize_split(
-        &owner,
-        &0,
-        &token_contract.address(),
-        &50,
-        &30,
-        &15,
-        &5,
-    );
+    let init_ok = client.initialize_split(&owner, &0, &token_contract.address(), &50, &30, &15, &5);
     assert!(init_ok);
 
     (client, owner)
@@ -483,8 +475,9 @@ fn bench_get_schedules_paginated_cursor_positions() {
 
         loop {
             let measured_cursor = cursor;
-            let (cpu, mem, page) =
-                measure(&env, || client.get_schedules_paginated(&owner, &cursor, &PAGE_LIMIT));
+            let (cpu, mem, page) = measure(&env, || {
+                client.get_schedules_paginated(&owner, &cursor, &PAGE_LIMIT)
+            });
 
             if page_index == 0 {
                 first_page_cpu = cpu;

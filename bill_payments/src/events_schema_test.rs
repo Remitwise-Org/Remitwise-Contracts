@@ -86,9 +86,10 @@ fn bill_event_variant_set_is_stable() {
         BillEvent::ScheduleMissed,
         BillEvent::ScheduleModified,
         BillEvent::ScheduleCancelled,
+        BillEvent::RecurringBillCreated,
     ];
 
-    assert_eq!(variants.len(), 11, "BillEvent variant count drifted");
+    assert_eq!(variants.len(), 12, "BillEvent variant count drifted");
 
     for v in variants {
         // Each variant must serialize cleanly so the topic

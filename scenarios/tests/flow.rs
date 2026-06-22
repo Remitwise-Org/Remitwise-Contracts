@@ -1,6 +1,6 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
 use family_wallet::FamilyWallet;
-use insurance::{Insurance, InsuranceClient};
+use insurance::{Insurance, InsuranceClient, InsuranceError};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::CoverageType;
 use reporting::{ReportingContract, ReportingContractClient};
@@ -107,6 +107,7 @@ fn test_end_to_end_flow() {
 
     let report = reporting_client.get_financial_health_report(
         &user,
+        &user,
         &total_remittance,
         &period_start,
         &period_end,
@@ -203,6 +204,10 @@ fn test_recurring_obligations_flow() {
         &insurance_id,
         &family_id,
     );
+
+    // Initialize the Insurance contract. `create_policy` (Phase 4) requires an
+    // initialized contract and otherwise returns InsuranceError::NotInitialized.
+    insurance.init(&admin);
 
     // ── Phase 2: Remittance split configuration ───────────────────────────────
     //
@@ -374,7 +379,6 @@ fn test_recurring_obligations_flow() {
         &CoverageType::Health,
         &monthly_premium,
         &coverage_amount,
-        &None, // no external_ref
     );
 
     // Assert the policy is retrievable and active immediately after creation (Requirement 4.1, 4.2).
@@ -415,12 +419,15 @@ fn test_recurring_obligations_flow() {
         "next_payment_date must be strictly greater than ledger_time at time of payment [Req 4.4]"
     );
 
-    // Assert pay_premium returns false for a non-existent policy ID (Requirement 4.5).
+    // Assert pay_premium rejects a non-existent policy ID (Requirement 4.5).
+    // The contract returns Err(PolicyNotFound) for an unknown policy, so the
+    // non-`try_` client would panic; use the `try_` variant to inspect the error.
     let nonexistent_id: u32 = 9999;
-    let pay_nonexistent = insurance.pay_premium(&user, &nonexistent_id);
-    assert!(
-        !pay_nonexistent,
-        "pay_premium must return false for a non-existent policy ID [Req 4.5]"
+    let pay_nonexistent = insurance.try_pay_premium(&user, &nonexistent_id);
+    assert_eq!(
+        pay_nonexistent,
+        Err(Ok(InsuranceError::PolicyNotFound)),
+        "pay_premium must reject a non-existent policy ID with PolicyNotFound [Req 4.5]"
     );
 
     // ── Phase 5: Ledger time advancement ─────────────────────────────────────
@@ -679,7 +686,7 @@ fn test_recurring_obligations_flow() {
     // dependency contracts are registered and have data, mock_all_auths() bypasses
     // require_auth. The Soroban client panics on Err, satisfying Requirement 8.1.
     let report =
-        reporting.get_financial_health_report(&user, &total_remittance, &period_start, &period_end);
+        reporting.get_financial_health_report(&user, &user, &total_remittance, &period_start, &period_end);
 
     // Assert report.bill_compliance.total_bills >= 2 (Requirement 7.1).
     // We created two recurring bills (Electricity and Internet) in Phase 3, and

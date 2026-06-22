@@ -258,7 +258,7 @@ fn test_max_paused_functions_limit() {
     }
 
     let result = client.try_pause_function(&module, &symbol_short!("one_more"));
-    assert!(result.is_err());
+    assert_eq!(result, Err(Ok(Error::LimitExceeded)));
 }
 
 #[test]

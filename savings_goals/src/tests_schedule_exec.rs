@@ -34,7 +34,7 @@ extern crate std;
 use super::*;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as AddressTrait, Events},
+    testutils::Address as AddressTrait,
     Address, Env, String, Symbol, TryFromVal,
 };
 use testutils::set_ledger_time;

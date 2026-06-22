@@ -18,13 +18,11 @@ impl MockContract {
     pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
         vec![&env, 2500, 2500, 2500, 2500]
     }
-    pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-        true
+    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) -> i128 {
+        _amount
     }
-    pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-        true
-    }
-    pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32) {}
+    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32) -> bool {
         true
     }
     // Compensation / reverse methods for rollback support.
@@ -890,6 +888,7 @@ fn test_signed_in_window_replay_with_used_nonce_rejected() {
         replay,
         Err(Ok(OrchestratorError::NonceAlreadyUsed)),
         "in-window replay of a consumed nonce must be rejected (used-nonce check fires first)"
+        "in-window replay of a consumed nonce must be rejected"
     );
     // The counter does not advance again on the rejected replay.
     assert_eq!(client.get_nonce(&executor), 1);

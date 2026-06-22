@@ -23,17 +23,17 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
+        fn pay_bill(env: Env, caller: Address, bill_id: u32);
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
     }
 
     /// Compensation / reverse interfaces for rollback support.
@@ -226,12 +226,12 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &params.bills);
-            b_client.pay_bill(&params.caller, &params.bill_id, &bills_amt);
+            b_client.pay_bill(&params.caller, &params.bill_id);
         }
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &params.insurance);
-            i_client.pay_premium(&params.caller, &params.policy_id, &insurance_amt);
+            i_client.pay_premium(&params.caller, &params.policy_id);
         }
 
         Ok(())
