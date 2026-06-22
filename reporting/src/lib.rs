@@ -182,9 +182,11 @@ pub struct FinancialHealthReport {
     pub savings_report: SavingsReport,
     pub bill_compliance: BillComplianceReport,
     pub insurance_report: InsuranceReport,
+    /// Worst-case availability across component reports that expose
+    /// [`DataAvailability`].
+    pub data_availability: DataAvailability,
     pub generated_at: u64,
 }
-
 
 /// Top-N bills sorted deterministically.
 ///
@@ -222,7 +224,6 @@ pub struct TopNSavingsReport {
     pub period_end: u64,
     pub data_availability: DataAvailability,
 }
-
 
 /// Contract addresses configuration
 #[contracttype]
@@ -1522,6 +1523,21 @@ impl ReportingContract {
         }
     }
 
+    fn worst_data_availability(
+        left: DataAvailability,
+        right: DataAvailability,
+    ) -> DataAvailability {
+        match (left, right) {
+            (DataAvailability::Missing, _) | (_, DataAvailability::Missing) => {
+                DataAvailability::Missing
+            }
+            (DataAvailability::Partial, _) | (_, DataAvailability::Partial) => {
+                DataAvailability::Partial
+            }
+            _ => DataAvailability::Complete,
+        }
+    }
+
     /// Generate comprehensive financial health report
     pub fn get_financial_health_report(
         env: Env,
@@ -1534,7 +1550,7 @@ impl ReportingContract {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
         let health_score =
-            Self::calculate_health_score(env.clone(), user.clone(), total_remittance);
+            Self::calculate_health_score(env.clone(), user.clone(), total_remittance)?;
         let remittance_summary = Self::get_remittance_summary_internal(
             &env,
             total_remittance,
@@ -1549,6 +1565,15 @@ impl ReportingContract {
             Self::get_insurance_report_internal(&env, user, period_start, period_end);
 
         let generated_at = env.ledger().timestamp();
+        let bill_compliance = bill_compliance?;
+        let insurance_report = insurance_report?;
+        let data_availability = Self::worst_data_availability(
+            remittance_summary.data_availability,
+            Self::worst_data_availability(
+                bill_compliance.data_availability,
+                insurance_report.data_availability,
+            ),
+        );
 
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ReportGenerated),
@@ -1556,11 +1581,12 @@ impl ReportingContract {
         );
 
         Ok(FinancialHealthReport {
-            health_score: health_score?,
+            health_score,
             remittance_summary,
             savings_report: savings_report?,
-            bill_compliance: bill_compliance?,
-            insurance_report: insurance_report?,
+            bill_compliance,
+            insurance_report,
+            data_availability,
             generated_at,
         })
     }
@@ -2244,3 +2270,6 @@ mod tests_auth_acl;
 
 #[cfg(test)]
 mod paginate_dependency_tests;
+
+#[cfg(test)]
+mod tests_data_availability;
