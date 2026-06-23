@@ -605,12 +605,24 @@ impl SavingsGoalContract {
 
     /// Validates and canonicalizes a tag batch for metadata operations.
     ///
-    /// Delegates to the shared [`remitwise_common::canonicalize_tags`] helper.
+    /// Delegates to the shared [`remitwise_common::canonicalize_tags_checked`] helper.
     /// Invalid characters are reported as [`SavingsGoalError::InvalidTagContent`].
     fn validate_and_normalize_tags(env: &Env, tags: &Vec<String>) -> Vec<String> {
-        remitwise_common::canonicalize_tags(env, tags, || {
-            soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent)
-        })
+        match remitwise_common::canonicalize_tags_checked(env, tags) {
+            Ok(normalized) => normalized,
+            Err(remitwise_common::TagError::Empty) => {
+                if tags.is_empty() {
+                    panic!("Tags cannot be empty");
+                }
+                panic!("Tag must be between 1 and 32 characters");
+            }
+            Err(remitwise_common::TagError::TooLong) => {
+                panic!("Tag must be between 1 and 32 characters");
+            }
+            Err(remitwise_common::TagError::InvalidChar { .. }) => {
+                soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent)
+            }
+        }
     }
 
     /// Adds a goal ID to the tag index for an (owner, tag) pair.
