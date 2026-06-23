@@ -43,7 +43,29 @@ env.events().publish((contract_name, event_category), event_data);
 - **i128**: Signed 128-bit integer (stroops for amounts)
 - **u32**: Unsigned 32-bit integer (IDs, counts)
 
-**Secondary Topic:** `("bill", BillEvent::Cancelled)`
+### Event: Bill Paid
+
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "paid")`  
+**Action Symbol:** `"paid"`  
+**Secondary Topic:** `("bill", BillEvent::Paid)`  
+**Emitted by:** `pay_bill`, `batch_pay_bills`
+
+**Data Structure:**
+```rust
+pub struct BillPaidEvent {
+    pub bill_id: u32,               // ID of paid bill
+    pub owner: Address,             // Bill owner
+    pub amount: i128,               // Amount paid
+    pub paid_at: u64,               // Payment timestamp
+}
+```
+
+### Event: Bill Cancelled
+
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "cancelled")`  
+**Action Symbol:** `"cancelled"`  
+**Secondary Topic:** `("bill", BillEvent::Cancelled)`  
+**Emitted by:** `cancel_bill`
 
 **Data Structure:**
 ```rust
@@ -56,10 +78,10 @@ pub struct BillCancelledEvent {
 
 ### Event: Bill External Reference Updated
 
-**Topic:** "Remitwise" (category: State, priority: Medium)  
-**Action Symbol:** "ext_ref"
-
-**Secondary Topic:** `("bill", BillEvent::ExternalRefUpdated)`
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "ext_upd")`  
+**Action Symbol:** `"ext_upd"`  
+**Secondary Topic:** `("bill", BillEvent::ExternalRefUpdated)`  
+**Emitted by:** `set_external_ref`
 
 **Data Structure:**
 ```rust
@@ -72,98 +94,10 @@ pub struct BillExternalRefUpdatedEvent {
 
 ### Event: Bills Archived
 
-**Topic:** "Remitwise" (category: System, priority: Low)  
-**Action Symbol:** "archive"
-
-**Secondary Topic:** `("bill", BillEvent::Archived)`
-
-**Data Structure:**
-```rust
-pub struct BillsArchivedEvent {
-    pub count: u32,                 // Number of bills archived
-    pub archived_at: u64,           // Archive timestamp
-}
-```
-
-### Event: Bill Restored
-
-**Topic:** "Remitwise" (category: State, priority: Medium)  
-**Action Symbol:** "restore"
-
-**Secondary Topic:** `("bill", BillEvent::Restored)`
-
-**Data Structure:**
-```rust
-pub struct BillRestoredEvent {
-    pub bill_id: u32,               // ID of restored bill
-    pub owner: Address,             // Bill owner
-    pub restored_at: u64,           // Restoration timestamp
-}
-```
-```
-
-**Example Event:**
-```json
-{
-  "id": 1,
-  "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "name": "Electricity",
-  "amount": 1000,
-  "due_date": 1234567890,
-  "recurring": false,
-  "frequency_days": 0,
-  "paid": false,
-  "created_at": 1234567800,
-  "paid_at": null,
-  "schedule_id": null,
-  "currency": "XLM"
-}
-```
-
-### Event: Bill Paid
-
-**Topic:** `"Remitwise"` (category: Transaction, priority: High)  
-**Action Symbol:** `"pay_bill"`
-
-**Data Structure:**
-```rust
-pub struct BillPaidEvent {
-    pub bill_id: u32,               // ID of paid bill
-    pub owner: Address,             // Bill owner
-    pub amount: i128,               // Amount paid
-    pub paid_at: u64,               // Payment timestamp
-}
-```
-
-**Example Event:**
-```json
-{
-  "bill_id": 1,
-  "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "amount": 1000,
-  "paid_at": 1234567850
-}
-```
-
-### Event: Bill Cancelled
-
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"can_bill"`
-
-**Data Structure:**
-```rust
-pub struct BillCancelledEvent {
-    pub bill_id: u32,               // ID of cancelled bill
-    pub owner: Address,             // Bill owner
-    pub cancelled_at: u64,          // Cancellation timestamp
-}
-```
-**Secondary Topic:** `(symbol_short!("bill"), BillEvent::Cancelled)`
-
-### Event: Bills Archived
-
-**Topic:** `"Remitwise"` (category: System, priority: Low)  
-**Action Symbol:** `"archive"`
+**Topic:** `("Remitwise", EventCategory::System, EventPriority::Low, "archive")`  
+**Action Symbol:** `"archive"`  
+**Secondary Topic:** `("bill", BillEvent::Archived)`  
+**Emitted by:** `archive_paid_bills`
 
 **Data Structure:**
 ```rust
@@ -175,8 +109,10 @@ pub struct BillsArchivedEvent {
 
 ### Event: Bill Restored
 
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"restore"`
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "restored")`  
+**Action Symbol:** `"restored"`  
+**Secondary Topic:** `("bill", BillEvent::Restored)`  
+**Emitted by:** `restore_bill`
 
 **Data Structure:**
 ```rust

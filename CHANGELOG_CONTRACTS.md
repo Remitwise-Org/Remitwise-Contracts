@@ -22,12 +22,20 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Bill Payments (`bill_payments`)
 
+### v0.2.0
+
+- **Summary**: Aligned bill event emissions with declared `BillEvent` enum variants.
+- **Breaking Changes**:
+  - `cancel_bill` action symbol changed from `"canceled"` to `"cancelled"` to match `BillEvent::Cancelled`
+  - `set_external_ref` action symbol changed from `"ext_ref"` to `"ext_upd"` to match `BillEvent::ExternalRefUpdated`
+- **Migration Notes**: Indexers must update action symbol filters to match the new symbols above.
+- **Event Alignment**: This change aligns emitted bill events with `EVENTS.md` and removes ad-hoc event symbols.
+
 ### v0.1.0
 
 - **Summary**: Initial release of the Bill Payments contract.
 - **Breaking Changes**: None.
 - **Migration Notes**: Baseline deployment.
-- **Event Alignment**: Bill Payments now emits declared `BillEvent` variants for cancellation, restoration, external reference updates, and batch payment events, improving indexer event taxonomy stability.
 
 ## Insurance (`insurance`)
 

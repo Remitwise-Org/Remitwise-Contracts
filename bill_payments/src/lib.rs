@@ -1549,6 +1549,11 @@ impl BillPayments {
     /// * `BillNotFound` - If bill with given ID doesn't exist
     /// * `Unauthorized` - If caller is not the bill owner
     /// Emits BillEvent::ExternalRefUpdated.
+    /// Updates the external reference for a bill.
+    ///
+    /// # Events
+    /// - Secondary topic: `(symbol_short!("bill"), BillEvent::ExternalRefUpdated)`
+    /// - Action symbol: `"ext_upd"` via [`RemitwiseEvents::emit`]
     pub fn set_external_ref(
         env: Env,
         caller: Address,
@@ -1598,7 +1603,7 @@ impl BillPayments {
             &env,
             EventCategory::State,
             EventPriority::Medium,
-            symbol_short!("ext_ref"),
+            symbol_short!("ext_upd"),
             (bill_id, caller, validated_ext_ref),
         );
 
@@ -1826,12 +1831,18 @@ impl BillPayments {
             &env,
             EventCategory::State,
             EventPriority::Medium,
-            symbol_short!("canceled"),
+            symbol_short!("cancelled"),
             bill_id,
         );
         Ok(())
     }
 
+    /// Cancels (removes) an unpaid bill by `bill_id`.
+    ///
+    /// # Events
+    /// - Secondary topic: `(symbol_short!("bill"), BillEvent::Cancelled)`
+    /// - Action symbol: `"cancelled"` via [`RemitwiseEvents::emit`]
+    ///
     /// @notice Archive paid bills with `paid_at < before_timestamp`.
     /// @dev Permissionless maintenance operation. Caller must authenticate, but does not need to
     /// own each archived bill. Only paid bills with a historical payment timestamp are moved from
@@ -1947,9 +1958,14 @@ impl BillPayments {
     }
 
     /// Emits BillEvent::Restored.
+    /// Restores a previously archived bill back to active storage.
+    ///
+    /// # Events
+    /// - Secondary topic: `(symbol_short!("bill"), BillEvent::Restored)`
+    /// - Action symbol: `"restored"` via [`RemitwiseEvents::emit`]
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::RESTORE)?;
+        let _ = Self::require_not_paused(&env, pause_functions::RESTORE);
         Self::extend_instance_ttl(&env);
 
         let mut archived: Map<u32, ArchivedBill> = env
@@ -2502,6 +2518,9 @@ impl BillPayments {
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
 }
+
+#[cfg(test)]
+mod events_schema_test;
 
 #[cfg(test)]
 mod test;

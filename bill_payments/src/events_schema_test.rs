@@ -14,6 +14,8 @@
 use super::*;
 use crate::pause_functions::{ARCHIVE, CANCEL_BILL, CREATE_BILL, PAY_BILL, RESTORE};
 use crate::BillPaymentsClient;
+use soroban_sdk::testutils::Address as AddressTrait;
+use soroban_sdk::testutils::Events;
 use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val, Address, String, Vec};
 
 // ---------------------------------------------------------------------------
@@ -49,11 +51,11 @@ fn remitwise_action_symbols_are_stable() {
     let actions = [
         symbol_short!("created"),
         symbol_short!("paid"),
-        symbol_short!("canceled"),
+        symbol_short!("cancelled"),
         symbol_short!("archived"),
         symbol_short!("restored"),
         symbol_short!("cleaned"),
-        symbol_short!("ext_ref"),
+        symbol_short!("ext_upd"),
         symbol_short!("paused"),
         symbol_short!("unpaused"),
         symbol_short!("upgraded"),
