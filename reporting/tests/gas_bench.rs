@@ -90,6 +90,8 @@ mod mock_remittance_split {
     pub struct MockRemittanceSplit;
 
     /// Returns a fixed 50/30/15/5 split matching the standard four categories.
+    /// Percentages are whole-number percents (100 = 100%), which is the
+    /// format `get_remittance_summary_internal` validates against (sum == 100).
     /// Security: no auth required on read-only split queries.
     #[contractimpl]
     impl RemittanceSplitTrait for MockRemittanceSplit {
@@ -260,6 +262,7 @@ macro_rules! mock_insurance {
     ($mod_name:ident, $struct_name:ident, $n:expr) => {
         mod $mod_name {
             use reporting::{CoverageType, InsurancePolicy, InsuranceTrait, PolicyPage};
+            use soroban_sdk::testutils::Address as _;
             use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
             #[contract]
@@ -269,29 +272,39 @@ macro_rules! mock_insurance {
             impl InsuranceTrait for $struct_name {
                 fn get_active_policies(
                     env: Env,
-                    owner: Address,
+                    _owner: Address,
                     _cursor: u32,
                     _limit: u32,
                 ) -> PolicyPage {
                     let mut items = Vec::new(&env);
                     for i in 0u32..$n {
-                        items.push_back(InsurancePolicy {
-                            id: i,
-                            owner: owner.clone(),
-                            name: SorobanString::from_str(&env, "Bench Policy"),
-                            coverage_type: remitwise_common::CoverageType::Health,
-                            monthly_premium: 200i128,
-                            coverage_amount: 50_000i128,
-                            active: true,
-                            next_payment_date: 1_800_000_000,
-                            external_ref: None,
-                        });
+                        items.push_back(i);
                     }
                     let count = items.len();
                     PolicyPage {
                         items,
                         next_cursor: 0,
                         count,
+                    }
+                }
+
+                fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+                    if policy_id < $n {
+                        Some(InsurancePolicy {
+                            id: policy_id,
+                            owner: Address::generate(&env),
+                            name: SorobanString::from_str(&env, "Bench Policy"),
+                            coverage_type: CoverageType::Health,
+                            monthly_premium: 200i128,
+                            coverage_amount: 50_000i128,
+                            external_ref: None,
+                            active: true,
+                            created_at: 0,
+                            last_payment_at: 0,
+                            next_payment_date: 1_800_000_000,
+                        })
+                    } else {
+                        None
                     }
                 }
 

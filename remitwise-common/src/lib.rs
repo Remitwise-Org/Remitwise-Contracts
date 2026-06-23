@@ -104,12 +104,17 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
-/// Clamps a pagination limit to ensure it falls within the allowed boundaries.
+/// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
-/// # Behavior
+/// # Contract
 /// - `0` is treated as a request for the default limit and returns `DEFAULT_PAGE_LIMIT`.
 /// - Values between `1` and `MAX_PAGE_LIMIT` (inclusive) are passed through unchanged.
 /// - Values greater than `MAX_PAGE_LIMIT` are capped at `MAX_PAGE_LIMIT`.
+/// - The returned value is always in `1..=MAX_PAGE_LIMIT`.
+/// - The function is idempotent: applying it to an already-normalized value returns
+///   the same value.
+/// - Extremely large inputs, including `u32::MAX`, clamp without arithmetic and
+///   cannot overflow.
 pub fn clamp_limit(limit: u32) -> u32 {
     if limit == 0 {
         DEFAULT_PAGE_LIMIT
@@ -192,6 +197,9 @@ where
 /// Event emission helper
 pub struct RemitwiseEvents;
 
+#[cfg(test)]
+mod tests;
+
 impl RemitwiseEvents {
     /// Emits a single event with the given category, priority, and action.
     ///
@@ -238,111 +246,193 @@ impl RemitwiseEvents {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Encoding stability tests (cross-contract ABI)
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::{symbol_short, testutils::Events, vec, Env, FromVal, IntoVal};
+mod encoding_stability_tests {
+    use super::{Category, CoverageType, FamilyRole};
+    use soroban_sdk::{Env, Map, Vec};
 
-    #[soroban_sdk::contract]
-    pub struct EventCaptureContract;
-
-    /// Every category discriminant is part of the public Remitwise event topic
-    /// schema and must stay stable for indexer filters.
-    #[test]
-    fn event_category_to_u32_is_stable_and_exhaustive() {
-        let categories = [
-            (EventCategory::Transaction, 0u32),
-            (EventCategory::State, 1u32),
-            (EventCategory::Alert, 2u32),
-            (EventCategory::System, 3u32),
-            (EventCategory::Access, 4u32),
-        ];
-
-        assert_eq!(categories.len(), 5, "EventCategory variant count drifted");
-        for (category, encoded) in categories {
-            assert_eq!(category.to_u32(), encoded);
-        }
+    fn round_trip<T>(env: &Env, v: T) -> T
+    where
+        T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+            + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+    {
+        let val = v.into_val(env);
+        T::try_from_val(env, &val).unwrap()
     }
 
-    /// Every priority discriminant is part of the public Remitwise event topic
-    /// schema and must stay stable for indexer filters.
-    #[test]
-    fn event_priority_to_u32_is_stable_and_exhaustive() {
-        let priorities = [
-            (EventPriority::Low, 0u32),
-            (EventPriority::Medium, 1u32),
-            (EventPriority::High, 2u32),
-        ];
+    fn assert_encoding_matches_discriminant<T>(env: &Env, v: T, expected: u32)
+    where
+        T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+            + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+            + core::fmt::Debug
+            + PartialEq,
+    {
+        let val = v.into_val(env);
 
-        assert_eq!(priorities.len(), 3, "EventPriority variant count drifted");
-        for (priority, encoded) in priorities {
-            assert_eq!(priority.to_u32(), encoded);
-        }
+        // `#[repr(u32)]` + `#[contracttype]` should encode via a stable u32 discriminant.
+        // We pin the expected discriminant by decoding the value as `u32`.
+        let actual_u32: u32 = soroban_sdk::TryFromVal::try_from_val(env, &val)
+            .unwrap_or_else(|_| panic!("unexpected Val for encoding: {val:?}"));
+        assert_eq!(actual_u32, expected, "encoding mismatch");
+
+        // And ensure round-trip identity.
+        let decoded = T::try_from_val(env, &val).unwrap();
+        assert_eq!(decoded, v, "round-trip mismatch");
     }
 
-    /// `emit_batch` publishes the frozen topic tuple
-    /// `(Remitwise, category, Low, batch)` and payload `(action, count)`.
     #[test]
-    fn emit_batch_schema_is_stable_for_every_category() {
+    fn category_round_trip_and_encoding_stability() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, EventCaptureContract);
-        let cases = [
-            (EventCategory::Transaction, 0u32, symbol_short!("txn")),
-            (EventCategory::State, 1u32, symbol_short!("state")),
-            (EventCategory::Alert, 2u32, symbol_short!("alert")),
-            (EventCategory::System, 3u32, symbol_short!("system")),
-            (EventCategory::Access, 4u32, symbol_short!("access")),
-        ];
 
-        for (index, (category, encoded_category, action)) in cases.iter().enumerate() {
-            let count = (index as u32) + 1;
-            env.as_contract(&contract_id, || {
-                RemitwiseEvents::emit_batch(&env, *category, action.clone(), count);
-            });
+        assert_encoding_matches_discriminant(&env, Category::Spending, 1);
+        assert_encoding_matches_discriminant(&env, Category::Savings, 2);
+        assert_encoding_matches_discriminant(&env, Category::Bills, 3);
+        assert_encoding_matches_discriminant(&env, Category::Insurance, 4);
 
-            let event = env.events().all().last().unwrap();
-            let expected_topics = vec![
-                &env,
-                symbol_short!("Remitwise").into_val(&env),
-                (*encoded_category).into_val(&env),
-                EventPriority::Low.to_u32().into_val(&env),
-                symbol_short!("batch").into_val(&env),
-            ];
-            assert_eq!(event.1, expected_topics);
-
-            let payload: (Symbol, u32) = FromVal::from_val(&env, &event.2);
-            assert_eq!(payload, (action.clone(), count));
+        // Exhaustiveness enforcement: every variant must be explicitly handled.
+        fn cover_all_variants(v: Category) {
+            match v {
+                Category::Spending => {}
+                Category::Savings => {}
+                Category::Bills => {}
+                Category::Insurance => {}
+            }
         }
+
+        for v in [
+            Category::Spending,
+            Category::Savings,
+            Category::Bills,
+            Category::Insurance,
+        ] {
+            cover_all_variants(v);
+        }
+
+        // Container round-trips
+        let vec = Vec::from_array(&env, [Category::Spending, Category::Savings, Category::Bills]);
+        let mut out = Vec::<Category>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, Category>::new(&env);
+        map.set(1u32, Category::Spending);
+        map.set(2u32, Category::Savings);
+        map.set(3u32, Category::Bills);
+
+        let mut out_map = Map::<u32, Category>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
     }
 
-    /// Batch counts at the lower and upper `u32` bounds must serialize as the
-    /// same `(action, count)` payload tuple used by ordinary counts.
     #[test]
-    fn emit_batch_count_bounds_are_well_formed() {
+    fn family_role_round_trip_and_encoding_stability() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, EventCaptureContract);
-        let cases = [
-            (symbol_short!("zero"), 0u32),
-            (symbol_short!("max"), u32::MAX),
-        ];
 
-        for (action, count) in cases {
-            env.as_contract(&contract_id, || {
-                RemitwiseEvents::emit_batch(&env, EventCategory::System, action.clone(), count);
-            });
+        assert_encoding_matches_discriminant(&env, FamilyRole::Owner, 1);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Admin, 2);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Member, 3);
+        assert_encoding_matches_discriminant(&env, FamilyRole::Viewer, 4);
 
-            let event = env.events().all().last().unwrap();
-            let expected_topics = vec![
-                &env,
-                symbol_short!("Remitwise").into_val(&env),
-                EventCategory::System.to_u32().into_val(&env),
-                EventPriority::Low.to_u32().into_val(&env),
-                symbol_short!("batch").into_val(&env),
-            ];
-            assert_eq!(event.1, expected_topics);
-
-            let payload: (Symbol, u32) = FromVal::from_val(&env, &event.2);
-            assert_eq!(payload, (action, count));
+        fn cover_all_variants(v: FamilyRole) {
+            match v {
+                FamilyRole::Owner => {}
+                FamilyRole::Admin => {}
+                FamilyRole::Member => {}
+                FamilyRole::Viewer => {}
+            }
         }
+
+        for v in [
+            FamilyRole::Owner,
+            FamilyRole::Admin,
+            FamilyRole::Member,
+            FamilyRole::Viewer,
+        ] {
+            cover_all_variants(v);
+        }
+
+        let vec = Vec::from_array(&env, [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer]);
+        let mut out = Vec::<FamilyRole>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, FamilyRole>::new(&env);
+        map.set(1u32, FamilyRole::Owner);
+        map.set(2u32, FamilyRole::Admin);
+        map.set(3u32, FamilyRole::Viewer);
+
+        let mut out_map = Map::<u32, FamilyRole>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
+    }
+
+    #[test]
+    fn coverage_type_round_trip_and_encoding_stability() {
+        let env = Env::default();
+
+        assert_encoding_matches_discriminant(&env, CoverageType::Health, 1);
+        assert_encoding_matches_discriminant(&env, CoverageType::Life, 2);
+        assert_encoding_matches_discriminant(&env, CoverageType::Property, 3);
+        assert_encoding_matches_discriminant(&env, CoverageType::Auto, 4);
+        assert_encoding_matches_discriminant(&env, CoverageType::Liability, 5);
+
+        fn cover_all_variants(v: CoverageType) {
+            match v {
+                CoverageType::Health => {}
+                CoverageType::Life => {}
+                CoverageType::Property => {}
+                CoverageType::Auto => {}
+                CoverageType::Liability => {}
+            }
+        }
+
+        for v in [
+            CoverageType::Health,
+            CoverageType::Life,
+            CoverageType::Property,
+            CoverageType::Auto,
+            CoverageType::Liability,
+        ] {
+            cover_all_variants(v);
+        }
+
+        let vec = Vec::from_array(
+            &env,
+            [
+                CoverageType::Health,
+                CoverageType::Life,
+                CoverageType::Property,
+                CoverageType::Auto,
+            ],
+        );
+        let mut out = Vec::<CoverageType>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, CoverageType>::new(&env);
+        map.set(1u32, CoverageType::Health);
+        map.set(2u32, CoverageType::Life);
+        map.set(3u32, CoverageType::Liability);
+
+        let mut out_map = Map::<u32, CoverageType>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
     }
 }
+

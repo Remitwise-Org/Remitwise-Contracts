@@ -5,8 +5,6 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
-extern crate alloc;
-use alloc::string::ToString;
 
 // Event topics
 const GOAL_CREATED: Symbol = symbol_short!("created");
@@ -257,6 +255,11 @@ pub enum SavingsGoalError {
     InvalidGoalName = 11,
     GoalCapReached = 12,
     BatchTooLarge = 14,
+    /// Attempted to shorten an already-active time-lock (unlock_date).
+    ///
+    /// Time-locks are monotonic while active: they may be extended forward,
+    /// but never shortened backward.
+    TimeLockShortening = 15,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -309,13 +312,14 @@ impl SavingsGoalContract {
     }
 
     fn validate_goal_name(name: &String) -> Result<(), SavingsGoalError> {
-        let name_str = name.to_string();
-        let name_len = name_str.len() as u32;
+        let name_len = name.len();
         if name_len == 0 || name_len > MAX_GOAL_NAME_LEN_BYTES {
             return Err(SavingsGoalError::InvalidGoalName);
         }
 
-        for &byte in name_str.as_bytes() {
+        let mut buf = [0u8; MAX_GOAL_NAME_LEN_BYTES as usize];
+        name.copy_into_slice(&mut buf[..name_len as usize]);
+        for &byte in &buf[..name_len as usize] {
             if byte < 32 || byte > 126 {
                 return Err(SavingsGoalError::InvalidGoalName);
             }
@@ -345,7 +349,7 @@ impl SavingsGoalContract {
             .persistent()
             .get(&DataKey::ArchivedGoalsIndex(owner.clone()))
             .unwrap_or_else(|| Vec::new(env));
-        active_ids.len() + archived_ids.len()
+        active_ids.len().saturating_add(archived_ids.len())
     }
 
     fn is_function_paused(env: &Env, func: Symbol) -> bool {
@@ -395,7 +399,6 @@ impl SavingsGoalContract {
 
         let end = (offset + limit).min(total_count);
         let mut result = Vec::new(&env);
-
         for i in offset..end {
             let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
             if let Some(goal) = env
@@ -619,7 +622,7 @@ impl SavingsGoalContract {
             .persistent()
             .get(&key)
             .unwrap_or_else(|| Vec::new(env));
-        
+
         // Avoid duplicate goal IDs in the index
         let mut exists = false;
         for id in ids.iter() {
@@ -631,7 +634,7 @@ impl SavingsGoalContract {
         if !exists {
             ids.push_back(goal_id);
         }
-        
+
         env.storage().persistent().set(&key, &ids);
         env.storage().persistent().extend_ttl(
             &key,
@@ -1524,14 +1527,22 @@ impl SavingsGoalContract {
     /// # Notes
     /// - Uses the tag index for O(matching goals) performance instead of scanning all goals.
     /// - Tag is canonicalized (lowercased) to match storage keys.
-    pub fn get_goals_by_tag(env: Env, owner: Address, tag: String, cursor: u32, limit: u32) -> GoalPage {
+    pub fn get_goals_by_tag(
+        env: Env,
+        owner: Address,
+        tag: String,
+        cursor: u32,
+        limit: u32,
+    ) -> GoalPage {
         let limit = Self::clamp_limit(limit);
 
         // Canonicalize the tag for lookup
         let mut tags_vec = Vec::new(&env);
         tags_vec.push_back(tag.clone());
         let normalized = Self::validate_and_normalize_tags(&env, &tags_vec);
-        let canonical_tag = normalized.get(0).unwrap_or_else(|| panic!("Tag normalization failed"));
+        let canonical_tag = normalized
+            .get(0)
+            .unwrap_or_else(|| panic!("Tag normalization failed"));
 
         let ids: Vec<u32> = env
             .storage()
@@ -1697,12 +1708,12 @@ impl SavingsGoalContract {
             .persistent()
             .remove(&DataKey::ArchivedGoal(goal_id));
         let restored_goal = archived_goal.into_goal();
-        
+
         // Re-index goal in all tag indexes
         for tag in restored_goal.tags.iter() {
             Self::add_to_tag_index(&env, &caller, &tag, goal_id);
         }
-        
+
         env.storage()
             .persistent()
             .set(&DataKey::Goal(goal_id), &restored_goal);
@@ -2187,13 +2198,25 @@ impl SavingsGoalContract {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 
-    /// Set time-lock on a goal
-    /// Sets a time-lock on a savings goal.
+    /// Set or extend the time-lock on a goal.
+    ///
+    /// # Monotonicity rule (forward-only)
+    /// While a time-lock is active (i.e. `unlock_date` is set to a timestamp
+    /// strictly greater than the current ledger time), `set_time_lock` **may
+    /// only move `unlock_date` forward** (extend), never backward (shorten).
+    ///
+    /// - `new_unlock == current_unlock`: no-op (accepted)
+    /// - `new_unlock > current_unlock`: extend (accepted)
+    /// - `new_unlock < current_unlock`: rejected
     ///
     /// # Arguments
     /// * `caller` - Address of the goal owner
     /// * `goal_id` - ID of the goal
     /// * `unlock_date` - Unix timestamp when the goal becomes withdrawable
+    ///
+    /// # Errors
+    /// Returns [`SavingsGoalError::TimeLockShortening`] when attempting to
+    /// shorten an already-active time-lock.
     ///
     /// # Panics
     /// - If caller is not the owner or goal not found.
@@ -2224,6 +2247,29 @@ impl SavingsGoalContract {
             panic!("Unlock date must be in the future");
         }
 
+        // Monotonicity guard: while an existing time-lock is active,
+        // only allow extending unlock_date (never shortening).
+        if let Some(prev_unlock) = goal.unlock_date {
+            // Active iff unlock_date is strictly in the future.
+            if prev_unlock > current_time {
+                if unlock_date < prev_unlock {
+                    Self::append_audit(
+                        &env,
+                        symbol_short!("timelock"),
+                        &caller,
+                        false,
+                    );
+                    soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
+                }
+            }
+        }
+
+        // Even if there is an active time-lock, extending to the same value
+        // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
+        // Any other extension (`new_unlock > prev_unlock`) updates the lock.
+        
+
+        // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);
         env.storage()
             .persistent()

@@ -33,7 +33,7 @@ fn make_env() -> Env {
     env
 }
 
-fn setup_client(env: &Env) -> (BillPaymentsClient, Address) {
+fn setup_client(env: &Env) -> (BillPaymentsClient<'_>, Address) {
     let cid = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(env, &cid);
     let owner = Address::generate(env);
@@ -268,7 +268,7 @@ proptest! {
     fn prop_index_consistency_invariant(n_archive in 1u32..=15u32, n_restore in 0u32..=5u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        let ids = create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n_archive);
+        let ids = create_pay_archive(&env, &client, &owner, n_archive);
 
         // Restore some bills
         let to_restore = n_restore.min(n_archive);
@@ -288,7 +288,7 @@ proptest! {
     fn prop_ascending_order_invariant(n in 1u32..=20u32, limit in 1u32..=10u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        create_pay_archive(&env, &client, &owner, n);
 
         let mut cursor = 0u32;
         loop {
@@ -308,7 +308,7 @@ proptest! {
     fn prop_cursor_filtering(n in 2u32..=20u32, cursor_offset in 0u32..=10u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        create_pay_archive(&env, &client, &owner, n);
 
         let cursor = cursor_offset;
         let page = client.get_archived_bills_page(&owner, &cursor, &50);
@@ -323,12 +323,12 @@ proptest! {
     fn prop_page_size_and_count(n in 1u32..=30u32, limit in 0u32..=100u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        create_pay_archive(&env, &client, &owner, n);
 
         let page = client.get_archived_bills_page(&owner, &0, &limit);
         let effective = if limit == 0 { 20 } else if limit > 50 { 50 } else { limit };
         prop_assert!(page.count <= effective, "count {} must be <= clamp_limit({})", page.count, limit);
-        prop_assert_eq!(page.count, page.items.len() as u32);
+        prop_assert_eq!(page.count, page.items.len());
     }
 
     /// Feature: bill-payments-archived-pagination, Property 5: next_cursor Semantics
@@ -337,7 +337,7 @@ proptest! {
     fn prop_next_cursor_semantics(n in 2u32..=20u32, limit in 1u32..=5u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        create_pay_archive(&env, &client, &owner, n);
 
         let mut cursor = 0u32;
         loop {
@@ -364,7 +364,7 @@ proptest! {
     fn prop_full_pagination_round_trip(n in 1u32..=25u32, limit in 1u32..=7u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        let archived_ids = create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        let archived_ids = create_pay_archive(&env, &client, &owner, n);
 
         let collected = paginate_all(&client, &owner, limit);
         prop_assert_eq!(collected.len(), n as usize, "must collect exactly N bills");
@@ -390,14 +390,14 @@ proptest! {
         // Run 1: archive all at once
         let env1 = make_env();
         let (client1, owner1) = setup_client(&env1);
-        let ids1 = create_pay_archive(&env1, &env_client_ref(&env1, &client1), &owner1, n);
+        let ids1 = create_pay_archive(&env1, &client1, &owner1, n);
         let mut result1 = paginate_all(&client1, &owner1, 50);
         result1.sort();
 
         // Run 2: archive one at a time (same bills, same IDs since fresh env)
         let env2 = make_env();
         let (client2, owner2) = setup_client(&env2);
-        let _ = create_pay_archive(&env2, &env_client_ref(&env2, &client2), &owner2, n);
+        let _ = create_pay_archive(&env2, &client2, &owner2, n);
         let mut result2 = paginate_all(&client2, &owner2, 50);
         result2.sort();
 
@@ -414,8 +414,8 @@ proptest! {
         let (client, owner_a) = setup_client(&env);
         let owner_b = Address::generate(&env);
 
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner_a, n_a);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner_b, n_b);
+        create_pay_archive(&env, &client, &owner_a, n_a);
+        create_pay_archive(&env, &client, &owner_b, n_b);
 
         let ids_a = paginate_all(&client, &owner_a, 50);
         let ids_b = paginate_all(&client, &owner_b, 50);
@@ -434,7 +434,7 @@ proptest! {
     fn prop_equivalence_with_get_archived_bills(n in 1u32..=20u32, limit in 1u32..=10u32) {
         let env = make_env();
         let (client, owner) = setup_client(&env);
-        create_pay_archive(&env, &env_client_ref(&env, &client), &owner, n);
+        create_pay_archive(&env, &client, &owner, n);
 
         let mut cursor = 0u32;
         loop {
@@ -450,13 +450,4 @@ proptest! {
             cursor = old.next_cursor;
         }
     }
-}
-
-// Helper: returns a reference to the client (proptest closures need owned values)
-fn env_client_ref<'a>(
-    env: &'a Env,
-    client: &'a BillPaymentsClient<'a>,
-) -> &'a BillPaymentsClient<'a> {
-    let _ = env;
-    client
 }

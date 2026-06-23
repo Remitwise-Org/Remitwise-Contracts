@@ -59,8 +59,7 @@ fn bench_get_all_goals_worst_case() {
     );
 }
 
-#[test]
-fn bench_batch_add_to_goals_max() {
+fn bench_batch_add_to_goals_sized(s: u32) {
     let env = bench_env();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -69,8 +68,7 @@ fn bench_batch_add_to_goals_max() {
     let name = String::from_str(&env, "BatchGoal");
     let mut contributions = Vec::new(&env);
 
-    // Create 50 goals and prepare contributions
-    for _ in 0..50 {
+    for _ in 0..s {
         let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
         contributions.push_back(ContributionItem {
             goal_id,
@@ -79,13 +77,34 @@ fn bench_batch_add_to_goals_max() {
     }
 
     let (cpu, mem, count) = measure(&env, || client.batch_add_to_goals(&owner, &contributions));
-    assert_eq!(count, 50);
+    assert_eq!(count, s);
 
     println!(
-        r#"{{"contract":"savings_goals","method":"batch_add_to_goals","scenario":"50_items","cpu":{},"mem":{}}}"#,
-        cpu, mem
+        r#"{{"contract":"savings_goals","method":"batch_add_to_goals","scenario":"{}_items","cpu":{},"mem":{}}}"#,
+        s, cpu, mem
     );
 }
+
+#[test]
+fn bench_batch_add_to_goals_1() {
+    bench_batch_add_to_goals_sized(1);
+}
+
+#[test]
+fn bench_batch_add_to_goals_10() {
+    bench_batch_add_to_goals_sized(10);
+}
+
+#[test]
+fn bench_batch_add_to_goals_25() {
+    bench_batch_add_to_goals_sized(25);
+}
+
+#[test]
+fn bench_batch_add_to_goals_max() {
+    bench_batch_add_to_goals_sized(50);
+}
+
 
 #[test]
 fn bench_execute_due_savings_schedules() {
