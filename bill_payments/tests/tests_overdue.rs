@@ -435,6 +435,173 @@ fn test_overdue_owner_isolation_payment_does_not_affect_other_owner() {
     );
 }
 
+/// Global overdue list merges multiple owners' bills into one strictly ascending,
+/// duplicate-free page — verifying the owner-index merge preserves canonical ordering.
+#[test]
+fn test_overdue_global_merges_owners_in_ascending_order() {
+    let due_date = BASE_TIME - 1;
+
+    let env = make_env(due_date);
+    let client = setup_contract(&env);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    // Interleave creation so per-owner index lists do not line up with global order:
+    // IDs 1,3,5 -> A ; IDs 2,4,6 -> B.
+    create_bill(&env, &client, &owner_a, due_date); // 1
+    create_bill(&env, &client, &owner_b, due_date); // 2
+    create_bill(&env, &client, &owner_a, due_date); // 3
+    create_bill(&env, &client, &owner_b, due_date); // 4
+    create_bill(&env, &client, &owner_a, due_date); // 5
+    create_bill(&env, &client, &owner_b, due_date); // 6
+
+    set_time(&env, BASE_TIME);
+
+    // Page through with a small limit to exercise the bounded merge + cursor.
+    let mut collected: std::vec::Vec<u32> = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_overdue_bills(&cursor, &2);
+        for bill in page.items.iter() {
+            collected.push(bill.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(
+        collected,
+        std::vec![1u32, 2, 3, 4, 5, 6],
+        "global overdue page must merge both owners in strictly ascending ID order"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Owner-scoped variant: get_overdue_bills_for_owner
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Owner-scoped query returns only the requested owner's overdue bills.
+#[test]
+fn test_overdue_for_owner_scopes_to_single_owner() {
+    let due_date = BASE_TIME - 1;
+
+    let env = make_env(due_date);
+    let client = setup_contract(&env);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    create_bill(&env, &client, &owner_a, due_date); // 1 (A)
+    create_bill(&env, &client, &owner_b, due_date); // 2 (B)
+    create_bill(&env, &client, &owner_a, due_date); // 3 (A)
+
+    set_time(&env, BASE_TIME);
+
+    let page = client.get_overdue_bills_for_owner(&owner_a, &0, &100);
+    assert_eq!(page.count, 2, "owner A has exactly 2 overdue bills");
+    let mut ids: std::vec::Vec<u32> = std::vec::Vec::new();
+    for bill in page.items.iter() {
+        assert_eq!(bill.owner, owner_a, "only owner A's bills may appear");
+        ids.push(bill.id);
+    }
+    assert_eq!(ids, std::vec![1u32, 3u32], "ascending owner-scoped IDs");
+}
+
+/// Owner-scoped boundary matches the global semantics: now-1 overdue; now / now+1 not.
+#[test]
+fn test_overdue_for_owner_boundary_strict_less_than() {
+    let env = make_env(BASE_TIME - 1);
+    let client = setup_contract(&env);
+    let owner = Address::generate(&env);
+
+    create_bill(&env, &client, &owner, BASE_TIME - 1); // overdue once clock advances
+
+    set_time(&env, BASE_TIME);
+    create_bill(&env, &client, &owner, BASE_TIME); // due_date == now -> NOT overdue
+    create_bill(&env, &client, &owner, BASE_TIME + 1); // future -> NOT overdue
+
+    let page = client.get_overdue_bills_for_owner(&owner, &0, &100);
+    assert_eq!(page.count, 1, "only the bill with due_date < now is overdue");
+    assert!(page.items.get(0).unwrap().due_date < BASE_TIME);
+}
+
+/// Owner-scoped query excludes paid bills and survives sparse IDs from cancellation.
+#[test]
+fn test_overdue_for_owner_excludes_paid_and_handles_gaps() {
+    let due_date = BASE_TIME - 1;
+
+    let env = make_env(due_date);
+    let client = setup_contract(&env);
+    let owner = Address::generate(&env);
+
+    for _ in 0..5 {
+        create_bill(&env, &client, &owner, due_date); // IDs 1..=5
+    }
+    // Cancel 2 and 4 (sparse IDs), pay 5 (excluded as paid).
+    client.cancel_bill(&owner, &2u32);
+    client.cancel_bill(&owner, &4u32);
+
+    set_time(&env, BASE_TIME);
+    client.pay_bill(&owner, &5u32);
+
+    let page = client.get_overdue_bills_for_owner(&owner, &0, &100);
+    let mut ids: std::vec::Vec<u32> = std::vec::Vec::new();
+    for bill in page.items.iter() {
+        ids.push(bill.id);
+    }
+    assert_eq!(
+        ids,
+        std::vec![1u32, 3u32],
+        "cancelled (2,4) and paid (5) bills excluded; ascending order preserved"
+    );
+}
+
+/// Owner-scoped pagination is cursor-stable across pages.
+#[test]
+fn test_overdue_for_owner_pagination_stable_cursor() {
+    let due_date = BASE_TIME - 1;
+
+    let env = make_env(due_date);
+    let client = setup_contract(&env);
+    let owner = Address::generate(&env);
+
+    for _ in 0..5 {
+        create_bill(&env, &client, &owner, due_date);
+    }
+
+    set_time(&env, BASE_TIME);
+
+    let mut collected: std::vec::Vec<u32> = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_overdue_bills_for_owner(&owner, &cursor, &2);
+        for bill in page.items.iter() {
+            collected.push(bill.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(collected, std::vec![1u32, 2, 3, 4, 5]);
+}
+
+/// Owner-scoped query returns an empty page for an owner with no overdue bills.
+#[test]
+fn test_overdue_for_owner_empty_when_none_overdue() {
+    let env = make_env(BASE_TIME);
+    let client = setup_contract(&env);
+    let owner = Address::generate(&env);
+
+    create_bill(&env, &client, &owner, BASE_TIME + 1_000); // future, never overdue here
+
+    let page = client.get_overdue_bills_for_owner(&owner, &0, &100);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+}
+
 /// Bill due far in the past still appears overdue (no age limit on overdue).
 #[test]
 fn test_overdue_bill_due_far_in_past_is_overdue() {

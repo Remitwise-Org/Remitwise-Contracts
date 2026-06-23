@@ -23,17 +23,37 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> bool;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, caller: Address, bill_id: u32);
+        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> bool;
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
+    }
+
+    /// Compensation / reverse interfaces for rollback support.
+    /// These are expected to be implemented by the respective downstream contracts.
+    /// If a contract does not implement compensation, the orchestrator records
+    /// the partial state and surfaces `RemittanceFlowRolledBack` without attempting
+    /// the reverse call.
+    #[contractclient(name = "SavingsGoalsCompClient")]
+    pub trait SavingsGoalsCompInterface {
+        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
+    }
+
+    #[contractclient(name = "BillPaymentsCompClient")]
+    pub trait BillPaymentsCompInterface {
+        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
+    }
+
+    #[contractclient(name = "InsuranceCompClient")]
+    pub trait InsuranceCompInterface {
+        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
     }
 }
 
@@ -44,6 +64,19 @@ pub struct OrchestratorAuditEntry {
     pub caller: Address,
     pub timestamp: u64,
     pub success: bool,
+}
+
+/// Identifies a step in the multi-contract remittance flow.
+/// Used to track which step failed and to drive compensation logic.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u32)]
+pub enum FlowStep {
+    SpendingCheck = 1,
+    SplitCalculation = 2,
+    SavingsGoal = 3,
+    BillPayment = 4,
+    InsurancePremium = 5,
 }
 
 use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION};
@@ -128,6 +161,11 @@ pub enum OrchestratorError {
     ExecutionLocked = 8,
     InvalidDependency = 9,
     DuplicateDependency = 10,
+    /// One or more downstream steps failed and previously-applied steps
+    /// have been compensated (best-effort). The audit log records which
+    /// step triggered the failure. The caller should inspect the audit
+    /// log to determine the partial-execution state.
+    RemittanceFlowRolledBack = 11,
 }
 
 #[contract]
@@ -142,7 +180,10 @@ impl Orchestrator {
     /// indexers observe all remittance executions regardless of entrypoint.
     ///
     /// This is protected against reentrancy.
-    pub fn execute_remittance_flow(env: Env, params: RemittanceFlowParams) -> Result<(), OrchestratorError> {
+    pub fn execute_remittance_flow(
+        env: Env,
+        params: RemittanceFlowParams,
+    ) -> Result<(), OrchestratorError> {
         params.caller.require_auth();
 
         if params.total_amount <= 0 {
@@ -172,7 +213,10 @@ impl Orchestrator {
         Self::record_flow_outcome(&env, &params.caller, params.total_amount, result)
     }
 
-    fn perform_remittance_flow(env: &Env, params: &RemittanceFlowParams) -> Result<(), OrchestratorError> {
+    fn perform_remittance_flow(
+        env: &Env,
+        params: &RemittanceFlowParams,
+    ) -> Result<(), OrchestratorError> {
         // Use interfaces to call downstream contracts
         // This is a simplified implementation of the flow logic
         // 1. Check permission/spending limit
@@ -197,17 +241,23 @@ impl Orchestrator {
         // 3. Downstream calls
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &params.savings);
-            s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt);
+            if !s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &params.bills);
-            b_client.pay_bill(&params.caller, &params.bill_id);
+            if !b_client.pay_bill(&params.caller, &params.bill_id, &bills_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &params.insurance);
-            i_client.pay_premium(&params.caller, &params.policy_id);
+            if !i_client.pay_premium(&params.caller, &params.policy_id, &insurance_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         Ok(())
@@ -286,6 +336,18 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("NONCES"), &Map::<Address, u64>::new(&env));
 
+        // Store default execution parameters for the signed flow.
+        // These can be updated by the owner via a future admin method.
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOAL_ID"), &1u32);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILL_ID"), &1u32);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("POL_ID"), &1u32);
+
         let stats = ExecutionStats {
             total_executions: 0,
             successful_executions: 0,
@@ -351,13 +413,8 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        // 4. Reentrancy guard: check execution lock
-        let is_locked: bool = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("EXEC_LOCK"))
-            .unwrap_or(false);
-
+        // 4. Reentrancy guard: check execution lock before flow starts
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
         if is_locked {
             Self::record_flow_validation_failure(&env, &executor);
             return Err(OrchestratorError::ExecutionLocked);
@@ -382,21 +439,13 @@ impl Orchestrator {
 
         Self::emit_flow_started(&env, &executor, amount);
 
-        // 6. Set execution lock
-        Self::extend_instance_ttl(&env);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("EXEC_LOCK"), &true);
+        // 6. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
+        let result = {
+            let _guard = Self::acquire_execution_lock(&env)?;
+            Self::execute_flow_internal(&env, &executor, amount)
+        };
 
-        // 7. Execute remittance flow
-        let result = Self::execute_flow_internal(&env, &executor, amount);
-
-        // 8. Clear execution lock
-        env.storage()
-            .instance()
-            .set(&symbol_short!("EXEC_LOCK"), &false);
-
-        // 9. On success: advance nonce, then record shared flow outcome
+        // 7. On success: advance nonce, then record shared flow outcome
         match result {
             Ok(_) => {
                 Self::increment_nonce(&env, &executor)?;
@@ -484,10 +533,10 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("VERSION"), &new_version);
 
-                // Emit orchestrator upgrade event
-                // Topic: ("orch", "upgraded")
-                // Payload: (previous_version: u32, new_version: u32)
-                // Emitted when the contract version is upgraded by the owner
+        // Emit orchestrator upgrade event
+        // Topic: ("orch", "upgraded")
+        // Payload: (previous_version: u32, new_version: u32)
+        // Emitted when the contract version is upgraded by the owner
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("upgraded")),
             (prev, new_version),
@@ -562,15 +611,160 @@ impl Orchestrator {
 
     fn execute_flow_internal(
         env: &Env,
-        _executor: &Address,
-        _amount: i128,
+        executor: &Address,
+        amount: i128,
     ) -> Result<bool, OrchestratorError> {
-        let _owner: Address = env
+        // Read downstream contract addresses from storage (set during init).
+        let fw_addr: Address = env
             .storage()
             .instance()
-            .get(&symbol_short!("OWNER"))
-            .ok_or(OrchestratorError::Unauthorized)?;
+            .get(&symbol_short!("FW_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let rs_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("RS_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let sg_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SG_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let bp_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BP_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let ins_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("INS_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+
+        // Read execution parameter IDs from storage.
+        let goal_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOAL_ID"))
+            .unwrap_or(1);
+        let bill_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILL_ID"))
+            .unwrap_or(1);
+        let policy_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POL_ID"))
+            .unwrap_or(1);
+
+        // ---------------------------------------------------------------
+        // Pre-validation phase — read-only checks before any write
+        // ---------------------------------------------------------------
+
+        // Pre-check spending limit (read-only call)
+        let fw_client = interface::FamilyWalletClient::new(env, &fw_addr);
+        if !fw_client.check_spending_limit(executor, &amount) {
+            return Err(OrchestratorError::Unauthorized);
+        }
+
+        // Pre-calculate split (read-only call) — establishes the amounts
+        // that will be forwarded to each downstream contract.
+        let rs_client = interface::RemittanceSplitClient::new(env, &rs_addr);
+        let allocations = rs_client.calculate_split(&amount);
+        if allocations.len() < 4 {
+            return Err(OrchestratorError::InvalidAmount);
+        }
+
+        let _spending_amt = allocations.get_unchecked(0);
+        let savings_amt = allocations.get_unchecked(1);
+        let bills_amt = allocations.get_unchecked(2);
+        let insurance_amt = allocations.get_unchecked(3);
+
+        // ---------------------------------------------------------------
+        // Execution phase — writes with compensation tracking
+        // ---------------------------------------------------------------
+        //
+        // Pre-validation passed. Execute each write step sequentially.
+        // If a later step fails, compensate already-applied steps.
+        //
+        // Note on panic-safety: if a downstream contract call panics,
+        // Soroban atomically rolls back the entire transaction — including
+        // the EXEC_LOCK state change. The LockGuard RAII guard handles
+        // the non-panicking return path; panics are handled by the VM.
+
+        let mut savings_done = false;
+        let mut bills_done = false;
+
+        // Step 1 — Savings goal contribution
+        if savings_amt > 0 {
+            let s_client = interface::SavingsGoalsClient::new(env, &sg_addr);
+            if !s_client.add_to_goal(executor, &goal_id, &savings_amt) {
+                // First write step failed — nothing to compensate.
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
+            savings_done = true;
+        }
+
+        // Step 2 — Bill payment
+        if bills_amt > 0 {
+            let b_client = interface::BillPaymentsClient::new(env, &bp_addr);
+            if !b_client.pay_bill(executor, &bill_id, &bills_amt) {
+                Self::compensate_savings(env, executor, goal_id, savings_amt, savings_done);
+                return Err(OrchestratorError::RemittanceFlowRolledBack);
+            }
+            bills_done = true;
+        }
+
+        // Step 3 — Insurance premium
+        if insurance_amt > 0 {
+            let i_client = interface::InsuranceClient::new(env, &ins_addr);
+            if !i_client.pay_premium(executor, &policy_id, &insurance_amt) {
+                Self::compensate_savings(env, executor, goal_id, savings_amt, savings_done);
+                Self::compensate_bill(env, executor, bill_id, bills_amt, bills_done);
+                return Err(OrchestratorError::RemittanceFlowRolledBack);
+            }
+        }
+
         Ok(true)
+    }
+
+    /// Compensate a savings-goal contribution if it was applied.
+    fn compensate_savings(
+        env: &Env,
+        executor: &Address,
+        goal_id: u32,
+        amount: i128,
+        applied: bool,
+    ) {
+        if !applied || amount <= 0 {
+            return;
+        }
+        let sg_addr = match env.storage().instance().get(&symbol_short!("SG_ADDR")) {
+            Some(a) => a,
+            None => return,
+        };
+        let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
+        client.remove_from_goal(executor, &goal_id, &amount);
+    }
+
+    /// Compensate a bill payment if it was applied.
+    fn compensate_bill(
+        env: &Env,
+        executor: &Address,
+        bill_id: u32,
+        amount: i128,
+        applied: bool,
+    ) {
+        if !applied || amount <= 0 {
+            return;
+        }
+        let bp_addr = match env.storage().instance().get(&symbol_short!("BP_ADDR")) {
+            Some(a) => a,
+            None => return,
+        };
+        let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
+        client.reverse_payment(executor, &bill_id, &amount);
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {
@@ -800,10 +994,42 @@ impl Orchestrator {
 mod tests_nonce_eviction {
     use super::*;
     use soroban_sdk::{
-        symbol_short,
+        contract, contractimpl, symbol_short,
         testutils::{Address as _, Ledger as _},
         Address, Env,
     };
+
+    /// A mock downstream contract whose methods always succeed.
+    #[contract]
+    struct MockSimpleContract;
+
+    #[contractimpl]
+    impl MockSimpleContract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
 
     const BASE_TIME: u64 = 1_000;
     const FLOW_AMOUNT: i128 = 1_000;
@@ -823,14 +1049,15 @@ mod tests_nonce_eviction {
         let client = OrchestratorClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
 
-        client.init(
-            &owner,
-            &Address::generate(&env),
-            &Address::generate(&env),
-            &Address::generate(&env),
-            &Address::generate(&env),
-            &Address::generate(&env),
-        );
+        // Register a mock downstream contract for each dependency so
+        // execute_flow_internal's cross-contract calls succeed.
+        let fw = env.register_contract(None, MockSimpleContract);
+        let rs = env.register_contract(None, MockSimpleContract);
+        let sg = env.register_contract(None, MockSimpleContract);
+        let bp = env.register_contract(None, MockSimpleContract);
+        let ins = env.register_contract(None, MockSimpleContract);
+
+        client.init(&owner, &fw, &rs, &sg, &bp, &ins);
 
         SignedFlowHarness { env, contract_id }
     }

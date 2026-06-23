@@ -77,6 +77,26 @@ pub enum TransactionType {
     RegularWithdrawal = 6,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WithdrawalTier {
+    Regular,
+    Large,
+}
+
+/// Determines whether a withdrawal falls into the Regular or Large tier.
+///
+/// ### Boundary Policy (Pinned & Documented):
+/// * **Below Limit** (`amount < spending_limit`): `WithdrawalTier::Regular`
+/// * **Exactly At Boundary** (`amount == spending_limit`): `WithdrawalTier::Regular` (Inclusive)
+/// * **Above Limit** (`amount > spending_limit`): `WithdrawalTier::Large`
+pub fn select_withdrawal_tier(amount: i128, spending_limit: i128) -> WithdrawalTier {
+    if amount <= spending_limit {
+        WithdrawalTier::Regular
+    } else {
+        WithdrawalTier::Large
+    }
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct MultiSigConfig {
@@ -659,10 +679,6 @@ impl FamilyWallet {
             return Err(Error::InvalidThreshold);
         }
 
-
-
-
-
         // Check signer membership and uniqueness in a single pass
         let mut checked: Map<Address, bool> = Map::new(&env);
         for signer in signers.iter() {
@@ -708,30 +724,43 @@ impl FamilyWallet {
             panic!("Only family members can propose transactions");
         }
 
-        let config_key = match tx_type {
-            TransactionType::RegularWithdrawal => {
-                Self::get_config_key(TransactionType::LargeWithdrawal)
-            }
-            _ => Self::get_config_key(tx_type),
-        };
-
-        let config: MultiSigConfig = env
+        // Fetch Regular config (source of truth for boundary)
+        let reg_config_key = Self::get_config_key(TransactionType::RegularWithdrawal);
+        let reg_config: MultiSigConfig = env
             .storage()
             .instance()
-            .get(&config_key)
-            .unwrap_or_else(|| panic!("Multi-sig config not found"));
+            .get(&reg_config_key)
+            .unwrap_or_else(|| panic!("Regular multi-sig config not found"));
 
-        let requires_multisig = match (&tx_type, &data) {
-            (TransactionType::RegularWithdrawal, TransactionData::Withdrawal(_, _, amount)) => {
-                *amount > config.spending_limit
-            }
-            (TransactionType::LargeWithdrawal, _) => true,
-            (TransactionType::RegularWithdrawal, _) => false,
-            _ => true,
-        };
+        let mut requires_multisig = true;
+        let mut resolved_tx_type = tx_type;
 
+        // Normalize tier selection
+        if let TransactionData::Withdrawal(_, _, amount) = &data {
+            let limit = reg_config.spending_limit;
+
+            let tier = select_withdrawal_tier(*amount, limit);
+
+            resolved_tx_type = match tier {
+                WithdrawalTier::Regular => TransactionType::RegularWithdrawal,
+                WithdrawalTier::Large => TransactionType::LargeWithdrawal,
+            };
+
+            requires_multisig = true;
+        } else if let TransactionType::RegularWithdrawal = resolved_tx_type {
+            // Non-withdrawals incorrectly tagged
+            requires_multisig = false;
+        }
+
+        // Direct execution if no multisig required
         if !requires_multisig {
-            return Self::execute_transaction_internal(&env, &proposer, &tx_type, &data, false);
+            return Self::execute_transaction_internal(
+                &env,
+                &proposer,
+                &resolved_tx_type,
+                &data,
+                false,
+            );
         }
 
         Self::extend_instance_ttl(&env);
@@ -750,6 +779,7 @@ impl FamilyWallet {
             .set(&symbol_short!("NEXT_TX"), &next_tx_id);
 
         let timestamp = env.ledger().timestamp();
+
         let mut signatures = Vec::new(&env);
         signatures.push_back(proposer.clone());
 
@@ -759,7 +789,6 @@ impl FamilyWallet {
             .get(&symbol_short!("PROP_EXP"))
             .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
 
-        // If duration is 0, expiry is disabled — set expires_at to u64::MAX so the guard never trips.
         let expires_at = if expiry_duration == 0 {
             u64::MAX
         } else {
@@ -768,7 +797,7 @@ impl FamilyWallet {
 
         let pending_tx = PendingTransaction {
             tx_id,
-            tx_type,
+            tx_type: resolved_tx_type, // normalized
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
@@ -783,19 +812,14 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
         pending_txs.set(tx_id, pending_tx);
+
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
 
         tx_id
     }
-    /// Sign a pending multisig transaction.
-    ///
-    /// Idempotency: repeated calls by the same `signer` for the same `tx_id` are
-    /// treated as a no-op and do not increase the recorded approval count. The
-    /// proposer's implicit approval (added when the proposal is created) is
-    /// respected and will not be double-counted if the proposer calls this
-    /// method again.
+
     pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> Result<bool, Error> {
         signer.require_auth();
         Self::require_not_paused(&env);
@@ -1195,6 +1219,16 @@ impl FamilyWallet {
 
     /// Remove a family member from the wallet.
     ///
+    /// Removes the member and cleans up all associated per-member state to prevent
+    /// storage bloat and correctness defects when the same address is re-added.
+    ///
+    /// # Cleanup
+    /// The following per-member entries are deleted:
+    /// - `MEMBERS`: The member record itself
+    /// - `ROLE_EXP`: Any role expiry timestamp for the member
+    /// - `PREC_LIM`: Any precision spending limit configuration
+    /// - `SPND_TRK`: Any cumulative spending tracker state
+    ///
     /// # Authorization
     /// Only Owner can remove family members.
     ///
@@ -1210,6 +1244,7 @@ impl FamilyWallet {
     /// - Prevents removing the Owner
     /// - Silently succeeds if member doesn't exist
     /// - Records access audit entry
+    /// - Prevents a re-added member from inheriting previous member's state
     pub fn remove_family_member(env: Env, caller: Address, member: Address) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -1242,6 +1277,10 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
+
+        // Clear all per-member state to prevent storage bloat and stale state
+        // from affecting re-added members.
+        Self::clear_member_state(&env, &member);
 
         // Re-validate in-flight proposals: strip signatures from the removed
         // member and invalidate any proposal that can no longer reach quorum.
@@ -2303,6 +2342,9 @@ impl FamilyWallet {
         let mut count = 0u32;
         for addr in addresses.iter() {
             members_map.remove(addr.clone());
+            // Clear all per-member state to prevent storage bloat and stale state
+            // from affecting re-added members.
+            Self::clear_member_state(&env, &addr);
             Self::append_access_audit(
                 &env,
                 symbol_short!("rem_mem"),
@@ -2730,18 +2772,34 @@ impl FamilyWallet {
         data: &TransactionData,
         require_auth: bool,
     ) -> u64 {
-        match (tx_type, data) {
-            (
-                TransactionType::RegularWithdrawal,
-                TransactionData::Withdrawal(token, recipient, amount),
-            )
-            | (
-                TransactionType::LargeWithdrawal,
-                TransactionData::Withdrawal(token, recipient, amount),
-            ) => {
+        match data {
+            TransactionData::Withdrawal(token, recipient, amount) => {
+                // RE-COMPUTE TIER (CRITICAL FIX)
+                let reg_config_key = Self::get_config_key(TransactionType::RegularWithdrawal);
+
+                let reg_config: MultiSigConfig = env
+                    .storage()
+                    .instance()
+                    .get(&reg_config_key)
+                    .unwrap_or_else(|| panic!("Regular multi-sig config not found"));
+
+                let limit_i128 = reg_config.spending_limit;
+                let expected_tier = select_withdrawal_tier(*amount, limit_i128);
+
+                let expected_tx_type = match expected_tier {
+                    WithdrawalTier::Regular => TransactionType::RegularWithdrawal,
+                    WithdrawalTier::Large => TransactionType::LargeWithdrawal,
+                };
+
+                // HARD SECURITY CHECK
+                if tx_type != &expected_tx_type {
+                    panic!("Transaction tier mismatch: invalid multisig enforcement");
+                }
+
                 if require_auth {
                     proposer.require_auth();
                 }
+
                 if let Err(e) = Self::validate_precision_spending_internal(
                     env.clone(),
                     proposer.clone(),
@@ -2749,13 +2807,19 @@ impl FamilyWallet {
                 ) {
                     panic_with_error!(env, e);
                 }
+
                 Self::record_precision_spending(env, proposer, *amount);
+
                 let token_client = TokenClient::new(env, token);
                 token_client.transfer(proposer, recipient, amount);
+
                 0
             }
-            (TransactionType::SplitConfigChange, TransactionData::SplitConfigChange(..)) => 0,
-            (TransactionType::RoleChange, TransactionData::RoleChange(member, new_role)) => {
+
+            // unchanged cases
+            (TransactionData::SplitConfigChange(..)) => 0,
+
+            TransactionData::RoleChange(member, new_role) => {
                 let mut members: Map<Address, FamilyMember> = env
                     .storage()
                     .instance()
@@ -2776,20 +2840,23 @@ impl FamilyWallet {
                         true,
                     );
                 }
+
                 0
             }
-            (
-                TransactionType::EmergencyTransfer,
-                TransactionData::EmergencyTransfer(token, recipient, amount),
-            ) => {
+
+            TransactionData::EmergencyTransfer(token, recipient, amount) => {
                 if require_auth {
                     proposer.require_auth();
                 }
+
                 let token_client = TokenClient::new(env, token);
                 token_client.transfer(proposer, recipient, amount);
+
                 0
             }
-            (TransactionType::PolicyCancellation, TransactionData::PolicyCancellation(..)) => 0,
+
+            TransactionData::PolicyCancellation(..) => 0,
+
             _ => panic!("Invalid transaction type or data mismatch"),
         }
     }
@@ -2953,6 +3020,48 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+    }
+
+    /// Clear all per-member state maps for a removed member.
+    ///
+    /// Removes entries from ROLE_EXP, PREC_LIM, and SPND_TRK to prevent:
+    /// - Unbounded storage growth from orphaned records
+    /// - Re-added members inheriting stale spending trackers or precision limits
+    ///
+    /// This ensures that a re-added member starts with a clean slate.
+    fn clear_member_state(env: &Env, member: &Address) {
+        // Remove role expiry if present
+        let mut role_exp: Map<Address, u64> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ROLE_EXP"))
+            .unwrap_or_else(|| Map::new(env));
+        role_exp.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ROLE_EXP"), &role_exp);
+
+        // Remove precision spending limit if present
+        let mut prec_lim: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(env));
+        prec_lim.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PREC_LIM"), &prec_lim);
+
+        // Remove spending tracker if present
+        let mut spnd_trk: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+        spnd_trk.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SPND_TRK"), &spnd_trk);
     }
 
     fn update_storage_stats(env: &Env) {

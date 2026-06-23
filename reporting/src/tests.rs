@@ -668,12 +668,14 @@ fn test_verify_dependency_address_set_does_not_write_storage() {
 
     // Instance storage is only accessible inside a contract context, so the
     // post-condition reads must run within `env.as_contract`.
-    let instance_snapshot: Option<Address> =
-        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADMIN")));
+    let instance_snapshot: Option<Address> = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&symbol_short!("ADMIN"))
+    });
     assert!(instance_snapshot.is_some(), "ADMIN should still exist");
 
-    let stored_addrs: Option<ContractAddresses> =
-        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADDRS")));
+    let stored_addrs: Option<ContractAddresses> = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&symbol_short!("ADDRS"))
+    });
     assert!(
         stored_addrs.is_none(),
         "ADDRS must not be written by preflight"
@@ -1546,6 +1548,139 @@ fn test_get_trend_analysis() {
 
     assert_eq!(trend.current_amount, 15000);
     assert_eq!(trend.change_percentage, 50);
+}
+
+fn trend_client(env: &Env) -> (ReportingContractClient<'_>, Address) {
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(env, &contract_id);
+    let user = Address::generate(env);
+    (client, user)
+}
+
+#[test]
+fn test_trend_multi_empty_returns_empty() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let history = soroban_sdk::Vec::new(&env);
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(trends.len(), 0);
+}
+
+#[test]
+fn test_trend_multi_single_point_uses_zero_baseline() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let mut history = soroban_sdk::Vec::new(&env);
+    history.push_back((1u64, 250i128));
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+    let first = trends.get(0).expect("single point produces one trend");
+
+    assert_eq!(trends.len(), 1);
+    assert_eq!(first.current_amount, 250);
+    assert_eq!(first.previous_amount, 0);
+    assert_eq!(first.change_amount, 250);
+    assert_eq!(first.change_percentage, 100);
+}
+
+#[test]
+fn test_trend_multi_zero_previous_amount_does_not_divide_by_zero() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let mut history = soroban_sdk::Vec::new(&env);
+    history.push_back((1u64, 0i128));
+    history.push_back((2u64, 75i128));
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+    let first = trends.get(0).expect("first trend exists");
+    let second = trends.get(1).expect("second trend exists");
+
+    assert_eq!(first.previous_amount, 0);
+    assert_eq!(first.current_amount, 0);
+    assert_eq!(first.change_percentage, 0);
+    assert_eq!(second.previous_amount, 0);
+    assert_eq!(second.current_amount, 75);
+    assert_eq!(second.change_amount, 75);
+    assert_eq!(second.change_percentage, 100);
+}
+
+#[test]
+fn test_trend_multi_sign_swings_follow_change_direction_for_positive_baseline() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let mut history = soroban_sdk::Vec::new(&env);
+    history.push_back((1u64, -50i128));
+    history.push_back((2u64, 50i128));
+    history.push_back((3u64, -50i128));
+    history.push_back((4u64, 100i128));
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+    let negative_to_positive = trends.get(1).expect("negative-to-positive trend");
+    let positive_to_negative = trends.get(2).expect("positive-to-negative trend");
+    let negative_to_positive_again = trends.get(3).expect("second negative-to-positive trend");
+
+    assert_eq!(negative_to_positive.previous_amount, -50);
+    assert_eq!(negative_to_positive.current_amount, 50);
+    assert_eq!(negative_to_positive.change_amount, 100);
+    assert_eq!(negative_to_positive.change_percentage, 100);
+
+    assert_eq!(positive_to_negative.previous_amount, 50);
+    assert_eq!(positive_to_negative.current_amount, -50);
+    assert_eq!(positive_to_negative.change_amount, -100);
+    assert_eq!(positive_to_negative.change_percentage, -200);
+
+    assert_eq!(negative_to_positive_again.previous_amount, -50);
+    assert_eq!(negative_to_positive_again.current_amount, 100);
+    assert_eq!(negative_to_positive_again.change_amount, 150);
+    assert_eq!(negative_to_positive_again.change_percentage, 100);
+}
+
+#[test]
+fn test_trend_multi_uses_input_order_for_unsorted_history() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let mut history = soroban_sdk::Vec::new(&env);
+    history.push_back((3u64, 300i128));
+    history.push_back((1u64, 100i128));
+    history.push_back((2u64, 200i128));
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+
+    assert_eq!(trends.len(), 3);
+    assert_eq!(trends.get(0).unwrap().current_amount, 300);
+    assert_eq!(trends.get(0).unwrap().previous_amount, 0);
+    assert_eq!(trends.get(1).unwrap().current_amount, 100);
+    assert_eq!(trends.get(1).unwrap().previous_amount, 300);
+    assert_eq!(trends.get(1).unwrap().change_percentage, -66);
+    assert_eq!(trends.get(2).unwrap().current_amount, 200);
+    assert_eq!(trends.get(2).unwrap().previous_amount, 100);
+    assert_eq!(trends.get(2).unwrap().change_percentage, 100);
+}
+
+#[test]
+fn test_trend_multi_extreme_values_saturate_without_overflow() {
+    let env = create_test_env();
+    let (client, user) = trend_client(&env);
+    let mut history = soroban_sdk::Vec::new(&env);
+    history.push_back((1u64, i128::MAX));
+    history.push_back((2u64, i128::MIN));
+    history.push_back((3u64, i128::MAX));
+
+    let trends = client.get_trend_analysis_multi(&user, &history);
+    let max_to_min = trends.get(1).expect("max-to-min trend");
+    let min_to_max = trends.get(2).expect("min-to-max trend");
+
+    assert_eq!(max_to_min.previous_amount, i128::MAX);
+    assert_eq!(max_to_min.current_amount, i128::MIN);
+    assert_eq!(max_to_min.change_amount, i128::MIN);
+    assert_eq!(max_to_min.change_percentage, -100);
+
+    assert_eq!(min_to_max.previous_amount, i128::MIN);
+    assert_eq!(min_to_max.current_amount, i128::MAX);
+    assert_eq!(min_to_max.change_amount, i128::MAX);
+    assert_eq!(min_to_max.change_percentage, 100);
 }
 
 #[test]
@@ -3107,7 +3242,12 @@ mod topn_tie_bills {
             0
         }
 
-        fn get_all_bills_for_owner(env: Env, owner: Address, _cursor: u32, _limit: u32) -> BillPage {
+        fn get_all_bills_for_owner(
+            env: Env,
+            owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> BillPage {
             // All equal amounts => order must be ID ascending due to tie-break.
             // Also intentionally insert in descending id order to catch non-determinism.
             let mut items = Vec::new(&env);
@@ -3131,7 +3271,11 @@ mod topn_tie_bills {
                     currency: SorobanString::from_str(&env, "XLM"),
                 });
             }
-            BillPage { items, next_cursor: 0, count: ids.len() as u32 }
+            BillPage {
+                items,
+                next_cursor: 0,
+                count: ids.len() as u32,
+            }
         }
     }
 }
@@ -3168,7 +3312,11 @@ mod topn_tie_savings {
                     tags: Vec::new(&env),
                 });
             }
-            GoalPage { items, next_cursor: 0, count: ids.len() as u32 }
+            GoalPage {
+                items,
+                next_cursor: 0,
+                count: ids.len() as u32,
+            }
         }
 
         fn is_goal_completed(_env: Env, _goal_id: u32) -> bool {
@@ -3213,7 +3361,10 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+        assert_eq!(
+            r1.items.get(i as u32).unwrap().id,
+            r2.items.get(i as u32).unwrap().id
+        );
     }
 
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
@@ -3259,7 +3410,10 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
 
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+        assert_eq!(
+            r1.items.get(i as u32).unwrap().id,
+            r2.items.get(i as u32).unwrap().id
+        );
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];
@@ -3317,4 +3471,3 @@ fn test_top_n_reports() {
     assert_eq!(savings_report.items.get(0).unwrap().target_amount, 10000);
     assert_eq!(savings_report.items.get(1).unwrap().target_amount, 5000);
 }
-

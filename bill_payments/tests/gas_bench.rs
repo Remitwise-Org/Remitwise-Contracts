@@ -603,6 +603,65 @@ fn bench_get_overdue_bills_page_first_1000_total() {
     );
 }
 
+/// Scale guard: `get_overdue_bills` cost must track the active result set, not the
+/// global `NEXT_ID` high-water mark.
+///
+/// We hold the overdue result set fixed (10 bills) and inflate `NEXT_ID` by
+/// creating-then-cancelling 80 filler bills. Cancelled bills leave `OWN_IDX`, so the
+/// owner-index walk does identical work in both scenarios. With the previous
+/// `1..=NEXT_ID` scan, scenario B (`NEXT_ID == 90`) would have cost ~9x scenario A
+/// (`NEXT_ID == 10`); the index walk keeps the cost flat.
+#[test]
+fn scale_get_overdue_bills_independent_of_next_id() {
+    // Scenario A: 10 overdue bills, NEXT_ID == 10.
+    let env_a = bench_env();
+    let id_a = env_a.register_contract(None, BillPayments);
+    let client_a = BillPaymentsClient::new(&env_a, &id_a);
+    let owner_a = <Address as AddressTrait>::generate(&env_a);
+    create_many_overdue(&client_a, &env_a, &owner_a, "OverdueA", 10);
+    let (cpu_a, mem_a, page_a) = measure(&env_a, || client_a.get_overdue_bills(&0u32, &50u32));
+    assert_eq!(page_a.count, 10);
+
+    // Scenario B: same 10 overdue bills, but NEXT_ID inflated to 90 via create+cancel.
+    let env_b = bench_env();
+    let id_b = env_b.register_contract(None, BillPayments);
+    let client_b = BillPaymentsClient::new(&env_b, &id_b);
+    let owner_b = <Address as AddressTrait>::generate(&env_b);
+    create_many_overdue(&client_b, &env_b, &owner_b, "OverdueB", 10);
+    let filler = create_many_unpaid(&client_b, &env_b, &owner_b, "Filler", 80);
+    for fid in filler.iter() {
+        client_b.cancel_bill(&owner_b, &fid);
+    }
+    let (cpu_b, mem_b, page_b) = measure(&env_b, || client_b.get_overdue_bills(&0u32, &50u32));
+    assert_eq!(
+        page_b.count, 10,
+        "filler bills cancelled: only the 10 overdue bills remain"
+    );
+
+    // Allow a small tolerance for incidental differences; the key invariant is that
+    // a 9x larger NEXT_ID does NOT translate into a 9x larger query cost.
+    assert!(
+        cpu_b <= cpu_a + cpu_a / 5,
+        "overdue cpu must not scale with NEXT_ID: A(next_id=10)={}, B(next_id=90)={}",
+        cpu_a,
+        cpu_b
+    );
+    assert!(
+        mem_b <= mem_a + mem_a / 5,
+        "overdue mem must not scale with NEXT_ID: A(next_id=10)={}, B(next_id=90)={}",
+        mem_a,
+        mem_b
+    );
+
+    emit_bench_result(
+        "get_overdue_bills",
+        "next_id_10_vs_90_fixed_10_result",
+        cpu_b,
+        mem_b,
+        OVERDUE_BILLS_PAGE_50,
+    );
+}
+
 /// Benchmark owner bill listing pagination at varying dataset sizes.
 #[test]
 fn bench_get_all_bills_for_owner_page_first_50_total() {

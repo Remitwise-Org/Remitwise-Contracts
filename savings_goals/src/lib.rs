@@ -22,6 +22,7 @@ pub struct GoalCreatedEvent {
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
+    pub locked: bool,
     pub timestamp: u64,
 }
 
@@ -369,50 +370,6 @@ impl SavingsGoalContract {
         }
     }
 
-    /// Returns a list of goals for an owner using offset-based pagination.
-    ///
-    /// # Arguments
-    /// * `owner` - The address of the goal owner.
-    /// * `offset` - The number of items to skip.
-    /// * `limit` - The maximum number of items to return.
-    ///
-    /// # Returns
-    /// A `Vec<SavingsGoal>` containing the requested goals.
-    pub fn get_goals_by_owner(
-        env: Env,
-        owner: Address,
-        offset: u32,
-        limit: u32,
-    ) -> Vec<SavingsGoal> {
-        let limit = Self::clamp_limit(limit);
-
-        let ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::OwnerGoals(owner.clone()))
-            .unwrap_or_else(|| Vec::new(&env));
-
-        let total_count = ids.len();
-        if offset >= total_count {
-            return Vec::new(&env);
-        }
-
-        let end = (offset + limit).min(total_count);
-        let mut result = Vec::new(&env);
-        for i in offset..end {
-            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
-            if let Some(goal) = env
-                .storage()
-                .persistent()
-                .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
-            {
-                result.push_back(goal);
-            }
-        }
-
-        result
-    }
-
     // -----------------------------------------------------------------------
     // Pause / upgrade
     // -----------------------------------------------------------------------
@@ -605,12 +562,24 @@ impl SavingsGoalContract {
 
     /// Validates and canonicalizes a tag batch for metadata operations.
     ///
-    /// Delegates to the shared [`remitwise_common::canonicalize_tags`] helper.
+    /// Delegates to the shared [`remitwise_common::canonicalize_tags_checked`] helper.
     /// Invalid characters are reported as [`SavingsGoalError::InvalidTagContent`].
     fn validate_and_normalize_tags(env: &Env, tags: &Vec<String>) -> Vec<String> {
-        remitwise_common::canonicalize_tags(env, tags, || {
-            soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent)
-        })
+        match remitwise_common::canonicalize_tags_checked(env, tags) {
+            Ok(normalized) => normalized,
+            Err(remitwise_common::TagError::Empty) => {
+                if tags.is_empty() {
+                    panic!("Tags cannot be empty");
+                }
+                panic!("Tag must be between 1 and 32 characters");
+            }
+            Err(remitwise_common::TagError::TooLong) => {
+                panic!("Tag must be between 1 and 32 characters");
+            }
+            Err(remitwise_common::TagError::InvalidChar { .. }) => {
+                soroban_sdk::panic_with_error!(env, SavingsGoalError::InvalidTagContent)
+            }
+        }
     }
 
     /// Adds a goal ID to the tag index for an (owner, tag) pair.
@@ -811,21 +780,18 @@ impl SavingsGoalContract {
 
     /// Creates a new savings goal.
     ///
+    /// New goals default to `locked: false` (immediately usable).
+    /// Pass `locked: true` explicitly for commitment-device goals.
+    ///
     /// - `owner` must authorize the call.
     /// - `target_amount` must be positive.
-    /// - `target_date` is stored as provided and may be in the past. This
-    ///   supports backfill or migration use cases where historical goals are
-    ///   recorded after the fact. Callers that need strictly future-dated
-    ///   goals should validate this before invoking the contract.
-    ///
-    /// # Events
-    /// - Emits `SavingsEvent::GoalCreated`.
     pub fn create_goal(
         env: Env,
         owner: Address,
         name: String,
         target_amount: i128,
         target_date: u64,
+        locked: bool, // new parameter - default false from callers
     ) -> Result<u32, SavingsGoalError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
@@ -868,7 +834,7 @@ impl SavingsGoalContract {
             target_amount,
             current_amount: 0,
             target_date,
-            locked: true,
+            locked, // use the parameter (defaults to false)
             unlock_date: None,
             tags: Vec::new(&env),
         };
@@ -895,6 +861,7 @@ impl SavingsGoalContract {
             name: goal.name.clone(),
             target_amount,
             target_date,
+            locked,
             timestamp: env.ledger().timestamp(),
         };
         env.events().publish((GOAL_CREATED,), event.clone());
@@ -919,7 +886,6 @@ impl SavingsGoalContract {
 
         Ok(new_id)
     }
-
     /// Adds funds to an existing savings goal.
     ///
     /// # Arguments
@@ -1440,20 +1406,40 @@ impl SavingsGoalContract {
     // PAGINATED LIST QUERIES
     // -----------------------------------------------------------------------
 
-    /// @notice Returns a deterministic page of goals for one owner.
-    /// @dev Paging order is anchored to the owner-goal ID index (append-only,
-    ///      ascending by creation ID), not map iteration order.
-    /// @dev `cursor` is exclusive and must match an existing goal ID in the
-    ///      owner's index when non-zero; invalid cursors are rejected.
+    /// Returns a deterministic page of goals for one owner using cursor-based pagination.
+    ///
+    /// # Pagination Contract (Cursor-Based)
+    /// - **Deterministic order**: Goals are ordered by ID ascending (creation order)
+    /// - **Cursor semantics**: `cursor` is the ID of the last goal from the previous page.
+    ///   Pass `0` to start from the first page. The cursor is *exclusive* — results begin
+    ///   after the goal with the given ID.
+    /// - **Cursor validation**: If `cursor != 0`, it must match an existing goal ID in the
+    ///   owner's goal index; invalid cursors panic.
+    /// - **Next page**: Use `next_cursor` as the cursor for the next call. When `next_cursor == 0`,
+    ///   there are no more pages.
     ///
     /// # Arguments
-    /// * `owner`  - whose goals to return
-    /// * `cursor` - start after this goal ID (pass 0 for the first page)
-    /// * `limit`  - max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    /// * `owner`  - Address whose goals to return
+    /// * `cursor` - Goal ID to start after (pass 0 for the first page)
+    /// * `limit`  - Max items per page (clamped: 0 → DEFAULT_PAGE_LIMIT, > MAX_PAGE_LIMIT → MAX_PAGE_LIMIT)
     ///
     /// # Returns
-    /// `GoalPage { items, next_cursor, count }`.
-    /// `next_cursor == 0` means no more pages.
+    /// `GoalPage { items: Vec<SavingsGoal>, next_cursor: u32, count: u32 }`
+    /// - `items`: The goals on this page
+    /// - `next_cursor`: Pass this to the next call for pagination; 0 = no more pages
+    /// - `count`: Number of items returned
+    ///
+    /// # Panics
+    /// - If `cursor != 0` and does not match an existing goal ID in the owner's index
+    ///
+    /// # Example
+    /// ```ignore
+    /// let page1 = get_goals(env, owner, 0, 20);
+    /// for goal in page1.items.iter() { /* process goal */ }
+    /// if page1.next_cursor != 0 {
+    ///   let page2 = get_goals(env, owner, page1.next_cursor, 20);
+    /// }
+    /// ```
     pub fn get_goals(env: Env, owner: Address, cursor: u32, limit: u32) -> GoalPage {
         let limit = Self::clamp_limit(limit);
 
@@ -1899,12 +1885,18 @@ impl SavingsGoalContract {
     ) -> Result<bool, SavingsGoalError> {
         caller.require_auth();
 
-        // Accept any schema_version within the supported range for backward/forward compat.
+        // ====================================================================
+        // PHASE 1: Validate the entire snapshot BEFORE ANY state mutations
+        // ====================================================================
+
+        // Schema version must be in supported range
         if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
             || snapshot.schema_version > SCHEMA_VERSION
         {
             return Err(SavingsGoalError::UnsupportedVersion);
         }
+
+        // Checksum must match
         let expected = Self::compute_goals_checksum(
             snapshot.schema_version,
             snapshot.next_id,
@@ -1915,7 +1907,66 @@ impl SavingsGoalContract {
             return Err(SavingsGoalError::ChecksumMismatch);
         }
 
+        // Nonce must be correct
         Self::require_nonce(&env, &caller, nonce);
+
+        // Validate all goals before any mutations
+        let mut max_goal_id: u32 = 0;
+        for g in snapshot.goals.iter() {
+            // Goal name validation
+            if let Err(e) = Self::validate_goal_name(&g.name) {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(e);
+            }
+
+            // Balance overflow check: current_amount must not exceed MAX_SAFE_GOAL_BALANCE
+            if g.current_amount > MAX_SAFE_GOAL_BALANCE {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::Overflow);
+            }
+
+            // Target amount must be positive
+            if g.target_amount <= 0 {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::InvalidAmount);
+            }
+
+            // Track max goal ID for consistency check
+            if g.id > max_goal_id {
+                max_goal_id = g.id;
+            }
+        }
+
+        // next_id consistency: next_id should be >= the max goal ID in the snapshot
+        // (next_id is used to generate new IDs, so it must not be less than existing ones)
+        if snapshot.next_id < max_goal_id {
+            Self::append_audit(&env, symbol_short!("import"), &caller, false);
+            return Err(SavingsGoalError::InvalidAmount);
+        }
+
+        // Verify per-owner goal count is within limits
+        let mut owner_goal_counts: Map<Address, u32> = Map::new(&env);
+        for g in snapshot.goals.iter() {
+            let count = owner_goal_counts
+                .get(g.owner.clone())
+                .unwrap_or(0);
+            let new_count = match count.checked_add(1) {
+                Some(c) => c,
+                None => {
+                    Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                    return Err(SavingsGoalError::GoalCapReached);
+                }
+            };
+            if new_count > MAX_GOALS_PER_OWNER {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::GoalCapReached);
+            }
+            owner_goal_counts.set(g.owner.clone(), new_count);
+        }
+
+        // ====================================================================
+        // PHASE 2: All validations passed. Now perform state mutations.
+        // ====================================================================
 
         Self::extend_instance_ttl(&env);
 
@@ -1938,6 +1989,7 @@ impl SavingsGoalContract {
             }
         }
 
+        // Build owner indices from snapshot
         let mut owner_indices: Map<Address, Vec<u32>> = Map::new(&env);
         for g in snapshot.goals.iter() {
             env.storage().persistent().set(&DataKey::Goal(g.id), &g);
@@ -1953,6 +2005,7 @@ impl SavingsGoalContract {
             owner_indices.set(g.owner.clone(), ids);
         }
 
+        // Write owner indices
         for (owner, ids) in owner_indices.iter() {
             env.storage()
                 .persistent()
@@ -1964,10 +2017,12 @@ impl SavingsGoalContract {
             );
         }
 
+        // Update next_id
         env.storage()
             .instance()
             .set(&DataKey::NextId, &snapshot.next_id);
 
+        // Finalize: nonce and audit
         Self::increment_nonce(&env, &caller);
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
         Ok(true)
@@ -2253,12 +2308,7 @@ impl SavingsGoalContract {
             // Active iff unlock_date is strictly in the future.
             if prev_unlock > current_time {
                 if unlock_date < prev_unlock {
-                    Self::append_audit(
-                        &env,
-                        symbol_short!("timelock"),
-                        &caller,
-                        false,
-                    );
+                    Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
                     soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
                 }
             }
@@ -2267,7 +2317,6 @@ impl SavingsGoalContract {
         // Even if there is an active time-lock, extending to the same value
         // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
         // Any other extension (`new_unlock > prev_unlock`) updates the lock.
-        
 
         // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);

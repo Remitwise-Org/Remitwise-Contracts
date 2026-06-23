@@ -101,7 +101,7 @@ The following **should NOT** be rate-limited as they are read-only and do not co
 
 - `get_split()`, `calculate_split()` – Remittance Split
 - `get_unpaid_bills()`, `get_bill()`, `get_overdue_bills()` – Bill Payments
-- `get_goal()`, `get_goals_by_owner()` – Savings Goals
+- `get_goal()`, `get_goals()` – Savings Goals
 - `get_policy()`, `get_policies_by_owner()` – Insurance
 - `get_report()`, `get_health_score()` – Reporting
 

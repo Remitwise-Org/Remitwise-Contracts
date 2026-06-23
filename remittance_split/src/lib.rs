@@ -122,36 +122,6 @@ pub const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
 /// Maximum allowed window for transaction deadlines (1 hour).
 pub const MAX_DEADLINE_WINDOW_SECS: u64 = 3_600;
 
-/// Insertion sort for a small `Vec<u32>` in ascending order.
-///
-/// Used by the per-owner schedule index (capped at MAX_SCHEDULES_PER_OWNER) to
-/// enforce deterministic ordering on storage. `soroban_sdk::Vec` does not
-/// expose a `sort_unstable`, and these lists are small enough that an
-/// in-place insertion sort is well within budget.
-fn sort_u32_vec_ascending(v: &mut Vec<u32>) {
-    let n = v.len();
-    let mut i: u32 = 1;
-    while i < n {
-        let key = match v.get(i) {
-            Some(k) => k,
-            None => return,
-        };
-        let mut j: u32 = i;
-        while j > 0 {
-            let prev = match v.get(j - 1) {
-                Some(p) => p,
-                None => break,
-            };
-            if prev <= key {
-                break;
-            }
-            v.set(j, prev);
-            j -= 1;
-        }
-        v.set(j, key);
-        i += 1;
-    }
-}
 
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
@@ -258,18 +228,6 @@ pub struct SchedulePage {
     pub count: u32,
 }
 
-/// Paginated result for remittance schedules with optional cursor.
-#[contracttype]
-#[derive(Clone)]
-pub struct RemittanceSchedulePage {
-    /// Schedule entries for this page, ordered by ID ascending.
-    pub items: Vec<RemittanceSchedule>,
-    /// Cursor to pass as `cursor` for the next page. None means no more pages.
-    pub next_cursor: Option<u32>,
-    /// Number of items returned in this page.
-    pub count: u32,
-}
-
 /// Split allocation output item for UI/analytics consumers.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -305,10 +263,9 @@ pub enum ScheduleEvent {
     Cancelled,
 }
 
-/// Domain-separated authorization payload for split operations.
-///
-/// Includes the full set of initialization parameters so that the
-/// signer commits to the exact configuration being applied.
+// Domain-separated authorization payload for split operations.
+// Includes the full set of initialization parameters so that the
+// signer commits to the exact configuration being applied.
 // NOTE: `SplitAuthPayload` is defined below with a stable schema.
 
 /// Current snapshot schema version. Bumped to 2 for FNV-1a checksum + exported_at field.
@@ -2477,7 +2434,7 @@ impl RemittanceSplit {
     /// # Returns
     /// `SchedulePage` with:
     /// - `items`: schedules for this page, ordered by ID ascending
-    /// - `next_cursor`: `Some(next_index)` when more pages exist, `None` when exhausted
+    /// - `next_cursor`: Index for the next page; `0` when no more pages exist
     /// - `count`: number of items in this page
     pub fn get_remittance_schedules_page(
         env: Env,
@@ -2486,7 +2443,7 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let Some(mut schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key)
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key)
         else {
             return SchedulePage {
                 items: Vec::new(&env),

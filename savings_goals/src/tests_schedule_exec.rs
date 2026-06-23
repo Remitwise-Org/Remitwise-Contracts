@@ -33,9 +33,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::{
-    symbol_short,
-    testutils::Address as AddressTrait,
-    Address, Env, String, Symbol, TryFromVal,
+    symbol_short, testutils::Address as AddressTrait, Address, Env, String, Symbol, TryFromVal,
 };
 use testutils::set_ledger_time;
 
@@ -57,6 +55,7 @@ fn make_goal(env: &Env, client: &SavingsGoalContractClient, owner: &Address, tar
         &String::from_str(env, "Test Goal"),
         &target,
         &2_000_000_000u64,
+        &false,
     )
 }
 
@@ -285,17 +284,20 @@ fn test_second_schedule_skipped_when_first_fills_to_cap() {
 /// A **locked** goal still receives scheduled credits: the executor does not
 /// check `goal.locked`. Goals are locked by default on creation.
 /// This test intentionally leaves the goal locked and confirms the credit lands.
+///  FIND:
+/// Goals are locked by default on creation.
+// REPLACE:
+/// The goal is explicitly locked before the schedule runs.
 #[test]
 fn test_locked_goal_receives_scheduled_credit() {
     let env = Env::default();
     let (client, owner) = setup(&env);
-
     let goal_id = make_goal(&env, &client, &owner, 2_000);
-
+    client.lock_goal(&owner, &goal_id);
     let locked_goal = client.get_goal(&goal_id).unwrap();
     assert!(
         locked_goal.locked,
-        "goal must be locked by default for this test to be meaningful"
+        "goal must be locked for this test to be meaningful"
     );
 
     client.create_savings_schedule(&owner, &goal_id, &400, &3_000, &0);

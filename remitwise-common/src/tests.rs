@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-/// Tests for [`canonicalize_tags`] and [`clamp_limit`].
+/// Tests for [`canonicalize_tags`], [`canonicalize_tags_checked`], and [`clamp_limit`].
 ///
 /// # Canonicalization contract (pinned here)
 /// - ASCII uppercase letters are silently folded to lowercase.
@@ -127,7 +127,9 @@ fn test_canonicalize_single_char_tag() {
 #[should_panic(expected = "invalid char: space")]
 fn test_canonicalize_space_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "my goal"), || panic!("invalid char: space"));
+    canonicalize_tags(&env, &single(&env, "my goal"), || {
+        panic!("invalid char: space")
+    });
 }
 
 /// `@` symbol triggers on_invalid_char.
@@ -135,7 +137,9 @@ fn test_canonicalize_space_triggers_callback() {
 #[should_panic(expected = "invalid char: at")]
 fn test_canonicalize_at_symbol_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "user@domain"), || panic!("invalid char: at"));
+    canonicalize_tags(&env, &single(&env, "user@domain"), || {
+        panic!("invalid char: at")
+    });
 }
 
 /// Dot (`.`) triggers on_invalid_char — common mistake.
@@ -143,7 +147,9 @@ fn test_canonicalize_at_symbol_triggers_callback() {
 #[should_panic(expected = "invalid char: dot")]
 fn test_canonicalize_dot_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "goal.2025"), || panic!("invalid char: dot"));
+    canonicalize_tags(&env, &single(&env, "goal.2025"), || {
+        panic!("invalid char: dot")
+    });
 }
 
 /// Exclamation mark triggers on_invalid_char.
@@ -255,6 +261,118 @@ fn test_canonicalize_invalid_tag_in_batch_fires_callback() {
     // First tag is valid; second has a space.
     let input = tags(&env, &["valid", "bad tag"]);
     canonicalize_tags(&env, &input, || panic!("invalid char"));
+}
+
+// ─── canonicalize_tags_checked: success paths ──────────────────────────────
+
+#[test]
+fn test_checked_normalizes_valid_tags() {
+    let env = Env::default();
+    let input = tags(&env, &["Travel", "FIRE", "long-term"]);
+    let out = canonicalize_tags_checked(&env, &input).unwrap();
+    assert_eq!(out.len(), 3);
+    assert_eq!(get(&env, &out, 0), "travel");
+    assert_eq!(get(&env, &out, 1), "fire");
+    assert_eq!(get(&env, &out, 2), "long-term");
+}
+
+#[test]
+fn test_checked_tag_exactly_32_chars_passes() {
+    let env = Env::default();
+    let tag = "abcdefghijklmnopqrstuvwxyzabcdef";
+    assert_eq!(tag.len(), 32);
+    let out = canonicalize_tags_checked(&env, &single(&env, tag)).unwrap();
+    assert_eq!(get(&env, &out, 0), tag);
+}
+
+#[test]
+fn test_checked_does_not_deduplicate() {
+    let env = Env::default();
+    let input = tags(&env, &["Travel", "travel"]);
+    let out = canonicalize_tags_checked(&env, &input).unwrap();
+    assert_eq!(out.len(), 2);
+    assert_eq!(get(&env, &out, 0), "travel");
+    assert_eq!(get(&env, &out, 1), "travel");
+}
+
+// ─── canonicalize_tags_checked: error paths ──────────────────────────────────
+
+#[test]
+fn test_checked_empty_batch_returns_empty() {
+    let env = Env::default();
+    let empty: Vec<String> = Vec::new(&env);
+    assert_eq!(
+        canonicalize_tags_checked(&env, &empty),
+        Err(TagError::Empty)
+    );
+}
+
+#[test]
+fn test_checked_empty_string_tag_returns_empty() {
+    let env = Env::default();
+    assert_eq!(
+        canonicalize_tags_checked(&env, &single(&env, "")),
+        Err(TagError::Empty)
+    );
+}
+
+#[test]
+fn test_checked_tag_33_chars_returns_too_long() {
+    let env = Env::default();
+    let tag = "abcdefghijklmnopqrstuvwxyzabcdefg";
+    assert_eq!(tag.len(), 33);
+    assert_eq!(
+        canonicalize_tags_checked(&env, &single(&env, tag)),
+        Err(TagError::TooLong)
+    );
+}
+
+#[test]
+fn test_checked_invalid_char_at_position_zero() {
+    let env = Env::default();
+    assert_eq!(
+        canonicalize_tags_checked(&env, &single(&env, "#savings")),
+        Err(TagError::InvalidChar { position: 0 })
+    );
+}
+
+#[test]
+fn test_checked_invalid_char_at_last_position() {
+    let env = Env::default();
+    let tag = "valid!";
+    let last = (tag.len() - 1) as u32;
+    assert_eq!(
+        canonicalize_tags_checked(&env, &single(&env, tag)),
+        Err(TagError::InvalidChar { position: last })
+    );
+}
+
+#[test]
+fn test_checked_short_circuits_on_first_invalid_char() {
+    let env = Env::default();
+    // '!' is at position 3; a later space at position 4 must not be reported.
+    assert_eq!(
+        canonicalize_tags_checked(&env, &single(&env, "bad! tag")),
+        Err(TagError::InvalidChar { position: 3 })
+    );
+}
+
+#[test]
+fn test_checked_invalid_tag_in_batch_short_circuits() {
+    let env = Env::default();
+    let input = tags(&env, &["valid", "bad tag"]);
+    assert_eq!(
+        canonicalize_tags_checked(&env, &input),
+        Err(TagError::InvalidChar { position: 3 })
+    );
+}
+
+#[test]
+fn test_checked_empty_batch_before_length_check() {
+    let env = Env::default();
+    let empty: Vec<String> = Vec::new(&env);
+    let err = canonicalize_tags_checked(&env, &empty).unwrap_err();
+    assert_eq!(err, TagError::Empty);
 }
 
 // ─── clamp_limit ─────────────────────────────────────────────────────────────

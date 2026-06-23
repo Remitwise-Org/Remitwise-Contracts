@@ -63,6 +63,7 @@ fn goal_created_event_payload_schema() {
         new_total: 0,
         target_amount: 50_000,
         target_date: 1_735_689_600,
+        locked: false,
         timestamp: 1_234_567_800,
     };
 

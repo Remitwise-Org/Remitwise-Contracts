@@ -182,9 +182,11 @@ pub struct FinancialHealthReport {
     pub savings_report: SavingsReport,
     pub bill_compliance: BillComplianceReport,
     pub insurance_report: InsuranceReport,
+    /// Worst-case availability across component reports that expose
+    /// [`DataAvailability`].
+    pub data_availability: DataAvailability,
     pub generated_at: u64,
 }
-
 
 /// Top-N bills sorted deterministically.
 ///
@@ -222,7 +224,6 @@ pub struct TopNSavingsReport {
     pub period_end: u64,
     pub data_availability: DataAvailability,
 }
-
 
 /// Contract addresses configuration
 #[contracttype]
@@ -479,6 +480,31 @@ pub(crate) fn safe_percent(numerator: i128, denominator: i128, scale: i128) -> i
                 -scale
             }
         }
+    }
+}
+
+fn trend_from_amounts(current_amount: i128, previous_amount: i128) -> TrendData {
+    let change_amount = current_amount.checked_sub(previous_amount).unwrap_or_else(|| {
+        if current_amount >= previous_amount {
+            i128::MAX
+        } else {
+            i128::MIN
+        }
+    });
+    let change_percentage = if previous_amount > 0 {
+        safe_percent(change_amount, previous_amount, 100)
+            .clamp(i32::MIN as i128, i32::MAX as i128) as i32
+    } else if current_amount > 0 {
+        100
+    } else {
+        0
+    };
+
+    TrendData {
+        current_amount,
+        previous_amount,
+        change_amount,
+        change_percentage,
     }
 }
 
@@ -1522,6 +1548,21 @@ impl ReportingContract {
         }
     }
 
+    fn worst_data_availability(
+        left: DataAvailability,
+        right: DataAvailability,
+    ) -> DataAvailability {
+        match (left, right) {
+            (DataAvailability::Missing, _) | (_, DataAvailability::Missing) => {
+                DataAvailability::Missing
+            }
+            (DataAvailability::Partial, _) | (_, DataAvailability::Partial) => {
+                DataAvailability::Partial
+            }
+            _ => DataAvailability::Complete,
+        }
+    }
+
     /// Generate comprehensive financial health report
     pub fn get_financial_health_report(
         env: Env,
@@ -1534,7 +1575,7 @@ impl ReportingContract {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
         let health_score =
-            Self::calculate_health_score(env.clone(), user.clone(), total_remittance);
+            Self::calculate_health_score(env.clone(), user.clone(), total_remittance)?;
         let remittance_summary = Self::get_remittance_summary_internal(
             &env,
             total_remittance,
@@ -1549,6 +1590,15 @@ impl ReportingContract {
             Self::get_insurance_report_internal(&env, user, period_start, period_end);
 
         let generated_at = env.ledger().timestamp();
+        let bill_compliance = bill_compliance?;
+        let insurance_report = insurance_report?;
+        let data_availability = Self::worst_data_availability(
+            remittance_summary.data_availability,
+            Self::worst_data_availability(
+                bill_compliance.data_availability,
+                insurance_report.data_availability,
+            ),
+        );
 
         env.events().publish(
             (symbol_short!("report"), ReportEvent::ReportGenerated),
@@ -1556,11 +1606,12 @@ impl ReportingContract {
         );
 
         Ok(FinancialHealthReport {
-            health_score: health_score?,
+            health_score,
             remittance_summary,
             savings_report: savings_report?,
-            bill_compliance: bill_compliance?,
-            insurance_report: insurance_report?,
+            bill_compliance,
+            insurance_report,
+            data_availability,
             generated_at,
         })
     }
@@ -1762,38 +1813,36 @@ impl ReportingContract {
         current_amount: i128,
         previous_amount: i128,
     ) -> TrendData {
-        let change_amount = current_amount.saturating_sub(previous_amount);
-        let change_percentage = if previous_amount > 0 {
-            safe_percent(change_amount, previous_amount, 100)
-                .clamp(i32::MIN as i128, i32::MAX as i128) as i32
-        } else if current_amount > 0 {
-            100
-        } else {
-            0
-        };
-
-        TrendData {
-            current_amount,
-            previous_amount,
-            change_amount,
-            change_percentage,
-        }
+        trend_from_amounts(current_amount, previous_amount)
     }
 
     /// Compute trend analysis over a window of historical data points.
     ///
-    /// Aggregates a Vec of (period_key, amount) pairs ordered by period_key and
-    /// returns one `TrendData` per adjacent pair, producing deterministic output
-    /// for identical inputs regardless of call order or ledger state.
+    /// Walks `history` in the order supplied by the caller and returns one
+    /// `TrendData` for each current point. Callers must sort by timestamp
+    /// ascending before calling when chronological sequencing is required; this
+    /// function does not reorder or validate timestamps.
+    ///
+    /// The first point is compared against a zero baseline, so a single-point
+    /// history returns one entry with `previous_amount == 0`. Each later point is
+    /// compared with the immediately preceding input point. `change_amount` is
+    /// computed with checked subtraction and saturates to the relevant `i128`
+    /// bound on overflow.
+    ///
+    /// `change_percentage` is `(current - previous) * 100 / previous` when
+    /// `previous_amount > 0`, clamped to `i32`. When `previous_amount <= 0`, the
+    /// zero/negative-baseline convention is `100` for a positive current amount
+    /// and `0` otherwise. Negative changes from a positive baseline produce
+    /// negative percentages.
     ///
     /// # Arguments
     /// * `_env`      - Contract environment
     /// * `_user`     - Address of the user (reserved for future auth scoping)
-    /// * `history`   - Vec of `(period_key: u64, amount: i128)` tuples, at least 2 elements
+    /// * `history`   - Vec of `(period_key: u64, amount: i128)` tuples
     ///
     /// # Returns
-    /// `Vec<TrendData>` with `history.len() - 1` elements.  Empty when fewer than
-    /// two data points are supplied.
+    /// `Vec<TrendData>` with `history.len()` elements. Empty when no data points
+    /// are supplied.
     pub fn get_trend_analysis_multi(
         env: Env,
         user: Address,
@@ -1802,27 +1851,18 @@ impl ReportingContract {
         user.require_auth();
         let mut result = Vec::new(&env);
         let len = history.len();
-        if len < 2 {
+        if len == 0 {
             return result;
         }
-        for i in 1..len {
-            let (_, prev_amount) = history.get(i - 1).unwrap_or((0, 0));
-            let (_, curr_amount) = history.get(i).unwrap_or((0, 0));
-            let change_amount = curr_amount.saturating_sub(prev_amount);
-            let change_percentage = if prev_amount > 0 {
-                safe_percent(change_amount, prev_amount, 100)
-                    .clamp(i32::MIN as i128, i32::MAX as i128) as i32
-            } else if curr_amount > 0 {
-                100
-            } else {
+        for i in 0..len {
+            let prev_amount = if i == 0 {
                 0
+            } else {
+                let (_, amount) = history.get(i - 1).unwrap_or((0, 0));
+                amount
             };
-            result.push_back(TrendData {
-                current_amount: curr_amount,
-                previous_amount: prev_amount,
-                change_amount,
-                change_percentage,
-            });
+            let (_, curr_amount) = history.get(i).unwrap_or((0, 0));
+            result.push_back(trend_from_amounts(curr_amount, prev_amount));
         }
         result
     }
@@ -2244,3 +2284,6 @@ mod tests_auth_acl;
 
 #[cfg(test)]
 mod paginate_dependency_tests;
+
+#[cfg(test)]
+mod tests_data_availability;

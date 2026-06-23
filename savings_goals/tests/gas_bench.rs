@@ -47,7 +47,7 @@ fn bench_get_all_goals_worst_case() {
 
     let name = String::from_str(&env, "BenchGoal");
     for _ in 0..100 {
-        client.create_goal(&owner, &name, &1_000i128, &1_800_000u64);
+        client.create_goal(&owner, &name, &1_000i128, &1_800_000u64, &false);
     }
 
     let (cpu, mem, goals) = measure(&env, || client.get_all_goals(&owner));
@@ -69,7 +69,7 @@ fn bench_batch_add_to_goals_sized(s: u32) {
     let mut contributions = Vec::new(&env);
 
     for _ in 0..s {
-        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64, &false);
         contributions.push_back(ContributionItem {
             goal_id,
             amount: 100,
@@ -105,7 +105,6 @@ fn bench_batch_add_to_goals_max() {
     bench_batch_add_to_goals_sized(50);
 }
 
-
 #[test]
 fn bench_execute_due_savings_schedules() {
     let env = bench_env();
@@ -114,7 +113,7 @@ fn bench_execute_due_savings_schedules() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64);
+    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64, &false);
 
     // Create 50 schedules
     let current_time = 1_700_000_000;
@@ -152,7 +151,7 @@ fn bench_create_savings_schedule() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64, &false);
 
     let current_time = 1_700_000_000;
     let next_due = current_time + 10;
@@ -183,7 +182,7 @@ fn bench_create_savings_schedule() {
 fn setup_goals(client: &SavingsGoalContractClient, owner: &Address, n: u32) {
     let name = String::from_str(&client.env, "G");
     for _ in 0..n {
-        client.create_goal(owner, &name, &10_000i128, &1_800_000u64);
+        client.create_goal(owner, &name, &10_000i128, &1_800_000u64, &false);
     }
 }
 

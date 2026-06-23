@@ -27,6 +27,9 @@
                 },
                 {
                   "u64": 5000
+                },
+                {
+                  "bool": false
                 }
               ]
             }
@@ -415,42 +418,6 @@
                                     "symbol": "operation"
                                   },
                                   "val": {
-                                    "symbol": "unlock"
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "success"
-                                  },
-                                  "val": {
-                                    "bool": true
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "timestamp"
-                                  },
-                                  "val": {
-                                    "u64": 1000
-                                  }
-                                }
-                              ]
-                            },
-                            {
-                              "map": [
-                                {
-                                  "key": {
-                                    "symbol": "caller"
-                                  },
-                                  "val": {
-                                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                                  }
-                                },
-                                {
-                                  "key": {
-                                    "symbol": "operation"
-                                  },
-                                  "val": {
                                     "symbol": "timelock"
                                   }
                                 },
@@ -687,6 +654,9 @@
                 },
                 {
                   "u64": 5000
+                },
+                {
+                  "bool": false
                 }
               ]
             }
@@ -726,6 +696,14 @@
                   },
                   "val": {
                     "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "locked"
+                  },
+                  "val": {
+                    "bool": false
                   }
                 },
                 {
@@ -863,6 +841,14 @@
                   },
                   "val": {
                     "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "locked"
+                  },
+                  "val": {
+                    "bool": false
                   }
                 },
                 {
@@ -1191,40 +1177,6 @@
                 },
                 {
                   "u32": 1
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "savings"
-              },
-              {
-                "vec": [
-                  {
-                    "symbol": "GoalUnlocked"
-                  }
-                ]
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 1
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 }
               ]
             }

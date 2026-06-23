@@ -54,9 +54,10 @@ mod goal_completed_event_tests {
         // Create a goal with target = 1_000
         let goal_id = client.create_goal(
             &owner,
-            &soroban_sdk::String::from_str(&env, "Emergency Fund"),
+            &soroban_sdk::String::from_str(&env, "School Fees"),
             &1_000_i128,
-            &(env.ledger().timestamp() + 86_400), // target date 1 day out
+            &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         // Add exactly the target amount in one contribution
@@ -89,6 +90,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Vacation Fund"),
             &500_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         // Contribute MORE than the target in a single call
@@ -116,6 +118,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "School Fees"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         // First contribution: partial (no completion yet)
@@ -151,6 +154,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Medical Fund"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         // Complete the goal → 2 events (legacy + RemitwiseEvents)
@@ -177,6 +181,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Home Deposit"),
             &2_000_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         client.add_to_goal(&owner, &goal_id, &2_000_i128);
@@ -207,6 +212,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Business Capital"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         client.batch_add_to_goals(
@@ -239,12 +245,14 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Goal A"),
             &500_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
         let goal_b = client.create_goal(
             &owner,
             &soroban_sdk::String::from_str(&env, "Goal B"),
             &800_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         client.batch_add_to_goals(
@@ -284,6 +292,7 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Already Done"),
             &300_i128,
             &(env.ledger().timestamp() + 86_400),
+            &false,
         );
 
         // Complete via single add first → 2 events

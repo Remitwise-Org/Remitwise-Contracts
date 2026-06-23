@@ -132,15 +132,98 @@ pub fn clamp_limit(limit: u32) -> u32 {
 /// Maximum allowed byte length for a single tag.
 pub const TAG_MAX_LEN: u32 = 32;
 
-/// Validates and canonicalizes a batch of tags.
+/// Validation failure returned by [`canonicalize_tags_checked`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TagError {
+    /// The tag batch is empty, or an individual tag is zero bytes long.
+    Empty,
+    /// A tag exceeds [`TAG_MAX_LEN`] bytes.
+    TooLong,
+    /// A byte at `position` is not in the allowed charset after upper-case folding.
+    InvalidChar { position: u32 },
+}
+
+/// Validates and canonicalizes a batch of tags without panicking.
+///
+/// # Rules
+/// - The batch must contain at least one tag ([`TagError::Empty`]).
+/// - Each tag must be between 1 and [`TAG_MAX_LEN`] bytes inclusive
+///   ([`TagError::Empty`] for zero length, [`TagError::TooLong`] otherwise).
+/// - Allowed charset: `[a-z0-9\-_]`. ASCII uppercase letters are silently
+///   folded to lowercase; any other byte yields [`TagError::InvalidChar`].
+///
+/// Validation short-circuits on the first violation (empty batch, length, or
+/// invalid byte) for gas efficiency.
+///
+/// # Returns
+/// On success, a new `Vec<String>` containing the normalized (lowercased) tags
+/// in the same order as the input. The function does **not** deduplicate.
+///
+/// # Usage
+/// ```ignore
+/// use remitwise_common::{canonicalize_tags_checked, TagError};
+/// match canonicalize_tags_checked(&env, &tags) {
+///     Ok(normalized) => { /* store normalized */ }
+///     Err(TagError::InvalidChar { .. }) => {
+///         soroban_sdk::panic_with_error!(&env, MyError::InvalidTagContent)
+///     }
+///     Err(TagError::Empty) | Err(TagError::TooLong) => { /* map to caller error */ }
+/// }
+/// ```
+pub fn canonicalize_tags_checked(
+    env: &soroban_sdk::Env,
+    tags: &soroban_sdk::Vec<soroban_sdk::String>,
+) -> Result<soroban_sdk::Vec<soroban_sdk::String>, TagError> {
+    if tags.is_empty() {
+        return Err(TagError::Empty);
+    }
+    let mut out = soroban_sdk::Vec::new(env);
+    for tag in tags.iter() {
+        let len = tag.len();
+        if len == 0 {
+            return Err(TagError::Empty);
+        }
+        if len > TAG_MAX_LEN {
+            return Err(TagError::TooLong);
+        }
+        let mut buf = [0u8; 32];
+        tag.copy_into_slice(&mut buf[..len as usize]);
+        for (position, byte) in buf.iter_mut().take(len as usize).enumerate() {
+            if byte.is_ascii_uppercase() {
+                *byte += b'a' - b'A';
+            }
+            let b = *byte;
+            if !(b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_') {
+                return Err(TagError::InvalidChar {
+                    position: position as u32,
+                });
+            }
+        }
+        let s = match core::str::from_utf8(&buf[..len as usize]) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(TagError::InvalidChar { position: 0 });
+            }
+        };
+        out.push_back(soroban_sdk::String::from_str(env, s));
+    }
+    Ok(out)
+}
+
+/// Validates and canonicalizes a batch of tags, panicking on failure.
+///
+/// This is a thin wrapper around [`canonicalize_tags_checked`] that preserves
+/// the legacy panic-based contract for existing callers. Prefer
+/// [`canonicalize_tags_checked`] when handling untrusted or indexer-supplied
+/// tag strings so errors can be mapped to typed contract errors.
 ///
 /// # Rules
 /// - The batch must contain at least one tag (`panic!("Tags cannot be empty")`).
-/// - Each tag must be between 1 and `TAG_MAX_LEN` bytes inclusive
+/// - Each tag must be between 1 and [`TAG_MAX_LEN`] bytes inclusive
 ///   (`panic!("Tag must be between 1 and 32 characters")`).
-/// - Allowed charset: `[a-z0-9\-_]`.  ASCII uppercase letters are silently
+/// - Allowed charset: `[a-z0-9\-_]`. ASCII uppercase letters are silently
 ///   folded to lowercase; any other byte causes the supplied `on_invalid_char`
-///   closure to be called (typically `panic_with_error!` or `panic!`).
+///   closure to be called once (typically `panic_with_error!` or `panic!`).
 ///
 /// # Returns
 /// A new `Vec<String>` containing the normalized (lowercased) tags in the
@@ -161,37 +244,21 @@ pub fn canonicalize_tags<F>(
 where
     F: Fn(),
 {
-    if tags.is_empty() {
-        panic!("Tags cannot be empty");
-    }
-    let mut out = soroban_sdk::Vec::new(env);
-    for tag in tags.iter() {
-        let len = tag.len();
-        if len == 0 || len > TAG_MAX_LEN {
+    match canonicalize_tags_checked(env, tags) {
+        Ok(out) => out,
+        Err(TagError::Empty) => {
+            if tags.is_empty() {
+                panic!("Tags cannot be empty");
+            }
             panic!("Tag must be between 1 and 32 characters");
         }
-        let mut buf = [0u8; 32];
-        tag.copy_into_slice(&mut buf[..len as usize]);
-        for byte in buf.iter_mut().take(len as usize) {
-            if byte.is_ascii_uppercase() {
-                *byte += b'a' - b'A';
-            }
-            let b = *byte;
-            if !(b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_') {
-                on_invalid_char();
-            }
+        Err(TagError::TooLong) => panic!("Tag must be between 1 and 32 characters"),
+        Err(TagError::InvalidChar { .. }) => {
+            on_invalid_char();
+            // on_invalid_char must diverge (panic); this is unreachable.
+            soroban_sdk::Vec::new(env)
         }
-        let s = match core::str::from_utf8(&buf[..len as usize]) {
-            Ok(v) => v,
-            Err(_) => {
-                on_invalid_char();
-                // on_invalid_char must diverge (panic); this is unreachable.
-                ""
-            }
-        };
-        out.push_back(soroban_sdk::String::from_str(env, s));
     }
-    out
 }
 
 /// Event emission helper
@@ -313,7 +380,10 @@ mod encoding_stability_tests {
         }
 
         // Container round-trips
-        let vec = Vec::from_array(&env, [Category::Spending, Category::Savings, Category::Bills]);
+        let vec = Vec::from_array(
+            &env,
+            [Category::Spending, Category::Savings, Category::Bills],
+        );
         let mut out = Vec::<Category>::new(&env);
         for item in vec.iter() {
             out.push_back(round_trip(&env, item));
@@ -359,7 +429,10 @@ mod encoding_stability_tests {
             cover_all_variants(v);
         }
 
-        let vec = Vec::from_array(&env, [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer]);
+        let vec = Vec::from_array(
+            &env,
+            [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer],
+        );
         let mut out = Vec::<FamilyRole>::new(&env);
         for item in vec.iter() {
             out.push_back(round_trip(&env, item));
@@ -435,4 +508,3 @@ mod encoding_stability_tests {
         assert_eq!(out_map, map);
     }
 }
-

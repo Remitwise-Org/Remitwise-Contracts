@@ -388,7 +388,7 @@ impl BillPayments {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
         let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
-        
+
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);
         let mut inserted = false;
@@ -1432,9 +1432,22 @@ impl BillPayments {
     /// `BillPage { items, next_cursor, count }`.
     /// When `next_cursor == 0` there are no more pages.
     ///
+    /// # Overdue Semantics
+    /// A bill is overdue when `!bill.paid && bill.due_date < current_ledger_time`. The
+    /// comparison is strict less-than, so a bill whose `due_date == now` is **not** overdue.
+    ///
     /// # Canonical Ordering
     /// Results are always ordered by bill ID ascending. Pagination uses the same
-    /// ordering, so `cursor` is stable across repeated calls.
+    /// ordering, so `cursor` is stable across repeated calls (including across sparse
+    /// IDs left by cancelled/archived bills, which are absent from the index).
+    ///
+    /// # Gas Complexity
+    /// `O(A)` where `A` is the number of **active** (non-archived, non-cancelled) bills
+    /// across all owners, *not* the global `NEXT_ID` high-water mark. This walks the
+    /// per-owner active index (`OWN_IDX`) instead of scanning `1..=NEXT_ID`, so the cost
+    /// no longer grows with historically created-then-removed bills. For a query scoped
+    /// to a single owner whose cost tracks only that owner's bills, use
+    /// [`Self::get_overdue_bills_for_owner`].
     pub fn get_overdue_bills(env: Env, cursor: u32, limit: u32) -> BillPage {
         let limit = clamp_limit(limit);
         let current_time = env.ledger().timestamp();
@@ -1443,10 +1456,87 @@ impl BillPayments {
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
-        let max_id = Self::get_next_bill_id(&env);
+
+        // Walk the per-owner active index (OWN_IDX) rather than the global
+        // `1..=NEXT_ID` range. Each owner's ID list is ascending, so we merge the
+        // matching candidates into one globally ID-ascending page using a bounded
+        // staging buffer that only ever retains the smallest `limit + 1` IDs.
+        let idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_INDEX)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let cap = limit + 1;
+        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+
+        for owner in idx.keys().iter() {
+            let owner_ids = idx.get(owner).unwrap_or_else(|| Vec::new(&env));
+            for id in owner_ids.iter() {
+                if id <= cursor {
+                    continue;
+                }
+                let Some(bill) = bills.get(id) else {
+                    continue;
+                };
+                if bill.paid || bill.due_date >= current_time {
+                    continue;
+                }
+                Self::staging_insert_bounded(&mut staging, id, bill, cap);
+            }
+        }
+
+        Self::build_page(&env, staging, limit)
+    }
+
+    /// @notice Get a paginated list of overdue bills (unpaid + past due_date) for a single owner.
+    /// @dev Owner-scoped counterpart to [`Self::get_overdue_bills`]. The global variant is
+    /// intentionally cross-owner; this variant restricts results to `owner` and is the cheaper
+    /// query when callers only care about one account.
+    ///
+    /// # Arguments
+    /// * `owner`  - Whose overdue bills to return (must authorize the call)
+    /// * `cursor` - Start after this bill ID (pass 0 for the first page)
+    /// * `limit`  - Max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    ///
+    /// # Returns
+    /// `BillPage { items, next_cursor, count }`.
+    /// When `next_cursor == 0` there are no more pages.
+    ///
+    /// # Overdue Semantics
+    /// Identical to [`Self::get_overdue_bills`]: `!bill.paid && bill.due_date < current_ledger_time`
+    /// (strict less-than; `due_date == now` is not overdue).
+    ///
+    /// # Canonical Ordering
+    /// Results are always ordered by bill ID ascending. Pagination uses the same
+    /// ordering, so `cursor` is stable across repeated calls.
+    ///
+    /// # Gas Complexity
+    /// `O(owner_bills)` — walks only this owner's `OWN_IDX` entry and is bounded by
+    /// `MAX_BILLS_PER_OWNER`, independent of the global `NEXT_ID` high-water mark.
+    pub fn get_overdue_bills_for_owner(
+        env: Env,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> BillPage {
+        owner.require_auth();
+        let limit = clamp_limit(limit);
+        let current_time = env.ledger().timestamp();
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        // Use the owner index for O(owner_bills) traversal instead of O(NEXT_ID).
+        let owner_ids = Self::get_owner_bills(&env, &owner);
 
         let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
-        for id in (cursor.saturating_add(1))..=max_id {
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
             let Some(bill) = bills.get(id) else {
                 continue;
             };
@@ -1460,6 +1550,40 @@ impl BillPayments {
         }
 
         Self::build_page(&env, staging, limit)
+    }
+
+    /// Insert `(id, bill)` into `staging` keeping it sorted ascending by bill ID and
+    /// capped at `cap` entries (i.e. retaining only the smallest `cap` IDs seen).
+    ///
+    /// Used by [`Self::get_overdue_bills`] to merge the per-owner indices into one
+    /// globally ID-ascending page without materialising every candidate: the buffer
+    /// never holds more than `cap` (= `limit + 1`) entries regardless of how many
+    /// overdue bills exist across all owners.
+    fn staging_insert_bounded(staging: &mut Vec<(u32, Bill)>, id: u32, bill: Bill, cap: u32) {
+        let len = staging.len();
+        // Buffer is full and already holds `cap` smaller IDs — this one can't make the page.
+        if len >= cap {
+            if let Some((last_id, _)) = staging.get(len - 1) {
+                if id >= last_id {
+                    return;
+                }
+            }
+        }
+        // Locate the ascending insertion position.
+        let mut pos = len;
+        for i in 0..len {
+            if let Some((sid, _)) = staging.get(i) {
+                if id < sid {
+                    pos = i;
+                    break;
+                }
+            }
+        }
+        staging.insert(pos, (id, bill));
+        // Drop the largest entry if we exceeded the cap.
+        if staging.len() > cap {
+            staging.remove(staging.len() - 1);
+        }
     }
 
     /// Admin-only: get ALL bills (any owner), paginated.

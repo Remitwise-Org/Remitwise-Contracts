@@ -100,7 +100,7 @@ let b64 = data_migration::export_to_encrypted_payload(&ciphertext_bytes);
 
 ### Importing
 
-All import functions validate version compatibility and SHA-256 checksum before returning. An `Err` is returned if either check fails — the caller must not use the snapshot data if validation fails.
+All import functions validate version compatibility, SHA-256 checksum, **and payload-type semantic invariants** before returning. An `Err` is returned if any check fails — the caller must not use the snapshot data if validation fails.
 
 ```rust
 // JSON
@@ -122,9 +122,22 @@ let plain_bytes = data_migration::import_from_encrypted_payload(&b64)?;
 // Check version only
 data_migration::check_version_compatibility(snapshot.header.version)?;
 
-// Full validation (version + checksum)
+// Full validation (version + payload bounds + checksum + semantic invariants)
 snapshot.validate_for_import()?;
 ```
+
+### Semantic invariants enforced at import
+
+`validate_for_import` (and therefore all `import_from_*` helpers) is **fail-closed**: in addition to structural checks it enforces the same business rules the live contracts enforce at write-time.
+
+| Payload type | Invariant | Error on violation |
+|---|---|---|
+| `RemittanceSplit` | `spending + savings + bills + insurance == 100` | `ValidationFailed` — sum and individual values included in message |
+| `SavingsGoals` | `next_id >= max(goal.id)` across all goals | `ValidationFailed` — both ids included in message |
+| `SavingsGoals` | `current_amount <= target_amount` for every goal | `ValidationFailed` — goal id and amounts included in message |
+| `Generic` | *(none beyond size/count bounds)* | — |
+
+**Why this matters:** migration is where contract invariants are most easily bypassed, because data arrives pre-formed rather than through guarded entry-points. A split config that sums to 73% or 140%, or a savings snapshot with a wound-back `next_id`, would produce corrupt on-chain state that the contract would subsequently refuse to touch — a silent data-integrity bug introduced at the import boundary.
 
 ## Data structures
 
@@ -155,7 +168,7 @@ snapshot.validate_for_import()?;
 | `UnknownHashAlgorithm` | `header.hash_algorithm` is not `Sha256` |
 | `InvalidFormat` | CSV or serialisation format error |
 | `DeserializeError` | JSON/binary deserialisation failure |
-| `ValidationFailed` | General validation failure |
+| `ValidationFailed` | Semantic invariant violated (percent sum ≠ 100, `next_id` wound back, `current_amount > target_amount`) |
 
 ## Security assumptions
 

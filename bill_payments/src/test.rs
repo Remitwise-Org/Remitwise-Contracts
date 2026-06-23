@@ -6,9 +6,9 @@ mod testsuit {
     use proptest::prelude::*;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
-    use soroban_sdk::{Address, Env, String, IntoVal};
-    use testutils::{set_ledger_time, setup_test_env};
+    use soroban_sdk::{Address, Env, IntoVal, String};
     use std::format;
+    use testutils::{set_ledger_time, setup_test_env};
 
     proptest! {
         #[test]

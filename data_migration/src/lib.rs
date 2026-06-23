@@ -30,6 +30,12 @@ use std::collections::{BTreeMap, HashMap};
 /// Format: `enc:v1:<base64>`
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
+/// Current encrypted payload schema version.
+pub const ENCRYPTED_PAYLOAD_VERSION: u32 = 1;
+
+/// Minimum supported encrypted payload version for import.
+pub const MIN_SUPPORTED_ENCRYPTED_VERSION: u32 = 1;
+
 /// Current snapshot schema version for migration compatibility.
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -374,7 +380,27 @@ impl ExportSnapshot {
         validate_payload_bounds(self.payload.record_count(), payload_bytes.len())
     }
 
-    /// Validate snapshot for import: version, payload bounds, and checksum.
+    /// Validate snapshot for import: version, payload bounds, checksum, and semantic invariants.
+    ///
+    /// # Checks performed (in order)
+    ///
+    /// 1. **Version compatibility** – `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`.
+    /// 2. **Payload bounds** – record count and canonical payload byte size within limits.
+    /// 3. **Hash algorithm** – must be a known variant (`Sha256` or `Simple`).
+    /// 4. **Checksum integrity** – payload must match the stored checksum.
+    /// 5. **Semantic invariants** – payload-type-specific business rules:
+    ///
+    ///    - **`RemittanceSplit`**: `spending_percent + savings_percent + bills_percent +
+    ///      insurance_percent == 100`. Importing a split that does not sum to exactly 100
+    ///      would seed corrupt on-chain state that the live `remittance_split` contract
+    ///      enforces at write-time via `PercentagesDoNotSumTo100`.
+    ///
+    ///    - **`SavingsGoals`**: (a) `next_id >= max(goal.id)` for all goals — a `next_id`
+    ///      lower than the highest existing goal id indicates a truncated or forged snapshot
+    ///      where the ID counter was wound back; (b) `current_amount <= target_amount` for
+    ///      every individual goal — saved amount must not exceed the goal target.
+    ///
+    ///    - **`Generic`**: no semantic constraints beyond size and record-count bounds.
     pub fn validate_for_import(&self) -> Result<(), MigrationError> {
         if !self.is_version_compatible() {
             return Err(MigrationError::IncompatibleVersion {
@@ -396,6 +422,8 @@ impl ExportSnapshot {
         if !self.verify_checksum() {
             return Err(MigrationError::ChecksumMismatch);
         }
+
+        validate_payload_semantics(&self.payload)?;
 
         Ok(())
     }
@@ -505,6 +533,7 @@ fn validate_encrypted_payload_size(encoded_len: usize) -> Result<(), MigrationEr
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
     IncompatibleVersion { found: u32, min: u32, max: u32 },
+    UnsupportedEncryptedVersion { found: u32, max: u32 },
     ChecksumMismatch,
     UnknownHashAlgorithm,
     PayloadTooLarge { size: usize, max: usize },
@@ -524,6 +553,13 @@ impl std::fmt::Display for MigrationError {
                     f,
                     "incompatible version {} (supported {}-{})",
                     found, min, max
+                )
+            }
+            MigrationError::UnsupportedEncryptedVersion { found, max } => {
+                write!(
+                    f,
+                    "unsupported encrypted payload version {} (max supported {})",
+                    found, max
                 )
             }
             MigrationError::ChecksumMismatch => {
@@ -722,6 +758,14 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 /// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
 /// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
 /// context of data-migration operations.
+/// Format an encrypted payload prefix for a given version.
+/// 
+/// This helper is provided for constructing encrypted payloads and testing
+/// version negotiation. The format is `enc:vN:` where N is the version number.
+pub fn encrypted_payload_prefix(version: u32) -> String {
+    format!("enc:v{}:", version)
+}
+
 pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, MigrationError> {
     if plain_bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
         return Err(MigrationError::PayloadTooLarge {
@@ -770,11 +814,47 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     // The decoded payload's size is checked against MAX_MIGRATION_PAYLOAD_BYTES later.
     validate_encrypted_payload_size(encoded.len())?;
 
-    let rest = encoded
-        .strip_prefix(ENCRYPTED_PAYLOAD_PREFIX_V1)
+    // Parse version from prefix: enc:vN:<base64>
+    // Format is: enc:vN: where N is the version number (1 or more digits)
+    if !encoded.starts_with("enc:v") {
+        return Err(MigrationError::InvalidFormat(
+            "missing or invalid encrypted payload marker".into(),
+        ));
+    }
+
+    // Find the colon after the version number (second colon in the string)
+    // We start searching from position 5 (after "enc:v")
+    let version_end = encoded[5..]
+        .find(':')
+        .map(|i| i + 5)
         .ok_or_else(|| {
-            MigrationError::InvalidFormat("missing or invalid encrypted payload marker".into())
+            MigrationError::InvalidFormat("missing version separator in encrypted payload marker".into())
         })?;
+
+    // Ensure we have at least one digit for the version
+    if version_end <= 5 {
+        return Err(MigrationError::InvalidFormat(
+            "missing or invalid encrypted payload marker".into(),
+        ));
+    }
+
+    let version_str = &encoded[5..version_end];
+    let version: u32 = version_str
+        .parse()
+        .map_err(|_| {
+            MigrationError::InvalidFormat("invalid encrypted payload version number".into())
+        })?;
+
+    // Check version compatibility
+    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > ENCRYPTED_PAYLOAD_VERSION {
+        return Err(MigrationError::UnsupportedEncryptedVersion {
+            found: version,
+            max: ENCRYPTED_PAYLOAD_VERSION,
+        });
+    }
+
+    // The base64 payload starts after the version and its separator colon
+    let rest = &encoded[version_end + 1..];
 
     if rest.is_empty() {
         return Err(MigrationError::InvalidFormat(
@@ -782,8 +862,24 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
         ));
     }
 
+    // Dispatch to version-specific handler
+    match version {
+        1 => import_from_encrypted_payload_v1(rest),
+        _ => {
+            // This should not be reached due to version check above,
+            // but keep as a safety fallback
+            Err(MigrationError::UnsupportedEncryptedVersion {
+                found: version,
+                max: ENCRYPTED_PAYLOAD_VERSION,
+            })
+        }
+    }
+}
+
+/// Handler for encrypted payload version 1.
+fn import_from_encrypted_payload_v1(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
     base64::engine::general_purpose::STANDARD
-        .decode(rest)
+        .decode(base64_payload)
         .map_err(|e| MigrationError::InvalidFormat(e.to_string()))
         .and_then(|bytes| {
             if bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
@@ -907,6 +1003,13 @@ pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, Mig
 
         let record: CsvGoalRow =
             result.map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+
+        if record.target_amount < 0 || record.current_amount < 0 {
+            return Err(MigrationError::ValidationFailed(
+                "negative amounts are not allowed".into(),
+            ));
+        }
+
         goals.push(SavingsGoalExport {
             id: record.id,
             owner: record.owner,
@@ -1083,6 +1186,68 @@ impl RollbackMetadata {
         tracker.unmark_imported_by_identity(&self.attempted_checksum, self.attempted_version);
         Ok(())
     }
+}
+
+/// Validate payload-type-specific semantic invariants at import time.
+///
+/// This is the "fail-closed" semantic layer: it enforces the same business
+/// rules the live contracts enforce at write-time, so a corrupt or forged
+/// snapshot cannot bypass them at the import boundary.
+///
+/// # Invariants
+///
+/// ## `RemittanceSplit`
+/// `spending_percent + savings_percent + bills_percent + insurance_percent == 100`.
+///
+/// ## `SavingsGoals`
+/// - `next_id >= max(goal.id)` — counter must not have been wound back.
+/// - `current_amount <= target_amount` for every goal.
+///
+/// ## `Generic`
+/// No semantic constraints.
+fn validate_payload_semantics(payload: &SnapshotPayload) -> Result<(), MigrationError> {
+    match payload {
+        SnapshotPayload::RemittanceSplit(export) => {
+            let sum = export
+                .spending_percent
+                .saturating_add(export.savings_percent)
+                .saturating_add(export.bills_percent)
+                .saturating_add(export.insurance_percent);
+            if sum != 100 {
+                return Err(MigrationError::ValidationFailed(format!(
+                    "RemittanceSplit percentages must sum to 100, got {} \
+                     (spending={}, savings={}, bills={}, insurance={})",
+                    sum,
+                    export.spending_percent,
+                    export.savings_percent,
+                    export.bills_percent,
+                    export.insurance_percent,
+                )));
+            }
+        }
+        SnapshotPayload::SavingsGoals(export) => {
+            if let Some(max_id) = export.goals.iter().map(|g| g.id).max() {
+                if export.next_id < max_id {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "SavingsGoalsExport next_id ({}) must be >= the maximum goal id ({}); \
+                         snapshot appears truncated or forged",
+                        export.next_id, max_id,
+                    )));
+                }
+            }
+            for goal in &export.goals {
+                if goal.current_amount > goal.target_amount {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "goal {} current_amount ({}) exceeds target_amount ({}); \
+                         saved amount must not exceed the goal target",
+                        goal.id, goal.current_amount, goal.target_amount,
+                    )));
+                }
+            }
+        }
+        SnapshotPayload::Generic(_) => {}
+    }
+    Ok(())
 }
 
 // Minimal hex encoder used by compute_checksum.
@@ -1575,7 +1740,10 @@ mod tests {
             base64::engine::general_purpose::STANDARD.encode(b"abc")
         );
         let err = import_from_encrypted_payload(&encoded).unwrap_err();
-        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+        assert!(matches!(
+            err,
+            MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 }
+        ));
     }
 
     #[test]
@@ -1707,6 +1875,79 @@ mod tests {
         );
         assert_eq!(result.unwrap(), plain);
     }
+    #[test]
+    fn test_encrypted_payload_version_v1_accepted() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v1:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_future_version_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v2:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_high_version_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v999:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 999, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_version_zero_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v0:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 0, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_invalid_version_format_fails() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:vabc:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_missing_colon_after_version_fails() {
+        let encoded = "enc:v1test";
+        let result = import_from_encrypted_payload(encoded);
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_export_uses_v1_format() {
+        let plain = vec![42u8; 100];
+        let encoded = export_to_encrypted_payload(&plain).unwrap();
+        assert!(encoded.starts_with("enc:v1:"));
+        
+        // Verify it can be re-imported
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain);
+    }
+
 
     fn assert_snapshot_equal(a: &Option<ExportSnapshot>, b: &Option<ExportSnapshot>) {
         match (a, b) {
@@ -2692,28 +2933,7 @@ mod tests {
         assert_eq!(imported_goals[0].target_date, 0);
     }
 
-    #[test]
-    fn test_csv_roundtrip_with_negative_amounts() {
-        let payload = SavingsGoalsExport {
-            next_id: 1,
-            goals: vec![SavingsGoalExport {
-                id: 1,
-                owner: "owner1".into(),
-                name: "Negative Goal".into(),
-                target_amount: -1_000,
-                current_amount: -500,
-                target_date: 2_000_000_000,
-                locked: false,
-            }],
-        };
 
-        let exported_bytes = export_to_csv(&payload).unwrap();
-        let imported_goals = import_goals_from_csv(&exported_bytes).unwrap();
-
-        assert_eq!(imported_goals.len(), 1);
-        assert_eq!(imported_goals[0].target_amount, -1_000);
-        assert_eq!(imported_goals[0].current_amount, -500);
-    }
 
     #[test]
     fn test_csv_roundtrip_with_large_numbers() {
@@ -2999,10 +3219,7 @@ mod tests {
         // Determinism test with a larger Generic payload (many fields).
         let mut entries = BTreeMap::new();
         for i in 0..50 {
-            entries.insert(
-                format!("field_{:03}", i),
-                serde_json::json!(i * 100).into(),
-            );
+            entries.insert(format!("field_{:03}", i), serde_json::json!(i * 100).into());
         }
         let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Binary);
 
@@ -3018,19 +3235,16 @@ mod tests {
         // it imports to the expected `SnapshotPayload` (SavingsGoals).
         // This ensures that serialization changes don't silently break existing backups.
         let b64 = include_str!("../tests/golden_snapshot.bin.b64").trim();
-        
+
         // Generate the golden snapshot if not already present in tests/
         // First, export the sample snapshot to binary, then encode as base64
-        let expected_snapshot = ExportSnapshot::new(
-            sample_savings_payload(),
-            ExportFormat::Binary,
-        );
+        let expected_snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
         let expected_bytes = export_to_binary(&expected_snapshot).unwrap();
         let _expected_b64 = base64::engine::general_purpose::STANDARD.encode(&expected_bytes);
-        
+
         // Try to decode the placeholder/golden vector
         let bytes_result = base64::engine::general_purpose::STANDARD.decode(b64);
-        
+
         // If placeholder hasn't been updated yet, use the computed golden snapshot
         let bytes = if b64.len() < 100 {
             // Placeholder file—use computed golden snapshot
@@ -3044,7 +3258,10 @@ mod tests {
 
         // Verify it matches the expected payload (SavingsGoals with specific structure)
         assert_eq!(loaded.payload, sample_savings_payload());
-        assert!(loaded.verify_checksum(), "golden snapshot must have valid checksum");
+        assert!(
+            loaded.verify_checksum(),
+            "golden snapshot must have valid checksum"
+        );
         assert!(
             loaded.is_version_compatible(),
             "golden snapshot must be version-compatible"
@@ -3064,7 +3281,7 @@ mod tests {
         // The checksum must be stable across re-exports.
         // This ensures that the binary serialization format has not changed.
         let checksum = loaded.header.checksum.clone();
-        
+
         // Re-export should produce the same checksum
         let re_exported_bytes = export_to_binary(&loaded).expect("re-export");
         let re_loaded = import_from_binary_untracked(&re_exported_bytes).expect("re-import");
@@ -3136,7 +3353,9 @@ mod tests {
                 let imported = import_from_binary_untracked(&bytes);
                 assert!(imported.is_ok(), "snapshot at limit should import");
             }
-            Err(MigrationError::PayloadTooLarge { .. } | MigrationError::SnapshotTooLarge { .. }) => {
+            Err(
+                MigrationError::PayloadTooLarge { .. } | MigrationError::SnapshotTooLarge { .. },
+            ) => {
                 // This is acceptable—payload is just too large
             }
             Err(e) => panic!("unexpected error: {:?}", e),
@@ -3212,7 +3431,10 @@ mod tests {
 
         // After 3 cycles, we should still have the original bytes
         let final_bytes = export_to_binary(&original).unwrap();
-        assert_eq!(current_bytes, final_bytes, "after 3 cycles, bytes must match original");
+        assert_eq!(
+            current_bytes, final_bytes,
+            "after 3 cycles, bytes must match original"
+        );
     }
 
     #[test]
@@ -3229,5 +3451,275 @@ mod tests {
             bytes_1, bytes_2,
             "determinism must hold even with created_at_ms set"
         );
+    }
+
+    // ==================== SEMANTIC PAYLOAD VALIDATION TESTS ====================
+    // These tests validate the import-boundary invariants enforced by
+    // validate_payload_semantics via validate_for_import.
+
+    fn make_remittance_snapshot(
+        spending: u32,
+        savings: u32,
+        bills: u32,
+        insurance: u32,
+    ) -> ExportSnapshot {
+        ExportSnapshot::new(
+            SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+                owner: "GABC".into(),
+                spending_percent: spending,
+                savings_percent: savings,
+                bills_percent: bills,
+                insurance_percent: insurance,
+            }),
+            ExportFormat::Json,
+        )
+    }
+
+    fn make_savings_snapshot(next_id: u32, goals: Vec<SavingsGoalExport>) -> ExportSnapshot {
+        ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport { next_id, goals }),
+            ExportFormat::Json,
+        )
+    }
+
+    // --- RemittanceSplit: direct validate_for_import ---
+
+    #[test]
+    fn test_semantic_remittance_split_valid_sum_100_accepted() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 5);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_99_rejected() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 4);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_101_rejected() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 6);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_all_zero_rejected() {
+        let snapshot = make_remittance_snapshot(0, 0, 0, 0);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_255_rejected() {
+        // 64 + 64 + 64 + 63 = 255
+        let snapshot = make_remittance_snapshot(64, 64, 64, 63);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- RemittanceSplit: full import paths (tracked + untracked, json + binary) ---
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_json_untracked() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 4); // sum = 99
+        let bytes = export_to_json(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_json_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_binary_untracked() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 6); // sum = 101
+        let bytes = export_to_binary(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_binary_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_tracked_json() {
+        let snapshot = make_remittance_snapshot(0, 0, 0, 0); // sum = 0
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_json(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_tracked_binary() {
+        let snapshot = make_remittance_snapshot(64, 64, 64, 63); // sum = 255
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_binary(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- SavingsGoals: next_id invariant ---
+
+    #[test]
+    fn test_semantic_savings_goals_valid_next_id_above_max_accepted() {
+        // next_id (3) > max goal id (2)
+        let snapshot = make_savings_snapshot(3, vec![sample_goal(1), sample_goal(2)]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_equals_max_id_accepted() {
+        // next_id == max goal id is the minimum acceptable state per spec
+        let snapshot = make_savings_snapshot(2, vec![sample_goal(1), sample_goal(2)]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_below_max_id_rejected() {
+        // next_id (1) < max goal id (2) — counter was wound back
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_zero_with_goals_rejected() {
+        // next_id (0) < max goal id (1)
+        let snapshot = make_savings_snapshot(0, vec![sample_goal(1)]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_empty_goals_list_accepted() {
+        // No goals → no max id → next_id constraint vacuously satisfied
+        let snapshot = make_savings_snapshot(0, vec![]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    // --- SavingsGoals: current_amount invariant ---
+
+    #[test]
+    fn test_semantic_savings_goals_current_amount_below_target_accepted() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount - 1;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_current_amount_equals_target_accepted() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_current_exceeds_target_rejected() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 1; // 1001 > 1000
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_large_current_amount_rejected() {
+        let mut goal = sample_goal(1);
+        goal.target_amount = 1_000;
+        goal.current_amount = i64::MAX; // massively oversized
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- SavingsGoals: full import paths ---
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_invalid_rejected_via_json_untracked() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        let bytes = export_to_json(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_json_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_amount_invalid_rejected_via_binary_untracked() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 1;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_binary_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_invalid_rejected_via_tracked_json() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 500;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_json(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_invalid_rejected_via_tracked_binary() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_binary(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- Error message content verification ---
+
+    #[test]
+    fn test_semantic_remittance_split_error_message_contains_sum() {
+        let snapshot = make_remittance_snapshot(33, 33, 33, 0); // sum = 99
+        let err = snapshot.validate_for_import().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("99"), "error must mention the actual sum");
+        assert!(msg.contains("100"), "error must mention the expected sum");
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_error_message_contains_ids() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(5)]);
+        let err = snapshot.validate_for_import().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("1"), "error must mention next_id");
+        assert!(msg.contains("5"), "error must mention max goal id");
     }
 }

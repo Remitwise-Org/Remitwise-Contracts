@@ -129,6 +129,20 @@ Generates a full report by querying all sub-contracts.
 #### `get_insurance_report(user, period_start, period_end) -> Result<InsuranceReport, ReportingError>`
 #### `calculate_health_score(user, total_remittance) -> HealthScore`
 #### `get_trend_analysis(user, current_amount, previous_amount) -> TrendData`
+#### `get_trend_analysis_multi(user, history) -> Vec<TrendData>`
+
+`get_trend_analysis_multi` walks the supplied `(timestamp, amount)` history in
+input order. Callers should sort by timestamp ascending before calling when they
+need chronological trends; the contract does not sort or reject unsorted input.
+
+The first history point is compared against a zero baseline, so a single-point
+history returns one trend entry with `previous_amount = 0`. Empty history returns
+an empty vector. For positive previous amounts, `change_percentage` is
+`(current - previous) * 100 / previous`, clamped to `i32`; decreases from a
+positive baseline are negative. When the previous amount is zero or negative,
+the percentage is `100` if the current amount is positive and `0` otherwise.
+Trend deltas use checked arithmetic and saturate at the `i128` bounds on
+overflow.
 
 All report generation endpoints validate the period bounds and fail closed with
 `InvalidPeriod` when `period_start > period_end`.
