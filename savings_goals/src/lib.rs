@@ -1899,12 +1899,18 @@ impl SavingsGoalContract {
     ) -> Result<bool, SavingsGoalError> {
         caller.require_auth();
 
-        // Accept any schema_version within the supported range for backward/forward compat.
+        // ====================================================================
+        // PHASE 1: Validate the entire snapshot BEFORE ANY state mutations
+        // ====================================================================
+
+        // Schema version must be in supported range
         if snapshot.schema_version < MIN_SUPPORTED_SCHEMA_VERSION
             || snapshot.schema_version > SCHEMA_VERSION
         {
             return Err(SavingsGoalError::UnsupportedVersion);
         }
+
+        // Checksum must match
         let expected = Self::compute_goals_checksum(
             snapshot.schema_version,
             snapshot.next_id,
@@ -1915,7 +1921,66 @@ impl SavingsGoalContract {
             return Err(SavingsGoalError::ChecksumMismatch);
         }
 
+        // Nonce must be correct
         Self::require_nonce(&env, &caller, nonce);
+
+        // Validate all goals before any mutations
+        let mut max_goal_id: u32 = 0;
+        for g in snapshot.goals.iter() {
+            // Goal name validation
+            if let Err(e) = Self::validate_goal_name(&g.name) {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(e);
+            }
+
+            // Balance overflow check: current_amount must not exceed MAX_SAFE_GOAL_BALANCE
+            if g.current_amount > MAX_SAFE_GOAL_BALANCE {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::Overflow);
+            }
+
+            // Target amount must be positive
+            if g.target_amount <= 0 {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::InvalidAmount);
+            }
+
+            // Track max goal ID for consistency check
+            if g.id > max_goal_id {
+                max_goal_id = g.id;
+            }
+        }
+
+        // next_id consistency: next_id should be >= the max goal ID in the snapshot
+        // (next_id is used to generate new IDs, so it must not be less than existing ones)
+        if snapshot.next_id < max_goal_id {
+            Self::append_audit(&env, symbol_short!("import"), &caller, false);
+            return Err(SavingsGoalError::InvalidAmount);
+        }
+
+        // Verify per-owner goal count is within limits
+        let mut owner_goal_counts: Map<Address, u32> = Map::new(&env);
+        for g in snapshot.goals.iter() {
+            let count = owner_goal_counts
+                .get(g.owner.clone())
+                .unwrap_or(0);
+            let new_count = match count.checked_add(1) {
+                Some(c) => c,
+                None => {
+                    Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                    return Err(SavingsGoalError::GoalCapReached);
+                }
+            };
+            if new_count > MAX_GOALS_PER_OWNER {
+                Self::append_audit(&env, symbol_short!("import"), &caller, false);
+                return Err(SavingsGoalError::GoalCapReached);
+            }
+            owner_goal_counts.set(g.owner.clone(), new_count);
+        }
+
+        // ====================================================================
+        // PHASE 2: All validations passed. Now perform state mutations.
+        // ====================================================================
 
         Self::extend_instance_ttl(&env);
 
@@ -1938,6 +2003,7 @@ impl SavingsGoalContract {
             }
         }
 
+        // Build owner indices from snapshot
         let mut owner_indices: Map<Address, Vec<u32>> = Map::new(&env);
         for g in snapshot.goals.iter() {
             env.storage().persistent().set(&DataKey::Goal(g.id), &g);
@@ -1953,6 +2019,7 @@ impl SavingsGoalContract {
             owner_indices.set(g.owner.clone(), ids);
         }
 
+        // Write owner indices
         for (owner, ids) in owner_indices.iter() {
             env.storage()
                 .persistent()
@@ -1964,10 +2031,12 @@ impl SavingsGoalContract {
             );
         }
 
+        // Update next_id
         env.storage()
             .instance()
             .set(&DataKey::NextId, &snapshot.next_id);
 
+        // Finalize: nonce and audit
         Self::increment_nonce(&env, &caller);
         Self::append_audit(&env, symbol_short!("import"), &caller, true);
         Ok(true)
