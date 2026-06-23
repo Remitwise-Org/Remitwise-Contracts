@@ -239,6 +239,29 @@ pub struct ProposalInvalidatedEvent {
     pub timestamp: u64,
 }
 
+/// Emitted when `configure_multisig` successfully sets or updates the
+/// threshold, signer set, or spending limit for a `TransactionType`.
+///
+/// This is a governance-level change — it determines who can sign and how
+/// many signatures are required for the most powerful actions the wallet
+/// supports. Off-chain monitors must surface every emission so quorum
+/// changes leave an auditable trail.
+///
+/// The signer set is summarised as `signer_count` rather than the full
+/// `Vec<Address>` of signers. The shared event taxonomy keeps payloads
+/// fixed-size and avoids exposing the membership list on-chain to topic
+/// subscribers; the authoritative signer list remains queryable via
+/// `get_multisig_config`.
+#[contracttype]
+#[derive(Clone)]
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,
+    pub threshold: u32,
+    pub signer_count: u32,
+    pub spending_limit: i128,
+    pub timestamp: u64,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct ArchivedTransaction {
@@ -706,6 +729,20 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("ms_conf"),
+            MultisigConfiguredEvent {
+                tx_type,
+                threshold,
+                signer_count,
+                spending_limit,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
 
         Ok(true)
     }

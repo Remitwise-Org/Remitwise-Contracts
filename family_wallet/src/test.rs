@@ -1,7 +1,7 @@
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
+    testutils::{Address as _, Events as _, Ledger, LedgerInfo},
     token::{StellarAssetClient, TokenClient},
     vec, Env, InvokeError,
 };
@@ -6402,7 +6402,7 @@ fn test_remove_member_clears_spending_tracker() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
     // Verify the spending tracker exists
     let tracker_before = client.get_spending_tracker(&member);
@@ -6436,7 +6436,7 @@ fn test_remove_member_clears_precision_limit() {
         max_single_tx: 100_0000000,
         enable_rollover: false,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
     // Verify the limit exists (by checking spending tracker was cleaned up due to rollover=false)
     let tracker_before = client.get_spending_tracker(&member);
@@ -6446,7 +6446,7 @@ fn test_remove_member_clears_precision_limit() {
     client.remove_family_member(&owner, &member);
 
     // Re-add the member with a new role
-    client.add_member(&owner, &member, &FamilyRole::Admin, 0).unwrap();
+    client.add_member(&owner, &member, &FamilyRole::Admin, &0);
 
     // Verify the precision limit is gone - setting it again should succeed
     let new_limit = PrecisionSpendingLimit {
@@ -6479,7 +6479,7 @@ fn test_remove_member_then_readd_has_clean_state() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
     // Verify spending tracker was created
     let tracker_before = client.get_spending_tracker(&member);
@@ -6495,7 +6495,7 @@ fn test_remove_member_then_readd_has_clean_state() {
     assert!(tracker_removed.is_none());
 
     // Re-add the same member
-    client.add_member(&owner, &member, &FamilyRole::Member, 0).unwrap();
+    client.add_member(&owner, &member, &FamilyRole::Member, &0);
 
     // Verify the member exists again
     let member_data = client.get_family_member(&member);
@@ -6547,9 +6547,9 @@ fn test_batch_remove_clears_all_member_state() {
         enable_rollover: true,
     };
 
-    client.set_precision_spending_limit(&owner, &member1, &limit1).unwrap();
-    client.set_precision_spending_limit(&owner, &member2, &limit2).unwrap();
-    client.set_precision_spending_limit(&owner, &member3, &limit3).unwrap();
+    client.set_precision_spending_limit(&owner, &member1, &limit1);
+    client.set_precision_spending_limit(&owner, &member2, &limit2);
+    client.set_precision_spending_limit(&owner, &member3, &limit3);
 
     // Verify all have spending trackers
     assert!(client.get_spending_tracker(&member1).is_some());
@@ -6604,8 +6604,8 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
         enable_rollover: true,
     };
 
-    client.set_precision_spending_limit(&owner, &member1, &limit).unwrap();
-    client.set_precision_spending_limit(&owner, &member3, &limit).unwrap();
+    client.set_precision_spending_limit(&owner, &member1, &limit);
+    client.set_precision_spending_limit(&owner, &member3, &limit);
     // member2 has no precision limit
 
     // Verify state
@@ -6624,7 +6624,139 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     assert!(client.get_spending_tracker(&member3).is_none());
 
     // Re-add member2 and verify it still has no tracker (wasn't creating stale state)
-    client.add_member(&owner, &member2, &FamilyRole::Member, 0).unwrap();
+    client.add_member(&owner, &member2, &FamilyRole::Member, &0);
     assert!(client.get_family_member(&member2).is_some());
     assert!(client.get_spending_tracker(&member2).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// MultisigConfiguredEvent — emission behaviour
+// ---------------------------------------------------------------------------
+
+fn find_ms_conf_events(env: &Env) -> soroban_sdk::Vec<MultisigConfiguredEvent> {
+    use soroban_sdk::IntoVal;
+
+    let mut out = soroban_sdk::Vec::new(env);
+    for (_cid, topics, data) in env.events().all() {
+        if topics.len() != 4 {
+            continue;
+        }
+        let action: soroban_sdk::Symbol = topics.get(3).unwrap().into_val(env);
+        if action == soroban_sdk::symbol_short!("ms_conf") {
+            let evt: MultisigConfiguredEvent = data.into_val(env);
+            out.push_back(evt);
+        }
+    }
+    out
+}
+
+#[test]
+fn test_configure_multisig_emits_event_on_initial_configuration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    let m3 = Address::generate(&env);
+    client.init(&owner, &vec![&env, m1.clone(), m2.clone(), m3.clone()]);
+
+    let signers = vec![&env, m1.clone(), m2.clone(), m3.clone()];
+    let ts_before = env.ledger().timestamp();
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1_000_000,
+    );
+
+    let emitted = find_ms_conf_events(&env);
+    assert_eq!(emitted.len(), 1, "expected one ms_conf event");
+    let evt = emitted.get(0).unwrap();
+    assert_eq!(evt.tx_type, TransactionType::LargeWithdrawal);
+    assert_eq!(evt.threshold, 2);
+    assert_eq!(evt.signer_count, 3);
+    assert_eq!(evt.spending_limit, 1_000_000);
+    assert!(evt.timestamp >= ts_before);
+}
+
+#[test]
+fn test_configure_multisig_emits_event_on_reconfiguration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    let m3 = Address::generate(&env);
+    client.init(&owner, &vec![&env, m1.clone(), m2.clone(), m3.clone()]);
+
+    // Initial configuration.
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &vec![&env, m1.clone(), m2.clone()],
+        &500_000,
+    );
+
+    // Reconfiguration — new threshold, new signer set, new limit.
+    client.configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &3,
+        &vec![&env, m1.clone(), m2.clone(), m3.clone()],
+        &900_000,
+    );
+
+    let emitted = find_ms_conf_events(&env);
+    assert_eq!(emitted.len(), 2, "both calls must emit");
+    let second = emitted.get(1).unwrap();
+    assert_eq!(second.threshold, 3);
+    assert_eq!(second.signer_count, 3);
+    assert_eq!(second.spending_limit, 900_000);
+}
+
+#[test]
+fn test_configure_multisig_does_not_emit_on_failed_validation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    client.init(&owner, &vec![&env, m1.clone(), m2.clone()]);
+
+    // threshold > signer_count → InvalidThreshold; nothing should be emitted.
+    let res = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &5,
+        &vec![&env, m1.clone(), m2.clone()],
+        &1_000_000,
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidThreshold)));
+
+    // Unauthorized caller; nothing should be emitted.
+    let res = client.try_configure_multisig(
+        &m1,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &vec![&env, m1.clone(), m2.clone()],
+        &1_000_000,
+    );
+    assert_eq!(res, Err(Ok(Error::Unauthorized)));
+
+    assert_eq!(
+        find_ms_conf_events(&env).len(),
+        0,
+        "no ms_conf event should be emitted on validation failure",
+    );
 }
