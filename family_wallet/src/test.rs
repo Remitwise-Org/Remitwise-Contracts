@@ -3408,6 +3408,49 @@ fn test_spending_tracker_persistence() {
 }
 
 #[test]
+fn test_remove_family_member_prunes_precision_state_before_readd() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let client = FamilyWalletClient::new(&env, &env.register_contract(None, FamilyWallet));
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let recipient = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
+
+    client.init(&owner, &vec![&env]);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+
+    let precision_limit = PrecisionSpendingLimit {
+        limit: 500_0000000,
+        min_precision: 1_0000000,
+        max_single_tx: 300_0000000,
+        enable_rollover: true,
+    };
+    assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
+
+    let tx = client.withdraw(&member, &token_contract.address(), &recipient, &200_0000000);
+    assert_eq!(tx, 0);
+    assert_eq!(
+        client.get_spending_tracker(&member).unwrap().current_spent,
+        200_0000000
+    );
+
+    assert!(client.remove_family_member(&owner, &member));
+    assert!(client.get_family_member(&member).is_none());
+    assert!(client.get_spending_tracker(&member).is_none());
+
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+
+    // The old precision limit would reject this amount by max_single_tx and cumulative cap.
+    let tx = client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000);
+    assert_eq!(tx, 0);
+    assert!(client.get_spending_tracker(&member).is_none());
+}
+
+#[test]
 fn test_owner_admin_bypass_precision_limits() {
     let env = Env::default();
     env.mock_all_auths();
@@ -3986,6 +4029,96 @@ fn test_batch_remove_family_members_rejects_missing_and_duplicate_without_partia
     assert!(invalid_result.is_err());
     assert!(client.get_family_member(&member_a).is_some());
     assert!(client.get_family_member(&member_b).is_some());
+}
+
+#[test]
+fn test_batch_remove_family_members_prunes_precision_state_for_removed_members() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member_a = Address::generate(&env);
+    let member_b = Address::generate(&env);
+    let member_c = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let recipient = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member_a, &1000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member_b, &1000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member_c, &1000_0000000);
+
+    client.init(
+        &owner,
+        &vec![&env, member_a.clone(), member_b.clone(), member_c.clone()],
+    );
+
+    let precision_limit = PrecisionSpendingLimit {
+        limit: 500_0000000,
+        min_precision: 1_0000000,
+        max_single_tx: 300_0000000,
+        enable_rollover: true,
+    };
+    assert!(client.set_precision_spending_limit(&owner, &member_a, &precision_limit));
+    assert!(client.set_precision_spending_limit(&owner, &member_b, &precision_limit));
+    assert!(client.set_precision_spending_limit(&owner, &member_c, &precision_limit));
+
+    assert_eq!(
+        client.withdraw(
+            &member_a,
+            &token_contract.address(),
+            &recipient,
+            &100_0000000
+        ),
+        0
+    );
+    assert_eq!(
+        client.withdraw(
+            &member_b,
+            &token_contract.address(),
+            &recipient,
+            &200_0000000
+        ),
+        0
+    );
+    assert_eq!(
+        client.withdraw(
+            &member_c,
+            &token_contract.address(),
+            &recipient,
+            &300_0000000
+        ),
+        0
+    );
+    assert!(client.get_spending_tracker(&member_a).is_some());
+    assert!(client.get_spending_tracker(&member_b).is_some());
+    assert!(client.get_spending_tracker(&member_c).is_some());
+
+    let to_remove = vec![&env, member_a.clone(), member_b.clone()];
+    assert_eq!(client.batch_remove_family_members(&owner, &to_remove), 2);
+    assert!(client.get_spending_tracker(&member_a).is_none());
+    assert!(client.get_spending_tracker(&member_b).is_none());
+    assert_eq!(
+        client
+            .get_spending_tracker(&member_c)
+            .unwrap()
+            .current_spent,
+        300_0000000
+    );
+
+    client.add_member(&owner, &member_a, &FamilyRole::Member, &1000_0000000);
+
+    // If the old PREC_LIM entry survived batch removal this amount would be rejected.
+    assert_eq!(
+        client.withdraw(
+            &member_a,
+            &token_contract.address(),
+            &recipient,
+            &400_0000000
+        ),
+        0
+    );
 }
 
 #[test]

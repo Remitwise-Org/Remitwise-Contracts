@@ -1242,6 +1242,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
+        Self::prune_precision_state_for_member(&env, &member);
 
         // Re-validate in-flight proposals: strip signatures from the removed
         // member and invalidate any proposal that can no longer reach quorum.
@@ -1947,6 +1948,34 @@ impl FamilyWallet {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
 
+    fn prune_precision_state_for_member(env: &Env, member: &Address) {
+        if let Some(mut limits) = env
+            .storage()
+            .instance()
+            .get::<_, Map<Address, PrecisionSpendingLimit>>(&symbol_short!("PREC_LIM"))
+        {
+            if limits.get(member.clone()).is_some() {
+                limits.remove(member.clone());
+                env.storage()
+                    .instance()
+                    .set(&symbol_short!("PREC_LIM"), &limits);
+            }
+        }
+
+        if let Some(mut trackers) = env
+            .storage()
+            .instance()
+            .get::<_, Map<Address, SpendingTracker>>(&symbol_short!("SPND_TRK"))
+        {
+            if trackers.get(member.clone()).is_some() {
+                trackers.remove(member.clone());
+                env.storage()
+                    .instance()
+                    .set(&symbol_short!("SPND_TRK"), &trackers);
+            }
+        }
+    }
+
     fn current_spending_tracker(env: &Env, proposer: &Address) -> SpendingTracker {
         let current_time = env.ledger().timestamp();
         let period_duration = 86_400u64;
@@ -2303,6 +2332,7 @@ impl FamilyWallet {
         let mut count = 0u32;
         for addr in addresses.iter() {
             members_map.remove(addr.clone());
+            Self::prune_precision_state_for_member(&env, &addr);
             Self::append_access_audit(
                 &env,
                 symbol_short!("rem_mem"),
