@@ -879,6 +879,13 @@ pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, Mig
 
         let record: CsvGoalRow =
             result.map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+
+        if record.target_amount < 0 || record.current_amount < 0 {
+            return Err(MigrationError::ValidationFailed(
+                "negative amounts are not allowed".into(),
+            ));
+        }
+
         goals.push(SavingsGoalExport {
             id: record.id,
             owner: record.owner,
@@ -2454,28 +2461,7 @@ mod tests {
         assert_eq!(imported_goals[0].target_date, 0);
     }
 
-    #[test]
-    fn test_csv_roundtrip_with_negative_amounts() {
-        let payload = SavingsGoalsExport {
-            next_id: 1,
-            goals: vec![SavingsGoalExport {
-                id: 1,
-                owner: "owner1".into(),
-                name: "Negative Goal".into(),
-                target_amount: -1_000,
-                current_amount: -500,
-                target_date: 2_000_000_000,
-                locked: false,
-            }],
-        };
 
-        let exported_bytes = export_to_csv(&payload).unwrap();
-        let imported_goals = import_goals_from_csv(&exported_bytes).unwrap();
-
-        assert_eq!(imported_goals.len(), 1);
-        assert_eq!(imported_goals[0].target_amount, -1_000);
-        assert_eq!(imported_goals[0].current_amount, -500);
-    }
 
     #[test]
     fn test_csv_roundtrip_with_large_numbers() {
@@ -2661,5 +2647,67 @@ mod tests {
             assert_eq!(goal.target_date, payload.goals[i].target_date);
             assert_eq!(goal.locked, payload.goals[i].locked);
         }
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_rejects_wrong_column_count() {
+        // Missing the 'locked' column
+        let csv_bytes = b"id,owner,name,target_amount,current_amount,target_date\n1,owner,name,100,0,1000";
+        let result = import_goals_from_csv(csv_bytes);
+        assert!(matches!(result, Err(MigrationError::DeserializeError(_))));
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_rejects_non_numeric_amount() {
+        let csv_bytes = b"id,owner,name,target_amount,current_amount,target_date,locked\n1,owner,name,abc,0,1000,false";
+        let result = import_goals_from_csv(csv_bytes);
+        assert!(matches!(result, Err(MigrationError::DeserializeError(_))));
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_rejects_negative_amount() {
+        let csv_bytes = b"id,owner,name,target_amount,current_amount,target_date,locked\n1,owner,name,-100,0,1000,false";
+        let result = import_goals_from_csv(csv_bytes);
+        assert!(matches!(result, Err(MigrationError::ValidationFailed(_))));
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_rejects_missing_header() {
+        // Correct column count, but no header (data only).
+        // Since csv::Reader assumes a header, it will treat the first row as the header,
+        // and parsing will fail because the field names don't map to the expected fields.
+        let csv_bytes = b"1,owner,name,100,0,1000,false\n2,owner,name,200,0,1000,false";
+        let result = import_goals_from_csv(csv_bytes);
+        assert!(matches!(result, Err(MigrationError::DeserializeError(_))));
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_rejects_incorrect_header() {
+        let csv_bytes = b"wrong_id,owner,name,target_amount,current_amount,target_date,locked\n1,owner,name,100,0,1000,false";
+        let result = import_goals_from_csv(csv_bytes);
+        assert!(matches!(result, Err(MigrationError::DeserializeError(_))));
+    }
+
+    #[test]
+    fn test_import_goals_from_csv_positive_control() {
+        let csv_bytes = b"id,owner,name,target_amount,current_amount,target_date,locked\n1,user1,goal,1000,500,2000000000,true\n2,user2,goal2,2000,1000,2000000001,false\n";
+        let goals = import_goals_from_csv(csv_bytes).unwrap();
+        
+        assert_eq!(goals.len(), 2);
+        assert_eq!(goals[0].id, 1);
+        assert_eq!(goals[0].owner, "user1");
+        assert_eq!(goals[0].name, "goal");
+        assert_eq!(goals[0].target_amount, 1000);
+        assert_eq!(goals[0].current_amount, 500);
+        assert_eq!(goals[0].target_date, 2000000000);
+        assert!(goals[0].locked);
+
+        assert_eq!(goals[1].id, 2);
+        assert_eq!(goals[1].owner, "user2");
+        assert_eq!(goals[1].name, "goal2");
+        assert_eq!(goals[1].target_amount, 2000);
+        assert_eq!(goals[1].current_amount, 1000);
+        assert_eq!(goals[1].target_date, 2000000001);
+        assert!(!goals[1].locked);
     }
 }
