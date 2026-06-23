@@ -730,6 +730,25 @@ pub struct SpendingLimitUpdatedEvent {
 }
 ```
 
+### Event: Multisig Configured
+
+**Topic:** `("Remitwise", EventCategory::Access, EventPriority::High, "ms_cfg")`
+
+**Data Structure:**
+```rust
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,    // Multisig transaction class being configured
+    pub threshold: u32,              // Required signatures after the change
+    pub signer_count: u32,           // Number of configured signers
+    pub spending_limit: i128,        // Spending limit for the transaction class
+    pub timestamp: u64,              // Event timestamp
+}
+```
+
+The payload intentionally records `signer_count` instead of raw signer
+addresses. Off-chain monitors can alert on quorum and signer-set-size changes
+without duplicating the full signer set in the event stream.
+
 ### Event: Transaction Proposed
 
 **Topic:** `("family", "tx_proposed")`

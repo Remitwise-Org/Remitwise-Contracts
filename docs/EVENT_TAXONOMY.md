@@ -93,6 +93,7 @@ Below is a representative mapping of events emitted by each contract to the taxo
 |-------|----------|----------|
 | `MemberAdded` | `Access` | `Low` |
 | `SpendingLimitUpdated` | `Access` | `Low` |
+| `MultisigConfigured` | `Access` | `High` |
 | `TransactionProposed` | `Transaction` | `Medium` |
 | `TransactionExecuted` | `Transaction` | `High` |
 | `EmergencyModeOn/Off` | `System` | `High` |

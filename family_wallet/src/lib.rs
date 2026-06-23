@@ -211,6 +211,21 @@ pub struct SpendingLimitUpdatedEvent {
     pub timestamp: u64,
 }
 
+/// Emitted after a successful multisig configuration update.
+///
+/// The event intentionally records only `signer_count`, not raw signer
+/// addresses, so indexers can audit quorum changes without duplicating the
+/// signer set in the event stream.
+#[contracttype]
+#[derive(Clone)]
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,
+    pub threshold: u32,
+    pub signer_count: u32,
+    pub spending_limit: i128,
+    pub timestamp: u64,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct ProposalInvalidatedEvent {
@@ -690,6 +705,20 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("ms_cfg"),
+            MultisigConfiguredEvent {
+                tx_type,
+                threshold,
+                signer_count,
+                spending_limit,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
 
         Ok(true)
     }

@@ -49,6 +49,7 @@ Smart contracts emit events but don't provide efficient querying capabilities. T
 | Bill Payments | bill_created, bill_paid, tags_add, tags_rem | Bill |
 | Insurance | policy_created, tags_add, tags_rem | InsurancePolicy |
 | Remittance Split | split_created, split_executed | RemittanceSplit |
+| Family Wallet | member, limit, ms_cfg, tx_proposed, tx_executed, em_mode | FamilyMember, MultisigConfig |
 
 ## Architecture
 

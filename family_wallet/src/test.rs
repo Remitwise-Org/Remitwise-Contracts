@@ -1,9 +1,9 @@
 use super::*;
-use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, LedgerInfo},
+    symbol_short,
+    testutils::{storage::Instance as _, Address as _, Events, Ledger, LedgerInfo},
     token::{StellarAssetClient, TokenClient},
-    vec, Env, InvokeError,
+    vec, Env, InvokeError, Symbol, TryFromVal,
 };
 use testutils::set_ledger_time;
 
@@ -84,6 +84,82 @@ fn test_configure_multisig() {
     assert_eq!(config.threshold, 2);
     assert_eq!(config.signers.len(), 3);
     assert_eq!(config.spending_limit, 1000_0000000);
+}
+
+#[test]
+fn test_configure_multisig_emits_auditable_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_700_000);
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    client.init(
+        &owner,
+        &vec![&env, member1.clone(), member2.clone(), member3.clone()],
+    );
+
+    let before = env.events().all().len();
+    let signers = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+    let result = client.configure_multisig(
+        &owner,
+        &TransactionType::RoleChange,
+        &2,
+        &signers,
+        &500_0000000,
+    );
+    assert!(result);
+
+    let events = env.events().all();
+    assert_eq!(events.len(), before + 1);
+    let event = events.last().unwrap();
+
+    let topics = &event.1;
+    assert_eq!(topics.len(), 4);
+    let namespace: Symbol = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+    let category: u32 = u32::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+    let priority: u32 = u32::try_from_val(&env, &topics.get(2).unwrap()).unwrap();
+    let action: Symbol = Symbol::try_from_val(&env, &topics.get(3).unwrap()).unwrap();
+    assert_eq!(namespace, symbol_short!("Remitwise"));
+    assert_eq!(category, EventCategory::Access.to_u32());
+    assert_eq!(priority, EventPriority::High.to_u32());
+    assert_eq!(action, symbol_short!("ms_cfg"));
+
+    let payload = MultisigConfiguredEvent::try_from_val(&env, &event.2).unwrap();
+    assert_eq!(payload.tx_type, TransactionType::RoleChange);
+    assert_eq!(payload.threshold, 2);
+    assert_eq!(payload.signer_count, 3);
+    assert_eq!(payload.spending_limit, 500_0000000);
+    assert_eq!(payload.timestamp, 1_700_000);
+}
+
+#[test]
+fn test_configure_multisig_failed_validation_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
+
+    let before = env.events().all().len();
+    let duplicate_signers = vec![&env, member1.clone(), member1.clone()];
+    let result = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &duplicate_signers,
+        &1000_0000000,
+    );
+    assert_eq!(result, Err(Ok(Error::DuplicateSigner)));
+    assert_eq!(env.events().all().len(), before);
 }
 
 #[test]
