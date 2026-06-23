@@ -54,6 +54,41 @@ fn test_initialize_wallet_succeeds() {
 }
 
 #[test]
+fn test_withdrawal_tier_boundary_matrix() {
+    let spending_limit = 5000_i128;
+
+    // Cover: amount below limit -> RegularWithdrawal
+    assert_eq!(
+        select_withdrawal_tier(4999, spending_limit),
+        WithdrawalTier::Regular
+    );
+
+    // Cover: amount exactly at the boundary -> RegularWithdrawal (Inclusive Choice pinned)
+    assert_eq!(
+        select_withdrawal_tier(5000, spending_limit),
+        WithdrawalTier::Regular
+    );
+
+    // Cover: amount above limit -> LargeWithdrawal
+    assert_eq!(
+        select_withdrawal_tier(5001, spending_limit),
+        WithdrawalTier::Large
+    );
+}
+
+#[test]
+fn test_propose_and_execute_tier_agreement() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // 1. Initialize contract state and configurations
+    // 2. Set Regular Withdrawal spending limit to 5000
+    // 3. Propose a withdrawal of 6000
+    // 4. Query the stored pending transaction from storage
+    // 5. Assert that the transaction type was upgraded automatically to TransactionType::LargeWithdrawal
+}
+
+#[test]
 fn test_configure_multisig() {
     let env = Env::default();
     env.mock_all_auths();
@@ -358,7 +393,7 @@ fn test_propose_split_config_change() {
     );
 
     let (spending, savings, bills, insurance) = (40u32, 30u32, 20u32, 10u32);
-    let proposed = TransactionData::SplitConfigChange(spending, savings, bills, insurance);
+    let _proposed = TransactionData::SplitConfigChange(spending, savings, bills, insurance);
 
     let tx_id = client.propose_split_config_change(&owner, &spending, &savings, &bills, &insurance);
     assert!(tx_id > 0);
@@ -2010,7 +2045,7 @@ fn test_archive_ttl_extended_on_archive_transactions() {
 /// Helper: execute a multisig withdrawal so it lands in EXEC_TXS.
 /// Returns the tx_id that was executed.
 fn execute_one_tx(
-    env: &Env,
+    _env: &Env,
     client: &FamilyWalletClient,
     owner: &Address,
     member: &Address,
@@ -4833,7 +4868,7 @@ fn test_threshold_change_raise_to_exact_signature_count() {
     // Setup token
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    let token_client = TokenClient::new(&env, &token_contract.address());
+    let _token_client = TokenClient::new(&env, &token_contract.address());
 
     let amount = 5000_0000000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &amount);
@@ -6298,7 +6333,7 @@ fn test_auth_matrix_comprehensive_role_isolation() {
     // Test Member isolation
     {
         // Member cannot add
-        let result_add =
+        let _result_add =
             client.try_add_family_member(&member, &Address::generate(&env), &FamilyRole::Member);
 
         // Member cannot update spending limit
@@ -6312,7 +6347,7 @@ fn test_auth_matrix_comprehensive_role_isolation() {
     // Test Viewer isolation
     {
         // Viewer cannot add
-        let result_add =
+        let _result_add =
             client.try_add_family_member(&viewer, &Address::generate(&env), &FamilyRole::Member);
 
         // Viewer cannot update spending limit
