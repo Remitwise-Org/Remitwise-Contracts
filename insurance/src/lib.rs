@@ -35,6 +35,12 @@ pub enum InsuranceError {
     UnsupportedCombination = 9,
     InvalidExternalRef = 10,
     MaxPoliciesReached = 11,
+    /// Returned by `deactivate_policy` when the target policy is already inactive.
+    /// Distinct from `PolicyInactive` (which signals a caller trying to act *on*
+    /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
+    /// itself* is a no-op because the policy was never active (or was already
+    /// deactivated by a prior call).
+    PolicyAlreadyInactive = 12,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -431,13 +437,19 @@ impl Insurance {
         Ok(count)
     }
 
-    /// Set an external reference for a policy (admin only).
+    /// Attach or clear an external reference string on a policy (contract owner only).
+    ///
+    /// # Authorization
+    /// Callable **only by the contract owner** — the address supplied to [`init`].
+    /// Policy owners and any other callers receive [`InsuranceError::Unauthorized`].
+    /// Pass `None` to clear an existing reference.
     ///
     /// # Errors
-    /// - `NotInitialized` if the contract has not been initialized
-    /// - `Unauthorized` if the caller is not the contract owner
-    /// - `PolicyNotFound` if the policy does not exist
-    /// - `InvalidExternalRef` if the external reference is empty or too long
+    /// - [`InsuranceError::NotInitialized`] if the contract has not been initialized
+    /// - [`InsuranceError::Unauthorized`] if `caller` is not the contract owner
+    /// - [`InsuranceError::PolicyNotFound`] if no policy exists with `policy_id`
+    /// - [`InsuranceError::InvalidExternalRef`] if `ext_ref` is `Some` but empty
+    ///   or longer than `MAX_EXT_REF_LEN` (128) bytes
     pub fn set_external_ref(
         env: Env,
         caller: Address,
@@ -462,11 +474,17 @@ impl Insurance {
 
     /// Deactivate a policy.
     ///
+    /// # Authorization
+    /// Callable by the **policy owner** (the address that created the policy) or
+    /// the **contract owner** (the address supplied to [`init`]). Any other caller
+    /// receives [`InsuranceError::Unauthorized`].
+    ///
     /// # Errors
-    /// - `NotInitialized` if the contract has not been initialized
-    /// - `PolicyNotFound` if the policy does not exist
-    /// - `Unauthorized` if the caller is not the policy owner or contract owner
-    /// - `PolicyInactive` if the policy is already inactive
+    /// - [`InsuranceError::NotInitialized`] if the contract has not been initialized
+    /// - [`InsuranceError::PolicyNotFound`] if no policy exists with `policy_id`
+    /// - [`InsuranceError::Unauthorized`] if `caller` is neither the policy owner
+    ///   nor the contract owner
+    /// - [`InsuranceError::PolicyAlreadyInactive`] if the policy is already inactive
     pub fn deactivate_policy(
         env: Env,
         caller: Address,
@@ -480,7 +498,7 @@ impl Insurance {
             return Err(InsuranceError::Unauthorized);
         }
         if !policy.active {
-            return Err(InsuranceError::PolicyInactive);
+            return Err(InsuranceError::PolicyAlreadyInactive);
         }
 
         policy.active = false;
