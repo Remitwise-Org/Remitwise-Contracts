@@ -618,6 +618,143 @@ fn test_cancel_transaction_not_found() {
     client.cancel_transaction(&owner, &999);
 }
 
+/// cancel_transaction must invalidate any remaining proposal that can no
+/// longer reach quorum after the cancellation removes a signer's stake.
+///
+/// Scenario: two proposals, threshold=2, two signers. Signer A has already
+/// signed proposal 2. We cancel proposal 1 (not signer A's action) — but
+/// since cancellation now triggers revalidation, proposal 2 still has signer
+/// A's signature, and the full signer set is still intact, so it should
+/// remain valid.  To actually trigger invalidation we set up a proposal whose
+/// *only* configured signer is the one who just had their proposal cancelled
+/// and has been removed, but the simpler observable path is: configure two
+/// proposals where the second proposal's multisig config references a member
+/// that cancel doesn't touch — then assert the second proposal survives.
+///
+/// More directly: configure threshold=2 with two signers; one signer proposes
+/// tx_1. Reconfigure threshold to require 3 but only have 2 eligible — then
+/// cancel tx_1, which triggers revalidation of tx_2 (proposed earlier under a
+/// different config) and asserts tx_2 is invalidated when it can no longer
+/// reach quorum.
+#[test]
+fn test_cancel_transaction_invalidates_unsatisfiable_sibling_proposal() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let signer_a = Address::generate(&env);
+    let signer_b = Address::generate(&env);
+
+    client.init(
+        &owner,
+        &vec![&env, signer_a.clone(), signer_b.clone()],
+    );
+
+    // Configure threshold=2 with two signers.
+    let signers = vec![&env, signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    // Propose two transactions while the config is satisfiable.
+    let tx_id_1 = client.propose_role_change(&owner, &signer_a, &FamilyRole::Admin);
+    let tx_id_2 = client.propose_role_change(&owner, &signer_b, &FamilyRole::Admin);
+
+    // Sanity: both proposals are live.
+    assert!(client.get_pending_transaction(&tx_id_1).unwrap().expires_at > 1_000);
+    assert!(client.get_pending_transaction(&tx_id_2).unwrap().expires_at > 1_000);
+
+    // Raise threshold to 3 — now quorum is unachievable (only 2 eligible signers).
+    let signers3 = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &3, &signers3, &0);
+
+    // Cancel tx_id_1. This must trigger revalidation of tx_id_2.
+    client.cancel_transaction(&owner, &tx_id_1);
+
+    // tx_id_1 is gone.
+    assert!(client.get_pending_transaction(&tx_id_1).is_none());
+
+    // tx_id_2 must be invalidated (expires_at == ledger timestamp).
+    let after = client.get_pending_transaction(&tx_id_2).unwrap();
+    assert_eq!(
+        after.expires_at, 1_000,
+        "sibling proposal must be invalidated when quorum is unachievable after cancel"
+    );
+}
+
+/// A proposal that still meets quorum after a cancel_transaction must not be
+/// touched.
+#[test]
+fn test_cancel_transaction_leaves_satisfiable_proposals_untouched() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let signer_a = Address::generate(&env);
+    let signer_b = Address::generate(&env);
+    let signer_c = Address::generate(&env);
+
+    client.init(
+        &owner,
+        &vec![&env, signer_a.clone(), signer_b.clone(), signer_c.clone()],
+    );
+
+    // threshold=2, three eligible signers — quorum is still reachable after cancel.
+    let signers = vec![&env, signer_a.clone(), signer_b.clone(), signer_c.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    let tx_id_1 = client.propose_role_change(&owner, &signer_a, &FamilyRole::Admin);
+    let tx_id_2 = client.propose_role_change(&owner, &signer_b, &FamilyRole::Viewer);
+
+    let original_expiry = client.get_pending_transaction(&tx_id_2).unwrap().expires_at;
+    assert!(original_expiry > 1_000);
+
+    // Cancel tx_id_1; tx_id_2 must remain active.
+    client.cancel_transaction(&owner, &tx_id_1);
+
+    let after = client.get_pending_transaction(&tx_id_2).unwrap();
+    assert_eq!(
+        after.expires_at, original_expiry,
+        "satisfiable proposal must be untouched after cancel_transaction"
+    );
+}
+
+/// Revalidation triggered by cancel_transaction must be idempotent: running a
+/// second revalidation after the cancel makes no further changes.
+#[test]
+fn test_cancel_transaction_revalidation_is_idempotent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let signer_a = Address::generate(&env);
+    let signer_b = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, signer_a.clone(), signer_b.clone()]);
+
+    let signers = vec![&env, signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    // Propose a transaction and then cancel it; the pending set is now empty.
+    let tx_id = client.propose_role_change(&owner, &signer_a, &FamilyRole::Admin);
+    client.cancel_transaction(&owner, &tx_id);
+
+    // Running explicit revalidation on an already-consistent (empty) set
+    // must return 0 and not panic.
+    let invalidated = client.revalidate_proposals(&owner);
+    assert_eq!(invalidated, 0, "second revalidation must be a no-op");
+}
+
 #[test]
 fn test_proposal_expiry_default_enforced() {
     let env = Env::default();
