@@ -4,6 +4,12 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Remittance Split (`remittance_split`)
 
+### v0.2.1
+
+- **Summary**: Removed orphaned `RemittanceSchedulePage` contracttype that had no producer, shrinking the exported ABI.
+- **Breaking Changes**: `RemittanceSchedulePage` removed from the type surface. Consumers using `SchedulePage` are unaffected.
+- **Migration Notes**: No migration needed unless a consumer was referencing the never-produced `RemittanceSchedulePage`.
+
 ### v0.2.0
 
 - **Summary**: Added owner-indexed schedule pagination with ordering guarantees.
