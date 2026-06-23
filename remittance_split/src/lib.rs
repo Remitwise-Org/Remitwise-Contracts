@@ -228,18 +228,6 @@ pub struct SchedulePage {
     pub count: u32,
 }
 
-/// Paginated result for remittance schedules with optional cursor.
-#[contracttype]
-#[derive(Clone)]
-pub struct RemittanceSchedulePage {
-    /// Schedule entries for this page, ordered by ID ascending.
-    pub items: Vec<RemittanceSchedule>,
-    /// Cursor to pass as `cursor` for the next page. None means no more pages.
-    pub next_cursor: Option<u32>,
-    /// Number of items returned in this page.
-    pub count: u32,
-}
-
 /// Split allocation output item for UI/analytics consumers.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -2446,7 +2434,7 @@ impl RemittanceSplit {
     /// # Returns
     /// `SchedulePage` with:
     /// - `items`: schedules for this page, ordered by ID ascending
-    /// - `next_cursor`: `Some(next_index)` when more pages exist, `None` when exhausted
+    /// - `next_cursor`: Index for the next page; `0` when no more pages exist
     /// - `count`: number of items in this page
     pub fn get_remittance_schedules_page(
         env: Env,
