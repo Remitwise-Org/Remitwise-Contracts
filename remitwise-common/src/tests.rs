@@ -127,7 +127,9 @@ fn test_canonicalize_single_char_tag() {
 #[should_panic(expected = "invalid char: space")]
 fn test_canonicalize_space_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "my goal"), || panic!("invalid char: space"));
+    canonicalize_tags(&env, &single(&env, "my goal"), || {
+        panic!("invalid char: space")
+    });
 }
 
 /// `@` symbol triggers on_invalid_char.
@@ -135,7 +137,9 @@ fn test_canonicalize_space_triggers_callback() {
 #[should_panic(expected = "invalid char: at")]
 fn test_canonicalize_at_symbol_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "user@domain"), || panic!("invalid char: at"));
+    canonicalize_tags(&env, &single(&env, "user@domain"), || {
+        panic!("invalid char: at")
+    });
 }
 
 /// Dot (`.`) triggers on_invalid_char — common mistake.
@@ -143,7 +147,9 @@ fn test_canonicalize_at_symbol_triggers_callback() {
 #[should_panic(expected = "invalid char: dot")]
 fn test_canonicalize_dot_triggers_callback() {
     let env = Env::default();
-    canonicalize_tags(&env, &single(&env, "goal.2025"), || panic!("invalid char: dot"));
+    canonicalize_tags(&env, &single(&env, "goal.2025"), || {
+        panic!("invalid char: dot")
+    });
 }
 
 /// Exclamation mark triggers on_invalid_char.

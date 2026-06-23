@@ -121,20 +121,18 @@ fn test_orchestrated_multisig_flow() {
     /// In this system, "quorum" for exceeding limits is handled by role elevation.
     /// Since the user is not yet an Admin, the Orchestrator check fails.
     let total_amount = 5000i128;
-    let result = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
 
     match result {
         Err(Ok(OrchestratorError::Unauthorized)) => (),
@@ -155,8 +153,8 @@ fn test_orchestrated_multisig_flow() {
     let tx_id = family_wallet_client.propose_role_change(&admin, &user, &FamilyRole::Admin);
 
     // Assert flow still fails (quorum not yet met)
-    let result_still_fails = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
+    let result_still_fails =
+        orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
             caller: user.clone(),
             total_amount,
             family_wallet: family_wallet_id.clone(),
@@ -167,8 +165,7 @@ fn test_orchestrated_multisig_flow() {
             goal_id,
             bill_id,
             policy_id,
-        },
-    );
+        });
     assert!(result_still_fails.is_err());
 
     // Sign to reach quorum
@@ -195,20 +192,18 @@ fn test_orchestrated_multisig_flow() {
     savings_client.set_pause_admin(&admin, &admin);
     savings_client.pause(&admin);
 
-    let result_paused = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result_paused = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
     assert!(
         result_paused.is_err(),
         "Flow should fail when a dependency is paused"
@@ -226,20 +221,18 @@ fn test_orchestrated_multisig_flow() {
             .set(&symbol_short!("EXEC_LOCK"), &true);
     });
 
-    let result_locked = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result_locked = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
 
     match result_locked {
         Err(Ok(OrchestratorError::ExecutionLocked)) => (),

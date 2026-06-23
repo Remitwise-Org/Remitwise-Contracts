@@ -388,7 +388,7 @@ impl BillPayments {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
         let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
-        
+
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);
         let mut inserted = false;

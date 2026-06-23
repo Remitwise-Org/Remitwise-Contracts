@@ -582,8 +582,9 @@ fn bench_get_unpaid_bills_last_page_of_max() {
         last_cursor = page.next_cursor;
     }
 
-    let (cpu, mem, last_page) =
-        measure(&env, || client.get_unpaid_bills(&owner, &last_cursor, &50u32));
+    let (cpu, mem, last_page) = measure(&env, || {
+        client.get_unpaid_bills(&owner, &last_cursor, &50u32)
+    });
     assert_eq!(last_page.count, 50, "Last page must return 50 bills");
     assert_eq!(last_page.next_cursor, 0, "No more pages after last page");
 

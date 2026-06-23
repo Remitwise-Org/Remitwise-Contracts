@@ -313,7 +313,10 @@ mod encoding_stability_tests {
         }
 
         // Container round-trips
-        let vec = Vec::from_array(&env, [Category::Spending, Category::Savings, Category::Bills]);
+        let vec = Vec::from_array(
+            &env,
+            [Category::Spending, Category::Savings, Category::Bills],
+        );
         let mut out = Vec::<Category>::new(&env);
         for item in vec.iter() {
             out.push_back(round_trip(&env, item));
@@ -359,7 +362,10 @@ mod encoding_stability_tests {
             cover_all_variants(v);
         }
 
-        let vec = Vec::from_array(&env, [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer]);
+        let vec = Vec::from_array(
+            &env,
+            [FamilyRole::Owner, FamilyRole::Admin, FamilyRole::Viewer],
+        );
         let mut out = Vec::<FamilyRole>::new(&env);
         for item in vec.iter() {
             out.push_back(round_trip(&env, item));
@@ -435,4 +441,3 @@ mod encoding_stability_tests {
         assert_eq!(out_map, map);
     }
 }
-

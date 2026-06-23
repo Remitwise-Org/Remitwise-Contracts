@@ -607,12 +607,7 @@ fn test_set_time_lock_monotonicity_boundary_equal_current_unlock_accepted() {
     client.init();
     set_ledger_time(&env, 1, 1000);
 
-    let goal_id = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Mono Equal"),
-        &10000,
-        &5000,
-    );
+    let goal_id = client.create_goal(&owner, &String::from_str(&env, "Mono Equal"), &10000, &5000);
 
     // Set initial time-lock to a future timestamp.
     let current_unlock = 2000u64;
@@ -651,7 +646,10 @@ fn test_set_time_lock_monotonicity_boundary_shortening_rejected() {
     // Shorten while active should be rejected.
     let shorter = 1500u64;
     let res = client.try_set_time_lock(&owner, &goal_id, &shorter);
-    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::TimeLockShortening.into());
+    assert_eq!(
+        res.unwrap_err().unwrap(),
+        SavingsGoalError::TimeLockShortening.into()
+    );
 }
 
 #[test]
@@ -3545,7 +3543,6 @@ fn test_remove_tags_from_goal_non_owner_auth_failure() {
     client.remove_tags_from_goal(&other, &goal_id, &add_tags);
 }
 
-
 #[test]
 fn test_add_and_remove_tags_to_goal_success() {
     let env = Env::default();
@@ -5094,7 +5091,6 @@ fn test_batch_add_to_goals_rejects_too_large_batch_size() {
     );
 }
 
-
 #[test]
 fn test_per_owner_goal_cap() {
     let env = Env::default();
@@ -5486,7 +5482,10 @@ fn test_remove_tags_absent_tag_is_noop_and_does_not_touch_index() {
     // Goal tags unchanged.
     let goal_after = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal_after.tags.len(), 1);
-    assert_eq!(goal_after.tags.get(0).unwrap(), String::from_str(&env, "rent"));
+    assert_eq!(
+        goal_after.tags.get(0).unwrap(),
+        String::from_str(&env, "rent")
+    );
 
     // Index for `rent` unchanged.
     let page_after = client.get_goals_by_tag(&user, &String::from_str(&env, "rent"), &0, &50);
@@ -5533,9 +5532,13 @@ fn test_remove_tags_same_tag_twice_is_idempotent_and_index_clean() {
 
     let goal_after_first = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal_after_first.tags.len(), 1);
-    assert_eq!(goal_after_first.tags.get(0).unwrap(), String::from_str(&env, "family"));
+    assert_eq!(
+        goal_after_first.tags.get(0).unwrap(),
+        String::from_str(&env, "family")
+    );
 
-    let page_after_first = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
+    let page_after_first =
+        client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
     assert_eq!(page_after_first.count, 0);
 
     // Second removal again: should be a no-op.
@@ -5543,10 +5546,14 @@ fn test_remove_tags_same_tag_twice_is_idempotent_and_index_clean() {
 
     let goal_after_second = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal_after_second.tags.len(), 1);
-    assert_eq!(goal_after_second.tags.get(0).unwrap(), String::from_str(&env, "family"));
+    assert_eq!(
+        goal_after_second.tags.get(0).unwrap(),
+        String::from_str(&env, "family")
+    );
 
     // urgent index still empty.
-    let page_after_second = client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
+    let page_after_second =
+        client.get_goals_by_tag(&user, &String::from_str(&env, "urgent"), &0, &50);
     assert_eq!(page_after_second.count, 0);
 }
 
@@ -5585,7 +5592,11 @@ fn test_remove_last_tag_leaves_empty_tags_and_cleans_index() {
 
     // Tags empty.
     let goal_after = client.get_goal(&goal_id).unwrap();
-    assert_eq!(goal_after.tags.len(), 0, "goal must have an empty tags set after last-tag removal");
+    assert_eq!(
+        goal_after.tags.len(),
+        0,
+        "goal must have an empty tags set after last-tag removal"
+    );
 
     // Index cleaned.
     let page_after = client.get_goals_by_tag(&user, &String::from_str(&env, "onlytag"), &0, &50);
@@ -5597,7 +5608,8 @@ fn test_remove_last_tag_leaves_empty_tags_and_cleans_index() {
     let goal_after_second = client.get_goal(&goal_id).unwrap();
     assert_eq!(goal_after_second.tags.len(), 0);
 
-    let page_after_second = client.get_goals_by_tag(&user, &String::from_str(&env, "onlytag"), &0, &50);
+    let page_after_second =
+        client.get_goals_by_tag(&user, &String::from_str(&env, "onlytag"), &0, &50);
     assert_eq!(page_after_second.count, 0);
 }
 
@@ -5630,11 +5642,7 @@ fn test_remove_tags_from_goal_non_owner_auth_panics() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "remove_tags_from_goal",
-            args: (
-                &other,
-                goal_id,
-                tags.clone(),
-            ).into_val(&env),
+            args: (&other, goal_id, tags.clone()).into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -5642,7 +5650,6 @@ fn test_remove_tags_from_goal_non_owner_auth_panics() {
     // Should panic due to auth mismatch before/at ownership check.
     let _ = client.try_remove_tags_from_goal(&other, &goal_id, &tags);
 }
-
 
 #[test]
 fn test_archive_goal_removes_from_tag_index() {

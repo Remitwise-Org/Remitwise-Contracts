@@ -185,7 +185,6 @@ pub struct FinancialHealthReport {
     pub generated_at: u64,
 }
 
-
 /// Top-N bills sorted deterministically.
 ///
 /// Ordering contract (reproducible across calls/networks):
@@ -222,7 +221,6 @@ pub struct TopNSavingsReport {
     pub period_end: u64,
     pub data_availability: DataAvailability,
 }
-
 
 /// Contract addresses configuration
 #[contracttype]

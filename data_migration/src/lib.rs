@@ -2999,10 +2999,7 @@ mod tests {
         // Determinism test with a larger Generic payload (many fields).
         let mut entries = BTreeMap::new();
         for i in 0..50 {
-            entries.insert(
-                format!("field_{:03}", i),
-                serde_json::json!(i * 100).into(),
-            );
+            entries.insert(format!("field_{:03}", i), serde_json::json!(i * 100).into());
         }
         let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Binary);
 
@@ -3018,19 +3015,16 @@ mod tests {
         // it imports to the expected `SnapshotPayload` (SavingsGoals).
         // This ensures that serialization changes don't silently break existing backups.
         let b64 = include_str!("../tests/golden_snapshot.bin.b64").trim();
-        
+
         // Generate the golden snapshot if not already present in tests/
         // First, export the sample snapshot to binary, then encode as base64
-        let expected_snapshot = ExportSnapshot::new(
-            sample_savings_payload(),
-            ExportFormat::Binary,
-        );
+        let expected_snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
         let expected_bytes = export_to_binary(&expected_snapshot).unwrap();
         let _expected_b64 = base64::engine::general_purpose::STANDARD.encode(&expected_bytes);
-        
+
         // Try to decode the placeholder/golden vector
         let bytes_result = base64::engine::general_purpose::STANDARD.decode(b64);
-        
+
         // If placeholder hasn't been updated yet, use the computed golden snapshot
         let bytes = if b64.len() < 100 {
             // Placeholder file—use computed golden snapshot
@@ -3044,7 +3038,10 @@ mod tests {
 
         // Verify it matches the expected payload (SavingsGoals with specific structure)
         assert_eq!(loaded.payload, sample_savings_payload());
-        assert!(loaded.verify_checksum(), "golden snapshot must have valid checksum");
+        assert!(
+            loaded.verify_checksum(),
+            "golden snapshot must have valid checksum"
+        );
         assert!(
             loaded.is_version_compatible(),
             "golden snapshot must be version-compatible"
@@ -3064,7 +3061,7 @@ mod tests {
         // The checksum must be stable across re-exports.
         // This ensures that the binary serialization format has not changed.
         let checksum = loaded.header.checksum.clone();
-        
+
         // Re-export should produce the same checksum
         let re_exported_bytes = export_to_binary(&loaded).expect("re-export");
         let re_loaded = import_from_binary_untracked(&re_exported_bytes).expect("re-import");
@@ -3136,7 +3133,9 @@ mod tests {
                 let imported = import_from_binary_untracked(&bytes);
                 assert!(imported.is_ok(), "snapshot at limit should import");
             }
-            Err(MigrationError::PayloadTooLarge { .. } | MigrationError::SnapshotTooLarge { .. }) => {
+            Err(
+                MigrationError::PayloadTooLarge { .. } | MigrationError::SnapshotTooLarge { .. },
+            ) => {
                 // This is acceptable—payload is just too large
             }
             Err(e) => panic!("unexpected error: {:?}", e),
@@ -3212,7 +3211,10 @@ mod tests {
 
         // After 3 cycles, we should still have the original bytes
         let final_bytes = export_to_binary(&original).unwrap();
-        assert_eq!(current_bytes, final_bytes, "after 3 cycles, bytes must match original");
+        assert_eq!(
+            current_bytes, final_bytes,
+            "after 3 cycles, bytes must match original"
+        );
     }
 
     #[test]

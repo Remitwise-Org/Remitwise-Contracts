@@ -2253,12 +2253,7 @@ impl SavingsGoalContract {
             // Active iff unlock_date is strictly in the future.
             if prev_unlock > current_time {
                 if unlock_date < prev_unlock {
-                    Self::append_audit(
-                        &env,
-                        symbol_short!("timelock"),
-                        &caller,
-                        false,
-                    );
+                    Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
                     soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
                 }
             }
@@ -2267,7 +2262,6 @@ impl SavingsGoalContract {
         // Even if there is an active time-lock, extending to the same value
         // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
         // Any other extension (`new_unlock > prev_unlock`) updates the lock.
-        
 
         // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);

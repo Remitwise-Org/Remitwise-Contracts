@@ -668,12 +668,14 @@ fn test_verify_dependency_address_set_does_not_write_storage() {
 
     // Instance storage is only accessible inside a contract context, so the
     // post-condition reads must run within `env.as_contract`.
-    let instance_snapshot: Option<Address> =
-        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADMIN")));
+    let instance_snapshot: Option<Address> = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&symbol_short!("ADMIN"))
+    });
     assert!(instance_snapshot.is_some(), "ADMIN should still exist");
 
-    let stored_addrs: Option<ContractAddresses> =
-        env.as_contract(&contract_id, || env.storage().instance().get(&symbol_short!("ADDRS")));
+    let stored_addrs: Option<ContractAddresses> = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&symbol_short!("ADDRS"))
+    });
     assert!(
         stored_addrs.is_none(),
         "ADDRS must not be written by preflight"
@@ -3107,7 +3109,12 @@ mod topn_tie_bills {
             0
         }
 
-        fn get_all_bills_for_owner(env: Env, owner: Address, _cursor: u32, _limit: u32) -> BillPage {
+        fn get_all_bills_for_owner(
+            env: Env,
+            owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> BillPage {
             // All equal amounts => order must be ID ascending due to tie-break.
             // Also intentionally insert in descending id order to catch non-determinism.
             let mut items = Vec::new(&env);
@@ -3131,7 +3138,11 @@ mod topn_tie_bills {
                     currency: SorobanString::from_str(&env, "XLM"),
                 });
             }
-            BillPage { items, next_cursor: 0, count: ids.len() as u32 }
+            BillPage {
+                items,
+                next_cursor: 0,
+                count: ids.len() as u32,
+            }
         }
     }
 }
@@ -3168,7 +3179,11 @@ mod topn_tie_savings {
                     tags: Vec::new(&env),
                 });
             }
-            GoalPage { items, next_cursor: 0, count: ids.len() as u32 }
+            GoalPage {
+                items,
+                next_cursor: 0,
+                count: ids.len() as u32,
+            }
         }
 
         fn is_goal_completed(_env: Env, _goal_id: u32) -> bool {
@@ -3213,7 +3228,10 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+        assert_eq!(
+            r1.items.get(i as u32).unwrap().id,
+            r2.items.get(i as u32).unwrap().id
+        );
     }
 
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
@@ -3259,7 +3277,10 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
 
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(r1.items.get(i as u32).unwrap().id, r2.items.get(i as u32).unwrap().id);
+        assert_eq!(
+            r1.items.get(i as u32).unwrap().id,
+            r2.items.get(i as u32).unwrap().id
+        );
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];
@@ -3317,4 +3338,3 @@ fn test_top_n_reports() {
     assert_eq!(savings_report.items.get(0).unwrap().target_amount, 10000);
     assert_eq!(savings_report.items.get(1).unwrap().target_amount, 5000);
 }
-

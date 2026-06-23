@@ -28,9 +28,7 @@
 
 #![cfg(test)]
 
-use bill_payments::{
-    Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError,
-};
+use bill_payments::{Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{Address, Env, IntoVal, String, TryFromVal, Val, Vec as SorobanVec};
 
@@ -134,10 +132,16 @@ fn assert_cloned_recurring_fields(
         "frequency_days must clone"
     );
     assert_eq!(child.tags, parent.tags, "tags must clone");
-    assert_eq!(child.schedule_id, parent.schedule_id, "schedule_id must clone");
+    assert_eq!(
+        child.schedule_id, parent.schedule_id,
+        "schedule_id must clone"
+    );
     assert!(!child.paid, "child must be unpaid");
     assert!(child.paid_at.is_none(), "child paid_at must be None");
-    assert_eq!(child.created_at, pay_timestamp, "created_at must be pay time");
+    assert_eq!(
+        child.created_at, pay_timestamp,
+        "created_at must be pay time"
+    );
     assert!(
         child.external_ref.is_none(),
         "external_ref must not clone (uniqueness policy)"
@@ -159,7 +163,10 @@ fn bill_event_matches(env: &Env, val: &Val, expected: &BillEvent) -> bool {
     matches!(
         (&decoded, expected),
         (BillEvent::Paid, BillEvent::Paid)
-            | (BillEvent::RecurringBillCreated, BillEvent::RecurringBillCreated)
+            | (
+                BillEvent::RecurringBillCreated,
+                BillEvent::RecurringBillCreated
+            )
             | (BillEvent::ScheduleExecuted, BillEvent::ScheduleExecuted)
     )
 }
@@ -222,15 +229,12 @@ fn test_recurring_pay_spawns_one_child_with_all_cloned_fields() {
     let child = h.client.get_bill(&child_id).unwrap();
     let expected_due = due_date + frequency_days as u64 * SECONDS_PER_DAY;
 
-    assert_cloned_recurring_fields(
-        &parent,
-        &child,
-        child_id,
-        expected_due,
-        due_date - 1,
-    );
+    assert_cloned_recurring_fields(&parent, &child, child_id, expected_due, due_date - 1);
 
-    assert!(h.client.get_bill(&(child_id + 1)).is_none(), "exactly one child");
+    assert!(
+        h.client.get_bill(&(child_id + 1)).is_none(),
+        "exactly one child"
+    );
 
     let unpaid = h.client.get_unpaid_bills(&h.owner, &0, &10);
     assert_eq!(unpaid.count, 1, "only the spawned child remains unpaid");
@@ -253,11 +257,7 @@ fn test_non_recurring_pay_spawns_no_child() {
         events_before + 1,
         "only BillEvent::Paid must be emitted for non-recurring pay"
     );
-    assert!(bill_event_emitted(
-        &h.env,
-        &h.contract_id,
-        BillEvent::Paid
-    ));
+    assert!(bill_event_emitted(&h.env, &h.contract_id, BillEvent::Paid));
     assert!(!bill_event_emitted(
         &h.env,
         &h.contract_id,
@@ -310,7 +310,8 @@ fn test_recurring_frequency_one_day_tags_preserved() {
     let h = RecurringHarness::new(0);
     let due_date = 2_000_000u64;
     let parent_id = h.create_recurring("Daily sub", 99, due_date, 1, "NGN");
-    h.client.add_tags_to_bill(&h.owner, &parent_id, &tags(&h.env, &["daily", "streaming"]));
+    h.client
+        .add_tags_to_bill(&h.owner, &parent_id, &tags(&h.env, &["daily", "streaming"]));
 
     // Pay one second before due date so child lands at due_date + 1 day without catch-up.
     h.pay_at(parent_id, due_date - 1);
@@ -340,11 +341,7 @@ fn test_recurring_pay_emits_paid_and_recurring_bill_created_events() {
 
     h.pay_at(parent_id, due_date);
 
-    assert!(bill_event_emitted(
-        &h.env,
-        &h.contract_id,
-        BillEvent::Paid
-    ));
+    assert!(bill_event_emitted(&h.env, &h.contract_id, BillEvent::Paid));
     assert!(bill_event_emitted(
         &h.env,
         &h.contract_id,

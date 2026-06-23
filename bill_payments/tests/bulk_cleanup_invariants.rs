@@ -97,11 +97,7 @@ fn create_unpaid_bills(
 
 /// Pay every bill in `ids` then archive them all before `u64::MAX`.
 /// Returns the number archived.
-fn pay_and_archive(
-    client: &BillPaymentsClient,
-    owner: &Address,
-    ids: &[u32],
-) -> u32 {
+fn pay_and_archive(client: &BillPaymentsClient, owner: &Address, ids: &[u32]) -> u32 {
     for id in ids {
         client.pay_bill(owner, id);
     }
@@ -109,11 +105,7 @@ fn pay_and_archive(
 }
 
 /// Collect all archived bill IDs for `owner` via full pagination.
-fn all_archived_ids(
-    env: &Env,
-    client: &BillPaymentsClient,
-    owner: &Address,
-) -> std::vec::Vec<u32> {
+fn all_archived_ids(env: &Env, client: &BillPaymentsClient, owner: &Address) -> std::vec::Vec<u32> {
     let mut ids = std::vec::Vec::new();
     let mut cursor = 0u32;
     loop {
@@ -228,7 +220,10 @@ fn test_cleanup_archive_count_decrements_exactly() {
     // Cleanup with timestamp that excludes all (before_timestamp <= archived_at)
     // archived_at == 1_700_000_000; use exactly that value → nothing deleted
     let cleaned_none = client.bulk_cleanup_bills(&owner, &1_700_000_000u64);
-    assert_eq!(cleaned_none, 0, "timestamp equal to archived_at must not delete");
+    assert_eq!(
+        cleaned_none, 0,
+        "timestamp equal to archived_at must not delete"
+    );
     assert_eq!(all_archived_ids(&env, &client, &owner).len(), 5);
 
     // Cleanup with timestamp one second later → all 5 deleted
@@ -268,7 +263,10 @@ fn test_cleanup_idempotent_on_already_removed_bills() {
 
     // Third cleanup with even larger timestamp
     let third = client.bulk_cleanup_bills(&owner, &u64::MAX);
-    assert_eq!(third, 0, "repeated cleanup must always return 0 when archive is empty");
+    assert_eq!(
+        third, 0,
+        "repeated cleanup must always return 0 when archive is empty"
+    );
 
     // State is clean
     let archived = all_archived_ids(&env, &client, &owner);
@@ -329,7 +327,9 @@ fn test_cleanup_mixed_paid_unpaid_archived_state() {
 
     // Paid-but-not-archived bills still accessible
     for id in &paid_not_archived {
-        let bill = client.get_bill(id).expect("paid active bill must still exist");
+        let bill = client
+            .get_bill(id)
+            .expect("paid active bill must still exist");
         assert!(bill.paid);
     }
 
@@ -450,7 +450,11 @@ fn test_cleanup_multi_owner_isolation() {
 
     // Alice runs cleanup – removes her 4 archived bills
     let cleaned = client.bulk_cleanup_bills(&alice, &u64::MAX);
-    assert_eq!(cleaned, 4 + 3, "global cleanup removes all matching archived bills");
+    assert_eq!(
+        cleaned,
+        4 + 3,
+        "global cleanup removes all matching archived bills"
+    );
 
     // Alice's archive is empty
     assert!(

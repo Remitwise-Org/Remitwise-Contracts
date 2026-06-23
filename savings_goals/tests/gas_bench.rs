@@ -105,7 +105,6 @@ fn bench_batch_add_to_goals_max() {
     bench_batch_add_to_goals_sized(50);
 }
 
-
 #[test]
 fn bench_execute_due_savings_schedules() {
     let env = bench_env();

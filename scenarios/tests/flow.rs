@@ -685,8 +685,13 @@ fn test_recurring_obligations_flow() {
     // Guaranteed to succeed: reporting contract is initialized and configured, all
     // dependency contracts are registered and have data, mock_all_auths() bypasses
     // require_auth. The Soroban client panics on Err, satisfying Requirement 8.1.
-    let report =
-        reporting.get_financial_health_report(&user, &user, &total_remittance, &period_start, &period_end);
+    let report = reporting.get_financial_health_report(
+        &user,
+        &user,
+        &total_remittance,
+        &period_start,
+        &period_end,
+    );
 
     // Assert report.bill_compliance.total_bills >= 2 (Requirement 7.1).
     // We created two recurring bills (Electricity and Internet) in Phase 3, and
