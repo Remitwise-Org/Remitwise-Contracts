@@ -1548,6 +1548,7 @@ impl BillPayments {
     /// # Errors
     /// * `BillNotFound` - If bill with given ID doesn't exist
     /// * `Unauthorized` - If caller is not the bill owner
+    /// Emits BillEvent::ExternalRefUpdated.
     pub fn set_external_ref(
         env: Env,
         caller: Address,
@@ -1589,6 +1590,10 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ExternalRefUpdated),
+            (bill_id, caller.clone(), validated_ext_ref.clone()),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -1781,6 +1786,7 @@ impl BillPayments {
     // Remaining operations
     // -----------------------------------------------------------------------
 
+    /// Emits BillEvent::Cancelled.
     pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
@@ -1812,6 +1818,10 @@ impl BillPayments {
         Self::index_remove_active(&env, &caller, bill_id);
         // Remove from currency index
         Self::index_remove_currency(&env, &caller, &bill_currency, bill_id);
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Cancelled),
+            (bill_id, caller.clone(), env.ledger().timestamp()),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -1922,6 +1932,10 @@ impl BillPayments {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Archived),
+            (archived_count, current_time),
+        );
         RemitwiseEvents::emit_batch(
             &env,
             EventCategory::System,
@@ -1932,6 +1946,7 @@ impl BillPayments {
         Ok(archived_count)
     }
 
+    /// Emits BillEvent::Restored.
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE)?;
@@ -1994,6 +2009,10 @@ impl BillPayments {
 
         Self::update_storage_stats(&env);
 
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::Restored),
+            (bill_id, caller.clone(), env.ledger().timestamp()),
+        );
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
@@ -2147,7 +2166,12 @@ impl BillPayments {
                 unpaid_delta = unpaid_delta.saturating_sub(amount);
             }
 
+            let external_ref = bill.external_ref.clone();
             bills.set(bill_id, bill);
+            env.events().publish(
+                (symbol_short!("bill"), BillEvent::Paid),
+                (bill_id, caller.clone(), external_ref.clone()),
+            );
             success_count += 1;
 
             RemitwiseEvents::emit(

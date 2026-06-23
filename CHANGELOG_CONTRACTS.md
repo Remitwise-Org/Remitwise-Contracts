@@ -27,6 +27,7 @@ This document tracks changes, versions, and migration notes for each of the smar
 - **Summary**: Initial release of the Bill Payments contract.
 - **Breaking Changes**: None.
 - **Migration Notes**: Baseline deployment.
+- **Event Alignment**: Bill Payments now emits declared `BillEvent` variants for cancellation, restoration, external reference updates, and batch payment events, improving indexer event taxonomy stability.
 
 ## Insurance (`insurance`)
 

@@ -42,42 +42,64 @@ env.events().publish((contract_name, event_category), event_data);
 - **Symbol**: Short symbol (up to 12 characters, encoded as u64)
 - **i128**: Signed 128-bit integer (stroops for amounts)
 - **u32**: Unsigned 32-bit integer (IDs, counts)
-- **u64**: Unsigned 64-bit integer (timestamps, dates)
-- **String**: UTF-8 encoded string
-- **bool**: Boolean flag
 
-### Timestamp Convention
-
-All timestamps are in **Unix epoch seconds** (seconds since 1970-01-01 00:00:00 UTC).
-
----
-
-## Bill Payments Contract
-
-**Contract Name:** `bill_payments`  
-**Primary Topic Prefix:** `"Remitwise"`
-
-### Event: Bill Created
-
-**Topic:** `"Remitwise"` (category: Transaction, priority: Medium)  
-**Action Symbol:** `"crt_bill"`
+**Secondary Topic:** `("bill", BillEvent::Cancelled)`
 
 **Data Structure:**
 ```rust
-pub struct Bill {
-    pub id: u32,                    // Unique bill ID
-    pub owner: Address,             // Bill owner address
-    pub name: String,               // Bill name (e.g., "Electricity")
-    pub amount: i128,               // Amount in stroops
-    pub due_date: u64,              // Unix timestamp of due date
-    pub recurring: bool,            // Whether bill recurs
-    pub frequency_days: u32,        // Recurrence frequency in days (0 if non-recurring)
-    pub paid: bool,                 // Payment status
-    pub created_at: u64,            // Creation timestamp
-    pub paid_at: Option<u64>,       // Payment timestamp (null if unpaid)
-    pub schedule_id: Option<u32>,   // Associated schedule ID (null if none)
-    pub currency: String,           // Currency code (e.g., "XLM", "USDC")
+pub struct BillCancelledEvent {
+    pub bill_id: u32,               // ID of cancelled bill
+    pub owner: Address,             // Bill owner
+    pub cancelled_at: u64,          // Cancellation timestamp
 }
+```
+
+### Event: Bill External Reference Updated
+
+**Topic:** "Remitwise" (category: State, priority: Medium)  
+**Action Symbol:** "ext_ref"
+
+**Secondary Topic:** `("bill", BillEvent::ExternalRefUpdated)`
+
+**Data Structure:**
+```rust
+pub struct BillExternalRefUpdatedEvent {
+    pub bill_id: u32,               // ID of updated bill
+    pub owner: Address,             // Bill owner
+    pub external_ref: Option<String>, // New external reference value
+}
+```
+
+### Event: Bills Archived
+
+**Topic:** "Remitwise" (category: System, priority: Low)  
+**Action Symbol:** "archive"
+
+**Secondary Topic:** `("bill", BillEvent::Archived)`
+
+**Data Structure:**
+```rust
+pub struct BillsArchivedEvent {
+    pub count: u32,                 // Number of bills archived
+    pub archived_at: u64,           // Archive timestamp
+}
+```
+
+### Event: Bill Restored
+
+**Topic:** "Remitwise" (category: State, priority: Medium)  
+**Action Symbol:** "restore"
+
+**Secondary Topic:** `("bill", BillEvent::Restored)`
+
+**Data Structure:**
+```rust
+pub struct BillRestoredEvent {
+    pub bill_id: u32,               // ID of restored bill
+    pub owner: Address,             // Bill owner
+    pub restored_at: u64,           // Restoration timestamp
+}
+```
 ```
 
 **Example Event:**
@@ -136,6 +158,7 @@ pub struct BillCancelledEvent {
     pub cancelled_at: u64,          // Cancellation timestamp
 }
 ```
+**Secondary Topic:** `(symbol_short!("bill"), BillEvent::Cancelled)`
 
 ### Event: Bills Archived
 
