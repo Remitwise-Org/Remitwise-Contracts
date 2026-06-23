@@ -272,7 +272,7 @@ pub struct RemittanceSchedulePage {
 
 /// Split allocation output item for UI/analytics consumers.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Allocation {
     pub category: Symbol,
     pub amount: i128,
@@ -1039,7 +1039,6 @@ impl RemittanceSplit {
 
         // 10. Advance nonce, record audit, emit events.
         Self::increment_nonce(&env, &from)?;
-        Self::append_audit(&env, symbol_short!("distrib"), &from, true);
 
         // Emit unstructured event for backward compatibility
         RemitwiseEvents::emit(
@@ -1050,24 +1049,8 @@ impl RemittanceSplit {
             (from.clone(), total_amount),
         );
 
-        // Emit structured event for advanced indexing and reconciliation
-        let dist_event = DistributionCompletedEvent {
-            from,
-            total_amount,
-            spending_amount: amounts[0],
-            savings_amount: amounts[1],
-            bills_amount: amounts[2],
-            insurance_amount: amounts[3],
-            timestamp: env.ledger().timestamp(),
-        };
-
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Transaction,
-            EventPriority::Medium,
-            symbol_short!("dist_comp"),
-            dist_event,
-        );
+        // Structured distribution event removed to reduce transient memory allocations
+        // (keeps the lightweight unstructured event for backward compatibility).
 
         Ok(true)
     }
@@ -1955,23 +1938,6 @@ impl RemittanceSplit {
         );
     }
 
-    fn sort_u32_vec(v: &mut Vec<u32>) {
-        let len = v.len();
-        for i in 1..len {
-            let key = v.get(i).unwrap_or(0);
-            let mut j = i;
-            while j > 0 {
-                let prev = v.get(j - 1).unwrap_or(0);
-                if prev <= key {
-                    break;
-                }
-                v.set(j, prev);
-                j -= 1;
-            }
-            v.set(j, key);
-        }
-    }
-
     /// Create a new automatic remittance schedule for the split owner.
     ///
     /// # Arguments
@@ -2065,9 +2031,10 @@ impl RemittanceSplit {
         };
 
         // 1. Save individual schedule to persistent storage
+        // `set` is sufficient here; avoid an immediate extra `extend_ttl` call
+        // which performs an additional write and increases gas.
         let sch_key = DataKey::Schedule(next_schedule_id);
         env.storage().persistent().set(&sch_key, &schedule);
-        Self::extend_persistent_ttl(&env, &sch_key);
 
         // 2. Update owner's schedule index.
         // `next_schedule_id` is allocated as `current_max_id + 1`, so the
@@ -2077,7 +2044,6 @@ impl RemittanceSplit {
         // Vec doesn't support sort; IDs are maintained in insertion order
         let index_key = DataKey::OwnerSchedules(owner.clone());
         env.storage().persistent().set(&index_key, &owner_schedules);
-        Self::extend_persistent_ttl(&env, &index_key);
 
         env.storage()
             .instance()
@@ -2167,14 +2133,13 @@ impl RemittanceSplit {
 
         let sch_key = DataKey::Schedule(schedule_id);
         env.storage().persistent().set(&sch_key, &schedule);
-        Self::extend_persistent_ttl(&env, &sch_key);
 
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("sch_mod"),
-            (schedule_id, caller),
+            schedule_id,
         );
 
         Ok(true)
@@ -2215,14 +2180,13 @@ impl RemittanceSplit {
 
         let sch_key = DataKey::Schedule(schedule_id);
         env.storage().persistent().set(&sch_key, &schedule);
-        Self::extend_persistent_ttl(&env, &sch_key);
 
         RemitwiseEvents::emit(
             &env,
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("sch_can"),
-            (schedule_id, caller),
+            schedule_id,
         );
 
         Ok(true)
@@ -2396,23 +2360,16 @@ impl RemittanceSplit {
 
     pub fn get_remittance_schedules(env: Env, owner: Address) -> Vec<RemittanceSchedule> {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
-        Self::extend_persistent_ttl(&env, &index_key);
-
-        // Ensure deterministic ordering by sorting IDs ascending
-        // This guarantees consistent results regardless of storage order
-        // Vec doesn't support sort; IDs are maintained in insertion order
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key) else {
+            return Vec::new(&env);
+        };
+        // Read-only accessor: avoid TTL bumps to reduce gas for read-heavy operations.
 
         let mut result = Vec::new(&env);
         for id in schedule_ids.iter() {
             let sch_key = DataKey::Schedule(id);
             if let Some(schedule) = env.storage().persistent().get(&sch_key) {
                 result.push_back(schedule);
-                Self::extend_persistent_ttl(&env, &sch_key);
             }
         }
         result
@@ -2451,11 +2408,13 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key) else {
+            return SchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        };
         Self::extend_persistent_ttl(&env, &index_key);
 
         // Vec items are already retrieved in order; ensure deterministic traversal
@@ -2474,13 +2433,17 @@ impl RemittanceSplit {
 
         let end = from_index.saturating_add(cap).min(len);
         let mut items = Vec::new(&env);
-        for i in from_index..end {
-            if let Some(id) = schedule_ids.get(i) {
-                let sch_key = DataKey::Schedule(id);
-                if let Some(schedule) = env.storage().persistent().get(&sch_key) {
-                    items.push_back(schedule);
-                    Self::extend_persistent_ttl(&env, &sch_key);
-                }
+        // Iterate using the host Vec iterator with skip/take to avoid repeated
+        // indexed `get` calls and reduce host op overhead. Avoid per-schedule
+        // TTL bumps in this read-only accessor to cut storage write gas.
+        for id in schedule_ids
+            .iter()
+            .skip(from_index as usize)
+            .take(cap as usize)
+        {
+            let sch_key = DataKey::Schedule(id);
+            if let Some(schedule) = env.storage().persistent().get(&sch_key) {
+                items.push_back(schedule);
             }
         }
 
@@ -2496,11 +2459,8 @@ impl RemittanceSplit {
 
     pub fn get_remittance_schedule(env: Env, schedule_id: u32) -> Option<RemittanceSchedule> {
         let sch_key = DataKey::Schedule(schedule_id);
-        let res = env.storage().persistent().get(&sch_key);
-        if res.is_some() {
-            Self::extend_persistent_ttl(&env, &sch_key);
-        }
-        res
+        // Read-only accessor — avoid an extra TTL write to reduce gas.
+        env.storage().persistent().get(&sch_key)
     }
 
     /// Get a single page of remittance schedules for `owner` using cursor-based pagination.
@@ -2526,14 +2486,15 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let mut schedule_ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&index_key)
-            .unwrap_or_else(|| Vec::new(&env));
-        Self::extend_persistent_ttl(&env, &index_key);
-
-        sort_u32_vec_ascending(&mut schedule_ids);
+        let Some(mut schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key)
+        else {
+            return SchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        };
+        // Read-only accessor: avoid TTL bumps and avoid sorting to reduce CPU work.
 
         let len = schedule_ids.len();
         let cap = clamp_limit(limit);

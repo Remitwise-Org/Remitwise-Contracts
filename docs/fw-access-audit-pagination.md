@@ -68,6 +68,54 @@ signals that there are no more entries.  Callers should stop iterating when:
 
 ---
 
+## Ring-buffer eviction (bounded trail)
+
+`ACC_AUDIT` is a **bounded ring buffer**, not an unbounded log. Each privileged
+operation appends one entry via `append_access_audit`. When the length exceeds
+`MAX_ACCESS_AUDIT_ENTRIES` (200), the **oldest** entries are evicted so that only
+the most-recent 200 are retained:
+
+- After appending entry number `n` where `n > 200`, entries with insertion
+  positions `0 .. n-200` are dropped and the retained set is **re-indexed from
+  `0`**. The surviving entries keep their relative order (oldest-retained first,
+  newest last).
+- Pagination operates over these **post-eviction indices**. `from_index = 0`
+  always points at the oldest *retained* entry — never at an evicted one — and
+  `total` (revealed by the end-of-log sentinel) is capped at `200`.
+- Consequently, an evicted entry can never reappear on any page, and the cursor
+  stays strictly monotonic across the wrap boundary (no skips, no duplicates).
+
+> **Forensic implication:** the trail is a *rolling window*. Once 200 newer
+> privileged operations have occurred, evidence of the oldest ones is gone.
+> Off-chain consumers that need a permanent record must paginate and persist the
+> trail *before* it wraps. The cap bounds instance-storage rent; it is not a
+> retention guarantee.
+
+### Worked example
+
+Seed 250 operations with ascending timestamps `1000 .. 1249`:
+
+| | Insertion positions | Timestamps | State |
+|---|---|---|---|
+| Evicted | `0 .. 49` | `1000 .. 1049` | dropped |
+| Retained | `50 .. 249` | `1050 .. 1249` | re-indexed to page positions `0 .. 199` |
+
+`get_access_audit_page(caller, 0, 50)` returns the entry with timestamp `1050`
+first; the end-of-log sentinel `next_cursor` reaches `200`.
+
+---
+
+## Relationship to `get_access_audit`
+
+`get_access_audit(limit)` returns the **tail** — the newest
+`min(limit, total)` retained entries, oldest-to-newest. This is exactly the
+**suffix** of the fully-paginated view (paging from index `0` to the sentinel).
+The two read paths are consistent by construction, including across an eviction
+wrap: paging the whole log and taking its last `k` entries yields the same
+entries, in the same order, as `get_access_audit(k)`.
+
+---
+
 ## Iteration example (off-chain pseudo-code)
 
 ```typescript
@@ -123,3 +171,15 @@ Tests live in `family_wallet/src/test.rs` under the
 | `test_audit_page_single_entry_log` | Single-entry log; second call with returned cursor is empty |
 | `test_audit_page_full_iteration_no_skip_no_duplicate` | Full iteration collects every entry exactly once |
 | `test_audit_page_cursor_stable_across_calls` | Same cursor returns identical results on repeated calls |
+
+Ring-eviction, authorization, and cross-read tests live under the
+`// Access-Audit Ring-Eviction & Cross-Read Tests` section:
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_audit_ring_evicts_oldest_retains_newest` | Past the cap, oldest evicted / newest retained; total pinned at 200; evicted prefix never paged |
+| `test_audit_ring_exactly_at_max_evicts_nothing` | Exactly 200 entries → nothing evicted, oldest still present |
+| `test_audit_ring_one_over_max_evicts_single_oldest` | 201 entries → exactly the single oldest evicted |
+| `test_audit_page_post_eviction_no_skip_no_duplicate` | Paging post-eviction with a non-dividing page size is contiguous and monotonic |
+| `test_audit_page_authorization_matches_policy` | Owner/Admin allowed; `Member` and non-member rejected by the role gate |
+| `test_get_access_audit_consistent_with_paginated_view` | `get_access_audit(limit)` equals the tail of the paginated view, across an eviction wrap |

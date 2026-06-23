@@ -36,9 +36,7 @@ mod goal_completed_event_tests {
             .iter()
             .filter(|(_, topics, _)| {
                 topics.iter().any(|t| {
-                    Symbol::try_from_val(env, &t)
-                        .ok()
-                        .as_ref()
+                    Symbol::try_from_val(env, &t).ok().as_ref()
                         == Some(&Symbol::new(env, "completed"))
                 })
             })

@@ -9,8 +9,7 @@
 //!
 //! ## Documented Limitations
 //! - Maximum safe bill amount: i128::MAX/2 (to allow for safe addition operations)
-//! - get_total_unpaid uses checked_add internally via += operator
-//! - No explicit caps are imposed by the contract, but overflow will panic
+//! - get_total_unpaid and unpaid-total cache updates use saturating arithmetic
 
 use bill_payments::{BillPayments, BillPaymentsClient};
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};

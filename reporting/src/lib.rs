@@ -17,7 +17,7 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = PERSISTENT_BUMP_AMOUNT;
 pub const INSTANCE_LIFETIME_THRESHOLD: u32 = PERSISTENT_LIFETIME_THRESHOLD;
 
 pub const ARCHIVE_BUMP_AMOUNT: u32 = 150 * DAY_IN_LEDGERS; // ~150 days
-pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = 1 * DAY_IN_LEDGERS; // 1 day
+pub const ARCHIVE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS; // 1 day
 
 /// Maximum number of pages fetched from any single dependency per report call.
 /// Loops that reach this cap mark the result `DataAvailability::Partial` so
@@ -149,11 +149,28 @@ pub struct InsuranceReport {
 #[contracttype]
 #[derive(Clone)]
 pub struct FamilySpendingReport {
+    pub member_breakdown: Vec<FamilyMemberSpending>,
     pub total_members: u32,
     pub total_spending: i128,
     pub average_per_member: i128,
     pub period_start: u64,
     pub period_end: u64,
+    pub data_availability: DataAvailability,
+}
+
+/// Per-member family spending breakdown entry.
+#[contracttype]
+#[derive(Clone)]
+pub struct FamilyMemberSpending {
+    /// Family-wallet member address.
+    pub member: Address,
+    /// Aggregated spending fetched from the family wallet's `SpendingTracker`.
+    ///
+    /// This is `0` when no tracker exists yet or when the per-member spending
+    /// read was unavailable.
+    pub total_spending: i128,
+    /// `true` when `total_spending` reflects a successful downstream read.
+    pub data_available: bool,
 }
 
 /// Overall financial health report
@@ -168,7 +185,14 @@ pub struct FinancialHealthReport {
     pub generated_at: u64,
 }
 
-/// Top-N bills by amount or due date
+
+/// Top-N bills sorted deterministically.
+///
+/// Ordering contract (reproducible across calls/networks):
+/// - Primary sort: `amount` descending
+/// - Tie-break (when `amount` is equal): `id` ascending
+///
+/// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
 #[derive(Clone)]
 pub struct TopNBillsReport {
@@ -180,7 +204,13 @@ pub struct TopNBillsReport {
     pub data_availability: DataAvailability,
 }
 
-/// Top-N savings goals by target amount or progress
+/// Top-N savings goals sorted deterministically.
+///
+/// Ordering contract (reproducible across calls/networks):
+/// - Primary sort: `target_amount` descending
+/// - Tie-break (when `target_amount` is equal): `id` ascending
+///
+/// Returned `items` are capped to [`MAX_ITEMS_PER_REPORT`] (no padding).
 #[contracttype]
 #[derive(Clone)]
 pub struct TopNSavingsReport {
@@ -192,6 +222,7 @@ pub struct TopNSavingsReport {
     pub period_end: u64,
     pub data_availability: DataAvailability,
 }
+
 
 /// Contract addresses configuration
 #[contracttype]
@@ -218,7 +249,7 @@ pub enum ReportingError {
     InvalidDependencyAddressConfiguration = 6,
     /// Report period range is invalid (`period_start` is greater than `period_end`).
     InvalidPeriod = 7,
-    /// Invalid percentage split summing to > 10000 or != 10000
+    /// Invalid percentage split summing to > 100 or != 100
     InvalidPercentageSplit = 8,
 }
 
@@ -311,12 +342,15 @@ pub trait BillPaymentsTrait {
 #[contractclient(name = "InsuranceClient")]
 pub trait InsuranceTrait {
     fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
+    fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy>;
     fn get_total_monthly_premium(env: Env, owner: Address) -> i128;
 }
 
 #[contractclient(name = "FamilyWalletClient")]
 pub trait FamilyWalletTrait {
     fn get_owner(env: Env) -> Address;
+    fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage;
+    fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker>;
 }
 
 // Data structures from other contracts (needed for client traits)
@@ -369,26 +403,62 @@ pub struct BillPage {
     pub count: u32,
 }
 
+/// Mirror of the real `insurance::Policy` struct.
+///
+/// Field order and types MUST match `insurance::Policy` exactly so a real
+/// `Policy` returned by `get_policy` deserializes into this type without a
+/// `ConversionError`.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InsurancePolicy {
     pub id: u32,
     pub owner: Address,
     pub name: soroban_sdk::String,
-    pub external_ref: Option<soroban_sdk::String>,
     pub coverage_type: CoverageType,
     pub monthly_premium: i128,
     pub coverage_amount: i128,
+    pub external_ref: Option<soroban_sdk::String>,
     pub active: bool,
+    pub created_at: u64,
+    pub last_payment_at: u64,
     pub next_payment_date: u64,
+}
+
+/// Mirror of the real `insurance::PolicyPage`.
+///
+/// `items` is a list of policy IDs (`Vec<u32>`); fetch each full policy with
+/// `InsuranceClient::get_policy`.
+#[contracttype]
+#[derive(Clone)]
+pub struct PolicyPage {
+    pub items: Vec<u32>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 #[contracttype]
 #[derive(Clone)]
-pub struct PolicyPage {
-    pub items: Vec<InsurancePolicy>,
+pub struct MemberAddressPage {
+    pub items: Vec<Address>,
     pub next_cursor: u32,
     pub count: u32,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingPeriod {
+    pub period_type: u32,
+    pub period_start: u64,
+    pub period_duration: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct SpendingTracker {
+    pub current_spent: i128,
+    pub last_tx_timestamp: u64,
+    pub tx_count: u32,
+    pub period: SpendingPeriod,
 }
 
 /// Compute `(numerator * scale) / denominator` using checked arithmetic.
@@ -670,7 +740,6 @@ impl ReportingContract {
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
-
     pub fn configure_addresses(
         env: Env,
         caller: Address,
@@ -772,10 +841,7 @@ impl ReportingContract {
 
         // Check remittance_split
         let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
-        let split_ok = match split_client.try_get_split() {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let split_ok = matches!(split_client.try_get_split(), Ok(Ok(_)));
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "remittance_split"),
             ok: split_ok,
@@ -788,10 +854,10 @@ impl ReportingContract {
 
         // Check savings_goals
         let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
-        let savings_ok = match savings_client.try_get_all_goals(&env.current_contract_address()) {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let savings_ok = matches!(
+            savings_client.try_get_all_goals(&env.current_contract_address()),
+            Ok(Ok(_))
+        );
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "savings_goals"),
             ok: savings_ok,
@@ -804,10 +870,10 @@ impl ReportingContract {
 
         // Check bill_payments
         let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
-        let bill_ok = match bill_client.try_get_total_unpaid(&env.current_contract_address()) {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let bill_ok = matches!(
+            bill_client.try_get_total_unpaid(&env.current_contract_address()),
+            Ok(Ok(_))
+        );
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "bill_payments"),
             ok: bill_ok,
@@ -823,11 +889,10 @@ impl ReportingContract {
 
         // Check insurance
         let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
-        let insurance_ok =
-            match insurance_client.try_get_total_monthly_premium(&env.current_contract_address()) {
-                Ok(Ok(_)) => true,
-                _ => false,
-            };
+        let insurance_ok = matches!(
+            insurance_client.try_get_total_monthly_premium(&env.current_contract_address()),
+            Ok(Ok(_))
+        );
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "insurance"),
             ok: insurance_ok,
@@ -843,10 +908,7 @@ impl ReportingContract {
 
         // Check family_wallet
         let family_client = FamilyWalletClient::new(&env, &addresses.family_wallet);
-        let family_ok = match family_client.try_get_owner() {
-            Ok(Ok(_)) => true,
-            _ => false,
-        };
+        let family_ok = matches!(family_client.try_get_owner(), Ok(Ok(_)));
         statuses.push_back(DependencyStatus {
             name: soroban_sdk::String::from_str(&env, "family_wallet"),
             ok: family_ok,
@@ -911,22 +973,22 @@ impl ReportingContract {
         let mut split_amounts = Vec::new(env);
         if availability == DataAvailability::Complete {
             let mut sum = 0u32;
-            // Percentages are stored as basis points (bps), where 10000 = 100.00%
+            // Percentages are whole-number percents that must sum to 100 (100 = 100%)
             for i in 0..split_percentages.len() {
                 let p = split_percentages.get(i).unwrap_or(0);
                 sum = sum
                     .checked_add(p)
                     .ok_or(ReportingError::InvalidPercentageSplit)?;
-                if sum > 10000 {
+                if sum > 100 {
                     return Err(ReportingError::InvalidPercentageSplit);
                 }
 
-                // Formula used is (amount * percentage) / 10000
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10000;
+                // Formula used is (amount * percentage) / 100
+                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 100;
                 split_amounts.push_back(amount);
             }
 
-            if sum != 10000 {
+            if sum != 100 {
                 return Err(ReportingError::InvalidPercentageSplit);
             }
         }
@@ -1127,6 +1189,8 @@ impl ReportingContract {
         let insurance_client = InsuranceClient::new(env, &addresses.insurance);
         let monthly_premium = insurance_client.get_total_monthly_premium(&user);
 
+        // The insurance contract's `get_active_policies` returns policy IDs only.
+        // Page through the IDs, then resolve each to a full policy via `get_policy`.
         let result = paginate_dependency(env, |cursor| {
             let page = insurance_client.get_active_policies(&user, &cursor, &DEP_PAGE_LIMIT);
             (page.items, page.next_cursor)
@@ -1135,9 +1199,11 @@ impl ReportingContract {
         let mut total_coverage = 0i128;
         let mut active_policies = 0u32;
 
-        for policy in result.items.iter() {
-            active_policies += 1;
-            total_coverage += policy.coverage_amount;
+        for policy_id in result.items.iter() {
+            if let Some(policy) = insurance_client.get_policy(&policy_id) {
+                active_policies += 1;
+                total_coverage += policy.coverage_amount;
+            }
         }
 
         let annual_premium = monthly_premium.saturating_mul(12);
@@ -1153,6 +1219,129 @@ impl ReportingContract {
             period_start,
             period_end,
             data_availability: result.data_availability,
+        })
+    }
+
+    /// Generate a family-wallet spending report.
+    ///
+    /// Reads the configured `family_wallet` dependency to enumerate members and
+    /// fetch each member's current `SpendingTracker`, returning a per-member
+    /// breakdown plus aggregate totals. When the family wallet is unreachable
+    /// the report degrades to `DataAvailability::Missing`; when only part of
+    /// the dependency data can be read the report degrades to
+    /// `DataAvailability::Partial`.
+    pub fn get_family_spending_report(
+        env: Env,
+        _caller: Address,
+        user: Address,
+        period_start: u64,
+        period_end: u64,
+    ) -> Result<FamilySpendingReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
+        user.require_auth();
+        Self::get_family_spending_report_internal(&env, period_start, period_end)
+    }
+
+    fn get_family_spending_report_internal(
+        env: &Env,
+        period_start: u64,
+        period_end: u64,
+    ) -> Result<FamilySpendingReport, ReportingError> {
+        let addresses: ContractAddresses = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADDRS"))
+            .ok_or(ReportingError::AddressesNotConfigured)?;
+
+        let family_client = FamilyWalletClient::new(env, &addresses.family_wallet);
+        let mut availability = DataAvailability::Complete;
+        let mut breakdown: Vec<FamilyMemberSpending> = Vec::new(env);
+        let mut seen_members: Map<Address, bool> = Map::new(env);
+        let mut total_spending = 0i128;
+
+        let mut cursor = 0u32;
+        let mut page_index = 0u32;
+        let mut saw_member_page = false;
+
+        loop {
+            if page_index >= MAX_DEP_PAGES {
+                availability = DataAvailability::Partial;
+                break;
+            }
+
+            let page = match family_client.try_get_member_addresses_page(&cursor, &DEP_PAGE_LIMIT) {
+                Ok(Ok(page)) => page,
+                _ if saw_member_page => {
+                    availability = DataAvailability::Partial;
+                    break;
+                }
+                _ => {
+                    availability = DataAvailability::Missing;
+                    break;
+                }
+            };
+
+            page_index = page_index.saturating_add(1);
+
+            if page.items.is_empty() && cursor == 0 {
+                availability = DataAvailability::Missing;
+                break;
+            }
+
+            saw_member_page = true;
+
+            for member in page.items.iter() {
+                if seen_members.get(member.clone()).unwrap_or(false) {
+                    continue;
+                }
+                seen_members.set(member.clone(), true);
+
+                let tracker_result = family_client.try_get_spending_tracker(&member);
+                let (member_spending, data_available) = match tracker_result {
+                    Ok(Ok(Some(tracker))) => (tracker.current_spent, true),
+                    Ok(Ok(None)) => (0, true),
+                    _ => {
+                        availability = DataAvailability::Partial;
+                        (0, false)
+                    }
+                };
+
+                total_spending = match total_spending.checked_add(member_spending) {
+                    Some(sum) => sum,
+                    None => {
+                        availability = DataAvailability::Partial;
+                        total_spending.saturating_add(member_spending)
+                    }
+                };
+
+                breakdown.push_back(FamilyMemberSpending {
+                    member,
+                    total_spending: member_spending,
+                    data_available,
+                });
+            }
+
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+
+        let total_members = breakdown.len();
+        let average_per_member = if total_members == 0 {
+            0
+        } else {
+            total_spending / (total_members as i128)
+        };
+
+        Ok(FamilySpendingReport {
+            member_breakdown: breakdown,
+            total_members,
+            total_spending,
+            average_per_member,
+            period_start,
+            period_end,
+            data_availability: availability,
         })
     }
 
@@ -1266,7 +1455,7 @@ impl ReportingContract {
         };
 
         // Convert percentage to score: (progress * 40) / 100
-        let score = (progress_percentage as u32 * 40) / 100;
+        let score = (progress_percentage * 40) / 100;
         score.min(40) // Ensure maximum is 40
     }
 
@@ -1424,19 +1613,34 @@ impl ReportingContract {
             total_amount += bill.amount;
             total_count += 1;
 
-            // Sorted insertion for Top-N
+            // Sorted insertion for Top-N (bounded)
+            //
+            // Ordering contract (deterministic):
+            // 1) Primary: amount descending
+            // 2) Tie-break: bill id ascending
             let mut inserted = false;
             for i in 0..top_bills.len() {
-                let existing_bill_amount = match top_bills.get(i) {
-                    Some(b) => b.amount,
-                    None => 0,
-                };
-                if bill.amount > existing_bill_amount {
-                    top_bills.insert(i, bill.clone());
-                    inserted = true;
-                    break;
+                if let Some(existing) = top_bills.get(i) {
+                    let should_insert = if bill.amount > existing.amount {
+                        true
+                    } else if bill.amount < existing.amount {
+                        false
+                    } else {
+                        // Equal amounts → deterministic tie-break by id ascending
+                        bill.id < existing.id
+                    };
+
+                    if should_insert {
+                        top_bills.insert(i, bill.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
+
             if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
                 top_bills.push_back(bill);
             } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
@@ -1504,17 +1708,31 @@ impl ReportingContract {
             total_saved += goal.current_amount;
             total_count += 1;
 
-            // Sorted insertion for Top-N
+            // Sorted insertion for Top-N (bounded)
+            //
+            // Ordering contract (deterministic):
+            // 1) Primary: target amount descending
+            // 2) Tie-break: savings goal id ascending
             let mut inserted = false;
             for i in 0..top_goals.len() {
-                let existing_goal_target = match top_goals.get(i) {
-                    Some(g) => g.target_amount,
-                    None => 0,
-                };
-                if goal.target_amount > existing_goal_target {
-                    top_goals.insert(i, goal.clone());
-                    inserted = true;
-                    break;
+                if let Some(existing) = top_goals.get(i) {
+                    let should_insert = if goal.target_amount > existing.target_amount {
+                        true
+                    } else if goal.target_amount < existing.target_amount {
+                        false
+                    } else {
+                        // Equal targets → deterministic tie-break by id ascending
+                        goal.id < existing.id
+                    };
+
+                    if should_insert {
+                        top_goals.insert(i, goal.clone());
+                        inserted = true;
+                        break;
+                    }
+                } else {
+                    // defensive: if index is out of bounds, skip
+                    continue;
                 }
             }
             if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {

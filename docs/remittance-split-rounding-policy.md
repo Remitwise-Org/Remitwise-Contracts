@@ -74,6 +74,35 @@ spending + savings + bills + (total_amount − spending − savings − bills)
 
 No rounding correction is needed; the identity is structural.
 
+## Batch / fan-out conservation across schedule sweeps
+
+`execute_due_remittance_schedules()` sweeps _many_ `RemittanceSchedule` entries in one call and advances each schedule’s `next_due`/`last_executed`.
+
+Even though the per-schedule dust assignment is structurally conservative, a bug can still leak/destroy value at scale if the sweep logic is wrong (e.g., double-executing the same schedule window, skipping a due schedule, or advancing `next_due` incorrectly).
+
+### Batch conservation invariant
+
+For any ledger timestamp `T`, let `S(T)` be the exact set of schedules with:
+
+- `active == true`, and
+- `next_due <= T` (idempotency-guarded by `last_executed`),
+
+and let `amount_i` be the scheduled `amount` for each `s_i ∈ S(T)`.
+
+Then the total distributed allocations across the entire fan-out must satisfy:
+
+```
+Σ_{s_i in S(T)} amount_i
+  ==
+Σ_{s_i in S(T)} (spending_i + savings_i + bills_i + insurance_i)
+```
+
+Because dust is always deterministically assigned to `insurance` inside `calculate_split`, proving this aggregate equality pins the dust policy across the whole sweep — not just per-call.
+
+### Why idempotency matters
+
+The executor advances `last_executed = T` before moving `next_due`. This prevents re-executing the same schedule in the same due window, which would otherwise cause aggregate double-counting (and therefore aggregate value leaks).
+
 ## Overflow Protection
 
 Each of the three multiplication steps uses Rust's `checked_mul`, and each
@@ -87,22 +116,22 @@ For reference, `i128::MAX × 2` already overflows, so amounts above
 
 ## Test Coverage Table
 
-| Test | Amount | Percentages (sp/sv/bl/ins) | What it proves |
-|------|--------|---------------------------|----------------|
-| conservation | 1 | 25/25/25/25 | Equal split, small amount |
-| conservation | 1 | 50/50/0/0 | Zero-pct categories, dust in insurance |
-| conservation | 3 | 33/33/33/1 | Non-divisible amount, remainder = 0 |
-| conservation | 7 (odd prime) | 40/30/20/10 | Unequal split, odd prime amount |
-| conservation | 11 (odd prime) | 34/33/33/0 | Zero insurance pct, remainder goes to insurance |
-| conservation | 97 (odd prime) | 33/33/33/1 | Large remainder on odd prime |
-| conservation | 100 | 50/50/0/0 | Even split, zero remainder |
-| conservation | 999 | 33/33/33/1 | 3-digit near-1000, remainder visible |
-| conservation | i128::MAX/1_000_000 | 25/25/25/25 | Large amount, no overflow |
-| conservation | i128::MAX/1_000_000 | 33/33/33/1 | Large amount + remainder |
-| conservation | i128::MAX/1_000_000 | 40/30/20/10 | Large amount, unequal split |
-| isolation | 10 | 33/33/33/1 | Exact floor values + remainder verified per-category |
-| overflow | i128::MAX | 50/50/0/0 | Intermediate product overflows → Overflow error |
-| zero | 0 | 25/25/25/25 | amount ≤ 0 → InvalidAmount before any allocation |
+| Test         | Amount              | Percentages (sp/sv/bl/ins) | What it proves                                       |
+| ------------ | ------------------- | -------------------------- | ---------------------------------------------------- |
+| conservation | 1                   | 25/25/25/25                | Equal split, small amount                            |
+| conservation | 1                   | 50/50/0/0                  | Zero-pct categories, dust in insurance               |
+| conservation | 3                   | 33/33/33/1                 | Non-divisible amount, remainder = 0                  |
+| conservation | 7 (odd prime)       | 40/30/20/10                | Unequal split, odd prime amount                      |
+| conservation | 11 (odd prime)      | 34/33/33/0                 | Zero insurance pct, remainder goes to insurance      |
+| conservation | 97 (odd prime)      | 33/33/33/1                 | Large remainder on odd prime                         |
+| conservation | 100                 | 50/50/0/0                  | Even split, zero remainder                           |
+| conservation | 999                 | 33/33/33/1                 | 3-digit near-1000, remainder visible                 |
+| conservation | i128::MAX/1_000_000 | 25/25/25/25                | Large amount, no overflow                            |
+| conservation | i128::MAX/1_000_000 | 33/33/33/1                 | Large amount + remainder                             |
+| conservation | i128::MAX/1_000_000 | 40/30/20/10                | Large amount, unequal split                          |
+| isolation    | 10                  | 33/33/33/1                 | Exact floor values + remainder verified per-category |
+| overflow     | i128::MAX           | 50/50/0/0                  | Intermediate product overflows → Overflow error      |
+| zero         | 0                   | 25/25/25/25                | amount ≤ 0 → InvalidAmount before any allocation     |
 
 ## Worked Example
 

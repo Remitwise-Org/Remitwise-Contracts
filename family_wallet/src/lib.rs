@@ -35,6 +35,8 @@ const MAX_AUDIT_PAGE_LIMIT: u32 = 50;
 const DEFAULT_AUDIT_PAGE_LIMIT: u32 = 20;
 const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
+const MAX_MEMBER_PAGE_LIMIT: u32 = 100;
+const DEFAULT_MEMBER_PAGE_LIMIT: u32 = 20;
 
 /// Hard cap on the number of entries retained in `ARCH_TX`.
 /// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
@@ -133,6 +135,14 @@ pub struct SpendingTracker {
     pub last_tx_timestamp: u64,
     pub tx_count: u32,
     pub period: SpendingPeriod,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MemberAddressPage {
+    pub items: Vec<Address>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 /// Enhanced spending limit with precision controls
@@ -593,7 +603,7 @@ impl FamilyWallet {
             return Err(Error::Unauthorized);
         }
 
-        Ok(())
+        Self::validate_precision_spending_internal(env, caller, amount)
     }
 
     /// @notice Configure multisig parameters for a given transaction type.
@@ -645,8 +655,13 @@ impl FamilyWallet {
         }
 
         if threshold > signer_count {
+            // Must return a typed error for `configure_multisig`'s `Result` API.
             return Err(Error::InvalidThreshold);
         }
+
+
+
+
 
         // Check signer membership and uniqueness in a single pass
         let mut checked: Map<Address, bool> = Map::new(&env);
@@ -834,7 +849,20 @@ impl FamilyWallet {
 
         pending_tx.signatures.push_back(signer.clone());
 
-        if pending_tx.signatures.len() >= config.threshold {
+        // Count only signatures whose signer is still authorized in the CURRENT
+        // config. Signatures collected from signers that were rotated out before
+        // this call must not contribute to quorum.
+        let mut valid_signatures: u32 = 0;
+        for sig in pending_tx.signatures.iter() {
+            for authorized_signer in config.signers.iter() {
+                if authorized_signer.clone() == sig {
+                    valid_signatures += 1;
+                    break;
+                }
+            }
+        }
+
+        if valid_signatures >= config.threshold {
             let executed = Self::execute_transaction_internal(
                 &env,
                 &pending_tx.proposer,
@@ -1723,6 +1751,55 @@ impl FamilyWallet {
             .get(member)
     }
 
+    /// Paginated listing of family-member addresses for downstream readers.
+    ///
+    /// Cursor is the number of members already returned. Pass `0` for the
+    /// first page.
+    pub fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage {
+        let capped_limit = if limit == 0 {
+            DEFAULT_MEMBER_PAGE_LIMIT
+        } else {
+            limit.min(MAX_MEMBER_PAGE_LIMIT)
+        };
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        let mut items: Vec<Address> = Vec::new(&env);
+        let mut seen = 0u32;
+        let mut has_more = false;
+
+        for (address, _) in members.iter() {
+            if seen < cursor {
+                seen = seen.saturating_add(1);
+                continue;
+            }
+
+            if items.len() < capped_limit {
+                items.push_back(address);
+                seen = seen.saturating_add(1);
+            } else {
+                has_more = true;
+                break;
+            }
+        }
+
+        let next_cursor = if has_more {
+            cursor.saturating_add(items.len())
+        } else {
+            0
+        };
+
+        MemberAddressPage {
+            count: items.len(),
+            items,
+            next_cursor,
+        }
+    }
+
     /// Cancel a pending transaction.
     ///
     /// The original proposer may cancel their own transaction. Owners and
@@ -1950,7 +2027,10 @@ impl FamilyWallet {
             .unwrap_or_else(|| Map::new(env));
         let mut tracker = Self::current_spending_tracker(env, proposer);
         // Overflow-safe tracker accumulation
-        tracker.current_spent = tracker.current_spent.checked_add(amount).unwrap_or(i128::MAX);
+        tracker.current_spent = tracker
+            .current_spent
+            .checked_add(amount)
+            .unwrap_or(i128::MAX);
         tracker.last_tx_timestamp = env.ledger().timestamp();
         tracker.tx_count = tracker.tx_count.saturating_add(1);
         trackers.set(proposer.clone(), tracker);
@@ -1993,7 +2073,10 @@ impl FamilyWallet {
             if limit.enable_rollover {
                 let tracker = Self::current_spending_tracker(&env, &proposer);
                 // Overflow-safe addition to prevent DoS via integer overflow in accumulated spend
-                let new_spent = tracker.current_spent.checked_add(amount).ok_or(Error::InvalidSpendingLimit)?;
+                let new_spent = tracker
+                    .current_spent
+                    .checked_add(amount)
+                    .ok_or(Error::InvalidSpendingLimit)?;
                 if new_spent > limit.limit {
                     return Err(Error::InvalidSpendingLimit);
                 }

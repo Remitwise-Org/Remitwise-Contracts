@@ -233,10 +233,12 @@ fn create_many_overdue(
     ids
 }
 
+#[allow(dead_code)]
 fn max_allowed(baseline: u64, threshold_percent: u64) -> u64 {
     baseline + baseline.saturating_mul(threshold_percent) / 100
 }
 
+#[allow(dead_code)]
 fn assert_regression_bounds(
     method: &str,
     scenario: &str,
