@@ -1195,6 +1195,16 @@ impl FamilyWallet {
 
     /// Remove a family member from the wallet.
     ///
+    /// Removes the member and cleans up all associated per-member state to prevent
+    /// storage bloat and correctness defects when the same address is re-added.
+    ///
+    /// # Cleanup
+    /// The following per-member entries are deleted:
+    /// - `MEMBERS`: The member record itself
+    /// - `ROLE_EXP`: Any role expiry timestamp for the member
+    /// - `PREC_LIM`: Any precision spending limit configuration
+    /// - `SPND_TRK`: Any cumulative spending tracker state
+    ///
     /// # Authorization
     /// Only Owner can remove family members.
     ///
@@ -1210,6 +1220,7 @@ impl FamilyWallet {
     /// - Prevents removing the Owner
     /// - Silently succeeds if member doesn't exist
     /// - Records access audit entry
+    /// - Prevents a re-added member from inheriting previous member's state
     pub fn remove_family_member(env: Env, caller: Address, member: Address) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -1242,6 +1253,10 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
+
+        // Clear all per-member state to prevent storage bloat and stale state
+        // from affecting re-added members.
+        Self::clear_member_state(&env, &member);
 
         // Re-validate in-flight proposals: strip signatures from the removed
         // member and invalidate any proposal that can no longer reach quorum.
@@ -2303,6 +2318,9 @@ impl FamilyWallet {
         let mut count = 0u32;
         for addr in addresses.iter() {
             members_map.remove(addr.clone());
+            // Clear all per-member state to prevent storage bloat and stale state
+            // from affecting re-added members.
+            Self::clear_member_state(&env, &addr);
             Self::append_access_audit(
                 &env,
                 symbol_short!("rem_mem"),
@@ -2953,6 +2971,48 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+    }
+
+    /// Clear all per-member state maps for a removed member.
+    ///
+    /// Removes entries from ROLE_EXP, PREC_LIM, and SPND_TRK to prevent:
+    /// - Unbounded storage growth from orphaned records
+    /// - Re-added members inheriting stale spending trackers or precision limits
+    ///
+    /// This ensures that a re-added member starts with a clean slate.
+    fn clear_member_state(env: &Env, member: &Address) {
+        // Remove role expiry if present
+        let mut role_exp: Map<Address, u64> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ROLE_EXP"))
+            .unwrap_or_else(|| Map::new(env));
+        role_exp.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ROLE_EXP"), &role_exp);
+
+        // Remove precision spending limit if present
+        let mut prec_lim: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(env));
+        prec_lim.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PREC_LIM"), &prec_lim);
+
+        // Remove spending tracker if present
+        let mut spnd_trk: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+        spnd_trk.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SPND_TRK"), &spnd_trk);
     }
 
     fn update_storage_stats(env: &Env) {
