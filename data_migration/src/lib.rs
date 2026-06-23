@@ -374,7 +374,27 @@ impl ExportSnapshot {
         validate_payload_bounds(self.payload.record_count(), payload_bytes.len())
     }
 
-    /// Validate snapshot for import: version, payload bounds, and checksum.
+    /// Validate snapshot for import: version, payload bounds, checksum, and semantic invariants.
+    ///
+    /// # Checks performed (in order)
+    ///
+    /// 1. **Version compatibility** – `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`.
+    /// 2. **Payload bounds** – record count and canonical payload byte size within limits.
+    /// 3. **Hash algorithm** – must be a known variant (`Sha256` or `Simple`).
+    /// 4. **Checksum integrity** – payload must match the stored checksum.
+    /// 5. **Semantic invariants** – payload-type-specific business rules:
+    ///
+    ///    - **`RemittanceSplit`**: `spending_percent + savings_percent + bills_percent +
+    ///      insurance_percent == 100`. Importing a split that does not sum to exactly 100
+    ///      would seed corrupt on-chain state that the live `remittance_split` contract
+    ///      enforces at write-time via `PercentagesDoNotSumTo100`.
+    ///
+    ///    - **`SavingsGoals`**: (a) `next_id >= max(goal.id)` for all goals — a `next_id`
+    ///      lower than the highest existing goal id indicates a truncated or forged snapshot
+    ///      where the ID counter was wound back; (b) `current_amount <= target_amount` for
+    ///      every individual goal — saved amount must not exceed the goal target.
+    ///
+    ///    - **`Generic`**: no semantic constraints beyond size and record-count bounds.
     pub fn validate_for_import(&self) -> Result<(), MigrationError> {
         if !self.is_version_compatible() {
             return Err(MigrationError::IncompatibleVersion {
@@ -396,6 +416,8 @@ impl ExportSnapshot {
         if !self.verify_checksum() {
             return Err(MigrationError::ChecksumMismatch);
         }
+
+        validate_payload_semantics(&self.payload)?;
 
         Ok(())
     }
@@ -1083,6 +1105,68 @@ impl RollbackMetadata {
         tracker.unmark_imported_by_identity(&self.attempted_checksum, self.attempted_version);
         Ok(())
     }
+}
+
+/// Validate payload-type-specific semantic invariants at import time.
+///
+/// This is the "fail-closed" semantic layer: it enforces the same business
+/// rules the live contracts enforce at write-time, so a corrupt or forged
+/// snapshot cannot bypass them at the import boundary.
+///
+/// # Invariants
+///
+/// ## `RemittanceSplit`
+/// `spending_percent + savings_percent + bills_percent + insurance_percent == 100`.
+///
+/// ## `SavingsGoals`
+/// - `next_id >= max(goal.id)` — counter must not have been wound back.
+/// - `current_amount <= target_amount` for every goal.
+///
+/// ## `Generic`
+/// No semantic constraints.
+fn validate_payload_semantics(payload: &SnapshotPayload) -> Result<(), MigrationError> {
+    match payload {
+        SnapshotPayload::RemittanceSplit(export) => {
+            let sum = export
+                .spending_percent
+                .saturating_add(export.savings_percent)
+                .saturating_add(export.bills_percent)
+                .saturating_add(export.insurance_percent);
+            if sum != 100 {
+                return Err(MigrationError::ValidationFailed(format!(
+                    "RemittanceSplit percentages must sum to 100, got {} \
+                     (spending={}, savings={}, bills={}, insurance={})",
+                    sum,
+                    export.spending_percent,
+                    export.savings_percent,
+                    export.bills_percent,
+                    export.insurance_percent,
+                )));
+            }
+        }
+        SnapshotPayload::SavingsGoals(export) => {
+            if let Some(max_id) = export.goals.iter().map(|g| g.id).max() {
+                if export.next_id < max_id {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "SavingsGoalsExport next_id ({}) must be >= the maximum goal id ({}); \
+                         snapshot appears truncated or forged",
+                        export.next_id, max_id,
+                    )));
+                }
+            }
+            for goal in &export.goals {
+                if goal.current_amount > goal.target_amount {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "goal {} current_amount ({}) exceeds target_amount ({}); \
+                         saved amount must not exceed the goal target",
+                        goal.id, goal.current_amount, goal.target_amount,
+                    )));
+                }
+            }
+        }
+        SnapshotPayload::Generic(_) => {}
+    }
+    Ok(())
 }
 
 // Minimal hex encoder used by compute_checksum.
@@ -3229,5 +3313,275 @@ mod tests {
             bytes_1, bytes_2,
             "determinism must hold even with created_at_ms set"
         );
+    }
+
+    // ==================== SEMANTIC PAYLOAD VALIDATION TESTS ====================
+    // These tests validate the import-boundary invariants enforced by
+    // validate_payload_semantics via validate_for_import.
+
+    fn make_remittance_snapshot(
+        spending: u32,
+        savings: u32,
+        bills: u32,
+        insurance: u32,
+    ) -> ExportSnapshot {
+        ExportSnapshot::new(
+            SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+                owner: "GABC".into(),
+                spending_percent: spending,
+                savings_percent: savings,
+                bills_percent: bills,
+                insurance_percent: insurance,
+            }),
+            ExportFormat::Json,
+        )
+    }
+
+    fn make_savings_snapshot(next_id: u32, goals: Vec<SavingsGoalExport>) -> ExportSnapshot {
+        ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport { next_id, goals }),
+            ExportFormat::Json,
+        )
+    }
+
+    // --- RemittanceSplit: direct validate_for_import ---
+
+    #[test]
+    fn test_semantic_remittance_split_valid_sum_100_accepted() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 5);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_99_rejected() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 4);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_101_rejected() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 6);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_all_zero_rejected() {
+        let snapshot = make_remittance_snapshot(0, 0, 0, 0);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_sum_255_rejected() {
+        // 64 + 64 + 64 + 63 = 255
+        let snapshot = make_remittance_snapshot(64, 64, 64, 63);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- RemittanceSplit: full import paths (tracked + untracked, json + binary) ---
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_json_untracked() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 4); // sum = 99
+        let bytes = export_to_json(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_json_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_binary_untracked() {
+        let snapshot = make_remittance_snapshot(50, 30, 15, 6); // sum = 101
+        let bytes = export_to_binary(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_binary_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_tracked_json() {
+        let snapshot = make_remittance_snapshot(0, 0, 0, 0); // sum = 0
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_json(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_invalid_rejected_via_tracked_binary() {
+        let snapshot = make_remittance_snapshot(64, 64, 64, 63); // sum = 255
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_binary(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- SavingsGoals: next_id invariant ---
+
+    #[test]
+    fn test_semantic_savings_goals_valid_next_id_above_max_accepted() {
+        // next_id (3) > max goal id (2)
+        let snapshot = make_savings_snapshot(3, vec![sample_goal(1), sample_goal(2)]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_equals_max_id_accepted() {
+        // next_id == max goal id is the minimum acceptable state per spec
+        let snapshot = make_savings_snapshot(2, vec![sample_goal(1), sample_goal(2)]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_below_max_id_rejected() {
+        // next_id (1) < max goal id (2) — counter was wound back
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_zero_with_goals_rejected() {
+        // next_id (0) < max goal id (1)
+        let snapshot = make_savings_snapshot(0, vec![sample_goal(1)]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_empty_goals_list_accepted() {
+        // No goals → no max id → next_id constraint vacuously satisfied
+        let snapshot = make_savings_snapshot(0, vec![]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    // --- SavingsGoals: current_amount invariant ---
+
+    #[test]
+    fn test_semantic_savings_goals_current_amount_below_target_accepted() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount - 1;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_current_amount_equals_target_accepted() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(snapshot.validate_for_import().is_ok());
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_current_exceeds_target_rejected() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 1; // 1001 > 1000
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_large_current_amount_rejected() {
+        let mut goal = sample_goal(1);
+        goal.target_amount = 1_000;
+        goal.current_amount = i64::MAX; // massively oversized
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- SavingsGoals: full import paths ---
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_invalid_rejected_via_json_untracked() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        let bytes = export_to_json(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_json_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_amount_invalid_rejected_via_binary_untracked() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 1;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        assert!(matches!(
+            import_from_binary_untracked(&bytes),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_invalid_rejected_via_tracked_json() {
+        let mut goal = sample_goal(1);
+        goal.current_amount = goal.target_amount + 500;
+        let snapshot = make_savings_snapshot(2, vec![goal]);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_json(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_invalid_rejected_via_tracked_binary() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(2)]);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        assert!(matches!(
+            import_from_binary(&bytes, &mut tracker, 1_000),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    // --- Error message content verification ---
+
+    #[test]
+    fn test_semantic_remittance_split_error_message_contains_sum() {
+        let snapshot = make_remittance_snapshot(33, 33, 33, 0); // sum = 99
+        let err = snapshot.validate_for_import().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("99"), "error must mention the actual sum");
+        assert!(msg.contains("100"), "error must mention the expected sum");
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_next_id_error_message_contains_ids() {
+        let snapshot = make_savings_snapshot(1, vec![sample_goal(1), sample_goal(5)]);
+        let err = snapshot.validate_for_import().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("1"), "error must mention next_id");
+        assert!(msg.contains("5"), "error must mention max goal id");
     }
 }
