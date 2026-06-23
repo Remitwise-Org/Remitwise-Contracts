@@ -26,7 +26,7 @@ use remittance_split::{
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, Env, IntoVal, Val,
+    Address, Env, IntoVal, Symbol,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,4 +198,165 @@ fn test_missed_count_accumulates_across_executions() {
     let sch2 = client.get_remittance_schedule(&id).unwrap();
     assert_eq!(sch2.missed_count, 6, "cumulative missed = 2 + 4");
     assert_eq!(sch2.next_due, T0 + 8 * INTERVAL);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Same-ledger idempotency
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Two calls to `execute_due_remittance_schedules` at the same ledger timestamp
+/// must not double-process: the first call returns the executed ID, the second
+/// returns an empty Vec, and `next_due` / `missed_count` / `last_executed` are
+/// unchanged after the second call.
+#[test]
+fn test_same_ledger_double_call_is_idempotent_recurring() {
+    let env = Env::default();
+    let (owner, client) = setup(&env);
+
+    let id = client.create_remittance_schedule(&owner, &500, &T0, &INTERVAL);
+
+    env.ledger().set_timestamp(T0);
+
+    let first = client.execute_due_remittance_schedules();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first.get(0).unwrap(), id);
+
+    let sch_after_first = client.get_remittance_schedule(&id).unwrap();
+
+    // Second call at the same timestamp must be a no-op.
+    let second = client.execute_due_remittance_schedules();
+    assert_eq!(second.len(), 0, "second call at same ledger must be a no-op");
+
+    let sch_after_second = client.get_remittance_schedule(&id).unwrap();
+    assert_eq!(
+        sch_after_second.next_due, sch_after_first.next_due,
+        "next_due must not change on second call"
+    );
+    assert_eq!(
+        sch_after_second.missed_count, sch_after_first.missed_count,
+        "missed_count must not change on second call"
+    );
+    assert_eq!(
+        sch_after_second.last_executed, sch_after_first.last_executed,
+        "last_executed must not change on second call"
+    );
+}
+
+/// Same idempotency guarantee holds with a multi-interval gap (drift case):
+/// a double-call at `T0 + 3*I` does not increment `missed_count` twice.
+#[test]
+fn test_same_ledger_double_call_idempotent_with_drift() {
+    let env = Env::default();
+    let (owner, client) = setup(&env);
+
+    let id = client.create_remittance_schedule(&owner, &500, &T0, &INTERVAL);
+
+    let now = T0 + 3 * INTERVAL;
+    env.ledger().set_timestamp(now);
+
+    // First call: processes the schedule, records missed = 3.
+    let first = client.execute_due_remittance_schedules();
+    assert_eq!(first.len(), 1);
+
+    let sch1 = client.get_remittance_schedule(&id).unwrap();
+    assert_eq!(sch1.missed_count, 3);
+    let expected_next_due = T0 + 4 * INTERVAL;
+    assert_eq!(sch1.next_due, expected_next_due);
+
+    // Second call at the same timestamp must change nothing.
+    let second = client.execute_due_remittance_schedules();
+    assert_eq!(second.len(), 0, "second call must be empty");
+
+    let sch2 = client.get_remittance_schedule(&id).unwrap();
+    assert_eq!(sch2.missed_count, 3, "missed_count must not double");
+    assert_eq!(sch2.next_due, expected_next_due, "next_due must not change");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sch_exec / sch_miss event data
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Matches an event by comparing the 4th topic's raw payload bits against the
+/// expected symbol. `Val` does not implement `PartialEq` in this SDK version,
+/// so we compare the underlying `u64` payloads via `get_payload()`.
+fn topic3_is(topics: &soroban_sdk::Vec<soroban_sdk::Val>, expected: Symbol) -> bool {
+    if topics.len() != 4 {
+        return false;
+    }
+    match topics.get(3) {
+        Some(v) => v.get_payload() == expected.to_val().get_payload(),
+        None => false,
+    }
+}
+
+/// `sch_exec` event is emitted once with the correct `(schedule_id, amount)`
+/// payload when a recurring schedule fires with no drift.
+#[test]
+fn test_sch_exec_event_carries_correct_data() {
+    let env = Env::default();
+    let (owner, client) = setup(&env);
+
+    let amount: i128 = 12_345;
+    let id = client.create_remittance_schedule(&owner, &amount, &T0, &INTERVAL);
+
+    env.ledger().set_timestamp(T0);
+    client.execute_due_remittance_schedules();
+
+    let events = env.events().all();
+    let exec_event = events
+        .iter()
+        .find(|(_cid, topics, _data)| topic3_is(topics, symbol_short!("sch_exec")));
+
+    assert!(exec_event.is_some(), "sch_exec event must be emitted");
+    let (_cid, _topics, data) = exec_event.unwrap();
+
+    let (event_id, event_amount): (u32, i128) = data.into_val(&env);
+    assert_eq!(event_id, id, "sch_exec event must carry the schedule id");
+    assert_eq!(event_amount, amount, "sch_exec event must carry the schedule amount");
+}
+
+/// `sch_miss` event is emitted with `(schedule_id, missed_count)` payload when
+/// the executor fires 3 intervals late.
+#[test]
+fn test_sch_miss_event_carries_correct_data() {
+    let env = Env::default();
+    let (owner, client) = setup(&env);
+
+    let id = client.create_remittance_schedule(&owner, &500, &T0, &INTERVAL);
+
+    let now = T0 + 3 * INTERVAL;
+    env.ledger().set_timestamp(now);
+    client.execute_due_remittance_schedules();
+
+    let events = env.events().all();
+    let miss_event = events
+        .iter()
+        .find(|(_cid, topics, _data)| topic3_is(topics, symbol_short!("sch_miss")));
+
+    assert!(miss_event.is_some(), "sch_miss event must be emitted");
+    let (_cid, _topics, data) = miss_event.unwrap();
+
+    let (event_id, event_missed): (u32, u32) = data.into_val(&env);
+    assert_eq!(event_id, id, "sch_miss event must carry the schedule id");
+    assert_eq!(event_missed, 3, "sch_miss must report 3 missed intervals");
+}
+
+/// No `sch_miss` event is emitted when the executor fires exactly at `next_due`
+/// (missed = 0), because the contract only emits the event when `missed > 0`.
+#[test]
+fn test_no_sch_miss_event_when_no_drift() {
+    let env = Env::default();
+    let (owner, client) = setup(&env);
+
+    client.create_remittance_schedule(&owner, &500, &T0, &INTERVAL);
+
+    env.ledger().set_timestamp(T0);
+    client.execute_due_remittance_schedules();
+
+    let events = env.events().all();
+    let miss_event = events
+        .iter()
+        .find(|(_cid, topics, _data)| topic3_is(topics, symbol_short!("sch_miss")));
+
+    assert!(miss_event.is_none(), "no sch_miss event when missed_count is 0");
 }
