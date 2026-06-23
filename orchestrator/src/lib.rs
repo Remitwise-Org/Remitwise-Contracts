@@ -74,6 +74,8 @@ pub struct AuditEntry {
 
 const EXEC_LOCK: Symbol = symbol_short!("EXEC_LOCK");
 const AUDIT: Symbol = symbol_short!("AUDIT");
+/// Audit operation symbol for remittance flow executions (signed and unsigned).
+const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
 
 /// RAII guard to ensure the execution lock is released on drop.
 pub struct LockGuard {
@@ -134,17 +136,32 @@ pub struct Orchestrator;
 #[contractimpl]
 impl Orchestrator {
     /// Executes the full remittance flow across multiple contracts.
+    ///
+    /// Emits the same lifecycle events (`flow`, `flow_ok`, `flow_fail`) and writes
+    /// `flow_exec` audit entries as [`Self::execute_remittance_flow_signed`], so
+    /// indexers observe all remittance executions regardless of entrypoint.
+    ///
     /// This is protected against reentrancy.
     pub fn execute_remittance_flow(env: Env, params: RemittanceFlowParams) -> Result<(), OrchestratorError> {
         params.caller.require_auth();
 
         if params.total_amount <= 0 {
+            Self::record_flow_validation_failure(&env, &params.caller);
             return Err(OrchestratorError::InvalidAmount);
         }
 
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            Self::record_flow_validation_failure(&env, &params.caller);
+            return Err(OrchestratorError::ExecutionLocked);
+        }
+
+        Self::emit_flow_started(&env, &params.caller, params.total_amount);
+
         // Use a scope to ensure the guard is dropped (and lock released)
-        // before we audit and return.
+        // before we record stats, audit, and lifecycle completion events.
         let result = {
+            Self::extend_instance_ttl(&env);
             // The guard acquires the lock on creation and releases it on drop.
             // This ensures the lock is released even if we return early via `?`.
             let _guard = Self::acquire_execution_lock(&env)?;
@@ -152,10 +169,7 @@ impl Orchestrator {
             Self::perform_remittance_flow(&env, &params)
         };
 
-        // 4. Audit result (lock is already released here)
-        Self::append_audit(&env, symbol_short!("remit"), &params.caller, result.is_ok());
-
-        result
+        Self::record_flow_outcome(&env, &params.caller, params.total_amount, result)
     }
 
     fn perform_remittance_flow(env: &Env, params: &RemittanceFlowParams) -> Result<(), OrchestratorError> {
@@ -333,7 +347,7 @@ impl Orchestrator {
 
         // 3. Check amount validity
         if amount <= 0 {
-            Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
+            Self::record_flow_validation_failure(&env, &executor);
             return Err(OrchestratorError::InvalidAmount);
         }
 
@@ -345,7 +359,7 @@ impl Orchestrator {
             .unwrap_or(false);
 
         if is_locked {
-            Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
+            Self::record_flow_validation_failure(&env, &executor);
             return Err(OrchestratorError::ExecutionLocked);
         }
 
@@ -366,17 +380,7 @@ impl Orchestrator {
             expected_hash,
         )?;
 
-        // Emit flow lifecycle event - flow started
-        // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")
-        // Payload: (executor: Address, amount: i128)
-        // Emitted when a remittance flow execution begins after passing validation
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Transaction,
-            EventPriority::High,
-            symbol_short!("flow"),
-            (executor.clone(), amount),
-        );
+        Self::emit_flow_started(&env, &executor, amount);
 
         // 6. Set execution lock
         Self::extend_instance_ttl(&env);
@@ -392,46 +396,14 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("EXEC_LOCK"), &false);
 
-        // 9. On success: advance nonce, update stats, record audit, emit event
+        // 9. On success: advance nonce, then record shared flow outcome
         match result {
             Ok(_) => {
                 Self::increment_nonce(&env, &executor)?;
-                Self::update_execution_stats(&env, true);
-                Self::append_audit(&env, symbol_short!("flow_exec"), &executor, true);
-
-                // Emit flow lifecycle event - flow completed successfully
-                // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")
-                // Payload: (executor: Address, amount: i128)
-                // Emitted when a remittance flow completes successfully
-                RemitwiseEvents::emit(
-                    &env,
-                    EventCategory::Transaction,
-                    EventPriority::High,
-                    symbol_short!("flow_ok"),
-                    (executor, amount),
-                );
-
+                Self::record_flow_outcome(&env, &executor, amount, Ok(()))?;
                 Ok(true)
             }
-            Err(e) => {
-                Self::update_execution_stats(&env, false);
-                Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
-
-                // Emit flow lifecycle event - flow failed
-                // Topic: ("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")
-                // Payload: (executor: Address, error_code: u32)
-                // Emitted when a remittance flow fails. Error code corresponds to OrchestratorError enum.
-                // Does not leak sensitive amounts - only includes error code for debugging.
-                RemitwiseEvents::emit(
-                    &env,
-                    EventCategory::Transaction,
-                    EventPriority::High,
-                    symbol_short!("flow_fail"),
-                    (executor, e as u32),
-                );
-
-                Err(e)
-            }
+            Err(e) => Self::record_flow_outcome(&env, &executor, amount, Err(e)).map(|_| true),
         }
     }
 
@@ -527,6 +499,66 @@ impl Orchestrator {
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /// Emits the `flow` lifecycle event after validation passes and execution begins.
+    ///
+    /// Topic: `("Remitwise", Transaction, High, "flow")`
+    /// Payload: `(executor: Address, amount: i128)`
+    fn emit_flow_started(env: &Env, executor: &Address, amount: i128) {
+        RemitwiseEvents::emit(
+            env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("flow"),
+            (executor.clone(), amount),
+        );
+    }
+
+    /// Records a pre-execution validation failure in the audit log only.
+    ///
+    /// No lifecycle events or `ExecutionStats` updates are emitted — the flow
+    /// never started. Matches the signed path for `InvalidAmount` / `ExecutionLocked`.
+    fn record_flow_validation_failure(env: &Env, executor: &Address) {
+        Self::append_audit(env, FLOW_EXEC_AUDIT, executor, false);
+    }
+
+    /// Updates stats, audit log, and lifecycle events after flow execution completes.
+    ///
+    /// Must be called only after downstream state mutations finish so failures
+    /// emit `flow_fail`, not `flow_ok`.
+    fn record_flow_outcome(
+        env: &Env,
+        executor: &Address,
+        amount: i128,
+        result: Result<(), OrchestratorError>,
+    ) -> Result<(), OrchestratorError> {
+        match result {
+            Ok(()) => {
+                Self::update_execution_stats(env, true);
+                Self::append_audit(env, FLOW_EXEC_AUDIT, executor, true);
+                RemitwiseEvents::emit(
+                    env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("flow_ok"),
+                    (executor.clone(), amount),
+                );
+                Ok(())
+            }
+            Err(e) => {
+                Self::update_execution_stats(env, false);
+                Self::append_audit(env, FLOW_EXEC_AUDIT, executor, false);
+                RemitwiseEvents::emit(
+                    env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("flow_fail"),
+                    (executor.clone(), e as u32),
+                );
+                Err(e)
+            }
+        }
+    }
 
     fn execute_flow_internal(
         env: &Env,
@@ -1001,3 +1033,6 @@ mod tests_nonce_eviction {
 #[cfg(test)]
 #[path = "test.rs"]
 mod test;
+
+#[cfg(test)]
+mod events_schema_test;
