@@ -22,6 +22,7 @@ pub struct GoalCreatedEvent {
     pub name: String,
     pub target_amount: i128,
     pub target_date: u64,
+    pub locked: bool,
     pub timestamp: u64,
 }
 
@@ -809,23 +810,20 @@ impl SavingsGoalContract {
     // Core goal operations
     // -----------------------------------------------------------------------
 
-    /// Creates a new savings goal.
+        /// Creates a new savings goal.
+    ///
+    /// New goals default to `locked: false` (immediately usable).
+    /// Pass `locked: true` explicitly for commitment-device goals.
     ///
     /// - `owner` must authorize the call.
     /// - `target_amount` must be positive.
-    /// - `target_date` is stored as provided and may be in the past. This
-    ///   supports backfill or migration use cases where historical goals are
-    ///   recorded after the fact. Callers that need strictly future-dated
-    ///   goals should validate this before invoking the contract.
-    ///
-    /// # Events
-    /// - Emits `SavingsEvent::GoalCreated`.
     pub fn create_goal(
         env: Env,
         owner: Address,
         name: String,
         target_amount: i128,
         target_date: u64,
+        locked: bool,  // new parameter - default false from callers
     ) -> Result<u32, SavingsGoalError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
@@ -868,7 +866,7 @@ impl SavingsGoalContract {
             target_amount,
             current_amount: 0,
             target_date,
-            locked: true,
+            locked,  // use the parameter (defaults to false)
             unlock_date: None,
             tags: Vec::new(&env),
         };
@@ -895,6 +893,7 @@ impl SavingsGoalContract {
             name: goal.name.clone(),
             target_amount,
             target_date,
+            locked,
             timestamp: env.ledger().timestamp(),
         };
         env.events().publish((GOAL_CREATED,), event.clone());
@@ -919,7 +918,6 @@ impl SavingsGoalContract {
 
         Ok(new_id)
     }
-
     /// Adds funds to an existing savings goal.
     ///
     /// # Arguments

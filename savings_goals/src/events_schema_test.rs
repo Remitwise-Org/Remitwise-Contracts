@@ -55,7 +55,7 @@ fn goal_created_event_payload_schema() {
     let name = SorobanString::from_str(&env, "Emergency Fund");
 
     // Struct literal lists every field by name -> compile-time stability check.
-    let evt = GoalCreatedEvent {
+     let evt = GoalCreatedEvent {
         goal_id: 1,
         owner: owner.clone(),
         name: name.clone(),
@@ -63,6 +63,7 @@ fn goal_created_event_payload_schema() {
         new_total: 0,
         target_amount: 50_000,
         target_date: 1_735_689_600,
+        locked: false,
         timestamp: 1_234_567_800,
     };
 

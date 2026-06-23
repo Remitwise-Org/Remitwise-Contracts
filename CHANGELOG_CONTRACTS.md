@@ -38,7 +38,23 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Savings Goals (`savings_goals`)
 
+### v0.2.0
+
+- **Summary**: Default `create_goal` to unlocked; explicit locked path for commitment devices.
+- **Changes**:
+  - `create_goal` now defaults to `locked: false` (immediately withdrawable). 
+    Added explicit `locked: bool` parameter to support commitment-device use cases.
+  - `GoalCreatedEvent` includes resulting `locked` state.
+  - Updated tests (including large-amount stress tests) to cover both default and explicit locked paths.
+- **Breaking Changes**: Yes — ABI and default behaviour change for `create_goal`. 
+  Callers that relied on locked-by-default must now pass `false` explicitly for normal goals.
+- **Migration Notes**: 
+  - Update all integrator calls to `create_goal` to pass the new `locked` parameter (default `false`).
+  - No storage migration required (existing goals unaffected).
+  - Bump contract version and re-deploy.
+
 ### v0.1.0
+...
 
 - **Summary**: Initial release of the Savings Goals contract.
 - **Breaking Changes**: None.
