@@ -533,82 +533,105 @@ impl Insurance {
     }
 
     /// Get a paginated list of active policies for an owner.
-    pub fn get_active_policies(
-        env: Env,
-        owner: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> Result<PolicyPage, InsuranceError> {
-        let owner_ids = env
-            .storage()
-            .instance()
-            .get::<_, Vec<u32>>(&DataKey::OwnerPolicies(owner))
-            .unwrap_or_else(|| Vec::new(&env));
-        let mut items = Vec::new(&env);
-        let mut next_cursor = 0u32;
-        let lim = if limit == 0 {
-            DEFAULT_PAGE_LIMIT
-        } else if limit > MAX_PAGE_LIMIT {
-            MAX_PAGE_LIMIT
-        } else {
-            limit
-        };
+///
+/// # Errors
+/// - `NotInitialized` if the contract has not been initialized
+pub fn get_active_policies(
+    env: Env,
+    owner: Address,
+    cursor: u32,
+    limit: u32,
+) -> Result<PolicyPage, InsuranceError> {
+    Self::require_initialized(&env)?;
 
-        for id in owner_ids.iter() {
-            if id > cursor {
-                if let Some(p) = env
-                    .storage()
-                    .instance()
-                    .get::<_, Policy>(&DataKey::Policy(id))
-                {
-                    if p.active {
-                        if items.len() < lim {
-                            items.push_back(id);
-                        } else {
-                            next_cursor = id;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        let count = items.len();
-        Ok(PolicyPage {
-            items,
-            next_cursor,
-            count,
-        })
-    }
+    let owner_ids = env
+        .storage()
+        .instance()
+        .get::<_, Vec<u32>>(&DataKey::OwnerPolicies(owner))
+        .unwrap_or_else(|| Vec::new(&env));
 
-    /// Get a policy by ID.
-    pub fn get_policy(
-        env: Env,
-        policy_id: u32,
-    ) -> Result<core::option::Option<Policy>, InsuranceError> {
-        Ok(env.storage().instance().get(&DataKey::Policy(policy_id)))
-    }
+    let mut items = Vec::new(&env);
+    let mut next_cursor = 0u32;
 
-    /// Get the total monthly premium for all active policies owned by an address.
-    pub fn get_total_monthly_premium(env: Env, owner: Address) -> Result<i128, InsuranceError> {
-        let owner_ids = env
-            .storage()
-            .instance()
-            .get::<_, Vec<u32>>(&DataKey::OwnerPolicies(owner))
-            .unwrap_or_else(|| Vec::new(&env));
-        let mut total: i128 = 0;
-        for id in owner_ids.iter() {
+    let lim = if limit == 0 {
+        DEFAULT_PAGE_LIMIT
+    } else if limit > MAX_PAGE_LIMIT {
+        MAX_PAGE_LIMIT
+    } else {
+        limit
+    };
+
+    for id in owner_ids.iter() {
+        if id > cursor {
             if let Some(p) = env
                 .storage()
                 .instance()
                 .get::<_, Policy>(&DataKey::Policy(id))
             {
                 if p.active {
-                    total = total.saturating_add(p.monthly_premium);
+                    if items.len() < lim {
+                        items.push_back(id);
+                    } else {
+                        next_cursor = id;
+                        break;
+                    }
                 }
             }
         }
-        Ok(total)
     }
+
+    Ok(PolicyPage {
+        items,
+        next_cursor,
+        count: items.len(),
+    })
+}
+
+    /// Get a policy by ID.
+///
+/// # Errors
+/// - `NotInitialized` if the contract has not been initialized
+pub fn get_policy(
+    env: Env,
+    policy_id: u32,
+) -> Result<core::option::Option<Policy>, InsuranceError> {
+    Self::require_initialized(&env)?;
+
+    Ok(env.storage().instance().get(&DataKey::Policy(policy_id)))
+}
+
+    /// Get the total monthly premium for all active policies owned by an address.
+///
+/// # Errors
+/// - `NotInitialized` if the contract has not been initialized
+pub fn get_total_monthly_premium(
+    env: Env,
+    owner: Address,
+) -> Result<i128, InsuranceError> {
+    Self::require_initialized(&env)?;
+
+    let owner_ids = env
+        .storage()
+        .instance()
+        .get::<_, Vec<u32>>(&DataKey::OwnerPolicies(owner))
+        .unwrap_or_else(|| Vec::new(&env));
+
+    let mut total: i128 = 0;
+
+    for id in owner_ids.iter() {
+        if let Some(p) = env
+            .storage()
+            .instance()
+            .get::<_, Policy>(&DataKey::Policy(id))
+        {
+            if p.active {
+                total = total.saturating_add(p.monthly_premium);
+            }
+        }
+    }
+
+    Ok(total)
+}
 }
 
 #[cfg(test)]

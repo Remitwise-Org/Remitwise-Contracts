@@ -609,4 +609,101 @@ mod tests {
             InsuranceError::NotInitialized,
         );
     }
+
+    // ── #846: Uniform initialization guard tests ───────────────────────────────
+
+#[test]
+fn test_create_policy_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, Insurance);
+    let c = InsuranceClient::new(&env, &contract_id);
+
+    let caller = Address::generate(&env);
+
+    assert_eq!(
+        c.try_create_policy(
+            &caller,
+            &n(&env, "Policy"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        )
+        .unwrap_err()
+        .unwrap(),
+        InsuranceError::NotInitialized,
+    );
+}
+
+#[test]
+fn test_pay_premium_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, Insurance);
+    let c = InsuranceClient::new(&env, &contract_id);
+
+    let caller = Address::generate(&env);
+
+    assert_eq!(
+        c.try_pay_premium(&caller, &1u32)
+            .unwrap_err()
+            .unwrap(),
+        InsuranceError::NotInitialized,
+    );
+}
+
+#[test]
+fn test_batch_pay_premiums_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, Insurance);
+    let c = InsuranceClient::new(&env, &contract_id);
+
+    let caller = Address::generate(&env);
+    let ids = Vec::<u32>::new(&env);
+
+    assert_eq!(
+        c.try_batch_pay_premiums(&caller, &ids)
+            .unwrap_err()
+            .unwrap(),
+        InsuranceError::NotInitialized,
+    );
+}
+
+#[test]
+fn test_get_active_policies_not_initialized() {
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, Insurance);
+    let c = InsuranceClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+
+    assert_eq!(
+        c.try_get_active_policies(&owner, &0u32, &10u32)
+            .unwrap_err()
+            .unwrap(),
+        InsuranceError::NotInitialized,
+    );
+}
+
+#[test]
+fn test_get_total_monthly_premium_not_initialized() {
+    let env = Env::default();
+
+    let contract_id = env.register_contract(None, Insurance);
+    let c = InsuranceClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+
+    assert_eq!(
+        c.try_get_total_monthly_premium(&owner)
+            .unwrap_err()
+            .unwrap(),
+        InsuranceError::NotInitialized,
+    );
+}
 }
