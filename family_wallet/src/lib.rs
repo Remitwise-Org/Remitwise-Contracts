@@ -1804,12 +1804,6 @@ impl FamilyWallet {
     ///
     /// The original proposer may cancel their own transaction. Owners and
     /// admins may cancel any pending transaction.
-    ///
-    /// After cancellation, the remaining pending proposals are revalidated
-    /// against the current signer set and multisig configuration, mirroring
-    /// the behaviour of `remove_family_member`. Any proposal that can no
-    /// longer reach quorum is invalidated and emits a
-    /// `ProposalInvalidatedEvent`.
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -1833,11 +1827,6 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
-
-        // Re-validate remaining in-flight proposals: any proposal that can no
-        // longer reach quorum after this cancellation is invalidated immediately,
-        // keeping the proposal set consistent across all mutations.
-        Self::revalidate_proposals_after_membership_change(&env);
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::TransactionCancelled),
