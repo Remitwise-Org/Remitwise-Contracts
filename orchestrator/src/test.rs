@@ -879,8 +879,7 @@ fn test_signed_in_window_replay_with_used_nonce_rejected() {
     // Replay the identical request while the deadline is still in-window. The
     // deadline and hash checks pass, but the used-nonce check fires before the
     // sequential counter check and rejects the stale nonce.
-    let replay =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let replay = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
     assert_eq!(
         replay,
         Err(Ok(OrchestratorError::NonceAlreadyUsed)),
@@ -1121,7 +1120,9 @@ fn remitwise_topic(env: &Env, action: Symbol) -> soroban_sdk::Vec<soroban_sdk::V
     soroban_sdk::vec![
         env,
         symbol_short!("Remitwise").into_val(env),
-        remitwise_common::EventCategory::Transaction.to_u32().into_val(env),
+        remitwise_common::EventCategory::Transaction
+            .to_u32()
+            .into_val(env),
         remitwise_common::EventPriority::High.to_u32().into_val(env),
         action.into_val(env),
     ]
@@ -1136,7 +1137,12 @@ fn count_remitwise_events(env: &Env, contract_id: &Address, action: Symbol) -> u
         .count() as u32
 }
 
-fn flow_params(_env: &Env, caller: &Address, mock_id: &Address, amount: i128) -> RemittanceFlowParams {
+fn flow_params(
+    _env: &Env,
+    caller: &Address,
+    mock_id: &Address,
+    amount: i128,
+) -> RemittanceFlowParams {
     RemittanceFlowParams {
         caller: caller.clone(),
         total_amount: amount,
@@ -1161,11 +1167,17 @@ fn test_flow_event_emitted_on_start() {
     let mock_id = env.register_contract(None, MockContract);
     let caller = Address::generate(&env);
 
-    assert_eq!(count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")), 0);
+    assert_eq!(
+        count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")),
+        0
+    );
 
     client.execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1000));
 
-    assert_eq!(count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")), 1);
+    assert_eq!(
+        count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")),
+        1
+    );
 }
 
 #[test]
@@ -1206,12 +1218,7 @@ fn test_flow_fail_event_emitted_on_failure() {
     let deny_id = env.register_contract(None, mock_no_limit::Contract);
     let caller = Address::generate(&env);
 
-    let result = client.try_execute_remittance_flow(&flow_params(
-        &env,
-        &caller,
-        &deny_id,
-        1000,
-    ));
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &deny_id, 1000));
     assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
 
     assert_eq!(
@@ -1296,12 +1303,8 @@ fn test_flow_fail_does_not_leak_sensitive_amount() {
     let caller = Address::generate(&env);
     let sensitive_amount = 999_999i128;
 
-    let _ = client.try_execute_remittance_flow(&flow_params(
-        &env,
-        &caller,
-        &deny_id,
-        sensitive_amount,
-    ));
+    let _ =
+        client.try_execute_remittance_flow(&flow_params(&env, &caller, &deny_id, sensitive_amount));
 
     let fail_topic = remitwise_topic(&env, symbol_short!("flow_fail"));
     let fail_event = env
@@ -1326,12 +1329,7 @@ fn test_unsigned_and_signed_flow_stats_parity() {
     let signed_executor = Address::generate(&env);
     let mock_id = env.register_contract(None, MockContract);
 
-    client.execute_remittance_flow(&flow_params(
-        &env,
-        &unsigned_executor,
-        &mock_id,
-        1000,
-    ));
+    client.execute_remittance_flow(&flow_params(&env, &unsigned_executor, &mock_id, 1000));
 
     let after_unsigned = client.get_execution_stats().unwrap();
     assert_eq!(after_unsigned.total_executions, 1);
@@ -1340,9 +1338,7 @@ fn test_unsigned_and_signed_flow_stats_parity() {
 
     let deadline = env.ledger().timestamp() + 1000;
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
-    assert!(
-        client.execute_remittance_flow_signed(&signed_executor, &1000, &0, &deadline, &hash)
-    );
+    assert!(client.execute_remittance_flow_signed(&signed_executor, &1000, &0, &deadline, &hash));
 
     let after_signed = client.get_execution_stats().unwrap();
     assert_eq!(after_signed.total_executions, 2);
@@ -1362,7 +1358,10 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 0));
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
 
-    assert_eq!(count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")), 0);
+    assert_eq!(
+        count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow")),
+        0
+    );
     assert_eq!(
         count_remitwise_events(&env, &orchestrator_id, symbol_short!("flow_ok")),
         0

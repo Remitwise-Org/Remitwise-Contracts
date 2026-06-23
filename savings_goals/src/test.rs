@@ -6331,15 +6331,22 @@ fn test_import_snapshot_invalid_goal_name_leaves_state_intact() {
 
     client.init();
     // Create a goal before import attempt
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Keeper"), &5000, &2000000000);
-    let goal_before = client.get_goal(&id1).expect("goal must exist before import");
+    let id1 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Keeper"),
+        &5000,
+        &2000000000,
+    );
+    let goal_before = client
+        .get_goal(&id1)
+        .expect("goal must exist before import");
 
     // Build a snapshot with an invalid goal name (empty string).
     // We need to construct the snapshot manually since export won't create invalid data.
     let bad_goal = SavingsGoal {
         id: 100,
         owner: owner.clone(),
-        name: String::from_str(&env, ""),  // Invalid: empty name
+        name: String::from_str(&env, ""), // Invalid: empty name
         target_amount: 1000,
         current_amount: 0,
         target_date: 2000000000,
@@ -6364,11 +6371,10 @@ fn test_import_snapshot_invalid_goal_name_leaves_state_intact() {
     assert!(result.is_err(), "import with invalid goal name must fail");
 
     // Pre-existing goal must be completely unchanged
-    let goal_after = client.get_goal(&id1).expect("goal must still exist after failed import");
-    assert_eq!(
-        goal_before.id, goal_after.id,
-        "goal id must be unchanged"
-    );
+    let goal_after = client
+        .get_goal(&id1)
+        .expect("goal must still exist after failed import");
+    assert_eq!(goal_before.id, goal_after.id, "goal id must be unchanged");
     assert_eq!(
         goal_before.name, goal_after.name,
         "goal name must be unchanged"
@@ -6397,15 +6403,17 @@ fn test_import_snapshot_balance_overflow_leaves_state_intact() {
     // Create a goal before import attempt
     let id1 = client.create_goal(&owner, &String::from_str(&env, "Safe"), &1000, &2000000000);
     client.add_to_goal(&owner, &id1, &500);
-    let goal_before = client.get_goal(&id1).expect("goal must exist before import");
+    let goal_before = client
+        .get_goal(&id1)
+        .expect("goal must exist before import");
 
     // Build a snapshot with a goal whose balance exceeds MAX_SAFE_GOAL_BALANCE
     let overflow_goal = SavingsGoal {
         id: 100,
         owner: owner.clone(),
         name: String::from_str(&env, "Overflow"),
-        target_amount: i128::MAX / 2 + 1000,  // Valid target
-        current_amount: i128::MAX / 2 + 1,    // Exceeds MAX_SAFE_GOAL_BALANCE
+        target_amount: i128::MAX / 2 + 1000, // Valid target
+        current_amount: i128::MAX / 2 + 1,   // Exceeds MAX_SAFE_GOAL_BALANCE
         target_date: 2000000000,
         locked: true,
         unlock_date: None,
@@ -6432,7 +6440,9 @@ fn test_import_snapshot_balance_overflow_leaves_state_intact() {
     );
 
     // Pre-existing goal must be completely unchanged
-    let goal_after = client.get_goal(&id1).expect("goal must still exist after failed import");
+    let goal_after = client
+        .get_goal(&id1)
+        .expect("goal must still exist after failed import");
     assert_eq!(
         goal_before.current_amount, goal_after.current_amount,
         "goal balance must be unchanged after failed import"
@@ -6455,8 +6465,15 @@ fn test_import_snapshot_invalid_next_id_leaves_state_intact() {
 
     client.init();
     // Create a goal before import attempt
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Keeper"), &5000, &2000000000);
-    let goal_before = client.get_goal(&id1).expect("goal must exist before import");
+    let id1 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Keeper"),
+        &5000,
+        &2000000000,
+    );
+    let goal_before = client
+        .get_goal(&id1)
+        .expect("goal must exist before import");
 
     // Build a snapshot with goal ID = 100 but next_id = 50 (inconsistent)
     let goal = SavingsGoal {
@@ -6478,20 +6495,22 @@ fn test_import_snapshot_invalid_next_id_leaves_state_intact() {
     let bad_snapshot = GoalsExportSnapshot {
         schema_version: 1,
         checksum,
-        next_id: 50,  // Less than the goal ID (100)
+        next_id: 50, // Less than the goal ID (100)
         goals,
     };
 
     // Attempt import with invalid next_id — must fail
     let result = client.try_import_snapshot(&owner, &0, &bad_snapshot);
-    assert!(result.is_err(), "import with next_id < max goal id must fail");
+    assert!(
+        result.is_err(),
+        "import with next_id < max goal id must fail"
+    );
 
     // Pre-existing goal must be completely unchanged
-    let goal_after = client.get_goal(&id1).expect("goal must still exist after failed import");
-    assert_eq!(
-        goal_before.id, goal_after.id,
-        "goal id must be unchanged"
-    );
+    let goal_after = client
+        .get_goal(&id1)
+        .expect("goal must still exist after failed import");
+    assert_eq!(goal_before.id, goal_after.id, "goal id must be unchanged");
 }
 
 /// Atomic import: a snapshot that exceeds per-owner goal cap
@@ -6510,8 +6529,15 @@ fn test_import_snapshot_exceeds_goal_cap_leaves_state_intact() {
 
     client.init();
     // Create a goal before import attempt
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Keeper"), &5000, &2000000000);
-    let goal_before = client.get_goal(&id1).expect("goal must exist before import");
+    let id1 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Keeper"),
+        &5000,
+        &2000000000,
+    );
+    let goal_before = client
+        .get_goal(&id1)
+        .expect("goal must exist before import");
 
     // Build a snapshot with way too many goals (more than MAX_GOALS_PER_OWNER)
     let mut goals = Vec::new(&env);
@@ -6547,11 +6573,10 @@ fn test_import_snapshot_exceeds_goal_cap_leaves_state_intact() {
     );
 
     // Pre-existing goal must be completely unchanged
-    let goal_after = client.get_goal(&id1).expect("goal must still exist after failed import");
-    assert_eq!(
-        goal_before.id, goal_after.id,
-        "goal id must be unchanged"
-    );
+    let goal_after = client
+        .get_goal(&id1)
+        .expect("goal must still exist after failed import");
+    assert_eq!(goal_before.id, goal_after.id, "goal id must be unchanged");
 }
 
 /// Owner indices and NextId consistency: after a successful import,
@@ -6577,7 +6602,7 @@ fn test_import_snapshot_owner_indices_are_consistent() {
     let _id2a = client.create_goal(&owner2, &String::from_str(&env, "B1"), &3000, &2000000000);
 
     // Export the full snapshot and re-import it
-    let snapshot = client.export_snapshot(&owner1);  // Admin exports all
+    let snapshot = client.export_snapshot(&owner1); // Admin exports all
     let ok = client.import_snapshot(&owner1, &0, &snapshot);
     assert!(ok, "re-import must succeed");
 

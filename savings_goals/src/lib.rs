@@ -1947,9 +1947,7 @@ impl SavingsGoalContract {
         // Verify per-owner goal count is within limits
         let mut owner_goal_counts: Map<Address, u32> = Map::new(&env);
         for g in snapshot.goals.iter() {
-            let count = owner_goal_counts
-                .get(g.owner.clone())
-                .unwrap_or(0);
+            let count = owner_goal_counts.get(g.owner.clone()).unwrap_or(0);
             let new_count = match count.checked_add(1) {
                 Some(c) => c,
                 None => {

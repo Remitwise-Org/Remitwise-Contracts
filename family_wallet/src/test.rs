@@ -6381,7 +6381,6 @@ fn test_precision_spending_overflow_graceful() {
     assert!(result.is_ok() || result.is_err());
 }
 
-
 #[test]
 fn test_remove_member_clears_spending_tracker() {
     let env = Env::default();
@@ -6402,7 +6401,9 @@ fn test_remove_member_clears_spending_tracker() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member, &limit)
+        .unwrap();
 
     // Verify the spending tracker exists
     let tracker_before = client.get_spending_tracker(&member);
@@ -6413,7 +6414,10 @@ fn test_remove_member_clears_spending_tracker() {
 
     // Verify the spending tracker is cleared
     let tracker_after = client.get_spending_tracker(&member);
-    assert!(tracker_after.is_none(), "Spending tracker should be cleared after member removal");
+    assert!(
+        tracker_after.is_none(),
+        "Spending tracker should be cleared after member removal"
+    );
 }
 
 #[test]
@@ -6436,7 +6440,9 @@ fn test_remove_member_clears_precision_limit() {
         max_single_tx: 100_0000000,
         enable_rollover: false,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member, &limit)
+        .unwrap();
 
     // Verify the limit exists (by checking spending tracker was cleaned up due to rollover=false)
     let tracker_before = client.get_spending_tracker(&member);
@@ -6446,7 +6452,9 @@ fn test_remove_member_clears_precision_limit() {
     client.remove_family_member(&owner, &member);
 
     // Re-add the member with a new role
-    client.add_member(&owner, &member, &FamilyRole::Admin, 0).unwrap();
+    client
+        .add_member(&owner, &member, &FamilyRole::Admin, 0)
+        .unwrap();
 
     // Verify the precision limit is gone - setting it again should succeed
     let new_limit = PrecisionSpendingLimit {
@@ -6456,7 +6464,10 @@ fn test_remove_member_clears_precision_limit() {
         enable_rollover: true,
     };
     let result = client.try_set_precision_spending_limit(&owner, &member, &new_limit);
-    assert!(result.is_ok(), "Should be able to set new precision limit for re-added member");
+    assert!(
+        result.is_ok(),
+        "Should be able to set new precision limit for re-added member"
+    );
 }
 
 #[test]
@@ -6479,7 +6490,9 @@ fn test_remove_member_then_readd_has_clean_state() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member, &limit)
+        .unwrap();
 
     // Verify spending tracker was created
     let tracker_before = client.get_spending_tracker(&member);
@@ -6495,7 +6508,9 @@ fn test_remove_member_then_readd_has_clean_state() {
     assert!(tracker_removed.is_none());
 
     // Re-add the same member
-    client.add_member(&owner, &member, &FamilyRole::Member, 0).unwrap();
+    client
+        .add_member(&owner, &member, &FamilyRole::Member, 0)
+        .unwrap();
 
     // Verify the member exists again
     let member_data = client.get_family_member(&member);
@@ -6507,8 +6522,14 @@ fn test_remove_member_then_readd_has_clean_state() {
     // It might be None or a fresh tracker depending on when it's created
     // If it exists, it should have 0 current_spent
     if let Some(tracker) = tracker_after_readd {
-        assert_eq!(tracker.current_spent, 0, "Re-added member should have clean spending state");
-        assert_eq!(tracker.tx_count, 0, "Re-added member should have 0 transaction count");
+        assert_eq!(
+            tracker.current_spent, 0,
+            "Re-added member should have clean spending state"
+        );
+        assert_eq!(
+            tracker.tx_count, 0,
+            "Re-added member should have 0 transaction count"
+        );
     }
 }
 
@@ -6547,9 +6568,15 @@ fn test_batch_remove_clears_all_member_state() {
         enable_rollover: true,
     };
 
-    client.set_precision_spending_limit(&owner, &member1, &limit1).unwrap();
-    client.set_precision_spending_limit(&owner, &member2, &limit2).unwrap();
-    client.set_precision_spending_limit(&owner, &member3, &limit3).unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member1, &limit1)
+        .unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member2, &limit2)
+        .unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member3, &limit3)
+        .unwrap();
 
     // Verify all have spending trackers
     assert!(client.get_spending_tracker(&member1).is_some());
@@ -6604,8 +6631,12 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
         enable_rollover: true,
     };
 
-    client.set_precision_spending_limit(&owner, &member1, &limit).unwrap();
-    client.set_precision_spending_limit(&owner, &member3, &limit).unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member1, &limit)
+        .unwrap();
+    client
+        .set_precision_spending_limit(&owner, &member3, &limit)
+        .unwrap();
     // member2 has no precision limit
 
     // Verify state
@@ -6624,7 +6655,9 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     assert!(client.get_spending_tracker(&member3).is_none());
 
     // Re-add member2 and verify it still has no tracker (wasn't creating stale state)
-    client.add_member(&owner, &member2, &FamilyRole::Member, 0).unwrap();
+    client
+        .add_member(&owner, &member2, &FamilyRole::Member, 0)
+        .unwrap();
     assert!(client.get_family_member(&member2).is_some());
     assert!(client.get_spending_tracker(&member2).is_none());
 }

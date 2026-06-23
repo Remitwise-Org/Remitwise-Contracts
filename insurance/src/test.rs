@@ -343,8 +343,11 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         assert!(c.deactivate_policy(&policy_owner, &pid));
@@ -361,8 +364,11 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         assert!(c.deactivate_policy(&contract_owner, &pid));
@@ -379,14 +385,18 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
         let stranger = Address::generate(&env);
 
         assert_eq!(
             c.try_deactivate_policy(&stranger, &pid)
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::Unauthorized,
         );
     }
@@ -399,8 +409,11 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         // First deactivation — should succeed
@@ -409,7 +422,8 @@ mod tests {
         // Second deactivation — must return PolicyAlreadyInactive
         assert_eq!(
             c.try_deactivate_policy(&policy_owner, &pid)
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::PolicyAlreadyInactive,
         );
     }
@@ -423,7 +437,8 @@ mod tests {
 
         assert_eq!(
             c.try_deactivate_policy(&contract_owner, &9999)
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::PolicyNotFound,
         );
     }
@@ -438,8 +453,7 @@ mod tests {
         let caller = Address::generate(&env);
 
         assert_eq!(
-            c.try_deactivate_policy(&caller, &1)
-                .unwrap_err().unwrap(),
+            c.try_deactivate_policy(&caller, &1).unwrap_err().unwrap(),
             InsuranceError::NotInitialized,
         );
     }
@@ -452,14 +466,20 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let owner = Address::generate(&env);
         let pid = c.create_policy(
-            &owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         c.deactivate_policy(&owner, &pid);
 
         let page = c.get_active_policies(&owner, &0, &10);
-        assert_eq!(page.count, 0, "active list should be empty after deactivation");
+        assert_eq!(
+            page.count, 0,
+            "active list should be empty after deactivation"
+        );
     }
 
     // ── set_external_ref ──────────────────────────────────────────────────────
@@ -472,14 +492,24 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
-        assert!(c.set_external_ref(&contract_owner, &pid, &core::option::Option::Some(n(&env, "ref-abc-123"))));
+        assert!(c.set_external_ref(
+            &contract_owner,
+            &pid,
+            &core::option::Option::Some(n(&env, "ref-abc-123"))
+        ));
 
         let p = c.get_policy(&pid).unwrap();
-        assert_eq!(p.external_ref, core::option::Option::Some(n(&env, "ref-abc-123")));
+        assert_eq!(
+            p.external_ref,
+            core::option::Option::Some(n(&env, "ref-abc-123"))
+        );
     }
 
     /// Success path: contract owner can clear an existing external reference (None).
@@ -490,11 +520,18 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
-        c.set_external_ref(&contract_owner, &pid, &core::option::Option::Some(n(&env, "ref-abc-123")));
+        c.set_external_ref(
+            &contract_owner,
+            &pid,
+            &core::option::Option::Some(n(&env, "ref-abc-123")),
+        );
         c.set_external_ref(&contract_owner, &pid, &core::option::Option::None);
 
         let p = c.get_policy(&pid).unwrap();
@@ -509,13 +546,21 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         assert_eq!(
-            c.try_set_external_ref(&policy_owner, &pid, &core::option::Option::Some(n(&env, "ref")))
-                .unwrap_err().unwrap(),
+            c.try_set_external_ref(
+                &policy_owner,
+                &pid,
+                &core::option::Option::Some(n(&env, "ref"))
+            )
+            .unwrap_err()
+            .unwrap(),
             InsuranceError::Unauthorized,
         );
     }
@@ -528,14 +573,18 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
         let stranger = Address::generate(&env);
 
         assert_eq!(
             c.try_set_external_ref(&stranger, &pid, &core::option::Option::Some(n(&env, "ref")))
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::Unauthorized,
         );
     }
@@ -548,15 +597,19 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         // 129 characters — one over the MAX_EXT_REF_LEN of 128
         let long_ref = n(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         assert_eq!(
             c.try_set_external_ref(&contract_owner, &pid, &core::option::Option::Some(long_ref))
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::InvalidExternalRef,
         );
     }
@@ -569,13 +622,21 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
         let policy_owner = Address::generate(&env);
         let pid = c.create_policy(
-            &policy_owner, &n(&env, "P"), &CoverageType::Health,
-            &5_000_000i128, &50_000_000i128,
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
         );
 
         assert_eq!(
-            c.try_set_external_ref(&contract_owner, &pid, &core::option::Option::Some(n(&env, "")))
-                .unwrap_err().unwrap(),
+            c.try_set_external_ref(
+                &contract_owner,
+                &pid,
+                &core::option::Option::Some(n(&env, ""))
+            )
+            .unwrap_err()
+            .unwrap(),
             InsuranceError::InvalidExternalRef,
         );
     }
@@ -588,8 +649,13 @@ mod tests {
         let (c, contract_owner) = setup_with_owner(&env);
 
         assert_eq!(
-            c.try_set_external_ref(&contract_owner, &9999, &core::option::Option::Some(n(&env, "ref")))
-                .unwrap_err().unwrap(),
+            c.try_set_external_ref(
+                &contract_owner,
+                &9999,
+                &core::option::Option::Some(n(&env, "ref"))
+            )
+            .unwrap_err()
+            .unwrap(),
             InsuranceError::PolicyNotFound,
         );
     }
@@ -605,7 +671,8 @@ mod tests {
 
         assert_eq!(
             c.try_set_external_ref(&caller, &1, &core::option::Option::Some(n(&env, "ref")))
-                .unwrap_err().unwrap(),
+                .unwrap_err()
+                .unwrap(),
             InsuranceError::NotInitialized,
         );
     }

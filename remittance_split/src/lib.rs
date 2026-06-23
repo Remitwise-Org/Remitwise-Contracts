@@ -122,7 +122,6 @@ pub const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
 /// Maximum allowed window for transaction deadlines (1 hour).
 pub const MAX_DEADLINE_WINDOW_SECS: u64 = 3_600;
 
-
 /// Split configuration with owner tracking for access control
 #[derive(Clone)]
 #[contracttype]
@@ -2443,8 +2442,7 @@ impl RemittanceSplit {
         limit: u32,
     ) -> SchedulePage {
         let index_key = DataKey::OwnerSchedules(owner.clone());
-        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key)
-        else {
+        let Some(schedule_ids) = env.storage().persistent().get::<_, Vec<u32>>(&index_key) else {
             return SchedulePage {
                 items: Vec::new(&env),
                 next_cursor: 0,

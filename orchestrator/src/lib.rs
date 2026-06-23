@@ -749,13 +749,7 @@ impl Orchestrator {
     }
 
     /// Compensate a bill payment if it was applied.
-    fn compensate_bill(
-        env: &Env,
-        executor: &Address,
-        bill_id: u32,
-        amount: i128,
-        applied: bool,
-    ) {
+    fn compensate_bill(env: &Env, executor: &Address, bill_id: u32, amount: i128, applied: bool) {
         if !applied || amount <= 0 {
             return;
         }
