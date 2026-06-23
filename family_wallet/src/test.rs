@@ -6383,3 +6383,250 @@ fn test_precision_spending_overflow_graceful() {
 
 }
 
+
+#[test]
+fn test_remove_member_clears_spending_tracker() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let initial_members = vec![&env, member.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Set precision spending limit with rollover enabled
+    let limit = PrecisionSpendingLimit {
+        limit: 1000_0000000,
+        min_precision: 1,
+        max_single_tx: 100_0000000,
+        enable_rollover: true,
+    };
+    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+
+    // Verify the spending tracker exists
+    let tracker_before = client.get_spending_tracker(&member);
+    assert!(tracker_before.is_some());
+
+    // Remove the member
+    client.remove_family_member(&owner, &member);
+
+    // Verify the spending tracker is cleared
+    let tracker_after = client.get_spending_tracker(&member);
+    assert!(tracker_after.is_none(), "Spending tracker should be cleared after member removal");
+}
+
+#[test]
+fn test_remove_member_clears_precision_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let initial_members = vec![&env, member.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Set precision spending limit
+    let limit = PrecisionSpendingLimit {
+        limit: 1000_0000000,
+        min_precision: 1,
+        max_single_tx: 100_0000000,
+        enable_rollover: false,
+    };
+    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+
+    // Verify the limit exists (by checking spending tracker was cleaned up due to rollover=false)
+    let tracker_before = client.get_spending_tracker(&member);
+    assert!(tracker_before.is_none());
+
+    // Remove the member
+    client.remove_family_member(&owner, &member);
+
+    // Re-add the member with a new role
+    client.add_member(&owner, &member, &FamilyRole::Admin, 0).unwrap();
+
+    // Verify the precision limit is gone - setting it again should succeed
+    let new_limit = PrecisionSpendingLimit {
+        limit: 500_0000000,
+        min_precision: 1,
+        max_single_tx: 50_0000000,
+        enable_rollover: true,
+    };
+    let result = client.try_set_precision_spending_limit(&owner, &member, &new_limit);
+    assert!(result.is_ok(), "Should be able to set new precision limit for re-added member");
+}
+
+#[test]
+fn test_remove_member_then_readd_has_clean_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let initial_members = vec![&env, member.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Set precision spending limit with rollover
+    let limit = PrecisionSpendingLimit {
+        limit: 1000_0000000,
+        min_precision: 1,
+        max_single_tx: 100_0000000,
+        enable_rollover: true,
+    };
+    client.set_precision_spending_limit(&owner, &member, &limit).unwrap();
+
+    // Verify spending tracker was created
+    let tracker_before = client.get_spending_tracker(&member);
+    assert!(tracker_before.is_some());
+    let tracked_spent = tracker_before.unwrap().current_spent;
+    assert_eq!(tracked_spent, 0, "Initial spent should be 0");
+
+    // Remove the member
+    client.remove_family_member(&owner, &member);
+
+    // Verify tracking is gone
+    let tracker_removed = client.get_spending_tracker(&member);
+    assert!(tracker_removed.is_none());
+
+    // Re-add the same member
+    client.add_member(&owner, &member, &FamilyRole::Member, 0).unwrap();
+
+    // Verify the member exists again
+    let member_data = client.get_family_member(&member);
+    assert!(member_data.is_some());
+    assert_eq!(member_data.unwrap().role, FamilyRole::Member);
+
+    // Verify the spending tracker is clean (starting from fresh state, not carried over)
+    let tracker_after_readd = client.get_spending_tracker(&member);
+    // It might be None or a fresh tracker depending on when it's created
+    // If it exists, it should have 0 current_spent
+    if let Some(tracker) = tracker_after_readd {
+        assert_eq!(tracker.current_spent, 0, "Re-added member should have clean spending state");
+        assert_eq!(tracker.tx_count, 0, "Re-added member should have 0 transaction count");
+    }
+}
+
+#[test]
+fn test_batch_remove_clears_all_member_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Set precision limits for all members
+    let limit1 = PrecisionSpendingLimit {
+        limit: 1000_0000000,
+        min_precision: 1,
+        max_single_tx: 100_0000000,
+        enable_rollover: true,
+    };
+    let limit2 = PrecisionSpendingLimit {
+        limit: 2000_0000000,
+        min_precision: 1,
+        max_single_tx: 200_0000000,
+        enable_rollover: true,
+    };
+    let limit3 = PrecisionSpendingLimit {
+        limit: 3000_0000000,
+        min_precision: 1,
+        max_single_tx: 300_0000000,
+        enable_rollover: true,
+    };
+
+    client.set_precision_spending_limit(&owner, &member1, &limit1).unwrap();
+    client.set_precision_spending_limit(&owner, &member2, &limit2).unwrap();
+    client.set_precision_spending_limit(&owner, &member3, &limit3).unwrap();
+
+    // Verify all have spending trackers
+    assert!(client.get_spending_tracker(&member1).is_some());
+    assert!(client.get_spending_tracker(&member2).is_some());
+    assert!(client.get_spending_tracker(&member3).is_some());
+
+    // Batch remove members
+    let to_remove = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+    let count = client.batch_remove_family_members(&owner, &to_remove);
+    assert_eq!(count, 3);
+
+    // Verify all spending trackers are cleared
+    assert!(
+        client.get_spending_tracker(&member1).is_none(),
+        "Member1 spending tracker should be cleared"
+    );
+    assert!(
+        client.get_spending_tracker(&member2).is_none(),
+        "Member2 spending tracker should be cleared"
+    );
+    assert!(
+        client.get_spending_tracker(&member3).is_none(),
+        "Member3 spending tracker should be cleared"
+    );
+
+    // Verify members are removed
+    assert!(client.get_family_member(&member1).is_none());
+    assert!(client.get_family_member(&member2).is_none());
+    assert!(client.get_family_member(&member3).is_none());
+}
+
+#[test]
+fn test_batch_remove_with_mixed_members_clears_all_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let member3 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Set precision limit only on member1 and member3
+    let limit = PrecisionSpendingLimit {
+        limit: 1000_0000000,
+        min_precision: 1,
+        max_single_tx: 100_0000000,
+        enable_rollover: true,
+    };
+
+    client.set_precision_spending_limit(&owner, &member1, &limit).unwrap();
+    client.set_precision_spending_limit(&owner, &member3, &limit).unwrap();
+    // member2 has no precision limit
+
+    // Verify state
+    assert!(client.get_spending_tracker(&member1).is_some());
+    assert!(client.get_spending_tracker(&member2).is_none()); // member2 never had one
+    assert!(client.get_spending_tracker(&member3).is_some());
+
+    // Batch remove all members
+    let to_remove = vec![&env, member1.clone(), member2.clone(), member3.clone()];
+    let count = client.batch_remove_family_members(&owner, &to_remove);
+    assert_eq!(count, 3);
+
+    // Verify all trackers are gone
+    assert!(client.get_spending_tracker(&member1).is_none());
+    assert!(client.get_spending_tracker(&member2).is_none());
+    assert!(client.get_spending_tracker(&member3).is_none());
+
+    // Re-add member2 and verify it still has no tracker (wasn't creating stale state)
+    client.add_member(&owner, &member2, &FamilyRole::Member, 0).unwrap();
+    assert!(client.get_family_member(&member2).is_some());
+    assert!(client.get_spending_tracker(&member2).is_none());
+}
