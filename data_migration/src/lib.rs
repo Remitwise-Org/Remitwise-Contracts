@@ -30,6 +30,12 @@ use std::collections::{BTreeMap, HashMap};
 /// Format: `enc:v1:<base64>`
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
+/// Current encrypted payload schema version.
+pub const ENCRYPTED_PAYLOAD_VERSION: u32 = 1;
+
+/// Minimum supported encrypted payload version for import.
+pub const MIN_SUPPORTED_ENCRYPTED_VERSION: u32 = 1;
+
 /// Current snapshot schema version for migration compatibility.
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -505,6 +511,7 @@ fn validate_encrypted_payload_size(encoded_len: usize) -> Result<(), MigrationEr
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
     IncompatibleVersion { found: u32, min: u32, max: u32 },
+    UnsupportedEncryptedVersion { found: u32, max: u32 },
     ChecksumMismatch,
     UnknownHashAlgorithm,
     PayloadTooLarge { size: usize, max: usize },
@@ -524,6 +531,13 @@ impl std::fmt::Display for MigrationError {
                     f,
                     "incompatible version {} (supported {}-{})",
                     found, min, max
+                )
+            }
+            MigrationError::UnsupportedEncryptedVersion { found, max } => {
+                write!(
+                    f,
+                    "unsupported encrypted payload version {} (max supported {})",
+                    found, max
                 )
             }
             MigrationError::ChecksumMismatch => {
@@ -722,6 +736,14 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 /// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
 /// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
 /// context of data-migration operations.
+/// Format an encrypted payload prefix for a given version.
+/// 
+/// This helper is provided for constructing encrypted payloads and testing
+/// version negotiation. The format is `enc:vN:` where N is the version number.
+pub fn encrypted_payload_prefix(version: u32) -> String {
+    format!("enc:v{}:", version)
+}
+
 pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, MigrationError> {
     if plain_bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
         return Err(MigrationError::PayloadTooLarge {
@@ -770,11 +792,47 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     // The decoded payload's size is checked against MAX_MIGRATION_PAYLOAD_BYTES later.
     validate_encrypted_payload_size(encoded.len())?;
 
-    let rest = encoded
-        .strip_prefix(ENCRYPTED_PAYLOAD_PREFIX_V1)
+    // Parse version from prefix: enc:vN:<base64>
+    // Format is: enc:vN: where N is the version number (1 or more digits)
+    if !encoded.starts_with("enc:v") {
+        return Err(MigrationError::InvalidFormat(
+            "missing or invalid encrypted payload marker".into(),
+        ));
+    }
+
+    // Find the colon after the version number (second colon in the string)
+    // We start searching from position 5 (after "enc:v")
+    let version_end = encoded[5..]
+        .find(':')
+        .map(|i| i + 5)
         .ok_or_else(|| {
-            MigrationError::InvalidFormat("missing or invalid encrypted payload marker".into())
+            MigrationError::InvalidFormat("missing version separator in encrypted payload marker".into())
         })?;
+
+    // Ensure we have at least one digit for the version
+    if version_end <= 5 {
+        return Err(MigrationError::InvalidFormat(
+            "missing or invalid encrypted payload marker".into(),
+        ));
+    }
+
+    let version_str = &encoded[5..version_end];
+    let version: u32 = version_str
+        .parse()
+        .map_err(|_| {
+            MigrationError::InvalidFormat("invalid encrypted payload version number".into())
+        })?;
+
+    // Check version compatibility
+    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > ENCRYPTED_PAYLOAD_VERSION {
+        return Err(MigrationError::UnsupportedEncryptedVersion {
+            found: version,
+            max: ENCRYPTED_PAYLOAD_VERSION,
+        });
+    }
+
+    // The base64 payload starts after the version and its separator colon
+    let rest = &encoded[version_end + 1..];
 
     if rest.is_empty() {
         return Err(MigrationError::InvalidFormat(
@@ -782,8 +840,24 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
         ));
     }
 
+    // Dispatch to version-specific handler
+    match version {
+        1 => import_from_encrypted_payload_v1(rest),
+        _ => {
+            // This should not be reached due to version check above,
+            // but keep as a safety fallback
+            Err(MigrationError::UnsupportedEncryptedVersion {
+                found: version,
+                max: ENCRYPTED_PAYLOAD_VERSION,
+            })
+        }
+    }
+}
+
+/// Handler for encrypted payload version 1.
+fn import_from_encrypted_payload_v1(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
     base64::engine::general_purpose::STANDARD
-        .decode(rest)
+        .decode(base64_payload)
         .map_err(|e| MigrationError::InvalidFormat(e.to_string()))
         .and_then(|bytes| {
             if bytes.len() > MAX_MIGRATION_PAYLOAD_BYTES {
@@ -1575,7 +1649,10 @@ mod tests {
             base64::engine::general_purpose::STANDARD.encode(b"abc")
         );
         let err = import_from_encrypted_payload(&encoded).unwrap_err();
-        assert!(matches!(err, MigrationError::InvalidFormat(_)));
+        assert!(matches!(
+            err,
+            MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 }
+        ));
     }
 
     #[test]
@@ -1707,6 +1784,79 @@ mod tests {
         );
         assert_eq!(result.unwrap(), plain);
     }
+    #[test]
+    fn test_encrypted_payload_version_v1_accepted() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v1:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_future_version_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v2:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_high_version_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v999:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 999, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_version_zero_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v0:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(
+            result,
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 0, max: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_encrypted_payload_invalid_version_format_fails() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:vabc:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_missing_colon_after_version_fails() {
+        let encoded = "enc:v1test";
+        let result = import_from_encrypted_payload(encoded);
+        assert!(matches!(result, Err(MigrationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_encrypted_payload_export_uses_v1_format() {
+        let plain = vec![42u8; 100];
+        let encoded = export_to_encrypted_payload(&plain).unwrap();
+        assert!(encoded.starts_with("enc:v1:"));
+        
+        // Verify it can be re-imported
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain);
+    }
+
 
     fn assert_snapshot_equal(a: &Option<ExportSnapshot>, b: &Option<ExportSnapshot>) {
         match (a, b) {
