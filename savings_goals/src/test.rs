@@ -5166,33 +5166,37 @@ fn test_pagination_by_owner() {
 
     client.init();
 
-    // Create 15 goals
+    // Create 15 goals (IDs 1-15)
     for i in 1..=15 {
         let name = String::from_str(&env, &std::format!("Goal {}", i));
         client.create_goal(&owner, &name, &1000, &2000000000);
     }
 
-    // Page 1: offset 0, limit 5
-    let page1 = client.get_goals_by_owner(&owner, &0, &5);
-    assert_eq!(page1.len(), 5);
-    assert_eq!(page1.get(0).unwrap().id, 1);
-    assert_eq!(page1.get(4).unwrap().id, 5);
+    // Page 1: cursor=0 (start from beginning), limit=5
+    let page1 = client.get_goals(&owner, &0, &5);
+    assert_eq!(page1.count, 5);
+    assert_eq!(page1.items.get(0).unwrap().id, 1);
+    assert_eq!(page1.items.get(4).unwrap().id, 5);
+    assert_eq!(page1.next_cursor, 5);
 
-    // Page 2: offset 5, limit 5
-    let page2 = client.get_goals_by_owner(&owner, &5, &5);
-    assert_eq!(page2.len(), 5);
-    assert_eq!(page2.get(0).unwrap().id, 6);
-    assert_eq!(page2.get(4).unwrap().id, 10);
+    // Page 2: cursor=5 (start after goal 5), limit=5
+    let page2 = client.get_goals(&owner, &page1.next_cursor, &5);
+    assert_eq!(page2.count, 5);
+    assert_eq!(page2.items.get(0).unwrap().id, 6);
+    assert_eq!(page2.items.get(4).unwrap().id, 10);
+    assert_eq!(page2.next_cursor, 10);
 
-    // Page 3: offset 10, limit 10 (only 5 left)
-    let page3 = client.get_goals_by_owner(&owner, &10, &10);
-    assert_eq!(page3.len(), 5);
-    assert_eq!(page3.get(0).unwrap().id, 11);
-    assert_eq!(page3.get(4).unwrap().id, 15);
+    // Page 3: cursor=10 (start after goal 10), limit=10
+    let page3 = client.get_goals(&owner, &page2.next_cursor, &10);
+    assert_eq!(page3.count, 5);
+    assert_eq!(page3.items.get(0).unwrap().id, 11);
+    assert_eq!(page3.items.get(4).unwrap().id, 15);
+    assert_eq!(page3.next_cursor, 0); // No more pages
 
-    // Page 4: offset 15, limit 5 (empty)
-    let page4 = client.get_goals_by_owner(&owner, &15, &5);
-    assert_eq!(page4.len(), 0);
+    // Page 4: cursor=15 (start after goal 15), should be empty
+    let page4 = client.get_goals(&owner, &15, &5);
+    assert_eq!(page4.count, 0);
+    assert_eq!(page4.next_cursor, 0);
 }
 
 #[test]

@@ -369,50 +369,6 @@ impl SavingsGoalContract {
         }
     }
 
-    /// Returns a list of goals for an owner using offset-based pagination.
-    ///
-    /// # Arguments
-    /// * `owner` - The address of the goal owner.
-    /// * `offset` - The number of items to skip.
-    /// * `limit` - The maximum number of items to return.
-    ///
-    /// # Returns
-    /// A `Vec<SavingsGoal>` containing the requested goals.
-    pub fn get_goals_by_owner(
-        env: Env,
-        owner: Address,
-        offset: u32,
-        limit: u32,
-    ) -> Vec<SavingsGoal> {
-        let limit = Self::clamp_limit(limit);
-
-        let ids: Vec<u32> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::OwnerGoals(owner.clone()))
-            .unwrap_or_else(|| Vec::new(&env));
-
-        let total_count = ids.len();
-        if offset >= total_count {
-            return Vec::new(&env);
-        }
-
-        let end = (offset + limit).min(total_count);
-        let mut result = Vec::new(&env);
-        for i in offset..end {
-            let goal_id = ids.get(i).unwrap_or_else(|| panic!("Index out of sync"));
-            if let Some(goal) = env
-                .storage()
-                .persistent()
-                .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
-            {
-                result.push_back(goal);
-            }
-        }
-
-        result
-    }
-
     // -----------------------------------------------------------------------
     // Pause / upgrade
     // -----------------------------------------------------------------------
@@ -1440,20 +1396,40 @@ impl SavingsGoalContract {
     // PAGINATED LIST QUERIES
     // -----------------------------------------------------------------------
 
-    /// @notice Returns a deterministic page of goals for one owner.
-    /// @dev Paging order is anchored to the owner-goal ID index (append-only,
-    ///      ascending by creation ID), not map iteration order.
-    /// @dev `cursor` is exclusive and must match an existing goal ID in the
-    ///      owner's index when non-zero; invalid cursors are rejected.
+    /// Returns a deterministic page of goals for one owner using cursor-based pagination.
+    ///
+    /// # Pagination Contract (Cursor-Based)
+    /// - **Deterministic order**: Goals are ordered by ID ascending (creation order)
+    /// - **Cursor semantics**: `cursor` is the ID of the last goal from the previous page.
+    ///   Pass `0` to start from the first page. The cursor is *exclusive* — results begin
+    ///   after the goal with the given ID.
+    /// - **Cursor validation**: If `cursor != 0`, it must match an existing goal ID in the
+    ///   owner's goal index; invalid cursors panic.
+    /// - **Next page**: Use `next_cursor` as the cursor for the next call. When `next_cursor == 0`,
+    ///   there are no more pages.
     ///
     /// # Arguments
-    /// * `owner`  - whose goals to return
-    /// * `cursor` - start after this goal ID (pass 0 for the first page)
-    /// * `limit`  - max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    /// * `owner`  - Address whose goals to return
+    /// * `cursor` - Goal ID to start after (pass 0 for the first page)
+    /// * `limit`  - Max items per page (clamped: 0 → DEFAULT_PAGE_LIMIT, > MAX_PAGE_LIMIT → MAX_PAGE_LIMIT)
     ///
     /// # Returns
-    /// `GoalPage { items, next_cursor, count }`.
-    /// `next_cursor == 0` means no more pages.
+    /// `GoalPage { items: Vec<SavingsGoal>, next_cursor: u32, count: u32 }`
+    /// - `items`: The goals on this page
+    /// - `next_cursor`: Pass this to the next call for pagination; 0 = no more pages
+    /// - `count`: Number of items returned
+    ///
+    /// # Panics
+    /// - If `cursor != 0` and does not match an existing goal ID in the owner's index
+    ///
+    /// # Example
+    /// ```ignore
+    /// let page1 = get_goals(env, owner, 0, 20);
+    /// for goal in page1.items.iter() { /* process goal */ }
+    /// if page1.next_cursor != 0 {
+    ///   let page2 = get_goals(env, owner, page1.next_cursor, 20);
+    /// }
+    /// ```
     pub fn get_goals(env: Env, owner: Address, cursor: u32, limit: u32) -> GoalPage {
         let limit = Self::clamp_limit(limit);
 
