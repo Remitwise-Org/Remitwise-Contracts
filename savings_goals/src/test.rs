@@ -6327,6 +6327,7 @@ fn test_import_snapshot_invalid_goal_name_leaves_state_intact() {
         &String::from_str(&env, "Keeper"),
         &5000,
         &2000000000,
+        &false,
     );
     let goal_before = client
         .get_goal(&id1)
@@ -6461,6 +6462,7 @@ fn test_import_snapshot_invalid_next_id_leaves_state_intact() {
         &String::from_str(&env, "Keeper"),
         &5000,
         &2000000000,
+        &false,
     );
     let goal_before = client
         .get_goal(&id1)
@@ -6525,6 +6527,7 @@ fn test_import_snapshot_exceeds_goal_cap_leaves_state_intact() {
         &String::from_str(&env, "Keeper"),
         &5000,
         &2000000000,
+        &false,
     );
     let goal_before = client
         .get_goal(&id1)
