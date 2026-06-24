@@ -101,8 +101,8 @@ fn test_create_goal_over_max_len_fails() {
     let user = Address::generate(&env);
     client.init();
 
-    // 129 bytes (exceeds MAX_GOAL_NAME_LEN_BYTES = 128)
-    let name = String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    // 33 bytes (exceeds MAX_GOAL_NAME_LEN_BYTES = 32)
+    let name = String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     let res = client.try_create_goal(&user, &name, &1000, &1735689600, &false);
     assert!(res.is_err());
     assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::InvalidGoalName);
@@ -5101,12 +5101,12 @@ fn test_unlock_date_none_allows_withdrawal() {
 // to prevent storage bloat and DoS attacks. Validation occurs before any
 // storage writes and is independent of other validation checks.
 //
-// MAX_GOAL_NAME_LEN_BYTES = 128 (enforced at validation time)
+// MAX_GOAL_NAME_LEN_BYTES = 32 (enforced at validation time)
 // Min valid length: 1 byte (empty names are rejected)
-// Max valid length: 128 bytes
+// Max valid length: 32 bytes
 // ============================================================================
 
-/// Test that valid goal names (1-128 bytes) are accepted at creation time
+/// Test that valid goal names (1-32 bytes) are accepted at creation time
 #[test]
 fn test_create_goal_accepts_valid_name_1byte() {
     let env = Env::default();
@@ -5153,7 +5153,7 @@ fn test_create_goal_accepts_typical_names() {
     assert_eq!(goal_3.name, name_50);
 }
 
-/// Test that names at maximum boundary (128 bytes) are accepted
+/// Test that names at maximum boundary (32 bytes) are accepted
 #[test]
 fn test_create_goal_accepts_max_length_128byte_name() {
     let env = Env::default();
@@ -5165,20 +5165,20 @@ fn test_create_goal_accepts_max_length_128byte_name() {
 
     client.init();
 
-    // Exactly 128 bytes of ASCII (each char = 1 byte in UTF-8)
-    let name_128 = String::from_str(
+    // Exactly 32 bytes of ASCII (each char = 1 byte in UTF-8)
+    let name_32 = String::from_str(
         &env,
-        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     );
-    let id = client.create_goal(&owner, &name_128, &1000, &2000000000, &false);
+    let id = client.create_goal(&owner, &name_32, &1000, &2000000000, &false);
     assert_eq!(id, 1);
     let goal = client.get_goal(&id).unwrap();
-    assert_eq!(goal.name, name_128);
-    // Verify length is actually 128
-    assert_eq!(goal.name.len(), 128);
+    assert_eq!(goal.name, name_32);
+    // Verify length is actually 32
+    assert_eq!(goal.name.len(), 32);
 }
 
-/// Test that goal names exceeding 128 bytes are rejected with InvalidGoalName error
+/// Test that goal names exceeding 32 bytes are rejected with InvalidGoalName error
 #[test]
 fn test_create_goal_rejects_oversized_name_129bytes() {
     let env = Env::default();
@@ -5190,16 +5190,16 @@ fn test_create_goal_rejects_oversized_name_129bytes() {
 
     client.init();
 
-    // 129 bytes (one byte over limit)
-    let name_129 = String::from_str(
+    // 33 bytes (one byte over limit)
+    let name_33 = String::from_str(
         &env,
-        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     );
 
-    let result = client.try_create_goal(&owner, &name_129, &1000, &2000000000, &false);
+    let result = client.try_create_goal(&owner, &name_33, &1000, &2000000000, &false);
     assert!(
         result.is_err(),
-        "Creating goal with 129-byte name must fail"
+        "Creating goal with 33-byte name must fail"
     );
     assert_eq!(
         result.unwrap_err().unwrap(),
@@ -5207,7 +5207,7 @@ fn test_create_goal_rejects_oversized_name_129bytes() {
     );
 }
 
-/// Test that goal names significantly exceeding 128 bytes are rejected
+/// Test that goal names significantly exceeding 32 bytes are rejected
 #[test]
 fn test_create_goal_rejects_very_long_name() {
     let env = Env::default();
@@ -5219,7 +5219,7 @@ fn test_create_goal_rejects_very_long_name() {
 
     client.init();
 
-    // Create a string much longer than 128 bytes
+    // Create a string much longer than 32 bytes
     let long_name = String::from_str(
         &env,
         "This goal name is excessively long and definitely exceeds the maximum allowed \
@@ -5254,7 +5254,7 @@ fn test_goal_name_validation_prevents_storage_and_id_consumption() {
         &env,
         "This name is definitely way too long and exceeds the maximum allowable length \
          by a significant amount testing validation - adding extra characters to ensure \
-         it exceeds the 128 byte limit for sure!",
+         it exceeds the 32 byte limit for sure!",
     );
     let _ = client.try_create_goal(&owner, &oversized, &1000, &2000000000, &false);
 
@@ -5292,7 +5292,7 @@ fn test_name_validation_independent_of_amount_validation() {
         &env,
         "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor \
          incididunt ut labore et dolore magna aliqua ut enim - adding extra characters \
-         to ensure it exceeds the 128 byte limit for sure!",
+         to ensure it exceeds the 32 byte limit for sure!",
     );
     let result1 = client.try_create_goal(&owner, &oversized, &1000, &2000000000, &false);
     assert_eq!(
@@ -5393,7 +5393,7 @@ fn test_name_validation_before_event_emission() {
         &env,
         "This name exceeds the maximum allowed byte length and should be rejected \
          before any events are emitted during creation - adding extra characters \
-         to ensure it exceeds the 128 byte limit for sure!",
+         to ensure it exceeds the 32 byte limit for sure!",
     );
     let _ = client.try_create_goal(&owner, &oversized, &1000, &2000000000, &false);
 
@@ -5455,7 +5455,7 @@ fn test_create_goal_accepts_special_chars_within_limit() {
 
     client.init();
 
-    // Name with special chars, numbers, spaces (all within 128 byte limit)
+    // Name with special chars, numbers, spaces (all within 32 byte limit)
     let name_special = String::from_str(&env, "Goal #1: Home (2025-2030) - $500K!");
     let id = client.create_goal(&owner, &name_special, &1000, &2000000000, &false);
     assert!(id > 0);

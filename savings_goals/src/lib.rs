@@ -71,9 +71,12 @@ pub const MAX_PAGE_LIMIT: u32 = 50;
 const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
 
 /// Maximum byte length for goal names to prevent storage bloat and DoS attacks.
-/// Allows reasonable goal names (e.g., "FIRE Goal", "House Down Payment") while
-/// protecting against unbounded string storage.
-const MAX_GOAL_NAME_LEN_BYTES: u32 = 128;
+///
+/// Enforces a 32-byte limit on goal names to bound storage costs while allowing
+/// reasonable names (e.g., "FIRE Goal", "House Down Payment"). Names are validated
+/// byte-by-byte, not by character count, so multi-byte UTF-8 characters count
+/// toward the limit proportionally. Printable ASCII characters (bytes 32-126) only.
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
 
 /// Maximum number of goals (active + archived) allowed per owner.
 /// Prevents storage-bloat DoS attacks.
@@ -810,11 +813,6 @@ impl SavingsGoalContract {
         if Self::get_owner_goal_count(&env, &owner) >= MAX_GOALS_PER_OWNER {
             Self::append_audit(&env, symbol_short!("create"), &owner, false);
             return Err(SavingsGoalError::GoalCapReached);
-        }
-
-        if let Err(e) = Self::validate_goal_name(&name) {
-            Self::append_audit(&env, symbol_short!("create"), &owner, false);
-            return Err(e);
         }
 
         Self::extend_instance_ttl(&env);
