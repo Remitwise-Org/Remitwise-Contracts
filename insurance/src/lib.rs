@@ -580,10 +580,11 @@ pub fn get_active_policies(
         }
     }
 
+    let count = items.len();
     Ok(PolicyPage {
         items,
         next_cursor,
-        count: items.len(),
+        count,
     })
 }
 
