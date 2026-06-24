@@ -34,12 +34,11 @@ use testutils::set_ledger_time;
 use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
 
 use crate::{
-    BillComplianceReport, ContractAddresses, DataAvailability, FamilyWalletTrait, FinancialHealthReport,
-    GoalPage, HealthScore, InsurancePolicy, InsuranceReport, PolicyPage,
-    RemittanceSummary, ReportingContract, ReportingContractClient, SavingsGoal,
-    SavingsReport, Bill, BillPage, SpendingPeriod, SpendingTracker,
-    MemberAddressPage, RemittanceSplitTrait, SavingsGoalsTrait, BillPaymentsTrait,
-    InsuranceTrait,
+    Bill, BillComplianceReport, BillPage, BillPaymentsTrait, ContractAddresses, DataAvailability,
+    FamilyWalletTrait, FinancialHealthReport, GoalPage, HealthScore, InsurancePolicy,
+    InsuranceReport, InsuranceTrait, MemberAddressPage, PolicyPage, RemittanceSplitTrait,
+    RemittanceSummary, ReportingContract, ReportingContractClient, SavingsGoal, SavingsGoalsTrait,
+    SavingsReport, SpendingPeriod, SpendingTracker,
 };
 
 // ============================================================================
@@ -47,8 +46,8 @@ use crate::{
 // ============================================================================
 
 mod remittance_split_mock {
-    use soroban_sdk::{contract, contractimpl, Env, Vec};
     use crate::RemittanceSplitTrait;
+    use soroban_sdk::{contract, contractimpl, Env, Vec};
 
     #[contract]
     pub struct RemittanceSplit;
@@ -122,12 +121,7 @@ mod bill_payments_mock {
 
     #[contractimpl]
     impl BillPaymentsTrait for BillPayments {
-        fn get_unpaid_bills(
-            env: Env,
-            _owner: Address,
-            _cursor: u32,
-            _limit: u32,
-        ) -> BillPage {
+        fn get_unpaid_bills(env: Env, _owner: Address, _cursor: u32, _limit: u32) -> BillPage {
             BillPage {
                 items: vec![&env],
                 next_cursor: 0,
@@ -193,11 +187,7 @@ mod family_wallet_mock {
         fn get_owner(env: &Env) -> Address {
             Address::generate(env)
         }
-        fn get_member_addresses_page(
-            env: Env,
-            _cursor: u32,
-            _limit: u32,
-        ) -> MemberAddressPage {
+        fn get_member_addresses_page(env: Env, _cursor: u32, _limit: u32) -> MemberAddressPage {
             MemberAddressPage {
                 items: vec![&env],
                 next_cursor: 0,

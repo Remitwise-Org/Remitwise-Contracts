@@ -234,15 +234,9 @@ impl Orchestrator {
         // here ensures a short or hostile response produces a typed
         // InvalidAmount rather than an out-of-bounds panic while the EXEC_LOCK
         // is held.
-        let savings_amt = allocations
-            .get(1)
-            .ok_or(OrchestratorError::InvalidAmount)?;
-        let bills_amt = allocations
-            .get(2)
-            .ok_or(OrchestratorError::InvalidAmount)?;
-        let insurance_amt = allocations
-            .get(3)
-            .ok_or(OrchestratorError::InvalidAmount)?;
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
 
         if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
             return Err(OrchestratorError::InvalidAmount);
@@ -687,15 +681,9 @@ impl Orchestrator {
         // ensures a short or hostile downstream response yields a typed
         // InvalidAmount error rather than an out-of-bounds panic while the
         // EXEC_LOCK is held.
-        let savings_amt = allocations
-            .get(1)
-            .ok_or(OrchestratorError::InvalidAmount)?;
-        let bills_amt = allocations
-            .get(2)
-            .ok_or(OrchestratorError::InvalidAmount)?;
-        let insurance_amt = allocations
-            .get(3)
-            .ok_or(OrchestratorError::InvalidAmount)?;
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
 
         if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
             return Err(OrchestratorError::InvalidAmount);

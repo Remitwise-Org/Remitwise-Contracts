@@ -1501,7 +1501,7 @@ fn test_add_member_already_exists() {
     let result = client.try_add_member(&owner, &member1, &FamilyRole::Admin, &0);
     assert_eq!(result, Err(Ok(Error::MemberAlreadyExists)));
 
-    // Try to add owner (they already exist and are the owner)
+    // Try to add owner (they already exist and are the owner);
     let result = client.try_add_member(&owner, &owner, &FamilyRole::Admin, &0);
     assert_eq!(result, Err(Ok(Error::MemberAlreadyExists)));
     // Add a new member successfully
@@ -3263,7 +3263,7 @@ fn test_validate_precision_spending_below_minimum() {
 
     assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
 
-    // Try to withdraw below minimum precision (5 XLM < 10 XLM minimum)
+    // Try to withdraw below minimum precision (5 XLM < 10 XLM minimum);
     let result = client.try_withdraw(&member, &token_contract.address(), &recipient, &5_0000000);
     assert!(result.is_err());
 }
@@ -3292,7 +3292,7 @@ fn test_validate_precision_spending_exceeds_single_tx_limit() {
 
     assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
 
-    // Try to withdraw above single transaction limit (1500 XLM > 1000 XLM max)
+    // Try to withdraw above single transaction limit (1500 XLM > 1000 XLM max);
     let result = client.try_withdraw(
         &member,
         &token_contract.address(),
@@ -3327,7 +3327,7 @@ fn test_cumulative_spending_within_period_limit() {
 
     assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
 
-    // First transaction: 400 XLM (should succeed)
+    // First transaction: 400 XLM (should succeed);
     let tx1 = client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000);
     assert_eq!(tx1, 0);
 
@@ -3365,7 +3365,7 @@ fn test_spending_period_rollover_resets_limits() {
 
     assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
 
-    // Set initial time to start of day (00:00 UTC)
+    // Set initial time to start of day (00:00 UTC);
     let day_start = 1640995200u64; // 2022-01-01 00:00:00 UTC
     env.ledger().with_mut(|li| li.timestamp = day_start);
 
@@ -3611,7 +3611,7 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
 
     assert!(client.set_precision_spending_limit(&owner, &member, &precision_limit));
 
-    // Should succeed within single transaction limit (even though it would exceed period limit)
+    // Should succeed within single transaction limit (even though it would exceed period limit);
     let tx1 = client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000);
     assert_eq!(tx1, 0);
 
@@ -6401,9 +6401,7 @@ fn test_remove_member_clears_spending_tracker() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client
-        .set_precision_spending_limit(&owner, &member, &limit)
-        .unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
     // Verify the spending tracker exists
     let tracker_before = client.get_spending_tracker(&member);
@@ -6440,11 +6438,9 @@ fn test_remove_member_clears_precision_limit() {
         max_single_tx: 100_0000000,
         enable_rollover: false,
     };
-    client
-        .set_precision_spending_limit(&owner, &member, &limit)
-        .unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
-    // Verify the limit exists (by checking spending tracker was cleaned up due to rollover=false)
+    // Verify the limit exists (by checking spending tracker was cleaned up due to rollover=false);
     let tracker_before = client.get_spending_tracker(&member);
     assert!(tracker_before.is_none());
 
@@ -6452,9 +6448,7 @@ fn test_remove_member_clears_precision_limit() {
     client.remove_family_member(&owner, &member);
 
     // Re-add the member with a new role
-    client
-        .add_member(&owner, &member, &FamilyRole::Admin, 0)
-        .unwrap();
+    client.add_member(&owner, &member, &FamilyRole::Admin, &0i128);
 
     // Verify the precision limit is gone - setting it again should succeed
     let new_limit = PrecisionSpendingLimit {
@@ -6490,9 +6484,7 @@ fn test_remove_member_then_readd_has_clean_state() {
         max_single_tx: 100_0000000,
         enable_rollover: true,
     };
-    client
-        .set_precision_spending_limit(&owner, &member, &limit)
-        .unwrap();
+    client.set_precision_spending_limit(&owner, &member, &limit);
 
     // Verify spending tracker was created
     let tracker_before = client.get_spending_tracker(&member);
@@ -6508,9 +6500,7 @@ fn test_remove_member_then_readd_has_clean_state() {
     assert!(tracker_removed.is_none());
 
     // Re-add the same member
-    client
-        .add_member(&owner, &member, &FamilyRole::Member, 0)
-        .unwrap();
+    client.add_member(&owner, &member, &FamilyRole::Member, &0i128);
 
     // Verify the member exists again
     let member_data = client.get_family_member(&member);
@@ -6568,15 +6558,9 @@ fn test_batch_remove_clears_all_member_state() {
         enable_rollover: true,
     };
 
-    client
-        .set_precision_spending_limit(&owner, &member1, &limit1)
-        .unwrap();
-    client
-        .set_precision_spending_limit(&owner, &member2, &limit2)
-        .unwrap();
-    client
-        .set_precision_spending_limit(&owner, &member3, &limit3)
-        .unwrap();
+    client.set_precision_spending_limit(&owner, &member1, &limit1);
+    client.set_precision_spending_limit(&owner, &member2, &limit2);
+    client.set_precision_spending_limit(&owner, &member3, &limit3);
 
     // Verify all have spending trackers
     assert!(client.get_spending_tracker(&member1).is_some());
@@ -6631,12 +6615,8 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
         enable_rollover: true,
     };
 
-    client
-        .set_precision_spending_limit(&owner, &member1, &limit)
-        .unwrap();
-    client
-        .set_precision_spending_limit(&owner, &member3, &limit)
-        .unwrap();
+    client.set_precision_spending_limit(&owner, &member1, &limit);
+    client.set_precision_spending_limit(&owner, &member3, &limit);
     // member2 has no precision limit
 
     // Verify state
@@ -6655,9 +6635,7 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     assert!(client.get_spending_tracker(&member3).is_none());
 
     // Re-add member2 and verify it still has no tracker (wasn't creating stale state)
-    client
-        .add_member(&owner, &member2, &FamilyRole::Member, 0)
-        .unwrap();
+    client.add_member(&owner, &member2, &FamilyRole::Member, &0i128);
     assert!(client.get_family_member(&member2).is_some());
     assert!(client.get_spending_tracker(&member2).is_none());
 }

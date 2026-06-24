@@ -1389,13 +1389,21 @@ mod mock_split_0 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             Vec::new(&env)
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1406,13 +1414,21 @@ mod mock_split_1 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 10000i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1423,13 +1439,21 @@ mod mock_split_3 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1440,16 +1464,30 @@ mod mock_split_4 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1460,13 +1498,21 @@ mod mock_split_negative {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1539,7 +1585,11 @@ fn test_split_4_allocations_succeeds() {
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
-    assert!(result.is_ok(), "4-allocation split should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "4-allocation split should succeed: {:?}",
+        result
+    );
     assert!(!client.get_execution_state());
 }
 
