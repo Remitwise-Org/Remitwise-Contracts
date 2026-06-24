@@ -2060,11 +2060,8 @@ impl ReportingContract {
         note = "Returns at most DEFAULT_PAGE_LIMIT entries; migrate to get_archived_reports_page to walk the full archive."
     )]
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
-        user.require_auth();
-        // Delegate to the paged reader with a fixed `DEFAULT_PAGE_LIMIT` cap so
-        // the bounded behaviour is the single source of truth (no duplication
-        // of the cursor/index logic). Returning `.items` mirrors the legacy
-        // signature for back-compat.
+        // Auth is enforced by the delegate get_archived_reports_page call below.
+        // Duplicate require_auth here would cause ExistingValue in Soroban's auth system.
         let ArchivedPage { items, .. } =
             Self::get_archived_reports_page(env, user, 0u32, DEFAULT_PAGE_LIMIT);
         items

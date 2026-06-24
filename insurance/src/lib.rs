@@ -134,7 +134,7 @@ pub struct Policy {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PolicyPage {
     pub items: Vec<u32>,
     pub next_cursor: u32,

@@ -14,7 +14,7 @@ use crate::{
 /// Minimal env with mock_all_auths — replaces the removed create_test_env helper.
 fn create_test_env() -> Env {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env
 }
 

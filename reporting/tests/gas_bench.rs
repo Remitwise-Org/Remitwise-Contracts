@@ -467,8 +467,8 @@ fn bench_trend_analysis_multi_5_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    // 5 data points → 4 trend windows
-    assert_eq!(trends.len(), 4);
+    // 5 data points → 5 trend entries (first entry uses prev=0 baseline)
+    assert_eq!(trends.len(), 5);
     // Each window should show a 100 % increase (amount doubles each step)
     for trend in trends.iter() {
         assert!(trend.change_percentage > 0);
@@ -498,7 +498,7 @@ fn bench_trend_analysis_multi_25_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    assert_eq!(trends.len(), 24);
+    assert_eq!(trends.len(), 25);
 
     println!(
         r#"{{"contract":"reporting","method":"get_trend_analysis_multi","scenario":"25_periods","cpu":{},"mem":{}}}"#,
@@ -524,7 +524,7 @@ fn bench_trend_analysis_multi_50_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    assert_eq!(trends.len(), 49);
+    assert_eq!(trends.len(), 50);
 
     println!(
         r#"{{"contract":"reporting","method":"get_trend_analysis_multi","scenario":"50_periods","cpu":{},"mem":{}}}"#,

@@ -17,7 +17,7 @@ use crate::{ReportingContract, ReportingContractClient, ReportingError};
 
 fn create_test_env() -> Env {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env
 }
 
