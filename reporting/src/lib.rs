@@ -484,13 +484,13 @@ pub(crate) fn safe_percent(numerator: i128, denominator: i128, scale: i128) -> i
 }
 
 fn trend_from_amounts(current_amount: i128, previous_amount: i128) -> TrendData {
-    let change_amount = current_amount
-        .checked_sub(previous_amount)
-        .unwrap_or(if current_amount >= previous_amount {
+    let change_amount = current_amount.checked_sub(previous_amount).unwrap_or(
+        if current_amount >= previous_amount {
             i128::MAX
         } else {
             i128::MIN
-        });
+        },
+    );
     let change_percentage = if previous_amount > 0 {
         safe_percent(change_amount, previous_amount, 100).clamp(i32::MIN as i128, i32::MAX as i128)
             as i32
