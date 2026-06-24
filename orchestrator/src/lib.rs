@@ -3,7 +3,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Env, Map,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map,
     Symbol, Vec,
 };
 
