@@ -27,7 +27,7 @@
 //! `archive_old_reports` admin entry (the only path that writes to
 //! `ARCH_RPT` / `ARCH_IDX` from outside the contract).
 
-use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+use soroban_sdk::testutils::{Address as _, Address, Ledger, LedgerInfo};
 use soroban_sdk::{contract, contractimpl, vec, Address, Env};
 use testutils::set_ledger_time;
 
