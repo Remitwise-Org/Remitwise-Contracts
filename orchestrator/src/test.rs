@@ -1372,3 +1372,189 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     assert_eq!(stats.successful_executions, 0);
     assert_eq!(stats.failed_executions, 0);
 }
+
+// ---------------------------------------------------------------------------
+// MockSplit allocation-length / content hardening tests (Issue #828)
+//
+// The orchestrator calls an external calculate_split whose return vector it
+// does not control. These tests prove that short (0 / 1 / 3 entries) and
+// negative-valued responses all produce a typed `InvalidAmount` and that the
+// EXEC_LOCK is released (not stuck) in every rejection path.
+// ---------------------------------------------------------------------------
+
+/// Mock whose calculate_split returns an empty vec (0 allocations).
+mod mock_split_0 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            Vec::new(&env)
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+    }
+}
+
+/// Mock whose calculate_split returns 1 allocation.
+mod mock_split_1 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 10000i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+    }
+}
+
+/// Mock whose calculate_split returns 3 allocations (one short of required 4).
+mod mock_split_3 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+    }
+}
+
+/// Mock whose calculate_split returns exactly 4 allocations (valid).
+mod mock_split_4 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+    }
+}
+
+/// Mock whose calculate_split returns a negative savings allocation.
+mod mock_split_negative {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool { true }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool { true }
+    }
+}
+
+/// Helper: build RemittanceFlowParams using the same contract for every role.
+fn flow_params_single(_env: &Env, caller: &Address, mock_id: &Address) -> RemittanceFlowParams {
+    RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+        family_wallet: mock_id.clone(),
+        remittance_split: mock_id.clone(),
+        savings: mock_id.clone(),
+        bills: mock_id.clone(),
+        insurance: mock_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    }
+}
+
+#[test]
+fn test_split_0_allocations_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_0::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    // EXEC_LOCK must be released (not stuck).
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_1_allocation_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_1::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_3_allocations_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_3::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_4_allocations_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_4::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert!(result.is_ok(), "4-allocation split should succeed: {:?}", result);
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_negative::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    // No downstream add_to_goal/pay_bill/pay_premium must have been called —
+    // the lock is released, confirming we exited cleanly before execution.
+    assert!(!client.get_execution_state());
+}
