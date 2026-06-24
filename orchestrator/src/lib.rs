@@ -285,7 +285,7 @@ impl Orchestrator {
         }
 
         // Validate no duplicates and no self-reference
-        let addresses = vec![
+        let addresses = soroban_sdk::vec![
             &env,
             family_wallet.clone(),
             remittance_split.clone(),
