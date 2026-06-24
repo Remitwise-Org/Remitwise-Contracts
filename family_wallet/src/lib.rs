@@ -2817,7 +2817,7 @@ impl FamilyWallet {
             }
 
             // unchanged cases
-            (TransactionData::SplitConfigChange(..)) => 0,
+            TransactionData::SplitConfigChange(..) => 0,
 
             TransactionData::RoleChange(member, new_role) => {
                 let mut members: Map<Address, FamilyMember> = env
