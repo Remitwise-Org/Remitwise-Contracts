@@ -5166,10 +5166,7 @@ fn test_create_goal_accepts_max_length_128byte_name() {
     client.init();
 
     // Exactly 32 bytes of ASCII (each char = 1 byte in UTF-8)
-    let name_32 = String::from_str(
-        &env,
-        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    );
+    let name_32 = String::from_str(&env, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
     let id = client.create_goal(&owner, &name_32, &1000, &2000000000, &false);
     assert_eq!(id, 1);
     let goal = client.get_goal(&id).unwrap();
@@ -5191,16 +5188,10 @@ fn test_create_goal_rejects_oversized_name_129bytes() {
     client.init();
 
     // 33 bytes (one byte over limit)
-    let name_33 = String::from_str(
-        &env,
-        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    );
+    let name_33 = String::from_str(&env, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 
     let result = client.try_create_goal(&owner, &name_33, &1000, &2000000000, &false);
-    assert!(
-        result.is_err(),
-        "Creating goal with 33-byte name must fail"
-    );
+    assert!(result.is_err(), "Creating goal with 33-byte name must fail");
     assert_eq!(
         result.unwrap_err().unwrap(),
         SavingsGoalError::InvalidGoalName
