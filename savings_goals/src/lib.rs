@@ -324,7 +324,7 @@ impl SavingsGoalContract {
         let mut buf = [0u8; MAX_GOAL_NAME_LEN_BYTES as usize];
         name.copy_into_slice(&mut buf[..name_len as usize]);
         for &byte in &buf[..name_len as usize] {
-            if byte < 32 || byte > 126 {
+            if !(32..=126).contains(&byte) {
                 return Err(SavingsGoalError::InvalidGoalName);
             }
         }
@@ -2302,11 +2302,9 @@ impl SavingsGoalContract {
         // only allow extending unlock_date (never shortening).
         if let Some(prev_unlock) = goal.unlock_date {
             // Active iff unlock_date is strictly in the future.
-            if prev_unlock > current_time {
-                if unlock_date < prev_unlock {
-                    Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
-                    soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
-                }
+            if prev_unlock > current_time && unlock_date < prev_unlock {
+                Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
+                soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
             }
         }
 
