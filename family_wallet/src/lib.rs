@@ -2856,8 +2856,6 @@ impl FamilyWallet {
             }
 
             TransactionData::PolicyCancellation(..) => 0,
-
-            _ => panic!("Invalid transaction type or data mismatch"),
         }
     }
 
