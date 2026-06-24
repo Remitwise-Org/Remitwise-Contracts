@@ -184,6 +184,68 @@ pub struct VersionUpgradeEvent {
 }
 ```
 
+### Event: Bill Schedule Created
+
+**Topic:** `("bill", BillEvent::ScheduleCreated)`  
+**Emitted by:** `create_bill_schedule`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // New schedule ID
+    pub owner: Address,             // Schedule owner
+)
+```
+
+### Event: Bill Schedule Modified
+
+**Topic:** `("bill", BillEvent::ScheduleModified)`  
+**Emitted by:** `modify_bill_schedule`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Modified schedule ID
+)
+```
+
+### Event: Bill Schedule Cancelled
+
+**Topic:** `("bill", BillEvent::ScheduleCancelled)`  
+**Emitted by:** `cancel_bill_schedule`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Cancelled schedule ID
+)
+```
+
+### Event: Bill Schedule Executed
+
+**Topic:** `("bill", BillEvent::ScheduleExecuted)`  
+**Emitted by:** `execute_due_bill_schedules`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Executed schedule ID
+)
+```
+
+### Event: Bill Schedule Missed Intervals
+
+**Topic:** `("bill", BillEvent::ScheduleMissed)`  
+**Emitted by:** `execute_due_bill_schedules`
+
+**Data Structure:**
+```rust
+pub tuple (
+    pub schedule_id: u32,           // Schedule ID
+    pub missed: u32,                // Number of skipped intervals
+)
+```
+
 ---
 
 ## Savings Goals Contract

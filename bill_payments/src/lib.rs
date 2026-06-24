@@ -22,6 +22,9 @@ const MAX_CURRENCY_LEN: u32 = 10;
 pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
 const MIN_EXTERNAL_REF_LEN: u32 = 1;
 const MAX_EXTERNAL_REF_LEN: u32 = 64;
+const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
+const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
+const MAX_BILL_SCHEDULES_PER_OWNER: u32 = 50;
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -52,6 +55,23 @@ pub struct Bill {
     pub currency: String,
 }
 
+#[contracttype]
+#[derive(Clone)]
+pub struct BillSchedule {
+    pub id: u32,
+    pub owner: Address,
+    pub name: String,
+    pub amount: i128,
+    pub currency: String,
+    pub next_due: u64,
+    pub interval: u64,
+    pub recurring: bool,
+    pub active: bool,
+    pub created_at: u64,
+    pub last_executed: Option<u64>,
+    pub missed_count: u32,
+}
+
 /// Paginated result for bill queries
 #[contracttype]
 #[derive(Clone)]
@@ -71,6 +91,10 @@ pub mod pause_functions {
     pub const CANCEL_BILL: soroban_sdk::Symbol = symbol_short!("can_bill");
     pub const ARCHIVE: soroban_sdk::Symbol = symbol_short!("archive");
     pub const RESTORE: soroban_sdk::Symbol = symbol_short!("restore");
+    pub const CREATE_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("crt_bsch");
+    pub const MODIFY_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("mod_bsch");
+    pub const CANCEL_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("can_bsch");
+    pub const EXECUTE_BILL_SCHEDULES: soroban_sdk::Symbol = symbol_short!("exe_bsch");
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
@@ -79,6 +103,9 @@ const STORAGE_OWNER_INDEX: Symbol = symbol_short!("OWN_IDX");
 const STORAGE_ARCH_INDEX: Symbol = symbol_short!("ARCH_IDX");
 const STORAGE_CURRENCY_INDEX: Symbol = symbol_short!("CUR_IDX");
 const ARCH_IDX_KEY: Symbol = STORAGE_ARCH_INDEX;
+const STORAGE_NEXT_BSCH: Symbol = symbol_short!("NEXT_BSCH");
+const STORAGE_OWNER_BSCH_IDX: Symbol = symbol_short!("OWN_BSCH");
+const STORAGE_BSCHEDS: Symbol = symbol_short!("BSCHEDS");
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -128,6 +155,16 @@ pub enum BillPaymentsError {
     OwnerBillCapExceeded = 18,
     /// Tag content contains invalid characters (must be [a-z0-9-_])
     InvalidTagContent = 19,
+    /// Schedule with the given ID does not exist
+    ScheduleNotFound = 20,
+    /// Schedule is not active
+    ScheduleNotActive = 21,
+    /// Owner has reached the maximum number of allowed schedules
+    ScheduleCapExceeded = 22,
+    /// Schedule interval is below the minimum allowed value
+    ScheduleIntervalTooShort = 23,
+    /// Schedule lead time exceeds the maximum allowed value
+    ScheduleLeadTimeTooLong = 24,
 }
 
 pub type Error = BillPaymentsError;
@@ -464,6 +501,54 @@ impl BillPayments {
     }
 
     // -----------------------------------------------------------------------
+    // BillSchedule owner-index helpers
+    // -----------------------------------------------------------------------
+
+    fn get_owner_bill_schedules(env: &Env, owner: &Address) -> Vec<u32> {
+        let idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_BSCH_IDX)
+            .unwrap_or_else(|| Map::new(env));
+        idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env))
+    }
+
+    fn index_add_bill_schedule(env: &Env, owner: &Address, schedule_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_BSCH_IDX)
+            .unwrap_or_else(|| Map::new(env));
+        let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        ids.push_back(schedule_id);
+        idx.set(owner.clone(), ids);
+        env.storage().instance().set(&STORAGE_OWNER_BSCH_IDX, &idx);
+    }
+
+    fn index_remove_bill_schedule(env: &Env, owner: &Address, schedule_id: u32) {
+        let mut idx: Map<Address, Vec<u32>> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_OWNER_BSCH_IDX)
+            .unwrap_or_else(|| Map::new(env));
+        let Some(ids) = idx.get(owner.clone()) else {
+            return;
+        };
+        let mut new_ids: Vec<u32> = Vec::new(env);
+        for id in ids.iter() {
+            if id != schedule_id {
+                new_ids.push_back(id);
+            }
+        }
+        if new_ids.is_empty() {
+            idx.remove(owner.clone());
+        } else {
+            idx.set(owner.clone(), new_ids);
+        }
+        env.storage().instance().set(&STORAGE_OWNER_BSCH_IDX, &idx);
+    }
+
+    // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
 
@@ -637,6 +722,12 @@ impl BillPayments {
         env.storage()
             .instance()
             .get(&symbol_short!("NEXT_ID"))
+            .unwrap_or(0u32)
+    }
+    fn get_next_bill_schedule_id(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&STORAGE_NEXT_BSCH)
             .unwrap_or(0u32)
     }
     fn get_global_paused(env: &Env) -> bool {
@@ -815,6 +906,10 @@ impl BillPayments {
             pause_functions::CANCEL_BILL,
             pause_functions::ARCHIVE,
             pause_functions::RESTORE,
+            pause_functions::CREATE_BILL_SCHEDULE,
+            pause_functions::MODIFY_BILL_SCHEDULE,
+            pause_functions::CANCEL_BILL_SCHEDULE,
+            pause_functions::EXECUTE_BILL_SCHEDULES,
         ] {
             let _ = Self::pause_function(env.clone(), caller.clone(), func);
         }
@@ -918,6 +1013,370 @@ impl BillPayments {
             (prev, new_version),
         );
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Bill schedule lifecycle
+    // -----------------------------------------------------------------------
+
+    /// Creates a recurring bill schedule.
+    ///
+    /// # Arguments
+    /// * `owner` - Address of the schedule owner (must authorize)
+    /// * `name` - Name template for generated bills
+    /// * `amount` - Amount for each generated bill
+    /// * `currency` - Currency code for generated bills
+    /// * `next_due` - First execution timestamp
+    /// * `interval` - Seconds between executions; 0 creates a one-off schedule
+    ///
+    /// # Returns
+    /// ID of the new schedule
+    pub fn create_bill_schedule(
+        env: Env,
+        owner: Address,
+        name: String,
+        amount: i128,
+        currency: String,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<u32, BillPaymentsError> {
+        owner.require_auth();
+        Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
+
+        let current_time = env.ledger().timestamp();
+        if next_due <= current_time {
+            return Err(BillPaymentsError::InvalidDueDate);
+        }
+
+        let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
+
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(BillPaymentsError::ScheduleIntervalTooShort);
+        }
+
+        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+            return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
+        }
+
+        let owner_schedule_count = Self::get_owner_bill_schedules(&env, &owner).len();
+        if owner_schedule_count >= MAX_BILL_SCHEDULES_PER_OWNER {
+            return Err(BillPaymentsError::ScheduleCapExceeded);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let next_schedule_id = Self::get_next_bill_schedule_id(&env) + 1;
+
+        let schedule = BillSchedule {
+            id: next_schedule_id,
+            owner: owner.clone(),
+            name,
+            amount,
+            currency: resolved_currency,
+            next_due,
+            interval,
+            recurring: interval > 0,
+            active: true,
+            created_at: current_time,
+            last_executed: None,
+            missed_count: 0,
+        };
+
+        let mut schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+        schedules.set(next_schedule_id, schedule);
+        env.storage()
+            .instance()
+            .set(&STORAGE_BSCHEDS, &schedules);
+
+        env.storage()
+            .instance()
+            .set(&STORAGE_NEXT_BSCH, &next_schedule_id);
+
+        Self::index_add_bill_schedule(&env, &owner, next_schedule_id);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleCreated),
+            (next_schedule_id, owner),
+        );
+
+        Ok(next_schedule_id)
+    }
+
+    /// Modify an existing bill schedule owned by `caller`.
+    pub fn modify_bill_schedule(
+        env: Env,
+        caller: Address,
+        schedule_id: u32,
+        amount: i128,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<bool, BillPaymentsError> {
+        caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
+
+        if amount <= 0 {
+            return Err(BillPaymentsError::InvalidAmount);
+        }
+
+        let current_time = env.ledger().timestamp();
+        if next_due <= current_time {
+            return Err(BillPaymentsError::InvalidDueDate);
+        }
+
+        if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
+            return Err(BillPaymentsError::ScheduleIntervalTooShort);
+        }
+
+        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+            return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let mut schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut schedule = schedules
+            .get(schedule_id)
+            .ok_or(BillPaymentsError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(BillPaymentsError::ScheduleNotActive);
+        }
+
+        if schedule.owner != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+
+        schedule.amount = amount;
+        schedule.next_due = next_due;
+        schedule.interval = interval;
+        schedule.recurring = interval > 0;
+
+        schedules.set(schedule_id, schedule);
+        env.storage()
+            .instance()
+            .set(&STORAGE_BSCHEDS, &schedules);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleModified),
+            schedule_id,
+        );
+
+        Ok(true)
+    }
+
+    /// Cancel an existing bill schedule owned by `caller`.
+    pub fn cancel_bill_schedule(
+        env: Env,
+        caller: Address,
+        schedule_id: u32,
+    ) -> Result<bool, BillPaymentsError> {
+        caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
+
+        Self::extend_instance_ttl(&env);
+
+        let mut schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut schedule = schedules
+            .get(schedule_id)
+            .ok_or(BillPaymentsError::ScheduleNotFound)?;
+
+        if !schedule.active {
+            return Err(BillPaymentsError::ScheduleNotActive);
+        }
+
+        if schedule.owner != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+
+        schedule.active = false;
+
+        schedules.set(schedule_id, schedule);
+        env.storage()
+            .instance()
+            .set(&STORAGE_BSCHEDS, &schedules);
+
+        Self::index_remove_bill_schedule(&env, &caller, schedule_id);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleCancelled),
+            schedule_id,
+        );
+
+        Ok(true)
+    }
+
+    /// Execute all due bill schedules in a permissionless, idempotent manner.
+    ///
+    /// # Idempotency
+    /// A schedule is skipped if its `last_executed` timestamp is >= its `next_due`
+    /// timestamp, preventing double-execution within the same ledger.
+    ///
+    /// # Next-due advancement
+    /// * Recurring schedules (`interval > 0`): `next_due` is advanced by `interval`
+    ///   until strictly greater than `current_time`, incrementing `missed_count`
+    ///   for each skipped interval.
+    /// * One-off schedules (`interval == 0`): deactivated after execution.
+    ///
+    /// # Returns
+    /// Vector of executed schedule IDs.
+    pub fn execute_due_bill_schedules(env: Env) -> Vec<u32> {
+        Self::extend_instance_ttl(&env);
+
+        if Self::get_global_paused(&env) {
+            return Vec::new(&env);
+        }
+
+        let current_time = env.ledger().timestamp();
+        let mut executed = Vec::new(&env);
+
+        let next_schedule_id = Self::get_next_bill_schedule_id(&env);
+
+        let mut schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut next_id = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NEXT_ID"))
+            .unwrap_or(0u32);
+
+        for schedule_id in 1..=next_schedule_id {
+            let Some(mut schedule) = schedules.get(schedule_id) else {
+                continue;
+            };
+
+            if !schedule.active || schedule.next_due > current_time {
+                continue;
+            }
+
+            if let Some(last_exec) = schedule.last_executed {
+                if last_exec >= schedule.next_due {
+                    continue;
+                }
+            }
+
+            schedule.last_executed = Some(current_time);
+
+            if schedule.recurring && schedule.interval > 0 {
+                let mut missed = 0u32;
+                let mut next = schedule.next_due + schedule.interval;
+                while next <= current_time {
+                    missed = missed.saturating_add(1);
+                    next = next.saturating_add(schedule.interval);
+                }
+                schedule.missed_count = schedule.missed_count.saturating_add(missed);
+                schedule.next_due = next;
+
+                if missed > 0 {
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::ScheduleMissed),
+                        (schedule_id, missed),
+                    );
+                }
+
+                let freq_days = (schedule.interval / SECONDS_PER_DAY).max(1) as u32;
+                let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
+
+                if owner_bill_count < MAX_BILLS_PER_OWNER {
+                    next_id = next_id.saturating_add(1);
+                    let child = Bill {
+                        id: next_id,
+                        owner: schedule.owner.clone(),
+                        name: schedule.name.clone(),
+                        external_ref: None,
+                        amount: schedule.amount,
+                        due_date: schedule.next_due,
+                        recurring: true,
+                        frequency_days: freq_days,
+                        paid: false,
+                        created_at: current_time,
+                        paid_at: None,
+                        schedule_id: Some(schedule.id),
+                        tags: Vec::new(&env),
+                        currency: schedule.currency.clone(),
+                    };
+                    bills.set(next_id, child);
+                    Self::index_add_active(&env, &schedule.owner, next_id);
+                    Self::index_add_currency(&env, &schedule.owner, &schedule.currency, next_id);
+                    Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
+
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                        (next_id, schedule_id, schedule.next_due),
+                    );
+                }
+            } else {
+                schedule.active = false;
+            }
+
+            schedules.set(schedule_id, schedule);
+            executed.push_back(schedule_id);
+
+            env.events().publish(
+                (symbol_short!("bill"), BillEvent::ScheduleExecuted),
+                schedule_id,
+            );
+        }
+
+        env.storage()
+            .instance()
+            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILLS"), &bills);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_ID"), &next_id);
+
+        executed
+    }
+
+    pub fn get_bill_schedules(env: Env, owner: Address) -> Vec<BillSchedule> {
+        let ids = Self::get_owner_bill_schedules(&env, &owner);
+        let schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+        let mut result = Vec::new(&env);
+        for id in ids.iter() {
+            if let Some(schedule) = schedules.get(id) {
+                result.push_back(schedule);
+            }
+        }
+        result
+    }
+
+    pub fn get_bill_schedule(env: Env, schedule_id: u32) -> Option<BillSchedule> {
+        let schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+        schedules.get(schedule_id)
     }
 
     // -----------------------------------------------------------------------
@@ -1030,7 +1489,7 @@ impl BillPayments {
             paid: false,
             created_at: current_time,
             paid_at: None,
-            schedule_id: None,
+            schedule_id: _schedule_id,
             tags: Vec::new(&env),
             currency: resolved_currency,
         };

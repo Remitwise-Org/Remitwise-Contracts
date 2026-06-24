@@ -12,7 +12,10 @@
 #![cfg(test)]
 
 use super::*;
-use crate::pause_functions::{ARCHIVE, CANCEL_BILL, CREATE_BILL, PAY_BILL, RESTORE};
+use crate::pause_functions::{
+    ARCHIVE, CANCEL_BILL, CANCEL_BILL_SCHEDULE, CREATE_BILL, CREATE_BILL_SCHEDULE,
+    EXECUTE_BILL_SCHEDULES, MODIFY_BILL_SCHEDULE, PAY_BILL, RESTORE,
+};
 use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 
 // ---------------------------------------------------------------------------
@@ -29,6 +32,10 @@ fn pause_function_symbols_are_stable() {
     assert_eq!(CANCEL_BILL, symbol_short!("can_bill"));
     assert_eq!(ARCHIVE, symbol_short!("archive"));
     assert_eq!(RESTORE, symbol_short!("restore"));
+    assert_eq!(CREATE_BILL_SCHEDULE, symbol_short!("crt_bsch"));
+    assert_eq!(MODIFY_BILL_SCHEDULE, symbol_short!("mod_bsch"));
+    assert_eq!(CANCEL_BILL_SCHEDULE, symbol_short!("can_bsch"));
+    assert_eq!(EXECUTE_BILL_SCHEDULES, symbol_short!("exe_bsch"));
 }
 
 #[test]
@@ -61,8 +68,13 @@ fn remitwise_action_symbols_are_stable() {
         symbol_short!("f_pay_id"),
         symbol_short!("fpay_auth"),
         symbol_short!("f_pay_pd"),
+        symbol_short!("sch_new"),
+        symbol_short!("sch_exec"),
+        symbol_short!("sch_miss"),
+        symbol_short!("sch_mod"),
+        symbol_short!("sch_can"),
     ];
-    assert_eq!(actions.len(), 15);
+    assert_eq!(actions.len(), 20);
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 
 - **remittance_split**: Automatically splits remittances into spending, savings, bills, and insurance
 - **savings_goals**: Goal-based savings with target dates and locked funds
-- **bill_payments**: Automated bill payment tracking and scheduling
+- **bill_payments**: Automated bill payment tracking and scheduling with recurring bill schedule lifecycle
 - **insurance**: Micro-insurance policy management and premium payments
 - **family_wallet**: Family governance, multisig approvals, and emergency transfer controls
 - **remitwise-common**: Shared types and utilities used across contracts
@@ -372,6 +372,12 @@ Tracks and manages bill payments with recurring support.
 - `restore_bill`: Restore archived bill to active storage
 - `bulk_cleanup_bills`: Permanently delete old archives
 - `get_storage_stats`: Get storage usage statistics
+- `create_bill_schedule`: Create a recurring/one-off bill schedule
+- `modify_bill_schedule`: Modify an existing bill schedule
+- `cancel_bill_schedule`: Cancel an active bill schedule
+- `execute_due_bill_schedules`: Execute all due bill schedules (permissionless)
+- `get_bill_schedules`: Get all schedules for an owner
+- `get_bill_schedule`: Get a specific schedule by ID
 
 **Events:**
 
@@ -381,6 +387,16 @@ Tracks and manages bill payments with recurring support.
   - `bill_id`, `name`, `amount`, `timestamp`
 - `RecurringBillCreatedEvent`: Emitted when a recurring bill generates the next bill
   - `bill_id`, `parent_bill_id`, `name`, `amount`, `due_date`, `timestamp`
+- `ScheduleCreatedEvent`: Emitted when a bill schedule is created
+  - `schedule_id`, `owner`
+- `ScheduleExecutedEvent`: Emitted when a bill schedule is executed
+  - `schedule_id`
+- `ScheduleModifiedEvent`: Emitted when a bill schedule is modified
+  - `schedule_id`
+- `ScheduleCancelledEvent`: Emitted when a bill schedule is cancelled
+  - `schedule_id`
+- `ScheduleMissedEvent`: Emitted when a recurring schedule skips intervals
+  - `schedule_id`, `missed`
 
 ### Insurance
 
