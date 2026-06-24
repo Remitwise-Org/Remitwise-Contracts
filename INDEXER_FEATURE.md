@@ -49,6 +49,26 @@ Smart contracts emit events but don't provide efficient querying capabilities. T
 | Bill Payments | bill_created, bill_paid, tags_add, tags_rem | Bill |
 | Insurance | policy_created, tags_add, tags_rem | InsurancePolicy |
 | Remittance Split | split_created, split_executed | RemittanceSplit |
+| Orchestrator | flow, flow_ok, flow_fail, init_ok | FlowExecution |
+
+## Orchestrator flow processor
+
+The orchestrator emits a unified lifecycle event set for **both** execution
+entrypoints:
+
+| Event | When | Payload |
+|-------|------|---------|
+| `flow` | After validation, before downstream calls | `(executor, amount)` |
+| `flow_ok` | Flow completed successfully | `(executor, amount)` |
+| `flow_fail` | Downstream execution failed | `(executor, error_code)` — no amount |
+
+Indexers should subscribe to the `Remitwise` topic namespace and match `flow`
+events to their `flow_ok` or `flow_fail` completion. Unsigned
+(`execute_remittance_flow`) and signed (`execute_remittance_flow_signed`) flows
+use identical event shapes; only the signed path adds nonce/deadline validation
+before `flow` is emitted. Audit entries use the `flow_exec` operation symbol on
+both paths. See [EVENTS.md](EVENTS.md#orchestrator-contract) and
+[docs/orchestrator-events.md](docs/orchestrator-events.md).
 
 ## Architecture
 

@@ -522,7 +522,10 @@ fn test_overdue_for_owner_boundary_strict_less_than() {
     create_bill(&env, &client, &owner, BASE_TIME + 1); // future -> NOT overdue
 
     let page = client.get_overdue_bills_for_owner(&owner, &0, &100);
-    assert_eq!(page.count, 1, "only the bill with due_date < now is overdue");
+    assert_eq!(
+        page.count, 1,
+        "only the bill with due_date < now is overdue"
+    );
     assert!(page.items.get(0).unwrap().due_date < BASE_TIME);
 }
 

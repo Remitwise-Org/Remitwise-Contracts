@@ -77,7 +77,10 @@ fn test_no_drift_exact_due_time() {
 
     let sch = client.get_remittance_schedule(&id).unwrap();
     assert!(sch.active);
-    assert_eq!(sch.missed_count, 0, "no missed intervals when fired on time");
+    assert_eq!(
+        sch.missed_count, 0,
+        "no missed intervals when fired on time"
+    );
     assert_eq!(sch.next_due, T0 + INTERVAL, "next_due = T0 + 1*I");
     assert_eq!(sch.last_executed, Some(T0));
 }
@@ -167,7 +170,11 @@ fn test_sub_interval_gap_no_missed() {
     let sch = client.get_remittance_schedule(&id).unwrap();
     assert!(sch.active);
     assert_eq!(sch.missed_count, 0, "sub-interval gap: no missed");
-    assert_eq!(sch.next_due, T0 + INTERVAL, "next_due advances by one interval");
+    assert_eq!(
+        sch.next_due,
+        T0 + INTERVAL,
+        "next_due advances by one interval"
+    );
     assert_eq!(sch.last_executed, Some(now));
 }
 
@@ -225,7 +232,11 @@ fn test_same_ledger_double_call_is_idempotent_recurring() {
 
     // Second call at the same timestamp must be a no-op.
     let second = client.execute_due_remittance_schedules();
-    assert_eq!(second.len(), 0, "second call at same ledger must be a no-op");
+    assert_eq!(
+        second.len(),
+        0,
+        "second call at same ledger must be a no-op"
+    );
 
     let sch_after_second = client.get_remittance_schedule(&id).unwrap();
     assert_eq!(
@@ -312,7 +323,10 @@ fn test_sch_exec_event_carries_correct_data() {
 
     let (event_id, event_amount): (u32, i128) = data.into_val(&env);
     assert_eq!(event_id, id, "sch_exec event must carry the schedule id");
-    assert_eq!(event_amount, amount, "sch_exec event must carry the schedule amount");
+    assert_eq!(
+        event_amount, amount,
+        "sch_exec event must carry the schedule amount"
+    );
 }
 
 /// `sch_miss` event is emitted with `(schedule_id, missed_count)` payload when
@@ -358,7 +372,10 @@ fn test_no_sch_miss_event_when_no_drift() {
         .iter()
         .find(|(_cid, topics, _data)| topic3_is(topics, symbol_short!("sch_miss")));
 
-    assert!(miss_event.is_none(), "no sch_miss event when missed_count is 0");
+    assert!(
+        miss_event.is_none(),
+        "no sch_miss event when missed_count is 0"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -437,7 +454,10 @@ fn test_executed_oneoff_is_inactive_and_cannot_be_recancelled() {
     assert_eq!(executed.len(), 1);
 
     let sch = client.get_remittance_schedule(&id).unwrap();
-    assert!(!sch.active, "one-off deactivates immediately after execution");
+    assert!(
+        !sch.active,
+        "one-off deactivates immediately after execution"
+    );
 
     let result = client.try_cancel_remittance_schedule(&owner, &id);
     assert_eq!(
@@ -476,7 +496,12 @@ fn test_executor_mixed_active_inactive_only_due_active_executed() {
     );
 
     // Verify final states.
-    assert!(!client.get_remittance_schedule(&id_cancelled).unwrap().active);
+    assert!(
+        !client
+            .get_remittance_schedule(&id_cancelled)
+            .unwrap()
+            .active
+    );
     assert_eq!(
         client
             .get_remittance_schedule(&id_cancelled)
