@@ -5,7 +5,7 @@ use soroban_sdk::{
     Env, IntoVal, Map, TryFromVal, Val, Vec,
 };
 
-pub use remitwise_common::{Category, CoverageType};
+pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -2028,46 +2028,85 @@ impl ReportingContract {
         Ok(archived_count)
     }
 
-    /// Get archived reports for a user
+    /// Get archived reports for a user — **DEPRECATED**.
+    ///
+    /// This entrypoint is **deprecated** as of v0.2.0 and is preserved only for
+    /// backwards compatibility. It is now internally bounded to the first
+    /// `DEFAULT_PAGE_LIMIT` (20) entries of the user's archive — it no longer
+    /// walks the entire `ARCH_IDX(user)` list. For users with long archive
+    /// histories (archives are kept alive for ~150 days) this bound prevents
+    /// the call from exceeding the host return-size/gas budget and reverting.
+    ///
+    /// Callers **must migrate** to [`ReportingContract::get_archived_reports_page`],
+    /// which returns an [`ArchivedPage`] with the canonical cursor terminator
+    /// convention (`next_cursor == 0` means "no more pages") and an explicit
+    /// pager count so callers can walk the full archive progressively.
+    ///
+    /// Removal of this entrypoint is tracked separately — see
+    /// [`CHANGELOG_CONTRACTS.md`] for the migration note.
     ///
     /// # Arguments
     /// * `user` - Address of the user
     ///
     /// # Returns
-    /// Vec of ArchivedReport structs
+    /// At most `DEFAULT_PAGE_LIMIT` (20) [`ArchivedReport`] entries (the first
+    /// page only). To retrieve the rest of the archive, call
+    /// `get_archived_reports_page(user, cursor=20, limit=DEFAULT_PAGE_LIMIT)`
+    /// and continue paginating until `next_cursor == 0`.
+    #[deprecated(
+        since = "0.2.0",
+        note = "Returns at most DEFAULT_PAGE_LIMIT entries; migrate to get_archived_reports_page to walk the full archive."
+    )]
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
         user.require_auth();
-        let arch_idx: Map<Address, Vec<u64>> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_IDX"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let user_idx = arch_idx.get(user.clone()).unwrap_or_else(|| Vec::new(&env));
-        let archived: Map<(Address, u64), ArchivedReport> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_RPT"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut result = Vec::new(&env);
-        for period_key in user_idx.iter() {
-            if let Some(report) = archived.get((user.clone(), period_key)) {
-                result.push_back(report);
-            }
-        }
-        result
+        // Delegate to the paged reader with a fixed `DEFAULT_PAGE_LIMIT` cap so
+        // the bounded behaviour is the single source of truth (no duplication
+        // of the cursor/index logic). Returning `.items` mirrors the legacy
+        // signature for back-compat.
+        let ArchivedPage { items, .. } =
+            Self::get_archived_reports_page(env, user, 0u32, DEFAULT_PAGE_LIMIT);
+        items
     }
 
     /// Get a paginated list of archived reports for a user.
     ///
+    /// This is the supported entrypoint for reading the archive — see the
+    /// deprecation note on [`ReportingContract::get_archived_reports`].
+    ///
+    /// # Pagination contract
+    ///
+    /// The cursor follows the standard Remitwise terminator convention:
+    ///
+    /// - `items`     — Up to `limit` [`ArchivedReport`] entries starting at `cursor`.
+    /// - `next_cursor` — `0` when there are **no more pages**. Otherwise, the
+    ///   index of the first item in the next page.
+    /// - `count`     — Total number of archived reports for `user`. Unaffected
+    ///   by `cursor` or `limit`.
+    ///
+    /// # Termination guarantees
+    ///
+    /// The pager **always terminates**:
+    /// - In-range `cursor`: returns up to `limit` items and either
+    ///   `next_cursor == end_index` (more pages) or `next_cursor == 0` (last
+    ///   page, exactly when `cursor + limit >= count`).
+    /// - Out-of-range `cursor` (`cursor >= count`): returns an empty `items`
+    ///   vector with `next_cursor == 0` (canonical terminator) — never panics.
+    /// - Empty archive (`count == 0`): empty `items`, `next_cursor == 0`.
+    ///
+    /// # Limit normalization
+    ///
+    /// `limit` is normalized via `remitwise-common::clamp_limit`:
+    /// - `0` maps to [`DEFAULT_PAGE_LIMIT`] (20).
+    /// - Values above `MAX_PAGE_LIMIT` (50) clamp to `MAX_PAGE_LIMIT`.
+    /// This matches every other paginated read in the Remitwise suite.
+    ///
     /// # Arguments
-    /// * `user` - Address of the user
+    /// * `user`   - Address of the user
     /// * `cursor` - Starting index in the user's archive list
-    /// * `limit` - Maximum number of reports to return
+    /// * `limit`  - Maximum number of reports to return (see normalization above)
     ///
     /// # Returns
-    /// ArchivedPage containing reports and pagination metadata
+    /// [`ArchivedPage`] with `items`, `next_cursor`, and `count`.
     pub fn get_archived_reports_page(
         env: Env,
         user: Address,
@@ -2091,16 +2130,21 @@ impl ReportingContract {
             .get(&symbol_short!("ARCH_RPT"))
             .unwrap_or_else(|| Map::new(&env));
 
+        // Out-of-range cursor: canonical termination (empty page, next_cursor = 0).
+        // This is a strict improvement over the prior behaviour that echoed
+        // `cursor` back as `next_cursor`, which forced every caller to make a
+        // second call to detect the end of the archive.
         let mut items = Vec::new(&env);
         if cursor >= total_count {
             return ArchivedPage {
                 items,
-                next_cursor: cursor,
+                next_cursor: 0u32,
                 count: total_count,
             };
         }
 
-        let end = (cursor + limit).min(total_count);
+        let limit = remitwise_common::clamp_limit(limit);
+        let end = cursor.saturating_add(limit).min(total_count);
         for i in cursor..end {
             if let Some(period_key) = user_idx.get(i) {
                 if let Some(report) = archived.get((user.clone(), period_key)) {
@@ -2111,7 +2155,7 @@ impl ReportingContract {
 
         ArchivedPage {
             items,
-            next_cursor: if end < total_count { end } else { 0 },
+            next_cursor: if end < total_count { end } else { 0u32 },
             count: total_count,
         }
     }
@@ -2287,3 +2331,6 @@ mod paginate_dependency_tests;
 
 #[cfg(test)]
 mod tests_data_availability;
+
+#[cfg(test)]
+mod tests_archived_pagination_bound;

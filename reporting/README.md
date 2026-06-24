@@ -164,8 +164,29 @@ Retrieves a stored report. Returns `None` if not found.
 #### `archive_old_reports(caller: Address, before_timestamp: u64) -> u32`
 Moves reports generated before `before_timestamp` to archive storage. Admin only.
 
-#### `get_archived_reports(user: Address) -> Vec<ArchivedReport>`
-Returns archived reports for a specific user.
+#### `get_archived_reports_page(user: Address, cursor: u32, limit: u32) -> ArchivedPage`
+Returns a paginated slice of archived reports for a specific user. **This is the supported entrypoint for archive reads.**
+
+- `cursor` — Starting index in the user's archived list (`0` for the first page).
+- `limit` — Maximum items to return in the page. `0` is normalized to `DEFAULT_PAGE_LIMIT` (20); values above `MAX_PAGE_LIMIT` (50) are clamped.
+- Returns [`ArchivedPage`]:
+  - `items`       — Up to `limit` `ArchivedReport` entries.
+  - `next_cursor` — `0` when there are no more pages (canonical terminator). Otherwise, the index of the next page's first item.
+  - `count`       — Total number of archived reports for `user`. Unaffected by `cursor` or `limit`.
+
+The cursor **always terminates**: out-of-range cursors (`cursor >= count`) and empty archives both return an empty page with `next_cursor == 0`. Walk the full archive with:
+
+```rust
+let mut cursor = 0u32;
+loop {
+    let page = client.get_archived_reports_page(&user, &cursor, &DEFAULT_PAGE_LIMIT);
+    // ... process `page.items` ...
+    if page.next_cursor == 0 { break; }
+    cursor = page.next_cursor;
+}
+```
+
+> **Deprecation note (Issue #832):** `get_archived_reports(user)` is preserved for backwards compatibility but is **bounded** to the first `DEFAULT_PAGE_LIMIT` (20) entries — it no longer walks the entire `ARCH_IDX(user)` list. Callers should migrate to `get_archived_reports_page` to walk the full archive without hitting the host return-size/gas budget.
 
 #### `cleanup_old_reports(caller: Address, before_timestamp: u64) -> u32`
 Permanently deletes archives created before `before_timestamp`. Admin only.
