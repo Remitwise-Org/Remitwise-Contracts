@@ -349,7 +349,7 @@ pub trait InsuranceTrait {
 
 #[contractclient(name = "FamilyWalletClient")]
 pub trait FamilyWalletTrait {
-    fn get_owner(env: Env) -> Address;
+    fn get_owner(env: &Env) -> Address;
     fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage;
     fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker>;
 }
