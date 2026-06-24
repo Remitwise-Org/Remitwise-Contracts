@@ -79,17 +79,13 @@ proptest! {
         let (env, client, owner) = setup();
         init_split(&client, &env, &owner, sp, sg, sb, si);
 
-        let allocs1 = client.calculate_split(&total).expect("calculate_split should succeed");
+        let allocs1 = client.calculate_split(&total);
         let sum: i128 = allocs1.iter().sum();
         prop_assert_eq!(
             sum, total,
             "dust conservation violated for total={}; percentages={}/{}/{}/{}; allocs={:?}",
             total, sp, sg, sb, si, allocs1
         );
-
-        // Determinism stability: calling twice must yield identical allocations.
-        let allocs2 = client.calculate_split(&total).expect("calculate_split should succeed");
-        prop_assert_eq!(allocs1, allocs2, "calculate_split must be deterministic");
 
         // Deterministic remainder category: insurance always receives the remainder
         // after flooring spending/savings/bills.
@@ -109,25 +105,29 @@ proptest! {
             .expect("checked arithmetic should not overflow in test range");
 
         prop_assert_eq!(
-            allocs1[0], spending_expected,
+            allocs1.get_unchecked(0), spending_expected,
             "spending bucket mismatch for total={}; percentages={}/{}/{}/{}",
             total, sp, sg, sb, si
         );
         prop_assert_eq!(
-            allocs1[1], savings_expected,
+            allocs1.get_unchecked(1), savings_expected,
             "savings bucket mismatch for total={}; percentages={}/{}/{}/{}",
             total, sp, sg, sb, si
         );
         prop_assert_eq!(
-            allocs1[2], bills_expected,
+            allocs1.get_unchecked(2), bills_expected,
             "bills bucket mismatch for total={}; percentages={}/{}/{}/{}",
             total, sp, sg, sb, si
         );
         prop_assert_eq!(
-            allocs1[3], insurance_expected,
+            allocs1.get_unchecked(3), insurance_expected,
             "insurance bucket must receive the deterministic remainder (dust) for total={}; percentages={}/{}/{}/{}",
             total, sp, sg, sb, si
         );
+
+        // Determinism stability: calling twice must yield identical allocations.
+        let allocs2 = client.calculate_split(&total);
+        prop_assert_eq!(allocs1, allocs2, "calculate_split must be deterministic");
     }
 }
 
@@ -136,11 +136,11 @@ fn dust_edge_cases_are_stable_and_conserve_total() {
     // Edge cases required by the issue: amount=0 is rejected by contract,
     // but amount=1 must still conserve dust. We also explicitly test a
     // representative near-boundary total.
-    let mut cases: Vec<(i128, (u32,u32,u32,u32))> = Vec::new();
-    cases.push((1, (33,33,33,1)));
-    cases.push((1, (100,0,0,0)));
-    cases.push((1, (0,0,0,100)));
-    cases.push((MAX_SAFE_TOTAL, (33,33,33,1)));
+    let mut cases: Vec<(i128, (u32, u32, u32, u32))> = Vec::new();
+    cases.push((1, (33, 33, 33, 1)));
+    cases.push((1, (100, 0, 0, 0)));
+    cases.push((1, (0, 0, 0, 100)));
+    cases.push((MAX_SAFE_TOTAL, (33, 33, 33, 1)));
 
     for (total, (sp, sg, sb, si)) in cases {
         let env = Env::default();
@@ -150,12 +150,11 @@ fn dust_edge_cases_are_stable_and_conserve_total() {
         let owner = Address::generate(&env);
         init_split(&client, &env, &owner, sp, sg, sb, si);
 
-        let allocs = client.calculate_split(&total).expect("calculate_split should succeed");
+        let allocs = client.calculate_split(&total);
         let sum: i128 = allocs.iter().sum();
         assert_eq!(sum, total, "dust conservation failed for total={}", total);
 
-        let allocs2 = client.calculate_split(&total).expect("calculate_split should succeed");
+        let allocs2 = client.calculate_split(&total);
         assert_eq!(allocs, allocs2, "allocations must be stable across calls");
     }
 }
-

@@ -6466,7 +6466,6 @@ fn test_precision_spending_overflow_graceful() {
     assert!(result.is_ok() || result.is_err());
 }
 
-
 #[test]
 fn test_remove_member_clears_spending_tracker() {
     let env = Env::default();
@@ -6499,7 +6498,10 @@ fn test_remove_member_clears_spending_tracker() {
 
     // Verify the spending tracker is cleared
     let tracker_after = client.get_spending_tracker(&member);
-    assert!(tracker_after.is_none(), "Spending tracker should be cleared after member removal");
+    assert!(
+        tracker_after.is_none(),
+        "Spending tracker should be cleared after member removal"
+    );
 }
 
 #[test]
@@ -6542,7 +6544,10 @@ fn test_remove_member_clears_precision_limit() {
         enable_rollover: true,
     };
     let result = client.try_set_precision_spending_limit(&owner, &member, &new_limit);
-    assert!(result.is_ok(), "Should be able to set new precision limit for re-added member");
+    assert!(
+        result.is_ok(),
+        "Should be able to set new precision limit for re-added member"
+    );
 }
 
 #[test]
@@ -6594,8 +6599,14 @@ fn test_remove_member_then_readd_has_clean_state() {
     // It might be None or a fresh tracker depending on when it's created
     // If it exists, it should have 0 current_spent
     if let Some(tracker) = tracker_after_readd {
-        assert_eq!(tracker.current_spent, 0, "Re-added member should have clean spending state");
-        assert_eq!(tracker.tx_count, 0, "Re-added member should have 0 transaction count");
+        assert_eq!(
+            tracker.current_spent, 0,
+            "Re-added member should have clean spending state"
+        );
+        assert_eq!(
+            tracker.tx_count, 0,
+            "Re-added member should have 0 transaction count"
+        );
     }
 }
 

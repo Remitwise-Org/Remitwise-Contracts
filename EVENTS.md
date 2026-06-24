@@ -818,16 +818,19 @@ state transition in the wallet.
 **Primary Topic Prefix:** `"orch"` for direct events, `"Remitwise"` for categorized events  
 **Documentation:** [docs/orchestrator-events.md](docs/orchestrator-events.md)
 
-> **Note:** Signed flows (`execute_remittance_flow_signed`) only emit the `flow`
-> lifecycle events below after passing the deadline-window and nonce checks. A
-> request rejected for an expired/out-of-window deadline returns
-> `DeadlineExpired` before emitting any flow event. See
+> **Note:** Both remittance entrypoints (`execute_remittance_flow` and
+> `execute_remittance_flow_signed`) emit the unified `flow` / `flow_ok` /
+> `flow_fail` lifecycle events and write `flow_exec` audit entries after
+> validation passes. Pre-execution rejections (`InvalidAmount`, `ExecutionLocked`)
+> write a failed `flow_exec` audit entry but emit no lifecycle events.
+> Signed-only rejections (deadline window, nonce/hash binding) return before any
+> audit or event emission. See
 > [docs/orchestrator-deadline-window.md](docs/orchestrator-deadline-window.md).
 
 ### Event: Flow Started
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow execution begins after passing validation checks
 
 **Data Structure:**
@@ -849,7 +852,7 @@ pub struct FlowStartedEvent {
 ### Event: Flow Completed Successfully
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow completes successfully
 
 **Data Structure:**
@@ -871,7 +874,7 @@ pub struct FlowCompletedEvent {
 ### Event: Flow Failed
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow execution fails
 
 **Data Structure:**
@@ -903,6 +906,7 @@ pub enum OrchestratorError {
     ExecutionLocked = 8,
     InvalidDependency = 9,
     DuplicateDependency = 10,
+    RemittanceFlowRolledBack = 11,
 }
 ```
 
@@ -1097,6 +1101,7 @@ Per-contract:
 | `remittance_split` | [remittance_split/src/events_schema_test.rs](remittance_split/src/events_schema_test.rs) |
 | `reporting` | [reporting/src/events_schema_test.rs](reporting/src/events_schema_test.rs) |
 | `savings_goals` | [savings_goals/src/events_schema_test.rs](savings_goals/src/events_schema_test.rs) |
+| `orchestrator` | [orchestrator/src/events_schema_test.rs](orchestrator/src/events_schema_test.rs) |
 | `remitwise-common` | [remitwise-common/src/lib.rs](remitwise-common/src/lib.rs) |
 
 A failing schema test is the signal that **a change is breaking for indexers**.

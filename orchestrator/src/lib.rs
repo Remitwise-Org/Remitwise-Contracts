@@ -23,17 +23,17 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> bool;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, caller: Address, bill_id: u32);
+        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> bool;
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
     }
 
     /// Compensation / reverse interfaces for rollback support.
@@ -107,6 +107,8 @@ pub struct AuditEntry {
 
 const EXEC_LOCK: Symbol = symbol_short!("EXEC_LOCK");
 const AUDIT: Symbol = symbol_short!("AUDIT");
+/// Audit operation symbol for remittance flow executions (signed and unsigned).
+const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
 
 /// RAII guard to ensure the execution lock is released on drop.
 pub struct LockGuard {
@@ -172,6 +174,11 @@ pub struct Orchestrator;
 #[contractimpl]
 impl Orchestrator {
     /// Executes the full remittance flow across multiple contracts.
+    ///
+    /// Emits the same lifecycle events (`flow`, `flow_ok`, `flow_fail`) and writes
+    /// `flow_exec` audit entries as [`Self::execute_remittance_flow_signed`], so
+    /// indexers observe all remittance executions regardless of entrypoint.
+    ///
     /// This is protected against reentrancy.
     pub fn execute_remittance_flow(
         env: Env,
@@ -180,12 +187,22 @@ impl Orchestrator {
         params.caller.require_auth();
 
         if params.total_amount <= 0 {
+            Self::record_flow_validation_failure(&env, &params.caller);
             return Err(OrchestratorError::InvalidAmount);
         }
 
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            Self::record_flow_validation_failure(&env, &params.caller);
+            return Err(OrchestratorError::ExecutionLocked);
+        }
+
+        Self::emit_flow_started(&env, &params.caller, params.total_amount);
+
         // Use a scope to ensure the guard is dropped (and lock released)
-        // before we audit and return.
+        // before we record stats, audit, and lifecycle completion events.
         let result = {
+            Self::extend_instance_ttl(&env);
             // The guard acquires the lock on creation and releases it on drop.
             // This ensures the lock is released even if we return early via `?`.
             let _guard = Self::acquire_execution_lock(&env)?;
@@ -193,10 +210,7 @@ impl Orchestrator {
             Self::perform_remittance_flow(&env, &params)
         };
 
-        // 4. Audit result (lock is already released here)
-        Self::append_audit(&env, symbol_short!("remit"), &params.caller, result.is_ok());
-
-        result
+        Self::record_flow_outcome(&env, &params.caller, params.total_amount, result)
     }
 
     fn perform_remittance_flow(
@@ -227,17 +241,23 @@ impl Orchestrator {
         // 3. Downstream calls
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &params.savings);
-            s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt);
+            if !s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &params.bills);
-            b_client.pay_bill(&params.caller, &params.bill_id);
+            if !b_client.pay_bill(&params.caller, &params.bill_id, &bills_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &params.insurance);
-            i_client.pay_premium(&params.caller, &params.policy_id);
+            if !i_client.pay_premium(&params.caller, &params.policy_id, &insurance_amt) {
+                return Err(OrchestratorError::CrossContractCallFailed);
+            }
         }
 
         Ok(())
@@ -389,11 +409,18 @@ impl Orchestrator {
 
         // 3. Check amount validity
         if amount <= 0 {
-            Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
+            Self::record_flow_validation_failure(&env, &executor);
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        // 4. Hardened nonce validation with deadline + hash binding
+        // 4. Reentrancy guard: check execution lock before flow starts
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            Self::record_flow_validation_failure(&env, &executor);
+            return Err(OrchestratorError::ExecutionLocked);
+        }
+
+        // 5. Hardened nonce validation with deadline + hash binding
         let expected_hash = Self::compute_request_hash(
             symbol_short!("flow"),
             executor.clone(),
@@ -410,52 +437,22 @@ impl Orchestrator {
             expected_hash,
         )?;
 
-        // Emit flow lifecycle event - flow started
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Transaction,
-            EventPriority::High,
-            symbol_short!("flow"),
-            (executor.clone(), amount),
-        );
+        Self::emit_flow_started(&env, &executor, amount);
 
-        // 5. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
+        // 6. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
         let result = {
             let _guard = Self::acquire_execution_lock(&env)?;
             Self::execute_flow_internal(&env, &executor, amount)
         };
 
-        // 6. On success: advance nonce, update stats, record audit, emit event
+        // 7. On success: advance nonce, then record shared flow outcome
         match result {
             Ok(_) => {
                 Self::increment_nonce(&env, &executor)?;
-                Self::update_execution_stats(&env, true);
-                Self::append_audit(&env, symbol_short!("flow_exec"), &executor, true);
-
-                RemitwiseEvents::emit(
-                    &env,
-                    EventCategory::Transaction,
-                    EventPriority::High,
-                    symbol_short!("flow_ok"),
-                    (executor, amount),
-                );
-
+                Self::record_flow_outcome(&env, &executor, amount, Ok(()))?;
                 Ok(true)
             }
-            Err(e) => {
-                Self::update_execution_stats(&env, false);
-                Self::append_audit(&env, symbol_short!("flow_exec"), &executor, false);
-
-                RemitwiseEvents::emit(
-                    &env,
-                    EventCategory::Transaction,
-                    EventPriority::High,
-                    symbol_short!("flow_fail"),
-                    (executor, e as u32),
-                );
-
-                Err(e)
-            }
+            Err(e) => Self::record_flow_outcome(&env, &executor, amount, Err(e)).map(|_| true),
         }
     }
 
@@ -551,6 +548,66 @@ impl Orchestrator {
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /// Emits the `flow` lifecycle event after validation passes and execution begins.
+    ///
+    /// Topic: `("Remitwise", Transaction, High, "flow")`
+    /// Payload: `(executor: Address, amount: i128)`
+    fn emit_flow_started(env: &Env, executor: &Address, amount: i128) {
+        RemitwiseEvents::emit(
+            env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("flow"),
+            (executor.clone(), amount),
+        );
+    }
+
+    /// Records a pre-execution validation failure in the audit log only.
+    ///
+    /// No lifecycle events or `ExecutionStats` updates are emitted — the flow
+    /// never started. Matches the signed path for `InvalidAmount` / `ExecutionLocked`.
+    fn record_flow_validation_failure(env: &Env, executor: &Address) {
+        Self::append_audit(env, FLOW_EXEC_AUDIT, executor, false);
+    }
+
+    /// Updates stats, audit log, and lifecycle events after flow execution completes.
+    ///
+    /// Must be called only after downstream state mutations finish so failures
+    /// emit `flow_fail`, not `flow_ok`.
+    fn record_flow_outcome(
+        env: &Env,
+        executor: &Address,
+        amount: i128,
+        result: Result<(), OrchestratorError>,
+    ) -> Result<(), OrchestratorError> {
+        match result {
+            Ok(()) => {
+                Self::update_execution_stats(env, true);
+                Self::append_audit(env, FLOW_EXEC_AUDIT, executor, true);
+                RemitwiseEvents::emit(
+                    env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("flow_ok"),
+                    (executor.clone(), amount),
+                );
+                Ok(())
+            }
+            Err(e) => {
+                Self::update_execution_stats(env, false);
+                Self::append_audit(env, FLOW_EXEC_AUDIT, executor, false);
+                RemitwiseEvents::emit(
+                    env,
+                    EventCategory::Transaction,
+                    EventPriority::High,
+                    symbol_short!("flow_fail"),
+                    (executor.clone(), e as u32),
+                );
+                Err(e)
+            }
+        }
+    }
 
     fn execute_flow_internal(
         env: &Env,
@@ -692,13 +749,7 @@ impl Orchestrator {
     }
 
     /// Compensate a bill payment if it was applied.
-    fn compensate_bill(
-        env: &Env,
-        executor: &Address,
-        bill_id: u32,
-        amount: i128,
-        applied: bool,
-    ) {
+    fn compensate_bill(env: &Env, executor: &Address, bill_id: u32, amount: i128, applied: bool) {
         if !applied || amount <= 0 {
             return;
         }
@@ -1203,3 +1254,6 @@ mod tests_nonce_eviction {
 #[cfg(test)]
 #[path = "test.rs"]
 mod test;
+
+#[cfg(test)]
+mod events_schema_test;

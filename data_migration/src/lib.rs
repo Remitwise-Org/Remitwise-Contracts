@@ -759,7 +759,7 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 /// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
 /// context of data-migration operations.
 /// Format an encrypted payload prefix for a given version.
-/// 
+///
 /// This helper is provided for constructing encrypted payloads and testing
 /// version negotiation. The format is `enc:vN:` where N is the version number.
 pub fn encrypted_payload_prefix(version: u32) -> String {
@@ -824,12 +824,11 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
 
     // Find the colon after the version number (second colon in the string)
     // We start searching from position 5 (after "enc:v")
-    let version_end = encoded[5..]
-        .find(':')
-        .map(|i| i + 5)
-        .ok_or_else(|| {
-            MigrationError::InvalidFormat("missing version separator in encrypted payload marker".into())
-        })?;
+    let version_end = encoded[5..].find(':').map(|i| i + 5).ok_or_else(|| {
+        MigrationError::InvalidFormat(
+            "missing version separator in encrypted payload marker".into(),
+        )
+    })?;
 
     // Ensure we have at least one digit for the version
     if version_end <= 5 {
@@ -839,11 +838,9 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     }
 
     let version_str = &encoded[5..version_end];
-    let version: u32 = version_str
-        .parse()
-        .map_err(|_| {
-            MigrationError::InvalidFormat("invalid encrypted payload version number".into())
-        })?;
+    let version: u32 = version_str.parse().map_err(|_| {
+        MigrationError::InvalidFormat("invalid encrypted payload version number".into())
+    })?;
 
     // Check version compatibility
     if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > ENCRYPTED_PAYLOAD_VERSION {
@@ -1942,12 +1939,11 @@ mod tests {
         let plain = vec![42u8; 100];
         let encoded = export_to_encrypted_payload(&plain).unwrap();
         assert!(encoded.starts_with("enc:v1:"));
-        
+
         // Verify it can be re-imported
         let decoded = import_from_encrypted_payload(&encoded).unwrap();
         assert_eq!(decoded, plain);
     }
-
 
     fn assert_snapshot_equal(a: &Option<ExportSnapshot>, b: &Option<ExportSnapshot>) {
         match (a, b) {
@@ -2932,8 +2928,6 @@ mod tests {
         assert_eq!(imported_goals[0].current_amount, 0);
         assert_eq!(imported_goals[0].target_date, 0);
     }
-
-
 
     #[test]
     fn test_csv_roundtrip_with_large_numbers() {

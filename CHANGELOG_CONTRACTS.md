@@ -76,6 +76,20 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Reporting (`reporting`)
 
+### v0.2.0
+
+- **Summary**: Bounded legacy `get_archived_reports` to prevent host-budget reverts and promoted `get_archived_reports_page` as the supported archive reader (Issue #832).
+- **Changes**:
+  - `get_archived_reports` is **deprecated** (marked `#[deprecated]`). It now delegates to `get_archived_reports_page(0, DEFAULT_PAGE_LIMIT)` internally, so it returns at most the first `DEFAULT_PAGE_LIMIT` (20) entries instead of the entire `ARCH_IDX(user)` list. Signature preserved for back-compat.
+  - `get_archived_reports_page` now uses the canonical terminator convention: out-of-range cursors (`cursor >= count`) and empty archives both return `next_cursor == 0` instead of echoing the cursor back.
+  - `get_archived_reports_page` now normalizes `limit` through `remitwise_common::clamp_limit`: `0` maps to `DEFAULT_PAGE_LIMIT` (20); values above `MAX_PAGE_LIMIT` (50) clamp to `MAX_PAGE_LIMIT`. This matches every other paginated read in the Remitwise suite.
+- **Breaking Changes**: None at the ABI/type level. **Behaviour change**: `get_archived_reports` previously returned an unbounded `Vec<ArchivedReport>`; it is now bounded to `DEFAULT_PAGE_LIMIT` (20) and may truncate users with very long archive histories. Callers that need the full archive should migrate to `get_archived_reports_page` and walk until `next_cursor == 0`.
+- **Migration Notes**:
+  - Replace `get_archived_reports(user)` with a paged walk: start with `get_archived_reports_page(user, 0, DEFAULT_PAGE_LIMIT)` and continue until `next_cursor == 0`.
+  - No storage migration required.
+  - Compatibility: signatures are unchanged. Existing callers that only inspect the first page are unaffected.
+- **Tests**: Added `reporting/src/tests_archived_pagination_bound.rs` covering bound enforcement, first-page equivalence (deprecated reader vs paged reader), full archival traversal with termination, out-of-range cursor, empty archive, `limit=0` normalization, `limit=u32::MAX` clamping, and user isolation under bound.
+
 ### v0.1.0
 
 - **Summary**: Initial release of the Reporting contract.
