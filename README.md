@@ -732,6 +732,8 @@ A comprehensive security review and threat model is available in [THREAT_MODEL.m
 - [SECURITY-004] Replace Checksum with Cryptographic Hash (MEDIUM)
 - [SECURITY-005] Implement Storage Bounds and Entity Limits (MEDIUM)
 
+> **PR Review Checklist:** Before merging security-sensitive PRs, reviewers must complete the [Security Review Checklist](docs/SECURITY_REVIEW.md).
+
 See the [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE) directory for detailed security issue descriptions.
 
 ### Security Best Practices
