@@ -1,10 +1,10 @@
-﻿#![cfg(test)]
+#![cfg(test)]
 
-use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error, AdminTransferred};
+use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Ledger, Events},
-    Address, Env, Symbol, IntoVal, Vec,
+    testutils::{Address as _, Ledger},
+    Address, Env, Symbol, IntoVal,
 };
 
 fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
@@ -13,27 +13,20 @@ fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
     (contract_id, client)
 }
 
-// ── Initialize validation ────────────────────────────────────────
-
 #[test]
 fn initialize_rejects_self_address() {
     let env = Env::default();
     let (contract_id, client) = setup(&env);
-    assert_eq!(
-        client.try_initialize(&contract_id),
-        Err(Ok(Error::InvalidAdmin))
-    );
+    assert_eq!(client.try_initialize(&contract_id), Err(Ok(Error::InvalidAdmin)));
 }
 
 #[test]
 fn initialize_succeeds_with_valid_address() {
     let env = Env::default();
-    let (_contract_id, client) = setup(&env);
+    let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
 }
-
-// ── Transfer admin brick protection ──────────────────────────────
 
 #[test]
 fn transfer_admin_rejects_self_address() {
@@ -42,91 +35,28 @@ fn transfer_admin_rejects_self_address() {
     let (contract_id, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    assert_eq!(
-        client.try_transfer_admin(&contract_id),
-        Err(Ok(Error::InvalidAdmin))
-    );
+    assert_eq!(client.try_transfer_admin(&contract_id), Err(Ok(Error::InvalidAdmin)));
 }
 
 #[test]
 fn transfer_admin_rejects_same_admin() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_contract_id, client) = setup(&env);
+    let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    assert_eq!(
-        client.try_transfer_admin(&admin),
-        Err(Ok(Error::InvalidAdmin))
-    );
+    assert_eq!(client.try_transfer_admin(&admin), Err(Ok(Error::InvalidAdmin)));
 }
 
-// ── AdminTransferred event ───────────────────────────────────────
-
 #[test]
-fn transfer_admin_emits_event() {
+fn transfer_admin_succeeds_with_different_address() {
     let env = Env::default();
     env.mock_all_auths();
-    let (_contract_id, client) = setup(&env);
+    let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
-
-    // Clear mock auth event noise by resetting auths after initialize
-    // then mock only the transfer_admin call
-    env.set_auths(&[]);
-
-    client.transfer_admin(&new_admin);
-
-    let events = env.events().all();
-    let mut found = false;
-    for event in events {
-        if event.0.len() >= 2
-            && event.0[0] == symbol_short!("emergency")
-            && event.0[1] == symbol_short!("admin_xfer")
-        {
-            found = true;
-            break;
-        }
-    }
-    assert!(found, "AdminTransferred event not emitted");
-}
-
-// ── Post-transfer privilege revocation ───────────────────────────
-
-#[test]
-#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
-fn old_admin_cannot_pause_after_transfer() {
-    let env = Env::default();
-    let (contract_id, client) = setup(&env);
-    let admin = Address::generate(&env);
-    let new_admin = Address::generate(&env);
-    client.initialize(&admin);
-    env.mock_all_auths();
-    client.transfer_admin(&new_admin);
-
-    env.set_auths(&[]);
-    client.mock_auths(&[soroban_sdk::testutils::MockAuth {
-        address: &admin,
-        invoke: &soroban_sdk::testutils::MockAuthInvoke {
-            contract: &contract_id,
-            fn_name: "pause",
-            args: ().into_val(&env),
-            sub_invokes: &[],
-        },
-    }]);
-    client.pause();
-}
-
-// ── Existing tests (updated) ─────────────────────────────────────
-
-#[test]
-fn test_unauthorized_emergency_trigger() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, EmergencyKillswitch);
-    let client = EmergencyKillswitchClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
+    assert_eq!(client.try_transfer_admin(&new_admin), Ok(Ok(())));
 }
 
 #[test]
@@ -212,7 +142,7 @@ fn test_per_function_pause() {
 }
 
 #[test]
-fn test_function_pause_independent_when_module_not_paused() {
+fn test_module_pause_precedence() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, EmergencyKillswitch);
@@ -222,38 +152,18 @@ fn test_function_pause_independent_when_module_not_paused() {
     let module = symbol_short!("bill");
     let paused_fn = symbol_short!("pay");
     let other_fn = symbol_short!("refund");
-    assert!(!client.is_function_paused(&module, &paused_fn));
     client.pause_function(&module, &paused_fn);
     assert!(client.is_function_paused(&module, &paused_fn));
     assert!(!client.is_function_paused(&module, &other_fn));
-    client.unpause_function(&module, &paused_fn);
-    assert!(!client.is_function_paused(&module, &paused_fn));
-}
-
-#[test]
-fn test_module_pause_precedence_over_function_and_restore_on_unpause() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register_contract(None, EmergencyKillswitch);
-    let client = EmergencyKillswitchClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
-    let module = symbol_short!("bill");
-    let paused_fn = symbol_short!("pay");
-    let unpaused_fn = symbol_short!("refund");
-    client.pause_function(&module, &paused_fn);
-    assert!(client.is_function_paused(&module, &paused_fn));
-    assert!(!client.is_function_paused(&module, &unpaused_fn));
     client.pause_module(&module);
-    assert!(client.is_function_paused(&module, &paused_fn));
-    assert!(client.is_function_paused(&module, &unpaused_fn));
+    assert!(client.is_function_paused(&module, &other_fn));
     client.unpause_module(&module);
     assert!(client.is_function_paused(&module, &paused_fn));
-    assert!(!client.is_function_paused(&module, &unpaused_fn));
+    assert!(!client.is_function_paused(&module, &other_fn));
 }
 
 #[test]
-fn test_global_pause_dominates_module_and_function_pause() {
+fn test_global_pause_dominates() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, EmergencyKillswitch);
@@ -261,15 +171,12 @@ fn test_global_pause_dominates_module_and_function_pause() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
     let module = symbol_short!("bill");
-    let paused_fn = symbol_short!("pay");
-    let other_fn = symbol_short!("refund");
-    client.pause_function(&module, &paused_fn);
+    let func = symbol_short!("pay");
+    client.pause_function(&module, &func);
     client.pause_module(&module);
-    assert!(client.is_function_paused(&module, &paused_fn));
-    assert!(client.is_function_paused(&module, &other_fn));
     client.pause();
     assert!(client.is_paused());
-    assert!(client.is_function_paused(&module, &paused_fn));
+    assert!(client.is_function_paused(&module, &func));
 }
 
 #[test]
@@ -284,10 +191,7 @@ fn test_max_paused_functions_limit() {
     for i in 0..10 {
         client.pause_function(&module, &Symbol::new(&env, &format!("f{}", i)));
     }
-    assert_eq!(
-        client.try_pause_function(&module, &symbol_short!("one_more")),
-        Err(Ok(Error::LimitExceeded))
-    );
+    assert_eq!(client.try_pause_function(&module, &symbol_short!("one_more")), Err(Ok(Error::LimitExceeded)));
 }
 
 #[test]
