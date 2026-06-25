@@ -131,6 +131,40 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
+    /// Admin-only recovery path that immediately clears the global emergency
+    /// pause, bypassing the unpause timelock.
+    ///
+    /// [unpause] can only succeed once a future [schedule_unpause] has been set
+    /// *and* the ledger has reached it. A re-[pause] removes any pending
+    /// schedule (see [pause]), so a contract can be left globally paused with no
+    /// valid schedule — at which point `unpause` fails with
+    /// [Error::InvalidSchedule] and the only options were to wait out a stale
+    /// schedule or redeploy. This entrypoint lets the admin recover from that
+    /// stuck-paused state in a single call.
+    ///
+    /// Sets [DataKey::GlobalPaused] to `false` and removes any pending
+    /// [DataKey::UnpauseSchedule]. It is idempotent: calling it when the
+    /// contract is not paused is a successful no-op. Module- and function-level
+    /// pauses are intentionally left untouched — lift those with
+    /// [unpause_module] / [unpause_function].
+    ///
+    /// Emits an `emergency`/`cleared` event on success.
+    pub fn clear_emergency_state(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::GlobalPaused, &false);
+        env.storage().instance().remove(&DataKey::UnpauseSchedule);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("cleared")),
+            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
     pub fn schedule_unpause(env: Env, time: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
