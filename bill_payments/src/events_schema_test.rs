@@ -16,7 +16,7 @@ use crate::pause_functions::{ARCHIVE, CANCEL_BILL, CREATE_BILL, PAY_BILL, RESTOR
 use crate::BillPaymentsClient;
 use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::testutils::Events;
-use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val, Address, String, Vec};
+use soroban_sdk::{symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec};
 
 // ---------------------------------------------------------------------------
 // Pause-function symbols
@@ -210,26 +210,30 @@ fn bill_event_secondary_topics_emit_expected_variants() {
         if let Ok(variant) = variant {
             match variant {
                 BillEvent::Cancelled => {
-                    let payload: (u32, Address, u64) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, u64) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_1);
                     assert_eq!(payload.1, owner);
                     found_cancelled = true;
                 }
                 BillEvent::ExternalRefUpdated => {
-                    let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, Option<String>) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_1);
                     assert_eq!(payload.1, owner);
                     assert_eq!(payload.2, Some(String::from_str(&env, "REF1")));
                     found_external_ref = true;
                 }
                 BillEvent::Restored => {
-                    let payload: (u32, Address, u64) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, u64) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_2);
                     assert_eq!(payload.1, owner);
                     found_restored = true;
                 }
                 BillEvent::Paid => {
-                    let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, Option<String>) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.1, owner);
                     found_paid += 1;
                 }
@@ -239,9 +243,15 @@ fn bill_event_secondary_topics_emit_expected_variants() {
     }
 
     assert!(found_cancelled, "BillEvent::Cancelled was not emitted");
-    assert!(found_external_ref, "BillEvent::ExternalRefUpdated was not emitted");
+    assert!(
+        found_external_ref,
+        "BillEvent::ExternalRefUpdated was not emitted"
+    );
     assert!(found_restored, "BillEvent::Restored was not emitted");
-    assert_eq!(found_paid, 1, "Expected exactly one BillEvent::Paid emitted");
+    assert_eq!(
+        found_paid, 1,
+        "Expected exactly one BillEvent::Paid emitted"
+    );
 }
 
 #[test]
@@ -291,12 +301,16 @@ fn batch_pay_bills_emits_paid_events_matching_pay_bill() {
         }
         let variant = BillEvent::try_from_val(&env, &topics.get(1).unwrap());
         if let Ok(BillEvent::Paid) = variant {
-            let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+            let payload: (u32, Address, Option<String>) =
+                TryFromVal::try_from_val(&env, &data).unwrap();
             assert!(payload.0 == bill_a || payload.0 == bill_b);
             assert_eq!(payload.1, owner);
             paid_events += 1;
         }
     }
 
-    assert_eq!(paid_events, 2, "batch_pay_bills must emit exactly two BillEvent::Paid events");
+    assert_eq!(
+        paid_events, 2,
+        "batch_pay_bills must emit exactly two BillEvent::Paid events"
+    );
 }

@@ -2425,6 +2425,7 @@ fn test_cleanup_old_reports_records_admin_auth() {
 // ── get_archived_reports user isolation ──────────────────────────────────────
 
 /// get_archived_reports only returns reports belonging to the queried user.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_user_isolation() {
     let env = create_test_env();
@@ -2473,6 +2474,7 @@ fn test_get_archived_reports_user_isolation() {
 }
 
 /// A user with no archived reports gets an empty list.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_empty_for_unknown_user() {
     let env = create_test_env();
@@ -2495,6 +2497,7 @@ fn test_get_archived_reports_empty_for_unknown_user() {
 }
 
 /// Cleanup removes only the target user's archives, not other users'.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_does_not_remove_other_users_archives() {
     let env = create_test_env();
@@ -2523,6 +2526,7 @@ fn test_cleanup_does_not_remove_other_users_archives() {
 }
 
 /// Cleanup with a past timestamp removes nothing.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_past_timestamp_removes_nothing() {
     let env = create_test_env();
@@ -2548,6 +2552,7 @@ fn test_cleanup_past_timestamp_removes_nothing() {
 // ── multi-user storage isolation end-to-end ──────────────────────────────────
 
 /// Full lifecycle: store → archive → cleanup for multiple users with no leakage.
+#[allow(deprecated)]
 #[test]
 fn test_multi_user_full_lifecycle_no_data_leakage() {
     let env = create_test_env();
