@@ -3366,10 +3366,7 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
@@ -3415,10 +3412,7 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
 
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];

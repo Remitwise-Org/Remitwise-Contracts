@@ -1328,7 +1328,7 @@ fn test_emergency_transfer_min_balance_interacts_with_daily_limit() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_client = TokenClient::new(&env, &token_contract.address());
 
-    let total = 10_000_0000000;
+    let total = 100_000_000_000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
     set_ledger_time(&env, 100, 1_000);
 
@@ -1345,10 +1345,10 @@ fn test_emergency_transfer_min_balance_interacts_with_daily_limit() {
 
     client.configure_emergency(
         &owner,
-        &5_000_0000000,
+        &50_000_000_000,
         &0u64,
-        &9_500_0000000,
-        &10_000_0000000,
+        &95_000_000_000,
+        &100_000_000_000,
     );
     client.set_emergency_mode(&owner, &true);
     let recipient = Address::generate(&env);
@@ -1383,7 +1383,13 @@ fn test_emergency_transfer_min_balance_interacts_with_daily_limit() {
     // --- Scenario B: daily cap rejects, floor has ample headroom ---------------
     // Reconfigure with a generous floor (1,000) but a tight daily cap. The
     // wallet currently holds total - 500 = 9,500.
-    client.configure_emergency(&owner, &5_000_0000000, &0u64, &1_000_0000000, &900_0000000);
+    client.configure_emergency(
+        &owner,
+        &50_000_000_000,
+        &0u64,
+        &10_000_000_000,
+        &900_0000000,
+    );
     // Reconfiguring resets neither EM_VOL nor EM_LAST — both persist across a
     // `configure_emergency` call, so the cap below is evaluated against the
     // pre-existing accumulated volume from Scenario A.
@@ -1441,18 +1447,18 @@ fn test_emergency_transfer_min_balance_interacts_with_cooldown() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_client = TokenClient::new(&env, &token_contract.address());
 
-    let total = 5_000_0000000;
+    let total = 50_000_000_000;
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
     set_ledger_time(&env, 100, 1_000);
 
-    let min_balance = 4_000_0000000;
+    let min_balance = 40_000_000_000;
     let cooldown = 3_600u64;
     client.configure_emergency(
         &owner,
-        &2_000_0000000,
+        &20_000_000_000,
         &cooldown,
         &min_balance,
-        &10_000_0000000,
+        &100_000_000_000,
     );
     client.set_emergency_mode(&owner, &true);
     let recipient = Address::generate(&env);
@@ -1503,7 +1509,7 @@ fn test_emergency_transfer_min_balance_interacts_with_cooldown() {
         &500_0000000,
     );
     assert!(result.is_ok());
-    assert_eq!(token_client.balance(&owner), total - 1_000_0000000);
+    assert_eq!(token_client.balance(&owner), total - 10_000_000_000);
 }
 
 /// `EmergencyEvent::TransferExec` must be published only when the transfer
@@ -2236,7 +2242,7 @@ fn test_archive_boundary_strictly_less_than() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &50_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -2296,7 +2302,7 @@ fn test_archive_count_matches_entries_moved() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5_000_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -2358,7 +2364,7 @@ fn test_archive_ordering_preserved() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5_000_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -2432,7 +2438,7 @@ fn test_archive_stor_stat_updated() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5_000_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -2489,7 +2495,7 @@ fn test_archive_get_archived_limit_clamped() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5_000_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -2565,7 +2571,7 @@ fn test_archive_re_pause_cancels_no_double_archive() {
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
-    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &500_000_0000000);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5_000_000_000_000);
 
     let signers = vec![&env, owner.clone(), member.clone()];
     client.configure_multisig(
@@ -3187,7 +3193,7 @@ fn test_pending_transactions_pagination_and_auth() {
 
     env.mock_all_auths();
     let page2 = client.get_pending_transactions_page(&owner, &page1.next_cursor, &2u32);
-    assert!(page2.items.len() >= 1 && page2.items.len() <= 2);
+    assert!(!page2.items.is_empty() && page2.items.len() <= 2);
 
     // Member1 should only see their own proposals
     env.mock_all_auths();
@@ -5289,7 +5295,7 @@ fn test_threshold_change_above_maximum() {
 ///
 /// Policy: An in-flight proposal is invalidated if:
 /// - eligible_signers < config.threshold
-/// where eligible_signers = count of signers in config who are still active members
+///   where eligible_signers = count of signers in config who are still active members
 ///
 /// Scenario:
 /// 1. Configure with threshold=2, 3 signers (owner, member1, member2)

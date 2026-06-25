@@ -3,6 +3,7 @@
 //! This module validates Issue SC-003 requirements:
 //! - All user-facing query endpoints enforce access control
 //! - Storage key isolation prevents cross-user data access
+#![allow(deprecated)]
 //! - Unauthorized callers are rejected
 
 #![cfg(test)]
