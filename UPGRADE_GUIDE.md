@@ -526,6 +526,7 @@ Upgrade is considered successful when:
 - [Stellar Protocol Upgrades](https://stellar.org/developers/docs/fundamentals-and-concepts/stellar-consensus-protocol#protocol-upgrades)
 - [Soroban Discord](https://discord.gg/stellar)
 - [Stellar Stack Exchange](https://stellar.stackexchange.com/)
+- [docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md) - Step-by-step contract upgrade runbook and rollback plan
 
 ## Support
 
