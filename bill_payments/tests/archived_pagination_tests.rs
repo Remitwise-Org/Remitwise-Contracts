@@ -256,6 +256,204 @@ fn test_equivalence_with_get_archived_bills() {
 }
 
 // ---------------------------------------------------------------------------
+// Boundary Regression Tests
+// ---------------------------------------------------------------------------
+
+/// Regression: exactly N items with limit N must return all items in one page
+/// and next_cursor == 0 (no phantom second page).
+#[test]
+fn test_boundary_exact_limit_fills_single_page() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    // Archive exactly 5 bills; request limit=5
+    create_pay_archive(&env, &client, &owner, 5);
+    let page = client.get_archived_bills_page(&owner, &0, &5);
+    assert_eq!(page.count, 5, "must return all 5 items");
+    assert_eq!(
+        page.next_cursor, 0,
+        "next_cursor must be 0 when all items fit in one page"
+    );
+}
+
+/// Regression: limit = N-1 produces two pages — first page full, second page
+/// has exactly 1 item and next_cursor == 0.
+#[test]
+fn test_boundary_last_page_has_one_item() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    // Archive 5 bills; request pages of size 4
+    create_pay_archive(&env, &client, &owner, 5);
+
+    let page1 = client.get_archived_bills_page(&owner, &0, &4);
+    assert_eq!(page1.count, 4);
+    assert!(page1.next_cursor > 0, "must have a next page");
+
+    let page2 = client.get_archived_bills_page(&owner, &page1.next_cursor, &4);
+    assert_eq!(page2.count, 1, "last page must contain exactly 1 item");
+    assert_eq!(
+        page2.next_cursor, 0,
+        "next_cursor must be 0 on last page"
+    );
+}
+
+/// Regression: cursor set to the last item's ID must return an empty page,
+/// not a page containing the last item again.
+#[test]
+fn test_boundary_cursor_at_last_id_returns_empty() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 4);
+
+    // Retrieve the full first page to find the last ID
+    let full_page = client.get_archived_bills_page(&owner, &0, &50);
+    assert_eq!(full_page.count, 4);
+    let last_id = full_page.items.last().unwrap().id;
+
+    // Starting from the last ID as cursor should yield nothing
+    let page = client.get_archived_bills_page(&owner, &last_id, &10);
+    assert_eq!(
+        page.count, 0,
+        "cursor == last item ID must produce an empty page"
+    );
+    assert_eq!(page.next_cursor, 0);
+    assert!(page.items.is_empty());
+}
+
+/// Regression: cursor at the second-to-last item's ID must return exactly one
+/// item (the last item) and next_cursor == 0.
+#[test]
+fn test_boundary_cursor_at_second_to_last_returns_one_item() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 4);
+
+    let full_page = client.get_archived_bills_page(&owner, &0, &50);
+    let ids: Vec<u32> = full_page.items.iter().map(|b| b.id).collect();
+    let second_to_last = ids[ids.len() - 2];
+    let last_id = ids[ids.len() - 1];
+
+    let page = client.get_archived_bills_page(&owner, &second_to_last, &10);
+    assert_eq!(
+        page.count, 1,
+        "cursor at second-to-last must yield exactly 1 item"
+    );
+    assert_eq!(
+        page.items.first().unwrap().id,
+        last_id,
+        "that item must be the last one"
+    );
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// Regression: consecutive page reads with limit=1 must step through every
+/// item exactly once without skipping the item at each page boundary.
+#[test]
+fn test_boundary_limit_one_traverses_all_items() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 5);
+
+    let mut collected: Vec<u32> = Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_archived_bills_page(&owner, &cursor, &1);
+        assert!(
+            page.count <= 1,
+            "limit=1 must never return more than 1 item"
+        );
+        for bill in page.items.iter() {
+            collected.push(bill.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(collected.len(), 5, "limit=1 traversal must visit all 5 items");
+
+    // No duplicates and strictly ascending
+    for i in 1..collected.len() {
+        assert!(
+            collected[i] > collected[i - 1],
+            "items must be strictly ascending; got {} after {}",
+            collected[i],
+            collected[i - 1]
+        );
+    }
+}
+
+/// Regression: a cursor saved from page 1 that is then used after bulk_cleanup
+/// removes all remaining bills must return an empty page, not panic or loop.
+#[test]
+fn test_boundary_stale_cursor_after_bulk_cleanup_returns_empty() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 8);
+
+    // Save a mid-traversal cursor from the first page
+    let page1 = client.get_archived_bills_page(&owner, &0, &4);
+    assert_eq!(page1.count, 4);
+    let stale_cursor = page1.next_cursor;
+    assert!(stale_cursor > 0, "test requires a valid mid-traversal cursor");
+
+    // Wipe all archived bills before resuming
+    client.bulk_cleanup_bills(&owner, &u64::MAX);
+
+    // Resuming with the stale cursor must produce an empty page, not a crash or phantom items
+    let page2 = client.get_archived_bills_page(&owner, &stale_cursor, &4);
+    assert_eq!(
+        page2.count, 0,
+        "stale cursor after bulk_cleanup must return empty page"
+    );
+    assert_eq!(page2.next_cursor, 0);
+    assert!(page2.items.is_empty());
+}
+
+/// Regression: a cursor value that corresponds to a gap in the archived index
+/// (because that bill was restored) must skip the gap and return the next valid
+/// item, not re-deliver the item before the gap or return nothing when items remain.
+#[test]
+fn test_boundary_cursor_at_gap_id_skips_to_next_valid_item() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    // Archive 5 bills; IDs 1..=5
+    create_pay_archive(&env, &client, &owner, 5);
+
+    // Restore bill 3 — creates a gap at ID 3 in the archive index
+    client.restore_bill(&owner, &3u32);
+
+    // Use ID 3 (the gap) as the cursor; must return IDs 4 and 5
+    let page = client.get_archived_bills_page(&owner, &3, &10);
+    assert_eq!(
+        page.count, 2,
+        "cursor at gap ID must return the 2 items that follow it"
+    );
+    let ids: Vec<u32> = page.items.iter().map(|b| b.id).collect();
+    assert_eq!(ids, vec![4u32, 5], "must return IDs 4 and 5 after the gap");
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// Regression: exactly MAX_PAGE_LIMIT (50) archived items requested with
+/// limit=50 must fill one page completely and set next_cursor to 0,
+/// not signal a phantom third page.
+#[test]
+fn test_boundary_exact_max_page_limit_no_phantom_next_page() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    // Archive exactly 50 bills — equal to MAX_PAGE_LIMIT
+    create_pay_archive(&env, &client, &owner, 50);
+
+    let page = client.get_archived_bills_page(&owner, &0, &50);
+    assert_eq!(page.count, 50, "must return all 50 items");
+    assert_eq!(
+        page.next_cursor, 0,
+        "next_cursor must be 0 when item count exactly equals MAX_PAGE_LIMIT"
+    );
+    assert_eq!(page.items.len(), 50);
+}
+
+// ---------------------------------------------------------------------------
 // Property-Based Tests
 // ---------------------------------------------------------------------------
 
