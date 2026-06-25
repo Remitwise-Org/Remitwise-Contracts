@@ -10,10 +10,10 @@
 
 use proptest::prelude::*;
 use remittance_split::{
-    AccountGroup, DataKey, RemittanceSplit, RemittanceSplitClient, RemittanceSplitError,
+    AccountGroup, RemittanceSplit, RemittanceSplitClient, RemittanceSplitError,
     MAX_SCHEDULE_LEAD_TIME, MIN_SCHEDULE_INTERVAL,
 };
-use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env, Map, Vec};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env};
 use std::collections::HashSet;
 
 /// Helper: register a dummy token address (no real token needed for pure math tests).
@@ -574,7 +574,7 @@ proptest! {
 
         // Check that old nonces are evicted (MAX_USED_NONCES_PER_ADDR = 256)
         // The used set should have at most MAX_USED_NONCES_PER_ADDR entries
-        prop_assert!(used_nonces.len() > 0);
+        prop_assert!(!used_nonces.is_empty());
 
         // Test snapshot import scenario: even if nonce counter is reset,
         // used nonces should still be blocked

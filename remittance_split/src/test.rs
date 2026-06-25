@@ -662,11 +662,8 @@ fn test_request_hash_positive_control() {
 
     let result = client.try_distribute_usdc_hashed(&request, &hash);
     // Must NOT be RequestHashMismatch — hash check passed.
-    match result {
-        Err(Ok(RemittanceSplitError::RequestHashMismatch)) => {
-            panic!("Hash check should pass for unmodified request");
-        }
-        _ => {}
+    if let Err(Ok(RemittanceSplitError::RequestHashMismatch)) = result {
+        panic!("Hash check should pass for unmodified request");
     }
 }
 
@@ -1296,7 +1293,7 @@ fn test_execute_exactly_equal_next_due() {
 #[test]
 fn test_execute_empty_schedule_set() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1647,7 +1644,7 @@ fn make_request(
 fn test_deadline_zero_is_invalid() {
     let env = Env::default();
     let (client, owner, token_addr, _) = setup_signed_distribution(&env);
-    let now = env.ledger().timestamp();
+    let _now = env.ledger().timestamp();
 
     let request = make_request(&env, token_addr.clone(), owner.clone(), 1, 0);
     let result = client.try_distribute_usdc_hashed(
@@ -1907,7 +1904,7 @@ fn test_get_schedules_paginated_full_scale_cursor_monotonicity() {
 // ============================================================================
 
 /// Helper: assert the four returned category symbols are in canonical order.
-fn assert_canonical_order(env: &Env, allocs: &soroban_sdk::Vec<Allocation>) {
+fn assert_canonical_order(_env: &Env, allocs: &soroban_sdk::Vec<Allocation>) {
     assert_eq!(allocs.len(), 4, "must return exactly 4 allocations");
     assert_eq!(allocs.get(0).unwrap().category, symbol_short!("SPENDING"));
     assert_eq!(allocs.get(1).unwrap().category, symbol_short!("SAVINGS"));
@@ -1920,7 +1917,7 @@ fn assert_conservation(allocs: &soroban_sdk::Vec<Allocation>, total: i128) {
     let sum: i128 = allocs
         .iter()
         .map(|a| a.amount)
-        .fold(0i128, |acc, x| acc + x);
+        .sum();
     assert_eq!(sum, total, "allocation amounts must sum to total_amount");
 }
 

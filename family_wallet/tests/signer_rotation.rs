@@ -37,7 +37,7 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token = token_contract.address();
     let token_client = TokenClient::new(&env, &token);
-    StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
+    StellarAssetClient::new(&env, &token).mint(&owner, &100_000_000_000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
     client.configure_multisig(
@@ -45,10 +45,10 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
         &TransactionType::LargeWithdrawal,
         &3,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
-    let tx_id = client.withdraw(&owner, &token, &recipient, &2_000_0000000);
+    let tx_id = client.withdraw(&owner, &token, &recipient, &20_000_000_000);
     client.sign_transaction(&signer_a, &tx_id);
 
     let rotated_signers = vec![&env, owner.clone(), signer_b.clone(), signer_c.clone()];
@@ -57,7 +57,7 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
         &TransactionType::LargeWithdrawal,
         &3,
         &rotated_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
     client.sign_transaction(&signer_c, &tx_id);
@@ -96,7 +96,7 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token = token_contract.address();
     let token_client = TokenClient::new(&env, &token);
-    StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
+    StellarAssetClient::new(&env, &token).mint(&owner, &100_000_000_000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
     client.configure_multisig(
@@ -104,10 +104,10 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
         &TransactionType::LargeWithdrawal,
         &3,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
-    let tx_id = client.withdraw(&owner, &token, &recipient, &2_000_0000000);
+    let tx_id = client.withdraw(&owner, &token, &recipient, &20_000_000_000);
 
     let rotated_signers = vec![&env, owner.clone(), signer_b.clone(), signer_c.clone()];
     client.configure_multisig(
@@ -115,7 +115,7 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
         &TransactionType::LargeWithdrawal,
         &3,
         &rotated_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
     client.sign_transaction(&signer_b, &tx_id);
@@ -124,7 +124,7 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
     client.sign_transaction(&signer_c, &tx_id);
 
     assert!(client.get_pending_transaction(&tx_id).is_none());
-    assert_eq!(token_client.balance(&recipient), 2_000_0000000);
+    assert_eq!(token_client.balance(&recipient), 20_000_000_000);
 }
 
 /// Safety property: a rotation must not accept a threshold that cannot be met by
@@ -154,7 +154,7 @@ fn signer_rotation_rejects_threshold_above_signer_count() {
         &TransactionType::LargeWithdrawal,
         &3,
         &impossible_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
     assert_eq!(result, Err(Ok(family_wallet::Error::InvalidThreshold)));
@@ -183,7 +183,7 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token = token_contract.address();
     let token_client = TokenClient::new(&env, &token);
-    StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
+    StellarAssetClient::new(&env, &token).mint(&owner, &100_000_000_000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
     client.configure_multisig(
@@ -191,10 +191,10 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
         &TransactionType::LargeWithdrawal,
         &3,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
-    let tx_id = client.withdraw(&owner, &token, &recipient, &2_000_0000000);
+    let tx_id = client.withdraw(&owner, &token, &recipient, &20_000_000_000);
 
     let rotated_signers = vec![&env, signer_a.clone(), signer_b.clone(), signer_c.clone()];
     client.configure_multisig(
@@ -202,7 +202,7 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
         &TransactionType::LargeWithdrawal,
         &3,
         &rotated_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
 
     client.sign_transaction(&signer_a, &tx_id);

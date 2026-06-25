@@ -6,6 +6,7 @@
 //! - Unauthorized callers are rejected
 
 #![cfg(test)]
+#![allow(deprecated, clippy::all)]
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
 

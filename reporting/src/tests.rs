@@ -1,3 +1,4 @@
+#![allow(deprecated, clippy::all)]
 use soroban_sdk::testutils::storage::Instance as StorageInstance;
 use soroban_sdk::{
     symbol_short,

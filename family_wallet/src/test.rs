@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use super::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{

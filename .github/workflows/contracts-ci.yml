@@ -17,6 +17,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Validate Cargo.lock soroban-sdk version
+        run: python3 scripts/validate_lockfile.py
+
       - name: Install Rust Toolchain
         run: |
           rustup show 

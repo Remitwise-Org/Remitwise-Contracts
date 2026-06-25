@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+echo "Validating Cargo.lock soroban-sdk version..."
+python3 scripts/validate_lockfile.py
+
 echo "Building WASM..."
 cargo build --release --target wasm32-unknown-unknown
 

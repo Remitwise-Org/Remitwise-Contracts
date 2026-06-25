@@ -1,10 +1,11 @@
+#![allow(clippy::all, mismatched_lifetime_syntaxes)]
 #[cfg(test)]
 mod tests {
     use crate::*;
     use remitwise_common::CoverageType;
     use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 
-    fn setup(env: &Env) -> InsuranceClient {
+    fn setup(env: &Env) -> InsuranceClient<'_> {
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         c.init(&Address::generate(env));
@@ -325,7 +326,7 @@ mod tests {
 
     // ── Helper: initialise contract with a known owner ────────────────────────
 
-    fn setup_with_owner(env: &Env) -> (InsuranceClient, Address) {
+    fn setup_with_owner(env: &Env) -> (InsuranceClient<'_>, Address) {
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         let contract_owner = Address::generate(env);
