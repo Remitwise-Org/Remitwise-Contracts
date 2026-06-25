@@ -6621,3 +6621,68 @@ fn test_import_snapshot_owner_indices_are_consistent() {
         "new goal id must be greater than snapshot's next_id"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    // Take snapshot (admin authorized)
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Create a goal (next_id advances from 1 to 2)
+    let user = Address::generate(&env);
+    let id1 = client.create_goal(&user, &String::from_str(&env, "Test"), &1000, &2000000000, &false);
+    assert_eq!(id1, 1);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "Test2"), &2000, &2000000000, &false);
+    assert_eq!(id2, 2);
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_ok());
+
+    // Next ID should be restored to 1 (snapshot was taken before creating any goals)
+    let id_new = client.create_goal(&user, &String::from_str(&env, "Restored"), &500, &2000000000, &false);
+    assert_eq!(id_new, 1);
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert!(result.is_err());
+
+    // Authorized pre_upgrade
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert!(result.is_err());
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert!(result.is_err());
+}

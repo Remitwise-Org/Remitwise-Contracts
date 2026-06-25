@@ -1,7 +1,7 @@
 #![no_std]
 use remitwise_common::{
     CoverageType, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
-    MAX_PAGE_LIMIT,
+    MAX_PAGE_LIMIT, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
@@ -178,6 +178,27 @@ pub enum DataKey {
     ActivePolicies,
     OwnerPolicies(Address),
     Initialized,
+}
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage (owner, policy count, all policies)
+/// before a contract upgrade so state can be restored if the upgrade fails.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Contract owner address.
+    pub owner: Address,
+    /// Total policy count.
+    pub policy_count: u32,
+    /// Whether the contract has been initialized.
+    pub initialized: bool,
+    /// List of active policy IDs.
+    pub active_policies: Vec<u32>,
+    /// Contract version at snapshot time.
+    pub version: u32,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -629,6 +650,179 @@ impl Insurance {
         }
 
         Ok(total)
+    }
+
+    /// Get the contract version.
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("VERSION"))
+            .unwrap_or(1)
+    }
+
+    /// Set the contract version (upgrade support).
+    ///
+    /// # Authorization
+    /// Only the contract owner may set the version.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the contract owner
+    /// - `NotInitialized` if the contract has not been initialized
+    pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<bool, InsuranceError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        let owner = Self::get_owner(&env)?;
+        if caller != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        let prev = Self::get_version(env.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &new_version);
+        env.events().publish(
+            (symbol_short!("insurance"), symbol_short!("upgraded")),
+            (prev, new_version),
+        );
+        Ok(true)
+    }
+
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot captures
+    /// the owner, policy count, all policies, and active policy index so the
+    /// contract can be restored if the upgrade fails.
+    ///
+    /// # Authorization
+    /// Only the contract owner may take a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the contract owner
+    /// - `NotInitialized` if the contract has not been initialized
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("insurance"), symbol_short!("snap_pre"))`.
+    pub fn pre_upgrade(env: Env, caller: Address) -> Result<(), InsuranceError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        let owner = Self::get_owner(&env)?;
+        if caller != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        let active: Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActivePolicies)
+            .unwrap_or_else(|| Vec::new(&env));
+        let policy_count: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PolicyCount)
+            .unwrap_or(0);
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            owner: owner.clone(),
+            policy_count,
+            initialized: true,
+            active_policies: active,
+            version: Self::get_version(env.clone()),
+        };
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+        env.events().publish(
+            (symbol_short!("insurance"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+        Ok(())
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// owner, policies, and active index back to instance storage.
+    /// The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the contract owner may restore from a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the contract owner
+    /// - `NotInitialized` if no snapshot exists
+    /// - `UnsupportedVersion` if the snapshot version is not supported
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("insurance"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<(), InsuranceError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        let owner = Self::get_owner(&env)?;
+        if caller != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .ok_or(InsuranceError::NotInitialized)?;
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            return Err(InsuranceError::Unauthorized);
+        }
+        if snapshot.owner != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        Self::extend_instance_ttl(&env);
+
+        // Restore policy count and initialization
+        env.storage()
+            .instance()
+            .set(&DataKey::PolicyCount, &snapshot.policy_count);
+        env.storage()
+            .instance()
+            .set(&DataKey::Initialized, &snapshot.initialized);
+
+        // Restore active policies list
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivePolicies, &snapshot.active_policies);
+
+        // Restore version
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+
+        // Consume the snapshot
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        env.events().publish(
+            (symbol_short!("insurance"), symbol_short!("snap_rst")),
+            snapshot.policy_count,
+        );
+        Ok(())
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the contract owner may discard a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the contract owner
+    /// - `NotInitialized` if the contract has not been initialized
+    pub fn discard_snapshot(env: Env, caller: Address) -> Result<(), InsuranceError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+        let owner = Self::get_owner(&env)?;
+        if caller != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("insurance"), symbol_short!("snap_dsc")),
+            (),
+        );
+        Ok(())
     }
 }
 

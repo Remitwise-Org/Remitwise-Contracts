@@ -6860,3 +6860,92 @@ fn test_configure_multisig_does_not_emit_on_failed_validation() {
         "no ms_conf event should be emitted on validation failure",
     );
 }
+
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    // Take snapshot (owner authorized, no upgrade admin set -> falls back to owner)
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Set version and pause
+    let result = client.try_set_version(&owner, &42);
+    assert!(result.is_ok());
+    client.pause(&owner);
+
+    // Verify modified state
+    assert_eq!(client.get_version(), 42);
+    assert!(client.is_paused());
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Version should be restored to default (1)
+    assert_eq!(client.get_version(), 1);
+    // Pause state restored
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert!(result.is_err());
+
+    // Owner can pre_upgrade
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert!(result.is_err());
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_pre_upgrade_discard() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Discard snapshot
+    let result = client.try_discard_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Restore should now fail (no snapshot)
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_err());
+}

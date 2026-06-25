@@ -4,7 +4,7 @@
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{
@@ -181,6 +181,27 @@ pub struct StorageStats {
     pub total_unpaid_amount: i128,
     pub total_archived_amount: i128,
     pub last_updated: u64,
+}
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage (ID counter, version, admin, pause state)
+/// before a contract upgrade so state can be restored if the upgrade fails.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Next bill ID counter.
+    pub next_id: u32,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
 }
 
 #[contract]
@@ -916,6 +937,131 @@ impl BillPayments {
             EventPriority::High,
             symbol_short!("upgraded"),
             (prev, new_version),
+        );
+        Ok(())
+    }
+
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may take a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the upgrade admin
+    ///
+    /// # Events
+    /// Emits `snap_pre` event on success.
+    pub fn pre_upgrade(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
+        if admin != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            next_id: Self::get_next_bill_id(&env),
+            version: Self::get_version(env.clone()),
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+        };
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("snap_pre"),
+            SNAPSHOT_VERSION,
+        );
+        Ok(())
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// ID counter, version, upgrade admin, and pause state back to instance
+    /// storage. The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may restore from a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the upgrade admin
+    /// - `UnsupportedVersion` if the snapshot version is not supported
+    ///
+    /// # Events
+    /// Emits `snap_rst` event on success.
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
+        if admin != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .ok_or(BillPaymentsError::Unauthorized)?;
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            return Err(BillPaymentsError::InvalidLimit);
+        }
+        Self::extend_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_ID"), &snapshot.next_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+        match &snapshot.upgrade_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
+        }
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED"), &snapshot.paused);
+        match &snapshot.pause_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("snap_rst"),
+            snapshot.version,
+        );
+        Ok(())
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may discard a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the upgrade admin
+    pub fn discard_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
+        if admin != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("snap_dsc"),
+            (),
         );
         Ok(())
     }

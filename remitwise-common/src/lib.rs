@@ -104,6 +104,12 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
+/// Pre-upgrade snapshot version
+pub const SNAPSHOT_VERSION: u32 = 1;
+
+/// Storage key for pre-upgrade snapshots
+pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
+
 /// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
 /// # Contract

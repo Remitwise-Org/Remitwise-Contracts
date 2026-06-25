@@ -2217,3 +2217,71 @@ fn test_get_split_allocations_percentages_across_all_categories() {
     // insurance = 10 - 3 - 3 - 3 = 1  (dust absorbed)
     assert_eq!(allocs.get(3).unwrap().amount, 1);
 }
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    // Set upgrade admin
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&owner, &admin);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Modify state — change split percentages and version
+    client.update_split(&owner, &1, &20, &30, &30, &20);
+    client.set_version(&admin, &99);
+
+    // Verify state changed
+    let split = client.get_split();
+    assert_eq!(split.get(0).unwrap(), 20);
+    assert_eq!(client.get_version(), 99);
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_ok());
+
+    // Verify state was restored
+    let split = client.get_split();
+    assert_eq!(split.get(0).unwrap(), 50);
+    assert_eq!(split.get(1).unwrap(), 30);
+    assert_eq!(client.get_version(), 1);
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let (client, _owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    // Set upgrade admin
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&_owner, &admin);
+
+    let stranger = Address::generate(&env);
+    let result = client.try_pre_upgrade(&stranger);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_pre_upgrade_discard() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&owner, &admin);
+
+    client.pre_upgrade(&admin);
+    let result = client.try_discard_snapshot(&admin);
+    assert!(result.is_ok());
+}
