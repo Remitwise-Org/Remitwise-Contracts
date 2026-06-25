@@ -81,7 +81,7 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::Admin, &new_admin);
 
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("admin_xfer")),
+            (symbol_short!("emergency"), symbol_short!("admn_xfer")),
             AdminTransferred {
                 old_admin,
                 new_admin: new_admin.clone(),
