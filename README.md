@@ -33,6 +33,7 @@ A common crate containing shared types, enums, and constants used across multipl
 
 **Shared Utilities:**
 - `clamp_limit()`: Helper for pagination limit validation
+- `validate_period()`: Helper for checking logical ordering of start/end ranges
 - `RemitwiseEvents`: Standardized event emission with `emit()` and `emit_batch()` methods
 
 ## Shared Enums & Constants Stability Coverage
