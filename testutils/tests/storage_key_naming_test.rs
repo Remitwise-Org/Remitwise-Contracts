@@ -477,7 +477,7 @@ fn test_no_duplicate_keys_within_contract() {
     for key_def in &keys {
         let entry = contract_keys
             .entry(key_def.contract)
-            .or_insert_with(HashSet::new);
+            .or_default();
 
         if !entry.insert(key_def.key) {
             violations.push(format!(
@@ -600,7 +600,7 @@ fn test_common_keys_consistency() {
     for key_def in &keys {
         key_contracts
             .entry(key_def.key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key_def.contract);
     }
 

@@ -6535,7 +6535,7 @@ fn test_import_snapshot_exceeds_goal_cap_leaves_state_intact() {
 
     // Build a snapshot with way too many goals (more than MAX_GOALS_PER_OWNER)
     let mut goals = Vec::new(&env);
-    for i in 0..(2001u32) {
+    for i in 0..2001u32 {
         let goal = SavingsGoal {
             id: 100 + i,
             owner: owner.clone(),
