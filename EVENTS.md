@@ -781,6 +781,35 @@ pub struct EmergencyModeEvent {
 }
 ```
 
+### Event: Multisig Configured
+
+**Topic:** `("Remitwise", EventCategory::Access, EventPriority::High, "ms_conf")`
+**Emitted by:** `configure_multisig`
+**Trigger:** Emitted at the end of `configure_multisig` after all validation
+succeeds and the new `MultiSigConfig` is persisted. Both the initial
+configuration of a `TransactionType` and any subsequent reconfiguration emit
+this event. Failed validation (unauthorized caller, invalid threshold,
+duplicate signer, non-member signer, oversized signer list, paused wallet,
+negative spending limit, etc.) returns an `Error` and emits nothing.
+
+**Data Structure:**
+```rust
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,   // Which TransactionType bucket was configured
+    pub threshold: u32,             // Signatures now required to execute
+    pub signer_count: u32,          // Number of signers in the new set
+    pub spending_limit: i128,       // New spending-limit cap for the bucket
+    pub timestamp: u64,             // Ledger timestamp at emission
+}
+```
+
+**Security Note:** The payload deliberately reports `signer_count` rather than
+the full signer `Vec<Address>`. The shared event taxonomy keeps payloads
+fixed-size, and the authoritative signer set remains queryable via
+`get_multisig_config`. Indexers must treat this event as a governance-grade
+alert: a change to the threshold or signer set is the most security-sensitive
+state transition in the wallet.
+
 ---
 
 ## Orchestrator Contract

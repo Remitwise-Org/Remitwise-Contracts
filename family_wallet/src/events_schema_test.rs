@@ -52,8 +52,9 @@ fn remitwise_action_symbols_are_stable() {
         symbol_short!("exp_cln"),
         symbol_short!("upgraded"),
         symbol_short!("adm_xfr"),
+        symbol_short!("ms_conf"),
     ];
-    assert_eq!(actions.len(), 13);
+    assert_eq!(actions.len(), 14);
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,29 @@ fn spending_limit_updated_event_payload_schema() {
     assert_eq!(decoded.old_limit, 500_000);
     assert_eq!(decoded.new_limit, 750_000);
     assert_eq!(decoded.timestamp, 1_234_567_900);
+}
+
+#[test]
+fn multisig_configured_event_payload_schema() {
+    let env = Env::default();
+
+    // Struct literal lists every field by name -> compile-time stability check.
+    let evt = MultisigConfiguredEvent {
+        tx_type: TransactionType::LargeWithdrawal,
+        threshold: 2,
+        signer_count: 3,
+        spending_limit: 1_000_000,
+        timestamp: 1_234_568_000,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = MultisigConfiguredEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.tx_type, TransactionType::LargeWithdrawal);
+    assert_eq!(decoded.threshold, 2);
+    assert_eq!(decoded.signer_count, 3);
+    assert_eq!(decoded.spending_limit, 1_000_000);
+    assert_eq!(decoded.timestamp, 1_234_568_000);
 }
 
 #[test]
