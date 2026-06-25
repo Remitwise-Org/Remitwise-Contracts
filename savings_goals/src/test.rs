@@ -6393,13 +6393,7 @@ fn test_import_snapshot_balance_overflow_leaves_state_intact() {
 
     client.init();
     // Create a goal before import attempt
-    let id1 = client.create_goal(
-        &owner,
-        &String::from_str(&env, "Safe"),
-        &1000,
-        &2000000000,
-        &false,
-    );
+    let id1 = client.create_goal(&owner, &String::from_str(&env, "Safe"), &1000, &2000000000, &false);
     client.add_to_goal(&owner, &id1, &500);
     let goal_before = client
         .get_goal(&id1)
@@ -6597,27 +6591,9 @@ fn test_import_snapshot_owner_indices_are_consistent() {
 
     client.init();
     // Create goals for two different owners
-    let _id1a = client.create_goal(
-        &owner1,
-        &String::from_str(&env, "A1"),
-        &1000,
-        &2000000000,
-        &false,
-    );
-    let _id1b = client.create_goal(
-        &owner1,
-        &String::from_str(&env, "A2"),
-        &2000,
-        &2000000000,
-        &false,
-    );
-    let _id2a = client.create_goal(
-        &owner2,
-        &String::from_str(&env, "B1"),
-        &3000,
-        &2000000000,
-        &false,
-    );
+    let _id1a = client.create_goal(&owner1, &String::from_str(&env, "A1"), &1000, &2000000000, &false);
+    let _id1b = client.create_goal(&owner1, &String::from_str(&env, "A2"), &2000, &2000000000, &false);
+    let _id2a = client.create_goal(&owner2, &String::from_str(&env, "B1"), &3000, &2000000000, &false);
 
     // Export the full snapshot and re-import it
     let snapshot = client.export_snapshot(&owner1); // Admin exports all
@@ -6639,13 +6615,7 @@ fn test_import_snapshot_owner_indices_are_consistent() {
 
     // Verify: NextId is set correctly
     // Create a new goal and ensure its ID is sequenced correctly (>next_id from snapshot)
-    let id_new = client.create_goal(
-        &owner1,
-        &String::from_str(&env, "New"),
-        &5000,
-        &2000000000,
-        &false,
-    );
+    let id_new = client.create_goal(&owner1, &String::from_str(&env, "New"), &5000, &2000000000, &false);
     assert!(
         id_new > snapshot.next_id,
         "new goal id must be greater than snapshot's next_id"

@@ -59,8 +59,7 @@ fn test_multi_contract_user_flow() {
     let target_amount = 10_000i128;
     let target_date = env.ledger().timestamp() + (365 * 86400);
 
-    let goal_id =
-        savings_client.create_goal(&user, &goal_name, &target_amount, &target_date, &false);
+    let goal_id = savings_client.create_goal(&user, &goal_name, &target_amount, &target_date, &false);
     assert_eq!(goal_id, 1u32, "Goal ID should be 1");
 
     let bill_name = SorobanString::from_str(&env, "Electricity Bill");

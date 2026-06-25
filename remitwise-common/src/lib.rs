@@ -279,7 +279,7 @@ impl RemitwiseEvents {
     /// * `data` – The event payload implementing `IntoVal`.
     ///
     /// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
-    ///
+    /// 
     /// **Size Budget**: Event data must be compact (topics + small payload, not bulk records).
     /// The recommended maximum serialized size for the `data` payload is 256 bytes.
     /// Oversized payloads will trigger a debug/test assertion.
@@ -298,7 +298,7 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
-
+        
         #[cfg(any(test, feature = "testutils"))]
         {
             let val = data.into_val(env);
@@ -306,10 +306,7 @@ impl RemitwiseEvents {
                 if let Ok(xdr_bytes) = soroban_sdk::xdr::ToXdr::to_xdr(&sc_val) {
                     let size = xdr_bytes.len();
                     if size > 256 {
-                        panic!(
-                            "Event data size {} exceeds 256-byte budget. Emits must be compact.",
-                            size
-                        );
+                        panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
                     }
                 }
             }
