@@ -1,6 +1,6 @@
 ﻿#![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
 
 #[contracterror]
@@ -58,10 +58,8 @@ impl EmergencyKillswitch {
     /// Transfers admin authority to a new address.
     ///
     /// # Rejects
-    /// - 
-ew_admin == contract's own address (unrecoverable brick)
-    /// - 
-ew_admin == current admin (no-op, to prevent accidental re-auth)
+    /// - `new_admin` == contract own address (unrecoverable brick)
+    /// - `new_admin` == current admin (no-op, to prevent accidental re-auth)
     ///
     /// Emits [AdminTransferred] on successful handover.
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
