@@ -9,8 +9,13 @@ allow = [
     "BSD-2-Clause",
     "ISC",
     "Apache-2.0 WITH LLVM-exception",
+    "Unicode-3.0",
 ]
 
 [advisories]
 db-path = "~/.cargo/advisory-db"
 yanked = "deny"
+ignore = [
+    "RUSTSEC-2025-0141", # bincode unmaintained
+    "RUSTSEC-2024-0436", # paste unmaintained
+]
