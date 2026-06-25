@@ -96,6 +96,7 @@ fn test_orchestrated_multisig_flow() {
         &SorobanString::from_str(&env, "Test Goal"),
         &10000i128,
         &2000000000u64,
+        &false,
     );
     let bill_id = bills_client.create_bill(
         &user,

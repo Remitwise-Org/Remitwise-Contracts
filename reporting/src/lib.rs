@@ -349,7 +349,7 @@ pub trait InsuranceTrait {
 
 #[contractclient(name = "FamilyWalletClient")]
 pub trait FamilyWalletTrait {
-    fn get_owner(env: Env) -> Address;
+    fn get_owner(env: &Env) -> Address;
     fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage;
     fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker>;
 }
@@ -484,15 +484,13 @@ pub(crate) fn safe_percent(numerator: i128, denominator: i128, scale: i128) -> i
 }
 
 fn trend_from_amounts(current_amount: i128, previous_amount: i128) -> TrendData {
-    let change_amount = current_amount
-        .checked_sub(previous_amount)
-        .unwrap_or_else(|| {
-            if current_amount >= previous_amount {
-                i128::MAX
-            } else {
-                i128::MIN
-            }
-        });
+    let change_amount = current_amount.checked_sub(previous_amount).unwrap_or(
+        if current_amount >= previous_amount {
+            i128::MAX
+        } else {
+            i128::MIN
+        },
+    );
     let change_percentage = if previous_amount > 0 {
         safe_percent(change_amount, previous_amount, 100).clamp(i32::MIN as i128, i32::MAX as i128)
             as i32
@@ -2059,6 +2057,7 @@ impl ReportingContract {
         since = "0.2.0",
         note = "Returns at most DEFAULT_PAGE_LIMIT entries; migrate to get_archived_reports_page to walk the full archive."
     )]
+    #[allow(deprecated)]
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
         // Auth is enforced by the delegate get_archived_reports_page call below.
         // Duplicate require_auth here would cause ExistingValue in Soroban's auth system.

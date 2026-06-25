@@ -69,6 +69,7 @@ fn test_end_to_end_flow() {
         &String::from_str(&env, "Test Goal"),
         &1000,
         &(timestamp + 86400 * 30),
+        &false,
     );
 
     // A sample bill

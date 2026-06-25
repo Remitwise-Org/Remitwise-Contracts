@@ -11,7 +11,7 @@ Goal names are validated for length bounds to prevent storage bloat and denial-o
 Goal names must satisfy the following constraints at creation time:
 
 1. **Non-empty**: The name must contain at least 1 byte
-2. **Maximum length**: The name must not exceed `MAX_GOAL_NAME_LEN_BYTES` (128 bytes)
+2. **Maximum length**: The name must not exceed `MAX_GOAL_NAME_LEN_BYTES` (32 bytes)
 
 ### Error Handling
 
@@ -24,9 +24,12 @@ Validation failures return the error code:
 
 ```rust
 /// Maximum byte length for goal names to prevent storage bloat and DoS attacks.
-/// Allows reasonable goal names (e.g., "FIRE Goal", "House Down Payment") while
-/// protecting against unbounded string storage.
-const MAX_GOAL_NAME_LEN_BYTES: u32 = 128;
+///
+/// Enforces a 32-byte limit on goal names to bound storage costs while allowing
+/// reasonable names (e.g., "FIRE Goal", "House Down Payment"). Names are validated
+/// byte-by-byte, not by character count, so multi-byte UTF-8 characters count
+/// toward the limit proportionally. Printable ASCII characters (bytes 32-126) only.
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
 ```
 
 ### Validation Function
@@ -138,9 +141,9 @@ The implementation includes comprehensive test coverage:
 
 1. **Boundary Testing**
    - 1 byte (minimum valid)
-   - 127 bytes (just below limit)
-   - 128 bytes (maximum valid)
-   - 129 bytes (just above limit)
+   - 31 bytes (just below limit)
+   - 32 bytes (maximum valid)
+   - 33 bytes (just above limit)
    - Very long names (significantly over limit)
 
 2. **Empty Name Testing**
@@ -202,13 +205,13 @@ create_goal(&owner, String::from_str(&env, "Home Fund"), 50000, target_date)?;
 // Typical long name (within limit)
 create_goal(
     &owner,
-    String::from_str(&env, "FIRE Goal - Financial Independence, Retire Early"),
+    String::from_str(&env, "Emergency Fund 2025"),
     500000,
     target_date
 )?;
 
-// Maximum valid (128 bytes)
-let max_name = String::from_str(&env, "x".repeat(128).as_str());
+// Maximum valid (32 bytes)
+let max_name = String::from_str(&env, "x".repeat(32).as_str());
 create_goal(&owner, max_name, 1000000, target_date)?;
 ```
 
@@ -219,8 +222,8 @@ create_goal(&owner, max_name, 1000000, target_date)?;
 create_goal(&owner, String::from_str(&env, ""), 1000, target_date)?;
 // Returns: Err(SavingsGoalError::InvalidGoalName)
 
-// Name exceeds 128 bytes - rejected
-let long_name = String::from_str(&env, "x".repeat(129).as_str());
+// Name exceeds 32 bytes - rejected
+let long_name = String::from_str(&env, "x".repeat(33).as_str());
 create_goal(&owner, long_name, 1000, target_date)?;
 // Returns: Err(SavingsGoalError::InvalidGoalName)
 ```
@@ -244,9 +247,9 @@ create_goal(&owner, long_name, 1000, target_date)?;
 
 This validation applies only to **new** goals created after the feature is deployed.
 
-**Migration Scenario**: If existing goals have names exceeding 128 bytes:
+**Migration Scenario**: If existing goals have names exceeding 32 bytes:
 1. Such goals retain their names unchanged
-2. New goals cannot be created with names exceeding 128 bytes
+2. New goals cannot be created with names exceeding 32 bytes
 3. Archival/restoration of old goals preserves original names
 
 ### Upgrade Path
@@ -273,7 +276,7 @@ Potential improvements to name validation:
 **Threat**: Unbounded string storage DoS
 - **Attack**: Create goals with extremely long names (MB+)
 - **Impact**: Exhaust contract storage, prevent legitimate operations
-- **Mitigation**: 128-byte name limit prevents abuse
+- **Mitigation**: 32-byte name limit prevents abuse
 
 **Threat**: Integer overflow via string operations
 - **Attack**: Provide malformed UTF-8 or overflow byte length checks

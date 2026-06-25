@@ -27,7 +27,7 @@
 //! `archive_old_reports` admin entry (the only path that writes to
 //! `ARCH_RPT` / `ARCH_IDX` from outside the contract).
 
-use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+use soroban_sdk::testutils::{Address as AddressTestutils, Address as _, Ledger, LedgerInfo};
 use soroban_sdk::{contract, contractimpl, vec, Address, Env};
 use testutils::set_ledger_time;
 
@@ -87,7 +87,7 @@ mod savings_goals_mock {
             let mut goals = Vec::new(&env);
             goals.push_back(SavingsGoal {
                 id: 1,
-                owner: Address::generate(&env),
+                owner: AddressTestutils::generate(&env),
                 name: SorobanString::from_str(&env, "Education"),
                 target_amount: 1000,
                 current_amount: 500,
@@ -186,8 +186,8 @@ mod family_wallet_mock {
 
     #[contractimpl]
     impl FamilyWalletTrait for FamilyWallet {
-        fn get_owner(env: Env) -> Address {
-            Address::generate(&env)
+        fn get_owner(env: &Env) -> Address {
+            AddressTestutils::generate(env)
         }
         fn get_member_addresses_page(env: Env, _cursor: u32, _limit: u32) -> MemberAddressPage {
             MemberAddressPage {
@@ -266,7 +266,7 @@ fn make_zero_report(env: &Env, _user: &Address, generated_at: u64) -> FinancialH
 fn setup(env: &Env) -> (ReportingContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, ReportingContract);
     let client = ReportingContractClient::new(env, &contract_id);
-    let admin = Address::generate(env);
+    let admin = AddressTestutils::generate(env);
     client.init(&admin);
     let remittance = env.register_contract(None, remittance_split_mock::RemittanceSplit);
     let savings = env.register_contract(None, savings_goals_mock::SavingsGoals);
@@ -336,7 +336,7 @@ fn deprecated_get_archived_reports_is_bounded_to_default_page_limit() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     // Seed `2 * DEFAULT_PAGE_LIMIT + 5` archives to prove the reader does
     // **not** scan the entire index even when there are many more entries.
@@ -359,7 +359,7 @@ fn deprecated_get_archived_reports_matches_first_page_of_paged_reader() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     let total = DEFAULT_PAGE_LIMIT + 7;
     seed_n_archives(&env, &client, &admin, &user, total);
@@ -406,7 +406,7 @@ fn paged_reader_walks_entire_archive_and_terminates() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     let page_size = 10u32;
     // 34 entries spans exactly 4 pages of 10 (10 + 10 + 10 + 4).
@@ -458,7 +458,7 @@ fn paged_reader_out_of_range_cursor_returns_empty_page_with_terminator() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     seed_n_archives(&env, &client, &admin, &user, 5);
 
@@ -490,7 +490,7 @@ fn paged_reader_empty_archive_returns_terminator() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, _admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     let page = client.get_archived_reports_page(&user, &0u32, &DEFAULT_PAGE_LIMIT);
     assert_eq!(page.items.len(), 0, "empty archive returns no items");
@@ -506,7 +506,7 @@ fn paged_reader_normalizes_zero_limit_to_default_page_limit() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     seed_n_archives(&env, &client, &admin, &user, DEFAULT_PAGE_LIMIT + 5);
 
@@ -524,7 +524,7 @@ fn paged_reader_clamps_oversized_limit_to_max_page_limit() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user = Address::generate(&env);
+    let user = AddressTestutils::generate(&env);
 
     // Seed enough reports to know the clamp didn't shrink the page.
     seed_n_archives(&env, &client, &admin, &user, MAX_PAGE_LIMIT + 5);
@@ -547,8 +547,8 @@ fn paged_reader_user_isolation_holds_under_bound() {
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
-    let user_a = Address::generate(&env);
-    let user_b = Address::generate(&env);
+    let user_a = AddressTestutils::generate(&env);
+    let user_b = AddressTestutils::generate(&env);
 
     seed_n_archives(&env, &client, &admin, &user_a, DEFAULT_PAGE_LIMIT + 10);
     seed_n_archives(&env, &client, &admin, &user_b, 3);
