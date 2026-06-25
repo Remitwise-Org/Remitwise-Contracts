@@ -303,6 +303,7 @@ To run an example, use `cargo run --example <example_name>`:
 ## Documentation
 
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
+- [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
