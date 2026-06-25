@@ -4844,6 +4844,51 @@ mod migration_e2e_tests {
         );
     }
 
+    #[test]
+    fn test_noop_upgrade_snapshot_preserves_storage() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        // 1. Initial init
+        client.init();
+        let initial_snap = client.export_snapshot(&owner);
+
+        // 2. State modification (Sad path: ensure checksum changes when state changes)
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "House"),
+            &50_000i128,
+            &3_000_000_000u64,
+            &false,
+        );
+        client.add_to_goal(&owner, &goal_id, &5_000i128);
+
+        let pre_upgrade_snap = client.export_snapshot(&owner);
+        // Explicit sad path: verify the checksum actually catches state changes
+        assert_ne!(
+            pre_upgrade_snap.checksum, initial_snap.checksum,
+            "sanity check: state actually changed"
+        );
+
+        // 3. Act: re-run init simulating a post-upgrade initialization (No-op upgrade)
+        client.init();
+
+        let post_upgrade_snap = client.export_snapshot(&owner);
+
+        // 4. Assert: storage is unchanged by the second init
+        assert_eq!(
+            pre_upgrade_snap.checksum, post_upgrade_snap.checksum,
+            "Re-running init must not mutate storage checksum"
+        );
+        assert_eq!(
+            pre_upgrade_snap.schema_version, post_upgrade_snap.schema_version,
+            "Re-running init must not change schema version"
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Multi-goal, multi-owner export
     // -------------------------------------------------------------------------
