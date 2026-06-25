@@ -267,6 +267,9 @@ pub struct RemitwiseEvents;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod emit_tests;
+
 impl RemitwiseEvents {
     /// Emits a single event with the given category, priority, and action.
     ///
@@ -276,6 +279,10 @@ impl RemitwiseEvents {
     /// * `data` – The event payload implementing `IntoVal`.
     ///
     /// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
+    /// 
+    /// **Size Budget**: Event data must be compact (topics + small payload, not bulk records).
+    /// The recommended maximum serialized size for the `data` payload is 256 bytes.
+    /// Oversized payloads will trigger a debug/test assertion.
     pub fn emit<T>(
         env: &soroban_sdk::Env,
         category: EventCategory,
@@ -291,6 +298,22 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
+        
+        #[cfg(any(test, feature = "testutils"))]
+        {
+            let val = data.into_val(env);
+            if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
+                if let Ok(xdr_bytes) = soroban_sdk::xdr::ToXdr::to_xdr(&sc_val) {
+                    let size = xdr_bytes.len();
+                    if size > 256 {
+                        panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
+                    }
+                }
+            }
+            env.events().publish(topics, val);
+            return;
+        }
+
         env.events().publish(topics, data);
     }
 
@@ -301,6 +324,9 @@ impl RemitwiseEvents {
     /// * `count` – Number of events in the batch.
     ///
     /// This always uses `EventPriority::Low` for batch events.
+    ///
+    /// **Size Budget**: Batch payloads (action + count) are inherently compact and conform
+    /// to the recommended event data budget.
     pub fn emit_batch(env: &soroban_sdk::Env, category: EventCategory, action: Symbol, count: u32) {
         let topics = (
             symbol_short!("Remitwise"),

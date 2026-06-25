@@ -34,6 +34,10 @@ let data = (action, count);
 
 The taxonomy enables off‑chain indexers and alerting services to reliably filter, sort, and interpret events across contracts.
 
+### Event Data Size Budget
+
+To prevent silent budget exhaustion, event data must be compact. The maximum recommended size for serialized event data is **256 bytes**. Emits should not contain bulk records, large collections (e.g., large `Vec`s), or extensive reporting structs. The primary payload should be small, typically containing only IDs, status codes, and small numerical amounts. A debug guard is enforced during testing to flag oversized payloads.
+
 ---
 
 ## Taxonomy Values

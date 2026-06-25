@@ -16,7 +16,7 @@ impl MockContract {
         true
     }
     pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
-        vec![&env, 2500, 2500, 2500, 2500]
+        soroban_sdk::vec![&env, 2500, 2500, 2500, 2500]
     }
     pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) -> bool {
         true

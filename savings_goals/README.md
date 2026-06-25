@@ -22,7 +22,7 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 
 - Create savings goals with target amounts and dates
 - **Per-Owner Goal Cap**: Maximum of 2000 goals per owner (active + archived) to prevent storage-bloat DoS.
-- **Goal Name Validation**: Goal names are limited to 128 bytes.
+- **Goal Name Validation**: Goal names are limited to 32 bytes.
 - Add funds to goals with progress tracking
 - Withdraw funds (when goal is unlocked)
 - Lock/unlock goals for withdrawal control

@@ -46,29 +46,26 @@ Smart contracts emit events but don't provide efficient querying capabilities. T
 | Contract | Events Tracked | Entities |
 |----------|----------------|----------|
 | Savings Goals | goal_created, goal_deposit, goal_withdraw, tags_add, tags_rem | SavingsGoal |
-| Bill Payments | bill_created, bill_paid, tags_add, tags_rem | Bill |
+| Bill Payments | bill_created, bill_paid, bill_cancelled, bill_restored, bill_archived, ext_upd, tags_add, tags_rem | Bill |
 | Insurance | policy_created, tags_add, tags_rem | InsurancePolicy |
 | Remittance Split | split_created, split_executed | RemittanceSplit |
-| Orchestrator | flow, flow_ok, flow_fail, init_ok | FlowExecution |
+| Family Wallet | member, limit, ms_conf, em_mode, em_conf, em_prop, add_mem, rem_mem, role_exp, adm_xfr, archived, exp_cln, upgraded | FamilyMember, MultisigConfig |
 
-## Orchestrator flow processor
+### Family Wallet Processor Notes
 
-The orchestrator emits a unified lifecycle event set for **both** execution
-entrypoints:
+The Family Wallet processor consumes the `("Remitwise", category, priority, action)`
+topic schema documented in [EVENTS.md](EVENTS.md#family-wallet-contract). The
+`ms_conf` action carries a `MultisigConfiguredEvent` payload and signals a
+**governance-level change** to a `TransactionType`'s threshold, signer set, or
+spending limit. The processor SHOULD:
 
-| Event | When | Payload |
-|-------|------|---------|
-| `flow` | After validation, before downstream calls | `(executor, amount)` |
-| `flow_ok` | Flow completed successfully | `(executor, amount)` |
-| `flow_fail` | Downstream execution failed | `(executor, error_code)` — no amount |
-
-Indexers should subscribe to the `Remitwise` topic namespace and match `flow`
-events to their `flow_ok` or `flow_fail` completion. Unsigned
-(`execute_remittance_flow`) and signed (`execute_remittance_flow_signed`) flows
-use identical event shapes; only the signed path adds nonce/deadline validation
-before `flow` is emitted. Audit entries use the `flow_exec` operation symbol on
-both paths. See [EVENTS.md](EVENTS.md#orchestrator-contract) and
-[docs/orchestrator-events.md](docs/orchestrator-events.md).
+- Persist every emission (initial configuration and reconfiguration both emit)
+  so the audit trail is complete.
+- Treat the event as high-priority for security dashboards and alerting — a
+  silent multisig change is exactly the kind of action a monitor must surface.
+- Record `signer_count` from the payload; the authoritative signer list is
+  intentionally not in the payload and must be fetched via
+  `get_multisig_config` if needed.
 
 ## Architecture
 

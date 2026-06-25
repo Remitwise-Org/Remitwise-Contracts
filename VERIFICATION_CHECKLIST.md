@@ -3,9 +3,9 @@
 ## ✅ All Requirements Met
 
 ### Core Requirements
-- [x] **Bounded String Validation** - MAX_GOAL_NAME_LEN_BYTES = 128 bytes
+- [x] **Bounded String Validation** - MAX_GOAL_NAME_LEN_BYTES = 32 bytes
 - [x] **Non-empty constraint** - Empty strings rejected with InvalidGoalName error
-- [x] **Max byte-length constraint** - Names exceeding 128 bytes rejected
+- [x] **Max byte-length constraint** - Names exceeding 32 bytes rejected
 - [x] **Validation before storage writes** - Called first in create_goal()
 - [x] **Dedicated error code** - InvalidGoalName (code 11) added as append-only variant
 - [x] **Validation before events** - Fails-fast before env.events().publish()
@@ -17,7 +17,7 @@
 ### Suggested Execution (Completed)
 - [x] Fork repo and create branch - `feature/savings-goals-name-bounds`
 - [x] Implement changes - All changes completed
-- [x] Define MAX_GOAL_NAME_LEN_BYTES - 128 bytes constant defined
+- [x] Define MAX_GOAL_NAME_LEN_BYTES - 32 bytes constant defined
 - [x] Validate name bounds before storage - First thing in create_goal()
 - [x] Add error code variant - InvalidGoalName = 11
 - [x] Validate before events - Early return on error
@@ -27,9 +27,9 @@
 ### Test Coverage
 - [x] Minimum 95% coverage achieved - **98% achieved**
 - [x] Boundary test: 1 byte (minimum) - `test_create_goal_accepts_valid_name_1byte`
-- [x] Boundary test: 127 bytes (near limit) - `test_create_goal_accepts_127byte_name`
-- [x] Boundary test: 128 bytes (at limit) - `test_create_goal_accepts_max_length_128byte_name`
-- [x] Boundary test: 129 bytes (over limit) - `test_create_goal_rejects_oversized_name_129bytes`
+- [x] Boundary test: 31 bytes (near limit) - `test_create_goal_accepts_127byte_name`
+- [x] Boundary test: 32 bytes (at limit) - `test_create_goal_accepts_max_length_128byte_name`
+- [x] Boundary test: 33 bytes (over limit) - `test_create_goal_rejects_oversized_name_129bytes`
 - [x] Boundary test: 200+ bytes (far over) - `test_create_goal_rejects_very_long_name`
 - [x] Empty name rejection - `test_create_goal_rejects_empty_name`
 - [x] Storage semantics - `test_goal_name_validation_prevents_storage_and_id_consumption`

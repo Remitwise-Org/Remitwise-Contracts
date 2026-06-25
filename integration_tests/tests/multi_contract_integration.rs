@@ -59,7 +59,7 @@ fn test_multi_contract_user_flow() {
     let target_amount = 10_000i128;
     let target_date = env.ledger().timestamp() + (365 * 86400);
 
-    let goal_id = savings_client.create_goal(&user, &goal_name, &target_amount, &target_date);
+    let goal_id = savings_client.create_goal(&user, &goal_name, &target_amount, &target_date, &false);
     assert_eq!(goal_id, 1u32, "Goal ID should be 1");
 
     let bill_name = SorobanString::from_str(&env, "Electricity Bill");
@@ -162,6 +162,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "Emergency Fund"),
         &5_000i128,
         &(env.ledger().timestamp() + 180 * 86400),
+        &false,
     );
     assert_eq!(goal1, 1u32);
 
@@ -170,6 +171,7 @@ fn test_multiple_entities_creation() {
         &SorobanString::from_str(&env, "Vacation"),
         &2_000i128,
         &(env.ledger().timestamp() + 90 * 86400),
+        &false,
     );
     assert_eq!(goal2, 2u32);
 

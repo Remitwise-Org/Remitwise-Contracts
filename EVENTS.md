@@ -42,66 +42,13 @@ env.events().publish((contract_name, event_category), event_data);
 - **Symbol**: Short symbol (up to 12 characters, encoded as u64)
 - **i128**: Signed 128-bit integer (stroops for amounts)
 - **u32**: Unsigned 32-bit integer (IDs, counts)
-- **u64**: Unsigned 64-bit integer (timestamps, dates)
-- **String**: UTF-8 encoded string
-- **bool**: Boolean flag
-
-### Timestamp Convention
-
-All timestamps are in **Unix epoch seconds** (seconds since 1970-01-01 00:00:00 UTC).
-
----
-
-## Bill Payments Contract
-
-**Contract Name:** `bill_payments`  
-**Primary Topic Prefix:** `"Remitwise"`
-
-### Event: Bill Created
-
-**Topic:** `"Remitwise"` (category: Transaction, priority: Medium)  
-**Action Symbol:** `"crt_bill"`
-
-**Data Structure:**
-```rust
-pub struct Bill {
-    pub id: u32,                    // Unique bill ID
-    pub owner: Address,             // Bill owner address
-    pub name: String,               // Bill name (e.g., "Electricity")
-    pub amount: i128,               // Amount in stroops
-    pub due_date: u64,              // Unix timestamp of due date
-    pub recurring: bool,            // Whether bill recurs
-    pub frequency_days: u32,        // Recurrence frequency in days (0 if non-recurring)
-    pub paid: bool,                 // Payment status
-    pub created_at: u64,            // Creation timestamp
-    pub paid_at: Option<u64>,       // Payment timestamp (null if unpaid)
-    pub schedule_id: Option<u32>,   // Associated schedule ID (null if none)
-    pub currency: String,           // Currency code (e.g., "XLM", "USDC")
-}
-```
-
-**Example Event:**
-```json
-{
-  "id": 1,
-  "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "name": "Electricity",
-  "amount": 1000,
-  "due_date": 1234567890,
-  "recurring": false,
-  "frequency_days": 0,
-  "paid": false,
-  "created_at": 1234567800,
-  "paid_at": null,
-  "schedule_id": null,
-  "currency": "XLM"
-}
-```
 
 ### Event: Bill Paid
 
-**Topic:** `"Remitwise"` (category: Transaction, priority: High)  
-**Action Symbol:** `"pay_bill"`
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "paid")`  
+**Action Symbol:** `"paid"`  
+**Secondary Topic:** `("bill", BillEvent::Paid)`  
+**Emitted by:** `pay_bill`, `batch_pay_bills`
 
 **Data Structure:**
 ```rust
@@ -113,20 +60,12 @@ pub struct BillPaidEvent {
 }
 ```
 
-**Example Event:**
-```json
-{
-  "bill_id": 1,
-  "owner": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-  "amount": 1000,
-  "paid_at": 1234567850
-}
-```
-
 ### Event: Bill Cancelled
 
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"can_bill"`
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "cancelled")`  
+**Action Symbol:** `"cancelled"`  
+**Secondary Topic:** `("bill", BillEvent::Cancelled)`  
+**Emitted by:** `cancel_bill`
 
 **Data Structure:**
 ```rust
@@ -137,10 +76,28 @@ pub struct BillCancelledEvent {
 }
 ```
 
+### Event: Bill External Reference Updated
+
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "ext_upd")`  
+**Action Symbol:** `"ext_upd"`  
+**Secondary Topic:** `("bill", BillEvent::ExternalRefUpdated)`  
+**Emitted by:** `set_external_ref`
+
+**Data Structure:**
+```rust
+pub struct BillExternalRefUpdatedEvent {
+    pub bill_id: u32,               // ID of updated bill
+    pub owner: Address,             // Bill owner
+    pub external_ref: Option<String>, // New external reference value
+}
+```
+
 ### Event: Bills Archived
 
-**Topic:** `"Remitwise"` (category: System, priority: Low)  
-**Action Symbol:** `"archive"`
+**Topic:** `("Remitwise", EventCategory::System, EventPriority::Low, "archive")`  
+**Action Symbol:** `"archive"`  
+**Secondary Topic:** `("bill", BillEvent::Archived)`  
+**Emitted by:** `archive_paid_bills`
 
 **Data Structure:**
 ```rust
@@ -152,8 +109,10 @@ pub struct BillsArchivedEvent {
 
 ### Event: Bill Restored
 
-**Topic:** `"Remitwise"` (category: State, priority: Medium)  
-**Action Symbol:** `"restore"`
+**Topic:** `("Remitwise", EventCategory::State, EventPriority::Medium, "restored")`  
+**Action Symbol:** `"restored"`  
+**Secondary Topic:** `("bill", BillEvent::Restored)`  
+**Emitted by:** `restore_bill`
 
 **Data Structure:**
 ```rust
@@ -842,6 +801,35 @@ pub struct EmergencyModeEvent {
     pub timestamp: u64,             // Event timestamp
 }
 ```
+
+### Event: Multisig Configured
+
+**Topic:** `("Remitwise", EventCategory::Access, EventPriority::High, "ms_conf")`
+**Emitted by:** `configure_multisig`
+**Trigger:** Emitted at the end of `configure_multisig` after all validation
+succeeds and the new `MultiSigConfig` is persisted. Both the initial
+configuration of a `TransactionType` and any subsequent reconfiguration emit
+this event. Failed validation (unauthorized caller, invalid threshold,
+duplicate signer, non-member signer, oversized signer list, paused wallet,
+negative spending limit, etc.) returns an `Error` and emits nothing.
+
+**Data Structure:**
+```rust
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,   // Which TransactionType bucket was configured
+    pub threshold: u32,             // Signatures now required to execute
+    pub signer_count: u32,          // Number of signers in the new set
+    pub spending_limit: i128,       // New spending-limit cap for the bucket
+    pub timestamp: u64,             // Ledger timestamp at emission
+}
+```
+
+**Security Note:** The payload deliberately reports `signer_count` rather than
+the full signer `Vec<Address>`. The shared event taxonomy keeps payloads
+fixed-size, and the authoritative signer set remains queryable via
+`get_multisig_config`. Indexers must treat this event as a governance-grade
+alert: a change to the threshold or signer set is the most security-sensitive
+state transition in the wallet.
 
 ---
 
