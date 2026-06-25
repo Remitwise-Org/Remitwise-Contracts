@@ -154,6 +154,43 @@ impl EmergencyKillswitch {
             .unwrap_or(false)
     }
 
+    /// Returns the pending unpause timestamp set by `schedule_unpause`, or `None` if no unpause
+    /// is scheduled. The schedule is cleared when `pause` or `unpause` is called.
+    ///
+    /// No authentication required — the schedule is observable on-chain.
+    pub fn get_unpause_schedule(env: Env) -> Option<u64> {
+        env.storage().instance().get(&DataKey::UnpauseSchedule)
+    }
+
+    /// Returns the list of paused function names for `module_id`, or an empty vec if none.
+    ///
+    /// Bounded by [`MAX_PAUSED_FUNCTIONS`] (10); no pagination required.
+    ///
+    /// Note: a function may appear unpaused here yet still be blocked if the module
+    /// (`is_module_paused`) or global pause (`is_paused`) is active — the precedence order
+    /// is global → module → function.
+    ///
+    /// No authentication required — state is observable on-chain.
+    pub fn list_paused_functions(env: Env, module_id: Symbol) -> Vec<Symbol> {
+        env.storage()
+            .instance()
+            .get(&DataKey::PausedFunctions(module_id))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    /// Returns whether `module_id` is directly paused via `pause_module`.
+    ///
+    /// Note: this reflects only the module-level flag. For the full precedence check
+    /// (global → module → function) use `is_function_paused`.
+    ///
+    /// No authentication required — state is observable on-chain.
+    pub fn is_module_paused(env: Env, module_id: Symbol) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::ModulePaused(module_id))
+            .unwrap_or(false)
+    }
+
     pub fn pause_function(env: Env, module_id: Symbol, func: Symbol) -> Result<(), Error> {
         let admin: Address = env
             .storage()

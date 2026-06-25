@@ -1,12 +1,18 @@
-use soroban_sdk::{Env, Val, IntoVal, symbol_short, Vec};
-use crate::{RemitwiseEvents, EventCategory, EventPriority};
+use crate::{EventCategory, EventPriority, RemitwiseEvents};
+use soroban_sdk::{symbol_short, Env, IntoVal, Val, Vec};
 
 #[test]
 fn test_compact_event_passes() {
     let env = Env::default();
     // A small payload
     let data = 42u32;
-    RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::High, symbol_short!("test"), data);
+    RemitwiseEvents::emit(
+        &env,
+        EventCategory::Transaction,
+        EventPriority::High,
+        symbol_short!("test"),
+        data,
+    );
 }
 
 #[test]
@@ -18,5 +24,11 @@ fn test_oversized_event_flagged() {
     for i in 0..100 {
         large_data.push_back(i);
     }
-    RemitwiseEvents::emit(&env, EventCategory::Transaction, EventPriority::High, symbol_short!("test"), large_data);
+    RemitwiseEvents::emit(
+        &env,
+        EventCategory::Transaction,
+        EventPriority::High,
+        symbol_short!("test"),
+        large_data,
+    );
 }
