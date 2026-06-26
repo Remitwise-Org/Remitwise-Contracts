@@ -1387,76 +1387,120 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
 /// Each must be its own module to avoid Soroban macro name collisions.
 mod mock_split_len0 {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
-        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
-            Vec::new(&env) // length 0
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
         }
-        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool { true }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            Vec::new(&env)
+        }
+        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool {
+            true
+        }
     }
 }
 
 mod mock_split_len1 {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 1000i128]
         }
-        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool {
+            true
+        }
     }
 }
 
 mod mock_split_len3 {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 250i128, 250i128, 250i128]
         }
-        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool {
+            true
+        }
     }
 }
 
 mod mock_split_len4 {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool {
+            true
+        }
     }
 }
 
 /// Returns negative allocations for entries 1-3 (savings/bills/insurance).
 mod mock_split_negative {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, -100i128, -100i128, -100i128]
         }
@@ -1475,17 +1519,27 @@ mod mock_split_negative {
 /// Returns 6 entries — only the first four must be consumed.
 mod mock_split_oversized {
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
     #[contract]
     pub struct Contract;
+
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool { true }
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128, 999i128, 999i128]
         }
-        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool { true }
-        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool { true }
-        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool { true }
+        pub fn add_to_goal(_env: Env, _u: Address, _g: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _u: Address, _b: u32, _a: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _u: Address, _p: u32, _a: i128) -> bool {
+            true
+        }
     }
 }
 
@@ -1516,7 +1570,10 @@ fn test_split_len0_returns_invalid_amount_and_releases_lock() {
 
     let result = client.try_execute_remittance_flow(&split_flow_params(&caller, &id));
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after short-vector rejection");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after short-vector rejection"
+    );
 }
 
 #[test]
@@ -1530,7 +1587,10 @@ fn test_split_len1_returns_invalid_amount_and_releases_lock() {
 
     let result = client.try_execute_remittance_flow(&split_flow_params(&caller, &id));
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after short-vector rejection");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after short-vector rejection"
+    );
 }
 
 #[test]
@@ -1544,7 +1604,10 @@ fn test_split_len3_returns_invalid_amount_and_releases_lock() {
 
     let result = client.try_execute_remittance_flow(&split_flow_params(&caller, &id));
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after short-vector rejection");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after short-vector rejection"
+    );
 }
 
 #[test]
@@ -1558,7 +1621,10 @@ fn test_split_len4_proceeds_successfully() {
 
     // Length-4 vector satisfies the bounds check — flow must succeed.
     client.execute_remittance_flow(&split_flow_params(&caller, &id));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after successful flow");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after successful flow"
+    );
 }
 
 #[test]
@@ -1575,7 +1641,10 @@ fn test_split_negative_values_skipped_without_downstream_calls() {
 
     // The flow succeeds (negative amounts are simply skipped); no panic occurs.
     client.execute_remittance_flow(&split_flow_params(&caller, &id));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after negative-allocation flow");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after negative-allocation flow"
+    );
 }
 
 #[test]
@@ -1589,5 +1658,8 @@ fn test_split_oversized_uses_only_first_four_entries() {
     let caller = Address::generate(&env);
 
     client.execute_remittance_flow(&split_flow_params(&caller, &id));
-    assert!(!client.get_execution_state(), "EXEC_LOCK must be released after oversized-vector flow");
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after oversized-vector flow"
+    );
 }
