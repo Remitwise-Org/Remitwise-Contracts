@@ -1,7 +1,31 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Map, Symbol};
+use soroban_sdk::{contracttype, contracterror, symbol_short, Address, Env, Map, Symbol};
+
+/// Error when converting numeric types to i128 safely
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConvertToI128Error {
+    /// Value is out of range for i128
+    OutOfRange,
+}
+
+/// Trait for safe conversion to i128
+pub trait ToI128Checked {
+    fn to_i128_checked(self) -> Result<i128, ConvertToI128Error>;
+}
+
+impl ToI128Checked for u32 {
+    fn to_i128_checked(self) -> Result<i128, ConvertToI128Error> {
+        Ok(self as i128)
+    }
+}
+
+impl ToI128Checked for i32 {
+    fn to_i128_checked(self) -> Result<i128, ConvertToI128Error> {
+        Ok(self as i128)
+    }
+}
 
 /// Financial categories for remittance allocation
 #[contracttype]
