@@ -213,6 +213,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "data_availability"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "generated_at"
                       },
                       "val": {
@@ -380,7 +388,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 5000
+                                        "u32": 50
                                       }
                                     }
                                   ]
@@ -411,7 +419,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 3000
+                                        "u32": 30
                                       }
                                     }
                                   ]
@@ -442,7 +450,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 1500
+                                        "u32": 15
                                       }
                                     }
                                   ]
@@ -473,7 +481,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 500
+                                        "u32": 5
                                       }
                                     }
                                   ]
@@ -1899,84 +1907,7 @@
                   "val": {
                     "vec": [
                       {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "active"
-                            },
-                            "val": {
-                              "bool": true
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_amount"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 50000
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "u32": 1
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "external_ref"
-                            },
-                            "val": "void"
-                          },
-                          {
-                            "key": {
-                              "symbol": "id"
-                            },
-                            "val": {
-                              "u32": 1
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 200
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Health Insurance"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 1735689600
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                            }
-                          }
-                        ]
+                        "u32": 1
                       }
                     ]
                   }
@@ -2038,16 +1969,16 @@
             "data": {
               "vec": [
                 {
-                  "u32": 5000
+                  "u32": 50
                 },
                 {
-                  "u32": 3000
+                  "u32": 30
                 },
                 {
-                  "u32": 1500
+                  "u32": 15
                 },
                 {
-                  "u32": 500
+                  "u32": 5
                 }
               ]
             }
@@ -2699,84 +2630,7 @@
                   "val": {
                     "vec": [
                       {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "active"
-                            },
-                            "val": {
-                              "bool": true
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_amount"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 50000
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "coverage_type"
-                            },
-                            "val": {
-                              "u32": 1
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "external_ref"
-                            },
-                            "val": "void"
-                          },
-                          {
-                            "key": {
-                              "symbol": "id"
-                            },
-                            "val": {
-                              "u32": 1
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "monthly_premium"
-                            },
-                            "val": {
-                              "i128": {
-                                "hi": 0,
-                                "lo": 200
-                              }
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "name"
-                            },
-                            "val": {
-                              "string": "Health Insurance"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "next_payment_date"
-                            },
-                            "val": {
-                              "u64": 1735689600
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "owner"
-                            },
-                            "val": {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                            }
-                          }
-                        ]
+                        "u32": 1
                       }
                     ]
                   }
@@ -2787,6 +2641,148 @@
                   },
                   "val": {
                     "u32": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000007"
+              },
+              {
+                "symbol": "get_policy"
+              }
+            ],
+            "data": {
+              "u32": 1
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000007",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_policy"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "active"
+                  },
+                  "val": {
+                    "bool": true
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_amount"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 50000
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "coverage_type"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "created_at"
+                  },
+                  "val": {
+                    "u64": 1704067200
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "external_ref"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "id"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "last_payment_at"
+                  },
+                  "val": {
+                    "u64": 0
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "monthly_premium"
+                  },
+                  "val": {
+                    "i128": {
+                      "hi": 0,
+                      "lo": 200
+                    }
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "name"
+                  },
+                  "val": {
+                    "string": "Health Insurance"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "next_payment_date"
+                  },
+                  "val": {
+                    "u64": 1735689600
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "owner"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                   }
                 }
               ]
@@ -2944,6 +2940,14 @@
                         }
                       }
                     ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "data_availability"
+                  },
+                  "val": {
+                    "u32": 0
                   }
                 },
                 {
@@ -3115,7 +3119,7 @@
                                     "symbol": "percentage"
                                   },
                                   "val": {
-                                    "u32": 5000
+                                    "u32": 50
                                   }
                                 }
                               ]
@@ -3146,7 +3150,7 @@
                                     "symbol": "percentage"
                                   },
                                   "val": {
-                                    "u32": 3000
+                                    "u32": 30
                                   }
                                 }
                               ]
@@ -3177,7 +3181,7 @@
                                     "symbol": "percentage"
                                   },
                                   "val": {
-                                    "u32": 1500
+                                    "u32": 15
                                   }
                                 }
                               ]
@@ -3208,7 +3212,7 @@
                                     "symbol": "percentage"
                                   },
                                   "val": {
-                                    "u32": 500
+                                    "u32": 5
                                   }
                                 }
                               ]
@@ -3476,6 +3480,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "data_availability"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "generated_at"
                       },
                       "val": {
@@ -3643,7 +3655,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 5000
+                                        "u32": 50
                                       }
                                     }
                                   ]
@@ -3674,7 +3686,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 3000
+                                        "u32": 30
                                       }
                                     }
                                   ]
@@ -3705,7 +3717,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 1500
+                                        "u32": 15
                                       }
                                     }
                                   ]
@@ -3736,7 +3748,7 @@
                                         "symbol": "percentage"
                                       },
                                       "val": {
-                                        "u32": 500
+                                        "u32": 5
                                       }
                                     }
                                   ]

@@ -266,7 +266,6 @@ fn setup(env: &Env) -> (ReportingContractClient<'_>, Address) {
     let client = ReportingContractClient::new(env, &contract_id);
     let admin = Address::generate(env);
     client.init(&admin);
-
     let remittance = env.register_contract(None, remittance_split_mock::RemittanceSplit);
     let savings = env.register_contract(None, savings_goals_mock::SavingsGoals);
     let bills = env.register_contract(None, bill_payments_mock::BillPayments);
@@ -311,6 +310,7 @@ fn seed_n_archives(
     n: u32,
 ) {
     enable_high_ttl(env);
+    env.budget().reset_unlimited();
 
     for i in 0..n {
         let generated_at = 1_704_067_200u64 + i as u64;
@@ -332,7 +332,7 @@ fn seed_n_archives(
 #[test]
 fn deprecated_get_archived_reports_is_bounded_to_default_page_limit() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -355,7 +355,7 @@ fn deprecated_get_archived_reports_is_bounded_to_default_page_limit() {
 #[test]
 fn deprecated_get_archived_reports_matches_first_page_of_paged_reader() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -402,7 +402,7 @@ fn deprecated_get_archived_reports_matches_first_page_of_paged_reader() {
 #[test]
 fn paged_reader_walks_entire_archive_and_terminates() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -454,7 +454,7 @@ fn paged_reader_walks_entire_archive_and_terminates() {
 #[test]
 fn paged_reader_out_of_range_cursor_returns_empty_page_with_terminator() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -486,7 +486,7 @@ fn paged_reader_out_of_range_cursor_returns_empty_page_with_terminator() {
 #[test]
 fn paged_reader_empty_archive_returns_terminator() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, _admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -502,7 +502,7 @@ fn paged_reader_empty_archive_returns_terminator() {
 #[test]
 fn paged_reader_normalizes_zero_limit_to_default_page_limit() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -520,7 +520,7 @@ fn paged_reader_normalizes_zero_limit_to_default_page_limit() {
 #[test]
 fn paged_reader_clamps_oversized_limit_to_max_page_limit() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user = Address::generate(&env);
 
@@ -543,7 +543,7 @@ fn paged_reader_clamps_oversized_limit_to_max_page_limit() {
 #[test]
 fn paged_reader_user_isolation_holds_under_bound() {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     let (client, admin) = setup(&env);
     let user_a = Address::generate(&env);
     let user_b = Address::generate(&env);

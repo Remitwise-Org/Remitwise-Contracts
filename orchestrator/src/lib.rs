@@ -79,7 +79,9 @@ pub enum FlowStep {
     InsurancePremium = 5,
 }
 
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION};
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+};
 
 // Storage TTL constants for active data
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
@@ -109,6 +111,41 @@ const EXEC_LOCK: Symbol = symbol_short!("EXEC_LOCK");
 const AUDIT: Symbol = symbol_short!("AUDIT");
 /// Audit operation symbol for remittance flow executions (signed and unsigned).
 const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage before a contract upgrade so state
+/// can be restored if the upgrade fails or produces inconsistent results.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Contract owner address.
+    pub owner: Address,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Family wallet dependency address.
+    pub family_wallet: Address,
+    /// Remittance split dependency address.
+    pub remittance_split: Address,
+    /// Savings goals dependency address.
+    pub savings_goals: Address,
+    /// Bill payments dependency address.
+    pub bill_payments: Address,
+    /// Insurance dependency address.
+    pub insurance: Address,
+    /// Execution lock state.
+    pub execution_locked: bool,
+    /// Execution statistics.
+    pub stats: ExecutionStats,
+    /// Goal execution parameter ID.
+    pub goal_id: u32,
+    /// Bill execution parameter ID.
+    pub bill_id: u32,
+    /// Policy execution parameter ID.
+    pub policy_id: u32,
+}
 
 /// RAII guard to ensure the execution lock is released on drop.
 pub struct LockGuard {
@@ -229,14 +266,18 @@ impl Orchestrator {
         let rs_client = interface::RemittanceSplitClient::new(env, &params.remittance_split);
         let allocations = rs_client.calculate_split(&params.total_amount);
 
-        if allocations.len() < 4 {
+        // Bounds contract: calculate_split must return exactly 4 non-negative
+        // allocations [spending, savings, bills, insurance]. Checked indexing
+        // here ensures a short or hostile response produces a typed
+        // InvalidAmount rather than an out-of-bounds panic while the EXEC_LOCK
+        // is held.
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
+
+        if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
             return Err(OrchestratorError::InvalidAmount);
         }
-
-        let _spending_amt = allocations.get_unchecked(0);
-        let savings_amt = allocations.get_unchecked(1);
-        let bills_amt = allocations.get_unchecked(2);
-        let insurance_amt = allocations.get_unchecked(3);
 
         // 3. Downstream calls
         if savings_amt > 0 {
@@ -545,6 +586,235 @@ impl Orchestrator {
         Ok(true)
     }
 
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot captures
+    /// the owner, dependency addresses, execution state, statistics, and
+    /// parameter IDs so the contract can be restored if the upgrade fails.
+    ///
+    /// # Authorization
+    /// Only the contract owner may take a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the contract owner
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("snap_pre"))`.
+    pub fn pre_upgrade(
+        env: Env,
+        caller: Address,
+    ) -> Result<bool, OrchestratorError> {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+        let fw_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("FW_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let rs_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("RS_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let sg_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SG_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let bp_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BP_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let ins_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("INS_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let stats: ExecutionStats = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("STATS"))
+            .unwrap_or(ExecutionStats {
+                total_executions: 0,
+                successful_executions: 0,
+                failed_executions: 0,
+                last_execution_time: 0,
+                evicted_entries: 0,
+            });
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            owner: owner.clone(),
+            version: Self::get_version(env.clone()),
+            family_wallet: fw_addr,
+            remittance_split: rs_addr,
+            savings_goals: sg_addr,
+            bill_payments: bp_addr,
+            insurance: ins_addr,
+            execution_locked: env
+                .storage()
+                .instance()
+                .get(&EXEC_LOCK)
+                .unwrap_or(false),
+            stats,
+            goal_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("GOAL_ID"))
+                .unwrap_or(1),
+            bill_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILL_ID"))
+                .unwrap_or(1),
+            policy_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("POL_ID"))
+                .unwrap_or(1),
+        };
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+        Ok(true)
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// owner, dependencies, execution state, stats, and parameter IDs back
+    /// to instance storage. The snapshot is consumed after a successful
+    /// restore.
+    ///
+    /// # Authorization
+    /// Only the contract owner may restore from a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the owner
+    /// - `InvalidDependency` if no snapshot exists
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(
+        env: Env,
+        caller: Address,
+    ) -> Result<bool, OrchestratorError> {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            return Err(OrchestratorError::InvalidDependency);
+        }
+        if snapshot.owner != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+        Self::extend_instance_ttl(&env);
+
+        // Restore dependency addresses
+        env.storage()
+            .instance()
+            .set(&symbol_short!("FW_ADDR"), &snapshot.family_wallet);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("RS_ADDR"), &snapshot.remittance_split);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SG_ADDR"), &snapshot.savings_goals);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BP_ADDR"), &snapshot.bill_payments);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("INS_ADDR"), &snapshot.insurance);
+
+        // Restore version
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+
+        // Restore execution lock
+        env.storage()
+            .instance()
+            .set(&EXEC_LOCK, &snapshot.execution_locked);
+
+        // Restore stats
+        env.storage()
+            .instance()
+            .set(&symbol_short!("STATS"), &snapshot.stats);
+
+        // Restore parameter IDs
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOAL_ID"), &snapshot.goal_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILL_ID"), &snapshot.bill_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("POL_ID"), &snapshot.policy_id);
+
+        // Consume the snapshot
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+        Ok(true)
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the contract owner may discard a snapshot.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if `caller` is not the owner
+    pub fn discard_snapshot(
+        env: Env,
+        caller: Address,
+    ) -> Result<bool, OrchestratorError> {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("snap_dsc")),
+            (),
+        );
+        Ok(true)
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
@@ -668,18 +938,23 @@ impl Orchestrator {
             return Err(OrchestratorError::Unauthorized);
         }
 
-        // Pre-calculate split (read-only call) — establishes the amounts
-        // that will be forwarded to each downstream contract.
+        // Allocations come from an external contract whose return vector we do not
+        // control. Validate each index explicitly: a short, reordered, or hostile
+        // response must return InvalidAmount rather than panic while EXEC_LOCK is held.
         let rs_client = interface::RemittanceSplitClient::new(env, &rs_addr);
         let allocations = rs_client.calculate_split(&amount);
-        if allocations.len() < 4 {
+        // Bounds contract: calculate_split must return exactly 4 non-negative
+        // allocations [spending, savings, bills, insurance]. Checked indexing
+        // ensures a short or hostile downstream response yields a typed
+        // InvalidAmount error rather than an out-of-bounds panic while the
+        // EXEC_LOCK is held.
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
+
+        if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
             return Err(OrchestratorError::InvalidAmount);
         }
-
-        let _spending_amt = allocations.get_unchecked(0);
-        let savings_amt = allocations.get_unchecked(1);
-        let bills_amt = allocations.get_unchecked(2);
-        let insurance_amt = allocations.get_unchecked(3);
 
         // ---------------------------------------------------------------
         // Execution phase — writes with compensation tracking

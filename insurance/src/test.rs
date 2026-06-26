@@ -1,10 +1,11 @@
+#![allow(clippy::all, mismatched_lifetime_syntaxes)]
 #[cfg(test)]
 mod tests {
     use crate::*;
     use remitwise_common::CoverageType;
     use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 
-    fn setup(env: &Env) -> InsuranceClient {
+    fn setup(env: &Env) -> InsuranceClient<'_> {
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         c.init(&Address::generate(env));
@@ -325,7 +326,7 @@ mod tests {
 
     // ── Helper: initialise contract with a known owner ────────────────────────
 
-    fn setup_with_owner(env: &Env) -> (InsuranceClient, Address) {
+    fn setup_with_owner(env: &Env) -> (InsuranceClient<'_>, Address) {
         let id = env.register_contract(None, Insurance);
         let c = InsuranceClient::new(env, &id);
         let contract_owner = Address::generate(env);
@@ -771,4 +772,47 @@ mod tests {
             InsuranceError::NotInitialized,
         );
     }
+
+    #[test]
+    fn test_pre_upgrade_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let owner = Address::generate(&env);
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        client.init(&owner);
+
+        // Take snapshot
+        let result = client.try_pre_upgrade(&owner);
+        assert!(result.is_ok());
+
+        // Set version (this function was added with pre_upgrade support)
+        let result = client.try_set_version(&owner, &42);
+        assert!(result.is_ok());
+
+        // Verify version changed
+        assert_eq!(client.get_version(), 42);
+
+        // Restore from snapshot
+        let result = client.try_restore_from_snapshot(&owner);
+        assert!(result.is_ok());
+
+        // Version should be restored to default
+        assert_eq!(client.get_version(), 1);
+    }
+
+    #[test]
+    fn test_pre_upgrade_unauthorized_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let owner = Address::generate(&env);
+        let stranger = Address::generate(&env);
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        client.init(&owner);
+
+        let result = client.try_pre_upgrade(&stranger);
+        assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
+    }
 }
+

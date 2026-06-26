@@ -17,6 +17,36 @@
 //!
 //! Legacy snapshots without an explicit `hash_algorithm` field are still
 //! supported by accepting the older `Simple` checksum format on import.
+//!
+//! # Replay / duplicate-import protection
+//!
+//! [`MigrationTracker`] is the mechanism that prevents the same snapshot from
+//! being applied to on-chain state more than once. The tracked import functions
+//! ([`import_from_json`] and [`import_from_binary`]) accept a `&mut
+//! MigrationTracker` and record every successfully imported snapshot by its
+//! `(checksum, version)` identity. A second call with the same payload returns
+//! [`MigrationError::DuplicateImport`].
+//!
+//! ## ⚠️ Untracked variants provide NO cross-call duplicate protection
+//!
+//! [`import_from_json_untracked`] and [`import_from_binary_untracked`] are
+//! convenience wrappers that construct a **throwaway** [`MigrationTracker`]
+//! internally. Because the tracker is discarded after each call, **importing
+//! the same payload twice via the untracked path succeeds both times**. There
+//! is no error on the second call.
+//!
+//! **Prefer the tracked variants** ([`import_from_json`] /
+//! [`import_from_binary`]) in any context where a payload might be seen more
+//! than once. Use the untracked variants only for true one-shot scenarios (e.g.
+//! a migration script that is guaranteed to run exactly once) and document that
+//! choice explicitly at the call site.
+//!
+//! | Function | Duplicate protection | Suitable for |
+//! |---|:---:|---|
+//! | [`import_from_json`] | ✅ Cross-call via `MigrationTracker` | Production imports, replay protection |
+//! | [`import_from_binary`] | ✅ Cross-call via `MigrationTracker` | Production imports, replay protection |
+//! | [`import_from_json_untracked`] | ❌ Within-call only (throwaway tracker) | True one-shot scenarios only |
+//! | [`import_from_binary_untracked`] | ❌ Within-call only (throwaway tracker) | True one-shot scenarios only |
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
@@ -926,51 +956,97 @@ pub fn import_from_binary(
     Ok(snapshot)
 }
 
-/// Legacy helper for callers that do not need replay tracking.
+/// Import a JSON snapshot **without** cross-call duplicate/replay protection.
 ///
-/// # Validation contract
+/// # ⚠️ No Replay / Duplicate-Import Protection
 ///
-/// Despite the "untracked" name, this function enforces the **full import safety
-/// contract** by delegating to [`import_from_json`]:
+/// This function constructs a **throwaway** [`MigrationTracker`] on every call.
+/// Because the tracker is discarded immediately after the call returns, calling
+/// this function twice with the **same payload will succeed both times** — the
+/// second import is not detected as a duplicate.
+///
+/// **This is a footgun.** Applying the same migration twice produces
+/// double-applied on-chain state that is difficult to detect and hard to
+/// reverse. Use this function only when you can guarantee single-call usage
+/// through an external mechanism (e.g. the call site is inside a one-shot
+/// migration script that runs exactly once, or the test is exercising a
+/// one-shot round-trip and does not need duplicate protection).
+///
+/// **In all other cases, use [`import_from_json`] and pass a long-lived
+/// [`MigrationTracker`]** that persists across calls. Prefer the tracked variant
+/// by default; reach for this function consciously and document why duplicate
+/// protection is not needed at the call site.
+///
+/// > **Deprecation note:** This function is retained for existing call sites that
+/// > perform true one-shot imports. New code should use [`import_from_json`]
+/// > with an explicit tracker. A future breaking release may remove this helper
+/// > entirely in favour of requiring callers to be explicit about tracker scope.
+///
+/// # Validation contract (what IS enforced on every call)
+///
+/// Despite the absence of cross-call duplicate detection, this function still
+/// enforces the **full structural and semantic import safety contract**:
 ///
 /// 1. **Size guard** – rejects snapshots larger than [`MAX_MIGRATION_SNAPSHOT_BYTES`]
 ///    before deserialisation to prevent DoS.
-/// 2. **Version check** – calls [`ExportSnapshot::is_version_compatible`], which
-///    requires `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`.
-///    Snapshots with a future version or a below-minimum version are rejected with
-///    [`MigrationError::IncompatibleVersion`].
-/// 3. **Payload bounds** – validates record count and payload byte size.
-/// 4. **Checksum verification** – calls [`ExportSnapshot::verify_checksum`]; any
-///    tampered or corrupted snapshot is rejected with [`MigrationError::ChecksumMismatch`].
+/// 2. **Version check** – requires `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`;
+///    out-of-range versions are rejected with [`MigrationError::IncompatibleVersion`].
+/// 3. **Payload bounds** – validates record count and canonical payload byte size.
+/// 4. **Checksum verification** – any tampered or corrupted snapshot is rejected with
+///    [`MigrationError::ChecksumMismatch`].
+/// 5. **Semantic invariants** – enforces the same business rules as the live contracts
+///    (e.g. `RemittanceSplit` percentages must sum to 100).
 ///
-/// The only difference from [`import_from_json`] is that a throwaway
-/// [`MigrationTracker`] is used, so duplicate-import detection is not persisted
-/// across calls. Prefer [`import_from_json`] when replay protection is required.
+/// See also: [`data_migration` module docs](self) for the cross-call replay-protection
+/// distinction between tracked and untracked import paths.
 pub fn import_from_json_untracked(bytes: &[u8]) -> Result<ExportSnapshot, MigrationError> {
     let mut tracker = MigrationTracker::new();
     import_from_json(bytes, &mut tracker, 0)
 }
 
-/// Legacy helper for callers that do not need replay tracking.
+/// Import a binary snapshot **without** cross-call duplicate/replay protection.
 ///
-/// # Validation contract
+/// # ⚠️ No Replay / Duplicate-Import Protection
 ///
-/// Despite the "untracked" name, this function enforces the **full import safety
-/// contract** by delegating to [`import_from_binary`]:
+/// This function constructs a **throwaway** [`MigrationTracker`] on every call.
+/// Because the tracker is discarded immediately after the call returns, calling
+/// this function twice with the **same payload will succeed both times** — the
+/// second import is not detected as a duplicate.
+///
+/// **This is a footgun.** Applying the same migration twice produces
+/// double-applied on-chain state that is difficult to detect and hard to
+/// reverse. Use this function only when you can guarantee single-call usage
+/// through an external mechanism (e.g. the call site is inside a one-shot
+/// migration script that runs exactly once, or the test is exercising a
+/// one-shot round-trip and does not need duplicate protection).
+///
+/// **In all other cases, use [`import_from_binary`] and pass a long-lived
+/// [`MigrationTracker`]** that persists across calls. Prefer the tracked variant
+/// by default; reach for this function consciously and document why duplicate
+/// protection is not needed at the call site.
+///
+/// > **Deprecation note:** This function is retained for existing call sites that
+/// > perform true one-shot imports. New code should use [`import_from_binary`]
+/// > with an explicit tracker. A future breaking release may remove this helper
+/// > entirely in favour of requiring callers to be explicit about tracker scope.
+///
+/// # Validation contract (what IS enforced on every call)
+///
+/// Despite the absence of cross-call duplicate detection, this function still
+/// enforces the **full structural and semantic import safety contract**:
 ///
 /// 1. **Size guard** – rejects snapshots larger than [`MAX_MIGRATION_SNAPSHOT_BYTES`]
 ///    before deserialisation to prevent DoS.
-/// 2. **Version check** – calls [`ExportSnapshot::is_version_compatible`], which
-///    requires `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`.
-///    Snapshots with a future version or a below-minimum version are rejected with
-///    [`MigrationError::IncompatibleVersion`].
-/// 3. **Payload bounds** – validates record count and payload byte size.
-/// 4. **Checksum verification** – calls [`ExportSnapshot::verify_checksum`]; any
-///    tampered or corrupted snapshot is rejected with [`MigrationError::ChecksumMismatch`].
+/// 2. **Version check** – requires `MIN_SUPPORTED_VERSION <= header.version <= SCHEMA_VERSION`;
+///    out-of-range versions are rejected with [`MigrationError::IncompatibleVersion`].
+/// 3. **Payload bounds** – validates record count and canonical payload byte size.
+/// 4. **Checksum verification** – any tampered or corrupted snapshot is rejected with
+///    [`MigrationError::ChecksumMismatch`].
+/// 5. **Semantic invariants** – enforces the same business rules as the live contracts
+///    (e.g. `RemittanceSplit` percentages must sum to 100).
 ///
-/// The only difference from [`import_from_binary`] is that a throwaway
-/// [`MigrationTracker`] is used, so duplicate-import detection is not persisted
-/// across calls. Prefer [`import_from_binary`] when replay protection is required.
+/// See also: [`data_migration` module docs](self) for the cross-call replay-protection
+/// distinction between tracked and untracked import paths.
 pub fn import_from_binary_untracked(bytes: &[u8]) -> Result<ExportSnapshot, MigrationError> {
     let mut tracker = MigrationTracker::new();
     import_from_binary(bytes, &mut tracker, 0)
@@ -3715,5 +3791,309 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("1"), "error must mention next_id");
         assert!(msg.contains("5"), "error must mention max goal id");
+    }
+
+    // ==================== TRACKED VS UNTRACKED DUPLICATE-PROTECTION BEHAVIOURAL TESTS ====================
+    //
+    // These tests are the authoritative proof of the behavioural difference described in the
+    // `import_from_json_untracked` / `import_from_binary_untracked` doc-comments and in the
+    // crate-level "Replay / duplicate-import protection" section.
+    //
+    // Contract:
+    //   - Tracked double-import  → second call returns `Err(MigrationError::DuplicateImport)`.
+    //   - Untracked double-import → both calls succeed (each constructs a fresh throwaway tracker).
+    //   - Mixed (tracked first, then untracked same payload) → untracked succeeds because it has
+    //     no access to the long-lived tracker.
+    //   - Mixed (untracked first, then tracked same payload) → tracked succeeds on the first
+    //     call (the untracked call left no marker behind); duplicate would only fire on a second
+    //     tracked call.
+
+    // --- JSON: tracked double-import is rejected ---
+
+    #[test]
+    fn test_tracked_json_double_import_second_returns_duplicate_import() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        // First import succeeds.
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        // Second import of the SAME payload via the SAME tracker must fail.
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(
+            result.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "tracked JSON: second import of the same payload must return DuplicateImport"
+        );
+    }
+
+    #[test]
+    fn test_tracked_json_double_import_savings_goals_second_returns_duplicate_import() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(
+            result.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "tracked JSON: SavingsGoals double-import must return DuplicateImport"
+        );
+    }
+
+    #[test]
+    fn test_tracked_json_double_import_generic_second_returns_duplicate_import() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_json(&bytes, &mut tracker, 2_000);
+        assert_eq!(
+            result.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "tracked JSON: Generic double-import must return DuplicateImport"
+        );
+    }
+
+    // --- Binary: tracked double-import is rejected ---
+
+    #[test]
+    fn test_tracked_binary_double_import_second_returns_duplicate_import() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_binary(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_binary(&bytes, &mut tracker, 2_000);
+        assert_eq!(
+            result.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "tracked binary: second import of the same payload must return DuplicateImport"
+        );
+    }
+
+    #[test]
+    fn test_tracked_binary_double_import_savings_goals_second_returns_duplicate_import() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_binary(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_binary(&bytes, &mut tracker, 2_000);
+        assert_eq!(
+            result.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "tracked binary: SavingsGoals double-import must return DuplicateImport"
+        );
+    }
+
+    // --- JSON: untracked double-import BOTH succeed ---
+
+    #[test]
+    fn test_untracked_json_double_import_both_succeed() {
+        // DOCUMENTED BEHAVIOUR: importing the same payload twice via the untracked path
+        // succeeds both times. This test asserts — and therefore documents — that absence
+        // of cross-call duplicate detection is intentional for the untracked helpers.
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        let first = import_from_json_untracked(&bytes);
+        assert!(
+            first.is_ok(),
+            "untracked JSON: first import must succeed, got {:?}",
+            first
+        );
+
+        // No error — throwaway tracker was discarded; no memory of the first import.
+        let second = import_from_json_untracked(&bytes);
+        assert!(
+            second.is_ok(),
+            "untracked JSON: second import of the same payload also succeeds \
+             (no cross-call duplicate protection — documented footgun)"
+        );
+    }
+
+    #[test]
+    fn test_untracked_json_double_import_savings_goals_both_succeed() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        import_from_json_untracked(&bytes).unwrap();
+        // Second call must not return DuplicateImport.
+        let second = import_from_json_untracked(&bytes);
+        assert!(
+            second.is_ok(),
+            "untracked JSON: SavingsGoals double-import both succeed (no cross-call protection)"
+        );
+    }
+
+    #[test]
+    fn test_untracked_json_double_import_generic_both_succeed() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        import_from_json_untracked(&bytes).unwrap();
+        let second = import_from_json_untracked(&bytes);
+        assert!(
+            second.is_ok(),
+            "untracked JSON: Generic double-import both succeed (no cross-call protection)"
+        );
+    }
+
+    // --- Binary: untracked double-import BOTH succeed ---
+
+    #[test]
+    fn test_untracked_binary_double_import_both_succeed() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+
+        import_from_binary_untracked(&bytes).unwrap();
+
+        let second = import_from_binary_untracked(&bytes);
+        assert!(
+            second.is_ok(),
+            "untracked binary: second import of the same payload also succeeds \
+             (no cross-call duplicate protection — documented footgun)"
+        );
+    }
+
+    #[test]
+    fn test_untracked_binary_double_import_savings_goals_both_succeed() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+
+        import_from_binary_untracked(&bytes).unwrap();
+        let second = import_from_binary_untracked(&bytes);
+        assert!(
+            second.is_ok(),
+            "untracked binary: SavingsGoals double-import both succeed (no cross-call protection)"
+        );
+    }
+
+    // --- Mixing tracked and untracked: untracked does NOT see the long-lived tracker ---
+
+    #[test]
+    fn test_tracked_first_then_untracked_same_payload_untracked_succeeds() {
+        // Tracked import records the payload. The untracked call that follows has no
+        // access to that tracker and therefore succeeds — it is not duplicate-protected
+        // by the tracked call's state.
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+        assert!(tracker.is_imported(&snapshot), "tracker must reflect first import");
+
+        // Untracked call: throwaway tracker has no record of the above import.
+        let result = import_from_json_untracked(&bytes);
+        assert!(
+            result.is_ok(),
+            "untracked call after tracked import of the same payload still succeeds \
+             because untracked has no access to the long-lived tracker"
+        );
+
+        // The long-lived tracker is unchanged by the untracked call.
+        assert!(
+            tracker.is_imported(&snapshot),
+            "long-lived tracker must still show the original import as recorded"
+        );
+    }
+
+    #[test]
+    fn test_tracked_first_then_untracked_binary_same_payload_untracked_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        import_from_binary(&bytes, &mut tracker, 1_000).unwrap();
+
+        let result = import_from_binary_untracked(&bytes);
+        assert!(
+            result.is_ok(),
+            "untracked binary call after tracked import still succeeds"
+        );
+    }
+
+    #[test]
+    fn test_untracked_first_then_tracked_same_payload_tracked_first_call_succeeds() {
+        // Untracked call leaves NO trace in any persistent tracker; the subsequent
+        // tracked call with the same payload succeeds on its first use of the tracker.
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        // Untracked call: throwaway tracker, discarded.
+        import_from_json_untracked(&bytes).unwrap();
+
+        // First tracked call with the same payload and a fresh long-lived tracker: succeeds.
+        let mut tracker = MigrationTracker::new();
+        let first_tracked = import_from_json(&bytes, &mut tracker, 2_000);
+        assert!(
+            first_tracked.is_ok(),
+            "first tracked import after untracked must succeed \
+             (untracked left no marker in any persistent tracker)"
+        );
+
+        // Only the second tracked call against the SAME tracker produces DuplicateImport.
+        let second_tracked = import_from_json(&bytes, &mut tracker, 3_000);
+        assert_eq!(
+            second_tracked.unwrap_err(),
+            MigrationError::DuplicateImport,
+            "second tracked import must still be rejected by the long-lived tracker"
+        );
+    }
+
+    #[test]
+    fn test_untracked_first_then_tracked_binary_same_payload_tracked_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+
+        import_from_binary_untracked(&bytes).unwrap();
+
+        let mut tracker = MigrationTracker::new();
+        let tracked = import_from_binary(&bytes, &mut tracker, 1_000);
+        assert!(
+            tracked.is_ok(),
+            "tracked binary import after untracked must succeed"
+        );
+    }
+
+    // --- Payload returned by untracked double-import is valid and identical ---
+
+    #[test]
+    fn test_untracked_json_double_import_payloads_are_identical() {
+        // Both successful calls must return the same snapshot data.
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+
+        let first = import_from_json_untracked(&bytes).unwrap();
+        let second = import_from_json_untracked(&bytes).unwrap();
+
+        assert_eq!(
+            first.payload, second.payload,
+            "both untracked imports must yield identical payloads"
+        );
+        assert_eq!(
+            first.header.checksum, second.header.checksum,
+            "both untracked imports must yield identical checksums"
+        );
+    }
+
+    #[test]
+    fn test_untracked_binary_double_import_payloads_are_identical() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Binary);
+        let bytes = export_to_binary(&snapshot).unwrap();
+
+        let first = import_from_binary_untracked(&bytes).unwrap();
+        let second = import_from_binary_untracked(&bytes).unwrap();
+
+        assert_eq!(first.payload, second.payload);
+        assert_eq!(first.header.checksum, second.header.checksum);
     }
 }
