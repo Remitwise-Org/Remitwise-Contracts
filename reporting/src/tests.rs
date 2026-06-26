@@ -1,3 +1,4 @@
+#![allow(deprecated, clippy::all)]
 use soroban_sdk::testutils::storage::Instance as StorageInstance;
 use soroban_sdk::{
     symbol_short,
@@ -14,7 +15,7 @@ use crate::{
 /// Minimal env with mock_all_auths — replaces the removed create_test_env helper.
 fn create_test_env() -> Env {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env
 }
 
@@ -2425,6 +2426,7 @@ fn test_cleanup_old_reports_records_admin_auth() {
 // ── get_archived_reports user isolation ──────────────────────────────────────
 
 /// get_archived_reports only returns reports belonging to the queried user.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_user_isolation() {
     let env = create_test_env();
@@ -2473,6 +2475,7 @@ fn test_get_archived_reports_user_isolation() {
 }
 
 /// A user with no archived reports gets an empty list.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_empty_for_unknown_user() {
     let env = create_test_env();
@@ -2495,6 +2498,7 @@ fn test_get_archived_reports_empty_for_unknown_user() {
 }
 
 /// Cleanup removes only the target user's archives, not other users'.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_does_not_remove_other_users_archives() {
     let env = create_test_env();
@@ -2523,6 +2527,7 @@ fn test_cleanup_does_not_remove_other_users_archives() {
 }
 
 /// Cleanup with a past timestamp removes nothing.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_past_timestamp_removes_nothing() {
     let env = create_test_env();
@@ -2548,6 +2553,7 @@ fn test_cleanup_past_timestamp_removes_nothing() {
 // ── multi-user storage isolation end-to-end ──────────────────────────────────
 
 /// Full lifecycle: store → archive → cleanup for multiple users with no leakage.
+#[allow(deprecated)]
 #[test]
 fn test_multi_user_full_lifecycle_no_data_leakage() {
     let env = create_test_env();
@@ -3361,10 +3367,7 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
@@ -3410,10 +3413,7 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
 
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];

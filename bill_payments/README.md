@@ -90,6 +90,24 @@ pub struct ArchivedBill {
 }
 ```
 
+#### BillSchedule
+```rust
+pub struct BillSchedule {
+    pub id: u32,
+    pub owner: Address,
+    pub name: String,
+    pub amount: i128,
+    pub currency: String,
+    pub next_due: u64,
+    pub interval: u64,
+    pub recurring: bool,
+    pub active: bool,
+    pub created_at: u64,
+    pub last_executed: Option<u64>,
+    pub missed_count: u32,
+}
+```
+
 #### Error Codes
 - `BillNotFound = 1`: Bill with specified ID doesn't exist
 - `BillAlreadyPaid = 2`: Attempting to pay an already paid bill
@@ -236,6 +254,74 @@ Gets all bills (paid and unpaid).
 
 **Returns:** Vector of all Bill structs
 
+#### `create_bill_schedule(env, owner, name, amount, currency, next_due, interval) -> Result<u32, Error>`
+Creates a recurring or one-off bill schedule. When executed, the schedule generates a bill with `schedule_id` populated.
+
+**Parameters:**
+- `owner`: Address of the schedule owner (must authorize)
+- `name`: Name template for generated bills
+- `amount`: Amount for each generated bill
+- `currency`: Currency code for generated bills
+- `next_due`: First execution timestamp (must be in the future)
+- `interval`: Seconds between executions; 0 creates a one-off schedule
+
+**Returns:** New schedule ID on success
+
+**Errors:** InvalidAmount, InvalidDueDate, ScheduleIntervalTooShort, ScheduleLeadTimeTooLong, ScheduleCapExceeded
+
+#### `modify_bill_schedule(env, caller, schedule_id, amount, next_due, interval) -> Result<bool, Error>`
+Modifies an existing active bill schedule owned by `caller`.
+
+**Parameters:**
+- `caller`: Address of the schedule owner (must authorize)
+- `schedule_id`: ID of the schedule to modify
+- `amount`: New amount for generated bills
+- `next_due`: New next execution timestamp (must be in the future)
+- `interval`: New interval in seconds
+
+**Returns:** `true` on success
+
+**Errors:** InvalidAmount, InvalidDueDate, ScheduleIntervalTooShort, ScheduleLeadTimeTooLong, ScheduleNotFound, ScheduleNotActive, Unauthorized
+
+#### `cancel_bill_schedule(env, caller, schedule_id) -> Result<bool, Error>`
+Cancels an active bill schedule owned by `caller`. The schedule is deactivated and removed from the owner index.
+
+**Parameters:**
+- `caller`: Address of the schedule owner (must authorize)
+- `schedule_id`: ID of the schedule to cancel
+
+**Returns:** `true` on success
+
+**Errors:** ScheduleNotFound, ScheduleNotActive, Unauthorized
+
+#### `execute_due_bill_schedules(env) -> Vec<u32>`
+Executes all due bill schedules in a permissionless, idempotent manner. Generates child bills for recurring schedules and deactivates one-off schedules after execution.
+
+**Returns:** Vector of executed schedule IDs
+
+**Behavior:**
+- Skips schedules where `last_executed >= next_due` (idempotency guard)
+- For recurring schedules: advances `next_due` by `interval` until strictly in the future, increments `missed_count` for skipped intervals
+- For one-off schedules: sets `active = false` after execution
+- Respects `MAX_BILLS_PER_OWNER` cap when minting child bills
+- Emits `ScheduleMissed` event if intervals were skipped
+
+#### `get_bill_schedules(env, owner) -> Vec<BillSchedule>`
+Gets all bill schedules for an owner.
+
+**Parameters:**
+- `owner`: Address of the schedule owner
+
+**Returns:** Vector of BillSchedule structs
+
+#### `get_bill_schedule(env, schedule_id) -> Option<BillSchedule>`
+Gets a specific bill schedule by ID.
+
+**Parameters:**
+- `schedule_id`: ID of the schedule
+
+**Returns:** BillSchedule struct or None if not found
+
 ## Usage Examples
 
 ### Creating a One-Time Bill with Currency
@@ -333,6 +419,11 @@ let overdue_page = bill_payments::get_overdue_bills(env, 0, 10);
 The contract emits events for audit trails:
 - `BillEvent::Created`: When a bill is created
 - `BillEvent::Paid`: When a bill is paid
+- `BillEvent::ScheduleCreated`: When a bill schedule is created
+- `BillEvent::ScheduleExecuted`: When a bill schedule is executed
+- `BillEvent::ScheduleModified`: When a bill schedule is modified
+- `BillEvent::ScheduleCancelled`: When a bill schedule is cancelled
+- `BillEvent::ScheduleMissed`: When a recurring schedule skips intervals
 
 ## Integration Patterns
 

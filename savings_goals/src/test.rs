@@ -4844,6 +4844,51 @@ mod migration_e2e_tests {
         );
     }
 
+    #[test]
+    fn test_noop_upgrade_snapshot_preserves_storage() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        // 1. Initial init
+        client.init();
+        let initial_snap = client.export_snapshot(&owner);
+
+        // 2. State modification (Sad path: ensure checksum changes when state changes)
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "House"),
+            &50_000i128,
+            &3_000_000_000u64,
+            &false,
+        );
+        client.add_to_goal(&owner, &goal_id, &5_000i128);
+
+        let pre_upgrade_snap = client.export_snapshot(&owner);
+        // Explicit sad path: verify the checksum actually catches state changes
+        assert_ne!(
+            pre_upgrade_snap.checksum, initial_snap.checksum,
+            "sanity check: state actually changed"
+        );
+
+        // 3. Act: re-run init simulating a post-upgrade initialization (No-op upgrade)
+        client.init();
+
+        let post_upgrade_snap = client.export_snapshot(&owner);
+
+        // 4. Assert: storage is unchanged by the second init
+        assert_eq!(
+            pre_upgrade_snap.checksum, post_upgrade_snap.checksum,
+            "Re-running init must not mutate storage checksum"
+        );
+        assert_eq!(
+            pre_upgrade_snap.schema_version, post_upgrade_snap.schema_version,
+            "Re-running init must not change schema version"
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Multi-goal, multi-owner export
     // -------------------------------------------------------------------------
@@ -6393,7 +6438,13 @@ fn test_import_snapshot_balance_overflow_leaves_state_intact() {
 
     client.init();
     // Create a goal before import attempt
-    let id1 = client.create_goal(&owner, &String::from_str(&env, "Safe"), &1000, &2000000000, &false);
+    let id1 = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Safe"),
+        &1000,
+        &2000000000,
+        &false,
+    );
     client.add_to_goal(&owner, &id1, &500);
     let goal_before = client
         .get_goal(&id1)
@@ -6535,7 +6586,7 @@ fn test_import_snapshot_exceeds_goal_cap_leaves_state_intact() {
 
     // Build a snapshot with way too many goals (more than MAX_GOALS_PER_OWNER)
     let mut goals = Vec::new(&env);
-    for i in 0..(2001u32) {
+    for i in 0..2001u32 {
         let goal = SavingsGoal {
             id: 100 + i,
             owner: owner.clone(),
@@ -6591,9 +6642,27 @@ fn test_import_snapshot_owner_indices_are_consistent() {
 
     client.init();
     // Create goals for two different owners
-    let _id1a = client.create_goal(&owner1, &String::from_str(&env, "A1"), &1000, &2000000000, &false);
-    let _id1b = client.create_goal(&owner1, &String::from_str(&env, "A2"), &2000, &2000000000, &false);
-    let _id2a = client.create_goal(&owner2, &String::from_str(&env, "B1"), &3000, &2000000000, &false);
+    let _id1a = client.create_goal(
+        &owner1,
+        &String::from_str(&env, "A1"),
+        &1000,
+        &2000000000,
+        &false,
+    );
+    let _id1b = client.create_goal(
+        &owner1,
+        &String::from_str(&env, "A2"),
+        &2000,
+        &2000000000,
+        &false,
+    );
+    let _id2a = client.create_goal(
+        &owner2,
+        &String::from_str(&env, "B1"),
+        &3000,
+        &2000000000,
+        &false,
+    );
 
     // Export the full snapshot and re-import it
     let snapshot = client.export_snapshot(&owner1); // Admin exports all
@@ -6615,9 +6684,80 @@ fn test_import_snapshot_owner_indices_are_consistent() {
 
     // Verify: NextId is set correctly
     // Create a new goal and ensure its ID is sequenced correctly (>next_id from snapshot)
-    let id_new = client.create_goal(&owner1, &String::from_str(&env, "New"), &5000, &2000000000, &false);
+    let id_new = client.create_goal(
+        &owner1,
+        &String::from_str(&env, "New"),
+        &5000,
+        &2000000000,
+        &false,
+    );
     assert!(
         id_new > snapshot.next_id,
         "new goal id must be greater than snapshot's next_id"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    // Take snapshot (admin authorized)
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Create a goal (next_id advances from 1 to 2)
+    let user = Address::generate(&env);
+    let id1 = client.create_goal(&user, &String::from_str(&env, "Test"), &1000, &2000000000, &false);
+    assert_eq!(id1, 1);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "Test2"), &2000, &2000000000, &false);
+    assert_eq!(id2, 2);
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_ok());
+
+    // Next ID should be restored to 1 (snapshot was taken before creating any goals)
+    let id_new = client.create_goal(&user, &String::from_str(&env, "Restored"), &500, &2000000000, &false);
+    assert_eq!(id_new, 1);
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert!(result.is_err());
+
+    // Authorized pre_upgrade
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert!(result.is_err());
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert!(result.is_err());
 }
