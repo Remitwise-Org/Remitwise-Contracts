@@ -6860,3 +6860,275 @@ fn test_configure_multisig_does_not_emit_on_failed_validation() {
         "no ms_conf event should be emitted on validation failure",
     );
 }
+
+// ============================================================================
+// Slashing-destination regression tests
+//
+// Lock in the invariant that slashed funds (emergency transfers executed
+// immediately under emergency mode, or via the multisig approval path) arrive
+// at the *configured recipient* in the *exact amount requested*, with zero
+// funds reaching any other address.
+// ============================================================================
+
+/// Happy path (emergency mode): the full slashed amount lands at the
+/// configured destination and nowhere else.
+#[test]
+#[allow(clippy::inconsistent_digit_grouping)]
+fn slashed_funds_reach_configured_destination_exact_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
+    let total: i128 = 10_000_0000000;
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
+
+    // Configure: max_amount covers slash_amount, no cooldown, no floor, generous daily cap.
+    let slash_amount: i128 = 3_000_0000000;
+    client.configure_emergency(&owner, &5_000_0000000, &0u64, &0, &total);
+    client.set_emergency_mode(&owner, &true);
+
+    let slash_dest = Address::generate(&env);
+    let bystander = Address::generate(&env);
+
+    // Emergency mode: proposal executes immediately and returns tx_id == 0.
+    let tx_id = client.propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &slash_dest,
+        &slash_amount,
+    );
+    assert_eq!(tx_id, 0, "emergency-mode transfer must execute immediately");
+
+    // Configured destination receives exactly the slash amount.
+    assert_eq!(
+        token_client.balance(&slash_dest),
+        slash_amount,
+        "slash destination must receive exactly the configured slash amount",
+    );
+    // Owner retains the remainder — no funds leak.
+    assert_eq!(
+        token_client.balance(&owner),
+        total - slash_amount,
+        "owner must retain total minus slash amount",
+    );
+    // An unrelated bystander receives nothing.
+    assert_eq!(
+        token_client.balance(&bystander),
+        0,
+        "no funds must reach any address other than the slash destination",
+    );
+}
+
+/// Sad path: a transfer that violates the configured max_amount cap is
+/// rejected and zero funds reach the destination.
+#[test]
+#[allow(clippy::inconsistent_digit_grouping)]
+fn slashed_funds_do_not_reach_destination_when_amount_exceeds_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
+    let total: i128 = 10_000_0000000;
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
+
+    // Cap is 2_000; attempt 3_000 — must be rejected.
+    let cap: i128 = 2_000_0000000;
+    let over_cap: i128 = 3_000_0000000;
+    client.configure_emergency(&owner, &cap, &0u64, &0, &total);
+    client.set_emergency_mode(&owner, &true);
+
+    let slash_dest = Address::generate(&env);
+
+    let result = client.try_propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &slash_dest,
+        &over_cap,
+    );
+    assert!(result.is_err(), "transfer exceeding max_amount must be rejected");
+
+    // Destination receives nothing.
+    assert_eq!(
+        token_client.balance(&slash_dest),
+        0,
+        "slash destination must receive zero when the transfer is rejected",
+    );
+    // Owner balance is unchanged.
+    assert_eq!(
+        token_client.balance(&owner),
+        total,
+        "owner balance must be unchanged after a rejected slash",
+    );
+}
+
+/// Multisig path: slashed funds reach the destination only after the required
+/// threshold of signatures is collected — not before.
+///
+/// Config: threshold=3, signers=[owner, member1, member2].
+/// owner proposes → valid_signatures=1 (owner ∈ signers).
+/// member1 signs  → valid_signatures=2, still below threshold.
+/// member2 signs  → valid_signatures=3, threshold met, execution fires.
+#[test]
+#[allow(clippy::inconsistent_digit_grouping)]
+fn slashed_funds_reach_destination_only_after_multisig_threshold_met() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
+    let total: i128 = 10_000_0000000;
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
+
+    let members = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    // RegularWithdrawal config is required by propose_transaction internally.
+    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &members, &0);
+
+    // All three are authorized signers for EmergencyTransfer; threshold = 3.
+    client.configure_multisig(
+        &owner,
+        &TransactionType::EmergencyTransfer,
+        &3,
+        &members,
+        &0,
+    );
+    // Emergency mode OFF: proposals go through the multisig queue.
+    client.set_emergency_mode(&owner, &false);
+
+    let slash_amount: i128 = 1_500_0000000;
+    client.configure_emergency(&owner, &2_000_0000000, &0u64, &0, &total);
+
+    let slash_dest = Address::generate(&env);
+
+    // owner proposes — owner is in signers, so valid_signatures=1 after proposal.
+    let tx_id = client.propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &slash_dest,
+        &slash_amount,
+    );
+    assert!(tx_id > 0, "multisig proposal must be queued with a valid id");
+
+    // 1 sig < threshold=3 → no funds moved yet.
+    assert_eq!(
+        token_client.balance(&slash_dest),
+        0,
+        "slash destination must receive nothing before threshold is reached",
+    );
+    assert_eq!(token_client.balance(&owner), total);
+
+    // member1 signs → valid_signatures=2, still below threshold.
+    client.sign_transaction(&member1, &tx_id);
+    assert_eq!(
+        token_client.balance(&slash_dest),
+        0,
+        "slash destination must still receive nothing with only 2 of 3 signatures",
+    );
+
+    // member2 signs → valid_signatures=3 = threshold → execution fires.
+    client.sign_transaction(&member2, &tx_id);
+    assert_eq!(
+        token_client.balance(&slash_dest),
+        slash_amount,
+        "slash destination must receive exact amount after multisig threshold is met",
+    );
+    assert_eq!(
+        token_client.balance(&owner),
+        total - slash_amount,
+        "owner must retain total minus slash amount after multisig execution",
+    );
+}
+
+/// A second `propose_emergency_transfer` with a different recipient routes
+/// funds to the new address only.  Guards against a stale-destination bug
+/// where a previously-used recipient captures funds from a later transfer.
+#[test]
+#[allow(clippy::inconsistent_digit_grouping)]
+fn slashed_funds_route_to_current_recipient_not_stale_destination() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 1_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = TokenClient::new(&env, &token_contract.address());
+    let total: i128 = 10_000_0000000;
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &total);
+
+    let slash_amount: i128 = 1_000_0000000;
+    // Daily limit covers two transfers; cooldown=0 so back-to-back is fine.
+    client.configure_emergency(&owner, &2_000_0000000, &0u64, &0, &total);
+    client.set_emergency_mode(&owner, &true);
+
+    let first_dest = Address::generate(&env);
+    let second_dest = Address::generate(&env);
+
+    // First slash → first_dest.
+    client.propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &first_dest,
+        &slash_amount,
+    );
+    assert_eq!(token_client.balance(&first_dest), slash_amount);
+
+    // Second slash → second_dest (different address).
+    client.propose_emergency_transfer(
+        &owner,
+        &token_contract.address(),
+        &second_dest,
+        &slash_amount,
+    );
+
+    // second_dest receives its own slash.
+    assert_eq!(
+        token_client.balance(&second_dest),
+        slash_amount,
+        "second transfer must reach the second (current) destination",
+    );
+    // first_dest must NOT have received the second transfer's funds.
+    assert_eq!(
+        token_client.balance(&first_dest),
+        slash_amount,
+        "first destination balance must be unchanged by a subsequent transfer to a different address",
+    );
+    // Owner loses exactly two slash amounts total.
+    assert_eq!(
+        token_client.balance(&owner),
+        total - 2 * slash_amount,
+        "owner must lose exactly two slash amounts",
+    );
+}
