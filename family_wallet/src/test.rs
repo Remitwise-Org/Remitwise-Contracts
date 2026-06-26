@@ -6860,3 +6860,55 @@ fn test_configure_multisig_does_not_emit_on_failed_validation() {
         "no ms_conf event should be emitted on validation failure",
     );
 }
+
+#[test]
+fn test_negative_amount_rejections() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
+
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    // 1. withdraw with negative/zero amount
+    let res1 = client.try_withdraw(&owner, &token, &recipient, &-100);
+    assert!(res1.is_err());
+    let res2 = client.try_withdraw(&owner, &token, &recipient, &0);
+    assert!(res2.is_err());
+
+    // 2. propose_emergency_transfer with negative/zero amount
+    let res3 = client.try_propose_emergency_transfer(&owner, &token, &recipient, &-50);
+    assert!(res3.is_err());
+    let res4 = client.try_propose_emergency_transfer(&owner, &token, &recipient, &0);
+    assert!(res4.is_err());
+
+    // 3. configure_emergency with negative max_amount, min_balance, or daily_limit
+    let res5 = client.try_configure_emergency(&owner, &-100, &3600, &100, &1000);
+    assert!(res5.is_err());
+    let res6 = client.try_configure_emergency(&owner, &100, &3600, &-10, &1000);
+    assert!(res6.is_err());
+    let res7 = client.try_configure_emergency(&owner, &100, &3600, &10, &-1000);
+    assert!(res7.is_err());
+
+    // 4. configure_multisig with negative limit
+    let res8 = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &vec![&env, member1.clone(), member2.clone()],
+        &-500,
+    );
+    assert_eq!(res8, Err(Ok(Error::InvalidSpendingLimit)));
+
+    // 5. validate_precision_spending with negative/zero amount
+    let res9 = client.try_validate_precision_spending(&owner, &-500);
+    assert_eq!(res9, Err(Ok(Error::InvalidAmount)));
+    let res10 = client.try_validate_precision_spending(&owner, &0);
+    assert_eq!(res10, Err(Ok(Error::InvalidAmount)));
+}

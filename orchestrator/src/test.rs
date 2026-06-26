@@ -1372,3 +1372,23 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     assert_eq!(stats.successful_executions, 0);
     assert_eq!(stats.failed_executions, 0);
 }
+
+#[test]
+fn test_negative_amount_rejections() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    // 1. execute_remittance_flow with negative amount
+    let res_unsigned = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, -100));
+    assert_eq!(res_unsigned, Err(Ok(OrchestratorError::InvalidAmount)));
+
+    // 2. execute_remittance_flow_signed with negative amount
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, -100, deadline);
+    let res_signed = client.try_execute_remittance_flow_signed(&caller, &-100, &0, &deadline, &hash);
+    assert_eq!(res_signed, Err(Ok(OrchestratorError::InvalidAmount)));
+}
