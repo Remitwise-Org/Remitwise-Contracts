@@ -55,6 +55,17 @@ mod interface {
     pub trait InsuranceCompInterface {
         fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
     }
+
+    /// External token contract interface used by `claim_rewards_summary_external`.
+    ///
+    /// Follows the standard Stellar Asset Contract / SEP-41 surface: only the
+    /// `transfer` entry-point is needed here.  Keeping the trait minimal avoids
+    /// pulling in unneeded ABI surface under `#![no_std]`.
+    #[contractclient(name = "RewardTokenClient")]
+    pub trait RewardTokenInterface {
+        /// Transfer `amount` tokens from `from` to `to`.
+        fn transfer(env: Env, from: Address, to: Address, amount: i128);
+    }
 }
 
 #[contracttype]
@@ -111,6 +122,9 @@ const EXEC_LOCK: Symbol = symbol_short!("EXEC_LOCK");
 const AUDIT: Symbol = symbol_short!("AUDIT");
 /// Audit operation symbol for remittance flow executions (signed and unsigned).
 const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
+/// Storage key for per-address pending reward balances.
+/// Value type: `Map<Address, i128>`.
+const PENDING_REWARDS: Symbol = symbol_short!("PNDG_RWD");
 
 /// Pre-upgrade snapshot for upgrade rollback protection.
 ///
@@ -203,6 +217,20 @@ pub enum OrchestratorError {
     /// step triggered the failure. The caller should inspect the audit
     /// log to determine the partial-execution state.
     RemittanceFlowRolledBack = 11,
+    /// A re-entrant call to `claim_rewards_summary_external` was detected
+    /// while the execution lock (`EXEC_LOCK`) was already held.
+    ///
+    /// # Threat mitigated (T-RE-02)
+    /// Without the lock a malicious reward-token contract can call back into
+    /// this function before the pending-reward balance is zeroed. Each
+    /// re-entrant invocation would observe the un-cleared balance and trigger
+    /// an additional transfer, draining funds beyond entitlement.
+    ///
+    /// Surface this typed error to callers instead of panicking so the
+    /// condition is observable off-chain (indexers, dashboards).
+    ReentrancyDetected = 12,
+    /// The caller has no pending rewards to claim.
+    NoPendingRewards = 13,
 }
 
 #[contract]
@@ -506,6 +534,129 @@ impl Orchestrator {
     pub fn get_execution_stats(env: Env) -> Option<ExecutionStats> {
         Self::extend_instance_ttl(&env);
         env.storage().instance().get(&symbol_short!("STATS"))
+    }
+
+    /// Claim accrued rewards and transfer them from the reward-token contract
+    /// to the caller.
+    ///
+    /// # Threat mitigated — T-RE-02: re-entrant reward drain
+    ///
+    /// **Attack surface without this guard:**
+    /// 1. `caller` invokes `claim_rewards_summary_external`.
+    /// 2. Contract reads `pending` balance (e.g. 1 000 tokens) from storage.
+    /// 3. Contract calls `token.transfer(this, caller, 1_000)`.
+    /// 4. A malicious token contract re-enters `claim_rewards_summary_external`
+    ///    before the balance is written to zero.
+    /// 5. Step 4 reads `pending` again — still 1 000 — and triggers a second
+    ///    transfer, draining twice the entitlement.
+    ///
+    /// **Fix applied:**
+    /// * `EXEC_LOCK` is acquired (via RAII `LockGuard`) **before** any read of
+    ///   the pending balance.
+    /// * The pending balance is zeroed in storage (**effect written**) *before*
+    ///   the external `token.transfer` call (**interaction**), following the
+    ///   Checks-Effects-Interactions pattern.
+    /// * Any re-entrant call while the lock is held receives
+    ///   `OrchestratorError::ReentrancyDetected` immediately, without performing
+    ///   any state mutation or token transfer.
+    ///
+    /// # Authorization
+    /// `caller` must authorize the transaction.
+    ///
+    /// # Parameters
+    /// - `caller`       — address whose pending reward balance is claimed.
+    /// - `reward_token` — address of the SEP-41-compatible reward token contract.
+    ///
+    /// # Returns
+    /// The amount transferred (always > 0 on success).
+    ///
+    /// # Errors
+    /// - `NoPendingRewards`   — caller has no accrued rewards.
+    /// - `ReentrancyDetected` — lock already held; re-entrant call rejected.
+    pub fn claim_rewards_summary_external(
+        env: Env,
+        caller: Address,
+        reward_token: Address,
+    ) -> Result<i128, OrchestratorError> {
+        // 1. Authorize caller before touching any state.
+        caller.require_auth();
+
+        // 2. Reentrancy guard — check and acquire lock atomically.
+        //    Surfaces a typed error instead of panicking so the condition is
+        //    observable by indexers and off-chain dashboards.
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            Self::append_audit(&env, symbol_short!("clm_rwd"), &caller, false);
+            return Err(OrchestratorError::ReentrancyDetected);
+        }
+        // The LockGuard sets EXEC_LOCK = true on creation and resets it to
+        // false on drop, covering all return paths including early `?` returns.
+        let _guard = Self::acquire_execution_lock(&env)?;
+
+        // 3. CHECK — read pending balance.
+        let mut rewards: Map<Address, i128> = env
+            .storage()
+            .instance()
+            .get(&PENDING_REWARDS)
+            .unwrap_or_else(|| Map::new(&env));
+        let pending: i128 = rewards.get(caller.clone()).unwrap_or(0);
+        if pending <= 0 {
+            Self::append_audit(&env, symbol_short!("clm_rwd"), &caller, false);
+            return Err(OrchestratorError::NoPendingRewards);
+        }
+
+        // 4. EFFECT — zero out the balance *before* the external call.
+        //    This is the critical ordering that defeats the re-entrant drain:
+        //    any re-entrant call will now see pending == 0 (and hit the
+        //    NoPendingRewards guard above), even if the lock check somehow
+        //    passed.
+        rewards.set(caller.clone(), 0i128);
+        env.storage().instance().set(&PENDING_REWARDS, &rewards);
+
+        // 5. INTERACTION — call the external token contract.
+        //    The contract address of this orchestrator acts as the token
+        //    holder/escrow; it transfers `pending` tokens to `caller`.
+        let this = env.current_contract_address();
+        let token = interface::RewardTokenClient::new(&env, &reward_token);
+        token.transfer(&this, &caller, &pending);
+
+        // 6. Audit and event.
+        Self::append_audit(&env, symbol_short!("clm_rwd"), &caller, true);
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("clm_rwd")),
+            (caller.clone(), pending),
+        );
+
+        Ok(pending)
+    }
+
+    /// Credit pending rewards for an address (called by internal flow logic or
+    /// admin seeding).  Exposed as a private helper only; no public entry-point
+    /// credits rewards directly to avoid bypassing accrual logic.
+    #[allow(dead_code)]
+    fn credit_pending_rewards(env: &Env, recipient: &Address, amount: i128) {
+        if amount <= 0 {
+            return;
+        }
+        let mut rewards: Map<Address, i128> = env
+            .storage()
+            .instance()
+            .get(&PENDING_REWARDS)
+            .unwrap_or_else(|| Map::new(env));
+        let current: i128 = rewards.get(recipient.clone()).unwrap_or(0);
+        let new_balance = current.saturating_add(amount);
+        rewards.set(recipient.clone(), new_balance);
+        env.storage().instance().set(&PENDING_REWARDS, &rewards);
+    }
+
+    /// Return the pending reward balance for an address without claiming it.
+    pub fn get_pending_rewards(env: Env, address: Address) -> i128 {
+        let rewards: Option<Map<Address, i128>> =
+            env.storage().instance().get(&PENDING_REWARDS);
+        match rewards {
+            Some(m) => m.get(address).unwrap_or(0),
+            None => 0,
+        }
     }
 
     /// Get a page of audit log entries.

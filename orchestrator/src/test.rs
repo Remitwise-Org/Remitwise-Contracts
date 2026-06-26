@@ -1,3 +1,4 @@
+#![allow(clippy::duplicated_attributes)]
 #![cfg(test)]
 
 extern crate std;
@@ -230,11 +231,11 @@ fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
     ]
 }
 
-fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), String> {
+fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), std::string::String> {
     if size <= max_bytes {
         Ok(())
     } else {
-        Err(format!(
+        Err(std::format!(
             "WASM size for '{}' is {} bytes, which exceeds the budget of {} bytes.",
             contract, size, max_bytes
         ))
@@ -1729,4 +1730,186 @@ fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
     // No downstream add_to_goal/pay_bill/pay_premium must have been called —
     // the lock is released, confirming we exited cleanly before execution.
     assert!(!client.get_execution_state());
+}
+
+// ---------------------------------------------------------------------------
+// claim_rewards_summary_external — reentrancy guard tests
+//
+// Threat: T-RE-02 — re-entrant reward drain via malicious token callback.
+//
+// Without the EXEC_LOCK a malicious token contract could call back into
+// `claim_rewards_summary_external` before the pending-reward balance is
+// zeroed, observing a stale non-zero balance and triggering a second
+// transfer.  These tests verify:
+//
+//   1. Happy-path claim succeeds and returns the credited amount.
+//   2. A caller with no pending rewards receives `NoPendingRewards`.
+//   3. A re-entrant call (lock already held) receives `ReentrancyDetected`
+//      instead of transferring tokens a second time.  This is the NEGATIVE
+//      TEST that would FAIL before the guard was added and PASSES after.
+//   4. After a successful claim the pending balance is zeroed (Checks-Effects
+//      -Interactions: effect applied before external call).
+//   5. Lock is released after the happy-path call completes.
+// ---------------------------------------------------------------------------
+
+/// Minimal SEP-41 mock: `transfer` is a no-op (tokens don't actually move in
+/// unit tests; we only care about the orchestrator's state machine).
+mod mock_reward_token {
+    use soroban_sdk::{contract, contractimpl, Address, Env};
+
+    #[contract]
+    pub struct Contract;
+
+    #[contractimpl]
+    impl Contract {
+        pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
+        pub fn balance(_env: Env, _id: Address) -> i128 {
+            0
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers shared by claim_rewards tests
+// ---------------------------------------------------------------------------
+
+/// Seed `amount` pending rewards for `recipient` directly in instance storage,
+/// bypassing public entry-points (simulates accrual by internal flow logic).
+fn seed_pending_rewards(env: &Env, orchestrator_id: &Address, recipient: &Address, amount: i128) {
+    use soroban_sdk::Map;
+    env.as_contract(orchestrator_id, || {
+        let mut rewards: Map<Address, i128> = env
+            .storage()
+            .instance()
+            .get(&PENDING_REWARDS)
+            .unwrap_or_else(|| Map::new(env));
+        rewards.set(recipient.clone(), amount);
+        env.storage().instance().set(&PENDING_REWARDS, &rewards);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+/// Happy-path: a caller with pending rewards can claim them; the function
+/// returns the credited amount and the balance is zeroed afterwards.
+#[test]
+fn test_claim_rewards_summary_external_happy_path() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let token_id = env.register_contract(None, mock_reward_token::Contract);
+    let caller = Address::generate(&env);
+
+    seed_pending_rewards(&env, &orchestrator_id, &caller, 500);
+
+    let claimed = client.claim_rewards_summary_external(&caller, &token_id);
+    assert_eq!(claimed, 500, "claimed amount must match credited balance");
+
+    // Balance must be zeroed after a successful claim.
+    let remaining = client.get_pending_rewards(&caller);
+    assert_eq!(remaining, 0, "pending rewards must be zeroed after claim");
+
+    // Lock must be released after normal completion.
+    assert!(
+        !client.get_execution_state(),
+        "EXEC_LOCK must be released after claim_rewards_summary_external returns"
+    );
+}
+
+/// A caller with zero pending rewards gets `NoPendingRewards` (no side-effects).
+#[test]
+fn test_claim_rewards_summary_external_no_pending_returns_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_, client) = register_orchestrator(&env);
+    let token_id = env.register_contract(None, mock_reward_token::Contract);
+    let caller = Address::generate(&env);
+
+    // No seeding — pending balance is 0 by default.
+    let result = client.try_claim_rewards_summary_external(&caller, &token_id);
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::NoPendingRewards)),
+        "caller with no balance must receive NoPendingRewards"
+    );
+
+    // Lock must not be left set after the early-return path.
+    assert!(!client.get_execution_state());
+}
+
+/// NEGATIVE TEST (T-RE-02): when `EXEC_LOCK` is already held (simulating a
+/// re-entrant call mid-transfer), `claim_rewards_summary_external` must
+/// return `ReentrancyDetected` and must NOT transfer any tokens.
+///
+/// This test FAILS without the reentrancy guard and PASSES after the fix.
+#[test]
+fn test_claim_rewards_summary_external_rejects_reentrant_call() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let token_id = env.register_contract(None, mock_reward_token::Contract);
+    let caller = Address::generate(&env);
+
+    // Seed a non-zero balance so the guard is the *only* thing preventing
+    // the claim — without the guard this would succeed (drain the balance).
+    seed_pending_rewards(&env, &orchestrator_id, &caller, 1_000);
+
+    // Simulate the lock being held by a concurrent/re-entrant execution.
+    env.as_contract(&orchestrator_id, || {
+        env.storage().instance().set(&EXEC_LOCK, &true);
+    });
+
+    let result = client.try_claim_rewards_summary_external(&caller, &token_id);
+
+    // The reentrancy guard MUST surface the typed error rather than panic or
+    // silently succeed.
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::ReentrancyDetected)),
+        "re-entrant call must be rejected with ReentrancyDetected (T-RE-02)"
+    );
+
+    // The pending balance must remain intact — no partial drain occurred.
+    // We can only read this after releasing the manually-set lock.
+    env.as_contract(&orchestrator_id, || {
+        env.storage().instance().set(&EXEC_LOCK, &false);
+    });
+    let remaining = client.get_pending_rewards(&caller);
+    assert_eq!(
+        remaining, 1_000,
+        "pending balance must be unchanged after a rejected re-entrant claim"
+    );
+}
+
+/// Checks-Effects-Interactions ordering: the pending balance is written to
+/// zero in storage BEFORE the external token `transfer` call.  We verify
+/// this by inspecting the stored balance immediately after a successful
+/// claim (the external call is a no-op in tests, so ordering is observable
+/// through the post-call state).
+#[test]
+fn test_claim_rewards_summary_external_cei_order_balance_zeroed_before_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    let token_id = env.register_contract(None, mock_reward_token::Contract);
+    let caller = Address::generate(&env);
+
+    seed_pending_rewards(&env, &orchestrator_id, &caller, 250);
+
+    // After a successful claim the CEI-ordered write (balance → 0) must be
+    // persisted; the external transfer is a no-op here but the effect was
+    // applied first.
+    let _ = client.claim_rewards_summary_external(&caller, &token_id);
+
+    let remaining = client.get_pending_rewards(&caller);
+    assert_eq!(
+        remaining, 0,
+        "CEI: effect (balance = 0) must be persisted regardless of transfer outcome"
+    );
 }

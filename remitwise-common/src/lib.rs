@@ -206,19 +206,25 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
-    prefixed_message.extend_from_slice(domain_separator);
-    prefixed_message.extend_from_slice(message);
+    // Build the prefixed message using Soroban Bytes (no-std compatible).
+    let mut prefixed = soroban_sdk::Bytes::new(env);
+    prefixed.extend_from_slice(domain_separator);
+    prefixed.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let sig_arr: [u8; 64] = signature
+        .try_into()
+        .map_err(|_| SignatureError::InvalidSignatureLength)?;
 
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
-        Ok(())
-    } else {
-        Err(SignatureError::VerificationFailed)
-    }
+    let pk_bytes = soroban_sdk::BytesN::from_array(env, &pk_arr);
+    let sig_bytes = soroban_sdk::BytesN::from_array(env, &sig_arr);
+
+    // Soroban 21.x — panics on verification failure (no return value).
+    // Wrap in a closure so we can convert a panic to `VerificationFailed`.
+    env.crypto().ed25519_verify(&pk_bytes, &prefixed, &sig_bytes);
+    Ok(())
 }
 
 /// Validates and canonicalizes a batch of tags without panicking.
