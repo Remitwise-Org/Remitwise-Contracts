@@ -883,10 +883,10 @@ impl FamilyWallet {
             return Err(Error::TransactionExpired);
         }
 
-        // If signer already recorded, no-op (idempotent).
+        // If signer already recorded, reject with typed error.
         for sig in pending_tx.signatures.iter() {
             if sig.clone() == signer {
-                return Ok(false);
+                return Err(Error::DuplicateSignature);
             }
         }
 

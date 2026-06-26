@@ -343,9 +343,9 @@ fn test_duplicate_signature_prevention() {
     let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
     assert_eq!(pending_tx.signatures.len(), 2);
 
-    // Second sign by same signer should be idempotent and not advance the count
+    // Second sign by same signer should be rejected with DuplicateSignature error
     let result = client.try_sign_transaction(&member1, &tx_id);
-    assert!(result.is_ok());
+    assert_eq!(result, Err(Ok(Error::DuplicateSignature)));
 
     let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
     assert_eq!(pending_tx.signatures.len(), 2);
@@ -372,6 +372,37 @@ fn test_sign_transaction_non_member_rejected() {
     // non-member is not authorized as signer for this tx type
     let result = client.try_sign_transaction(&non_member, &tx_id);
     assert_eq!(result, Err(Ok(Error::SignerNotMember)));
+}
+
+#[test]
+fn test_sign_transaction_duplicate_signature_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
+    
+    // Configure multisig with threshold 2
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    let tx_id = client.propose_role_change(&owner, &member1, &FamilyRole::Admin);
+
+    // First signature by member1 should succeed
+    let result = client.try_sign_transaction(&member1, &tx_id);
+    assert!(result.is_ok());
+
+    // Second signature by the same member1 should be rejected with DuplicateSignature
+    let result = client.try_sign_transaction(&member1, &tx_id);
+    assert_eq!(result, Err(Ok(Error::DuplicateSignature)));
+
+    // Verify signature count hasn't changed
+    let pending_tx = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(pending_tx.signatures.len(), 2); // proposer + member1
 }
 
 #[test]
