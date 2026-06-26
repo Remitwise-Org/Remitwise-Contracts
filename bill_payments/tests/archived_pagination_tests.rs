@@ -649,3 +649,104 @@ proptest! {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Additional Edge Case Tests
+// ---------------------------------------------------------------------------
+
+/// Regression: cursor beyond all archived IDs returns empty page.
+#[test]
+fn test_cursor_far_beyond_max_id_returns_empty() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 5);
+    
+    // Use a cursor way beyond the highest ID
+    let page = client.get_archived_bills_page(&owner, &999999, &10);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert!(page.items.is_empty());
+}
+
+/// Regression: alternating restore operations maintain correct pagination.
+#[test]
+fn test_alternating_restore_maintains_pagination() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 10);
+    
+    // Get initial IDs
+    let initial = paginate_all(&client, &owner, 50);
+    assert_eq!(initial.len(), 10);
+    
+    // Restore every other bill (2, 4, 6, 8, 10)
+    for i in (1..=9).step_by(2) {
+        client.restore_bill(&owner, &initial[i]);
+    }
+    
+    let after = paginate_all(&client, &owner, 50);
+    assert_eq!(after.len(), 5, "should have 5 bills remaining");
+    
+    // Verify only odd-indexed bills remain
+    for id in after.iter() {
+        let original_idx = initial.iter().position(|&x| x == *id).unwrap();
+        assert_eq!(original_idx % 2, 0, "only even indices should remain");
+    }
+}
+
+/// Regression: large page traversal with small limits has no performance degradation.
+#[test]
+fn test_large_dataset_small_limit_completes() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 50);
+    
+    // Paginate with very small limit
+    let all_ids = paginate_all(&client, &owner, 2);
+    assert_eq!(all_ids.len(), 50);
+    
+    // Verify strictly ascending
+    for i in 1..all_ids.len() {
+        assert!(all_ids[i] > all_ids[i-1]);
+    }
+}
+
+/// Regression: zero archived bills then archive one returns correct single-item page.
+#[test]
+fn test_empty_then_archive_one_returns_single_item() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    
+    // Start with empty archive
+    let empty = client.get_archived_bills_page(&owner, &0, &10);
+    assert_eq!(empty.count, 0);
+    
+    // Archive one bill
+    create_pay_archive(&env, &client, &owner, 1);
+    
+    let after = client.get_archived_bills_page(&owner, &0, &10);
+    assert_eq!(after.count, 1);
+    assert_eq!(after.next_cursor, 0);
+    assert_eq!(after.items.len(), 1);
+}
+
+/// Regression: cursor equals first item ID skips it and returns rest.
+#[test]
+fn test_cursor_at_first_id_skips_first_item() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 5);
+    
+    // Get all items
+    let all = client.get_archived_bills_page(&owner, &0, &50);
+    let first_id = all.items.first().unwrap().id;
+    
+    // Use first ID as cursor
+    let page = client.get_archived_bills_page(&owner, &first_id, &50);
+    assert_eq!(page.count, 4, "should skip first item and return 4");
+    
+    // First item should not be in results
+    for bill in page.items.iter() {
+        assert_ne!(bill.id, first_id, "first item should not appear");
+    }
+}
