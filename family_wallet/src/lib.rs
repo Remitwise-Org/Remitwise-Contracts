@@ -392,9 +392,17 @@ pub enum Error {
 impl FamilyWallet {
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
         owner.require_auth();
+        if !Self::try_initialize(env.clone(), owner.clone(), initial_members) {
+            panic!("Wallet already initialized");
+        }
+        true
+    }
+
+    pub fn try_initialize(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+        owner.require_auth();
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
         if existing.is_some() {
-            panic!("Wallet already initialized");
+            return false;
         }
         Self::extend_instance_ttl(&env);
         env.storage()

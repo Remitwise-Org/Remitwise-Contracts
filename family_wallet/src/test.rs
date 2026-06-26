@@ -55,6 +55,30 @@ fn test_initialize_wallet_succeeds() {
 }
 
 #[test]
+fn test_try_initialize_wallet() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let member1 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone()];
+
+    // First initialization should succeed (return true)
+    let first_result = client.try_initialize(&owner, &initial_members);
+    assert!(first_result);
+
+    // Second initialization should return false instead of panicking
+    let second_result = client.try_initialize(&owner, &initial_members);
+    assert!(!second_result);
+
+    // Standard init should also fail/panic now because it is already initialized
+    let init_result = client.try_init(&owner, &initial_members);
+    assert!(init_result.is_err());
+}
+
+#[test]
 fn test_withdrawal_tier_boundary_matrix() {
     let spending_limit = 5000_i128;
 
