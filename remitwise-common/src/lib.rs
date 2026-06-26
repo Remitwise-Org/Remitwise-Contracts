@@ -206,19 +206,23 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
+    let mut pk_arr = [0u8; 32];
+    pk_arr.copy_from_slice(public_key);
+
+    let mut sig_arr = [0u8; 64];
+    sig_arr.copy_from_slice(signature);
+
+    let mut prefixed_message = soroban_sdk::Bytes::new(env);
     prefixed_message.extend_from_slice(domain_separator);
     prefixed_message.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
+    env.crypto().ed25519_verify(
+        &soroban_sdk::BytesN::from_array(env, &pk_arr),
+        &prefixed_message,
+        &soroban_sdk::BytesN::from_array(env, &sig_arr),
+    );
 
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
-        Ok(())
-    } else {
-        Err(SignatureError::VerificationFailed)
-    }
+    Ok(())
 }
 
 /// Validates and canonicalizes a batch of tags without panicking.
@@ -381,13 +385,14 @@ impl RemitwiseEvents {
         #[cfg(any(test, feature = "testutils"))]
         {
             use soroban_sdk::xdr::ToXdr;
-            use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
-            use soroban_sdk::xdr::ToXdr;
             let xdr_bytes = val.to_xdr(env);
             let size = xdr_bytes.len();
             if size > 256 {
-                panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
+                panic!(
+                    "Event data size {} exceeds 256-byte budget. Emits must be compact.",
+                    size
+                );
             }
             env.events().publish(topics, val);
         }
