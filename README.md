@@ -596,6 +596,7 @@ After verifying optimizations:
 ### Documentation
 
 - **[Benchmarking Guide](benchmarks/README.md)**: Complete benchmarking documentation
+- **[Gas Tuning Guide](docs/GAS_TUNING.md)**: How to interpret gas snapshots and optimize costs
 - **[Gas Optimization Guide](docs/gas-optimization.md)**: Optimization strategies and best practices
 - **[Baseline Results](benchmarks/baseline.json)**: Current performance baseline
 - **[Threshold Configuration](benchmarks/thresholds.json)**: Regression detection thresholds
