@@ -4,7 +4,7 @@ use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
-    Address, Env, IntoVal, Symbol,
+    Address, Env, Symbol,
 };
 
 fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {

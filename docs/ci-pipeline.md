@@ -18,7 +18,8 @@ The **Batch-B CI Gate** targets the following crates:
 2. **Formatting**: Runs `cargo fmt --check` to enforce stylistic consistency.
 3. **Linting**: Runs `cargo clippy -D warnings` to fail fast on any anti-patterns or code smells.
 4. **Testing**: Runs `cargo test` to execute the full unit and integration test harness (requiring a minimum 95% test coverage).
-5. **Build Verification**:
+5. **Feature Flag Consistency**: Runs `scripts/check_features.py` to verify that every `cfg(feature = "...")` reference in Rust source corresponds to a declared entry in the crate's `[features]` section. This prevents dead or silently ignored feature gates.
+6. **Build Verification**:
     - Contracts are compiled using `--target wasm32-unknown-unknown --release`.
     - The CLI is compiled natively.
 

@@ -361,6 +361,7 @@ impl RemitwiseEvents {
     /// **Size Budget**: Event data must be compact (topics + small payload, not bulk records).
     /// The recommended maximum serialized size for the `data` payload is 256 bytes.
     /// Oversized payloads will trigger a debug/test assertion.
+    #[allow(unexpected_cfgs)]
     pub fn emit<T>(
         env: &soroban_sdk::Env,
         category: EventCategory,
@@ -382,19 +383,15 @@ impl RemitwiseEvents {
             use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
-            if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                if let Ok(xdr_bytes) = soroban_sdk::xdr::ToXdr::to_xdr(&sc_val) {
-                    let size = xdr_bytes.len();
-                    if size > 256 {
-                        panic!(
-                            "Event data size {} exceeds 256-byte budget. Emits must be compact.",
-                            size
-                        );
-                    }
-                }
+            use soroban_sdk::xdr::ToXdr;
+            let xdr_bytes = val.to_xdr(env);
+            let size = xdr_bytes.len();
+            if size > 256 {
+                panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
             }
             env.events().publish(topics, val);
         }
+
         #[cfg(not(any(test, feature = "testutils")))]
         env.events().publish(topics, data);
     }

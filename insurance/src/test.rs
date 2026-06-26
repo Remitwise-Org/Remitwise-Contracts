@@ -1,3 +1,4 @@
+#![allow(clippy::all, mismatched_lifetime_syntaxes)]
 #[cfg(test)]
 mod tests {
     use crate::*;

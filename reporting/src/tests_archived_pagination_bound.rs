@@ -28,7 +28,7 @@
 //! `ARCH_RPT` / `ARCH_IDX` from outside the contract).
 
 use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
-use soroban_sdk::{vec, Address, Env};
+use soroban_sdk::{contract, contractimpl, vec, Address, Env};
 use testutils::set_ledger_time;
 
 use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};

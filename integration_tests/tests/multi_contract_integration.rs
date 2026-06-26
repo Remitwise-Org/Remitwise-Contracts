@@ -7,7 +7,7 @@
 //! - remittance_split
 
 use bill_payments::{BillPayments, BillPaymentsClient};
-use family_wallet::{FamilyWallet, FamilyWalletClient};
+use family_wallet::FamilyWallet;
 use insurance::{Insurance, InsuranceClient};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::CoverageType;

@@ -1,5 +1,5 @@
-use crate::{EventCategory, EventPriority, RemitwiseEvents};
-use soroban_sdk::{symbol_short, Env, IntoVal, Val, Vec};
+use soroban_sdk::{Env, symbol_short, Vec};
+use crate::{RemitwiseEvents, EventCategory, EventPriority};
 
 #[test]
 fn test_compact_event_passes() {
@@ -16,7 +16,7 @@ fn test_compact_event_passes() {
 }
 
 #[test]
-#[should_panic(expected = "exceeds the 256-byte budget")]
+#[should_panic(expected = "exceeds 256-byte budget")]
 fn test_oversized_event_flagged() {
     let env = Env::default();
     // A very large payload
