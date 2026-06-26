@@ -800,6 +800,31 @@ impl FamilyWallet {
             );
         }
 
+        let actual_config_key = Self::get_config_key(resolved_tx_type);
+        let actual_config: MultiSigConfig = env
+            .storage()
+            .instance()
+            .get(&actual_config_key)
+            .unwrap_or_else(|| panic!("Multi-sig config not found"));
+
+        let mut valid_signatures = 0;
+        for authorized_signer in actual_config.signers.iter() {
+            if authorized_signer.clone() == proposer {
+                valid_signatures += 1;
+                break;
+            }
+        }
+
+        if valid_signatures >= actual_config.threshold {
+            return Self::execute_transaction_internal(
+                &env,
+                &proposer,
+                &resolved_tx_type,
+                &data,
+                false,
+            );
+        }
+
         Self::extend_instance_ttl(&env);
 
         let mut next_tx_id: u64 = env

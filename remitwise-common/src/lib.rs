@@ -1,5 +1,8 @@
 #![no_std]
+
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
+pub mod events;
 
 use soroban_sdk::{contracttype, symbol_short, Symbol};
 
