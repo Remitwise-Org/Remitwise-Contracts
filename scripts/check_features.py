@@ -79,23 +79,41 @@ def scan_feature_references(crate_dir):
                     content = fh.read()
                 for m in pattern.finditer(content):
                     references.add(m.group(1))
-            except Exception:
+            except Exception as exc:
+                print(f"  warning: skipping {path}: {exc}", file=sys.stderr)
                 continue
 
     return references
 
 
 def main():
+    workspace_toml = os.path.join(WORKSPACE_ROOT, "Cargo.toml")
+    print(f"workspace root: {WORKSPACE_ROOT}", flush=True)
+    print(f"workspace Cargo.toml: {workspace_toml}", flush=True)
+
+    if not os.path.isfile(workspace_toml):
+        print(f"error: no Cargo.toml found at {workspace_toml}", file=sys.stderr)
+        return 1
+
     members = parse_workspace_members()
+    print(f"discovered {len(members)} workspace members", flush=True)
+
     violations = []
 
     for member in members:
         crate_dir = os.path.join(WORKSPACE_ROOT, member)
         if not os.path.isdir(crate_dir):
+            print(f"  skipping {member}: directory not found", flush=True)
             continue
 
         declared = parse_features(crate_dir)
         referenced = scan_feature_references(crate_dir)
+
+        print(
+            f"  {member}: {len(declared)} features declared, "
+            f"{len(referenced)} features referenced in source",
+            flush=True,
+        )
 
         for name in sorted(referenced):
             if name not in declared:
