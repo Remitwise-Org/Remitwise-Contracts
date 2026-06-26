@@ -6,7 +6,8 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION,
+    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY,
+    SNAPSHOT_VERSION,
 };
 
 // Storage TTL constants for active data
@@ -295,6 +296,37 @@ pub struct StorageStats {
 }
 
 const MAX_THRESHOLD: u32 = 100;
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage before a contract upgrade so state
+/// can be restored if the upgrade fails or produces inconsistent results.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Owner address.
+    pub owner: Address,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Emergency mode state.
+    pub emergency_mode: bool,
+    /// Emergency config.
+    pub emergency_config: EmergencyConfig,
+    /// Emergency last used timestamp.
+    pub emergency_last: u64,
+    /// Next transaction ID counter.
+    pub next_tx: u64,
+    /// Proposal expiry duration.
+    pub proposal_expiry: u64,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -3029,6 +3061,195 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("ACC_AUDIT"), &entries);
+    }
+
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may take
+    /// a snapshot.
+    ///
+    /// # Panics
+    /// - If the wallet is not initialized
+    /// - If `caller` lacks authorization
+    pub fn pre_upgrade(env: Env, caller: Address) -> bool {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner.clone());
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        Self::extend_instance_ttl(&env);
+        let em_config: EmergencyConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_CONF"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            owner: owner.clone(),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+            version: Self::get_version(env.clone()),
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            emergency_mode: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("EM_MODE"))
+                .unwrap_or(false),
+            emergency_config: em_config,
+            emergency_last: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("EM_LAST"))
+                .unwrap_or(0),
+            next_tx: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("NEXT_TX"))
+                .unwrap_or(1),
+            proposal_expiry: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("PROP_EXP"))
+                .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
+        };
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+        true
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// owner, pause state, version, upgrade admin, emergency config, next
+    /// transaction ID, and proposal expiry back to instance storage.
+    /// The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may
+    /// restore from a snapshot.
+    ///
+    /// # Panics
+    /// - If no snapshot exists
+    /// - If the snapshot version is unsupported
+    /// - If `caller` lacks authorization
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("family"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> bool {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner.clone());
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            panic!("Unsupported snapshot version");
+        }
+        if snapshot.owner != owner {
+            panic!("Snapshot owner mismatch");
+        }
+        Self::extend_instance_ttl(&env);
+
+        // Restore pause state
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED"), &snapshot.paused);
+        match &snapshot.pause_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
+        }
+
+        // Restore version
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+
+        // Restore upgrade admin
+        match &snapshot.upgrade_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
+        }
+
+        // Restore emergency config
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_CONF"), &snapshot.emergency_config);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_MODE"), &snapshot.emergency_mode);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_LAST"), &snapshot.emergency_last);
+
+        // Restore next TX and proposal expiry
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_TX"), &snapshot.next_tx);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &snapshot.proposal_expiry);
+
+        // Consume the snapshot
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+        true
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may
+    /// discard a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` lacks authorization
+    pub fn discard_snapshot(env: Env, caller: Address) -> bool {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner);
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("snap_dsc")),
+            (),
+        );
+        true
     }
 
     fn get_pause_admin(env: &Env) -> Option<Address> {

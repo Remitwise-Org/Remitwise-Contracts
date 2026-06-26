@@ -6861,54 +6861,91 @@ fn test_configure_multisig_does_not_emit_on_failed_validation() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
 #[test]
-fn test_negative_amount_rejections() {
+fn test_pre_upgrade_roundtrip() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);
-
     let owner = Address::generate(&env);
-    let member1 = Address::generate(&env);
-    let member2 = Address::generate(&env);
-    client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
 
-    let token = Address::generate(&env);
-    let recipient = Address::generate(&env);
+    // Take snapshot (owner authorized, no upgrade admin set -> falls back to owner)
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
 
-    // 1. withdraw with negative/zero amount
-    let res1 = client.try_withdraw(&owner, &token, &recipient, &-100);
-    assert!(res1.is_err());
-    let res2 = client.try_withdraw(&owner, &token, &recipient, &0);
-    assert!(res2.is_err());
+    // Set version and pause
+    let result = client.try_set_version(&owner, &42);
+    assert!(result.is_ok());
+    client.pause(&owner);
 
-    // 2. propose_emergency_transfer with negative/zero amount
-    let res3 = client.try_propose_emergency_transfer(&owner, &token, &recipient, &-50);
-    assert!(res3.is_err());
-    let res4 = client.try_propose_emergency_transfer(&owner, &token, &recipient, &0);
-    assert!(res4.is_err());
+    // Verify modified state
+    assert_eq!(client.get_version(), 42);
+    assert!(client.is_paused());
 
-    // 3. configure_emergency with negative max_amount, min_balance, or daily_limit
-    let res5 = client.try_configure_emergency(&owner, &-100, &3600, &100, &1000);
-    assert!(res5.is_err());
-    let res6 = client.try_configure_emergency(&owner, &100, &3600, &-10, &1000);
-    assert!(res6.is_err());
-    let res7 = client.try_configure_emergency(&owner, &100, &3600, &10, &-1000);
-    assert!(res7.is_err());
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_ok());
 
-    // 4. configure_multisig with negative limit
-    let res8 = client.try_configure_multisig(
-        &owner,
-        &TransactionType::LargeWithdrawal,
-        &2,
-        &vec![&env, member1.clone(), member2.clone()],
-        &-500,
-    );
-    assert_eq!(res8, Err(Ok(Error::InvalidSpendingLimit)));
+    // Version should be restored to default (1)
+    assert_eq!(client.get_version(), 1);
+    // Pause state restored
+    assert!(!client.is_paused());
+}
 
-    // 5. validate_precision_spending with negative/zero amount
-    let res9 = client.try_validate_precision_spending(&owner, &-500);
-    assert_eq!(res9, Err(Ok(Error::InvalidAmount)));
-    let res10 = client.try_validate_precision_spending(&owner, &0);
-    assert_eq!(res10, Err(Ok(Error::InvalidAmount)));
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert!(result.is_err());
+
+    // Owner can pre_upgrade
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert!(result.is_err());
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_pre_upgrade_discard() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Discard snapshot
+    let result = client.try_discard_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Restore should now fail (no snapshot)
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_err());
 }

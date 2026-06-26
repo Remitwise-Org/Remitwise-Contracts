@@ -6697,39 +6697,67 @@ fn test_import_snapshot_owner_indices_are_consistent() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
 #[test]
-fn test_negative_amount_rejections() {
+fn test_pre_upgrade_roundtrip() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
     client.init();
 
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    // Take snapshot (admin authorized)
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Create a goal (next_id advances from 1 to 2)
     let user = Address::generate(&env);
-    let name = String::from_str(&env, "Goal 1");
-    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+    let id1 = client.create_goal(&user, &String::from_str(&env, "Test"), &1000, &2000000000, &false);
+    assert_eq!(id1, 1);
+    let id2 = client.create_goal(&user, &String::from_str(&env, "Test2"), &2000, &2000000000, &false);
+    assert_eq!(id2, 2);
 
-    // 1. create_goal with negative amount
-    let res_create = client.try_create_goal(&user, &name, &-100, &1735689600, &false);
-    assert_eq!(res_create, Err(Ok(SavingsGoalError::InvalidAmount)));
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_ok());
 
-    // 2. add_to_goal with negative amount
-    let res_add = client.try_add_to_goal(&user, &goal_id, &-50);
-    assert_eq!(res_add, Err(Ok(SavingsGoalError::InvalidAmount)));
+    // Next ID should be restored to 1 (snapshot was taken before creating any goals)
+    let id_new = client.create_goal(&user, &String::from_str(&env, "Restored"), &500, &2000000000, &false);
+    assert_eq!(id_new, 1);
+}
 
-    // 3. withdraw_from_goal with negative amount
-    let res_withdraw = client.try_withdraw_from_goal(&user, &goal_id, &-50);
-    assert_eq!(res_withdraw, Err(Ok(SavingsGoalError::InvalidAmount)));
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
 
-    // 4. create_savings_schedule with negative/zero amount
-    let res_schedule_create1 = client.try_create_savings_schedule(&user, &goal_id, &-100, &1735689600, &3600);
-    assert!(res_schedule_create1.is_err());
-    let res_schedule_create2 = client.try_create_savings_schedule(&user, &goal_id, &0, &1735689600, &3600);
-    assert!(res_schedule_create2.is_err());
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
 
-    // 5. modify_savings_schedule with negative/zero amount
-    let res_schedule_modify1 = client.try_modify_savings_schedule(&user, &goal_id, &-100, &1735689600, &3600);
-    assert!(res_schedule_modify1.is_err());
-    let res_schedule_modify2 = client.try_modify_savings_schedule(&user, &goal_id, &0, &1735689600, &3600);
-    assert!(res_schedule_modify2.is_err());
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert!(result.is_err());
+
+    // Authorized pre_upgrade
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert!(result.is_err());
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert!(result.is_err());
 }

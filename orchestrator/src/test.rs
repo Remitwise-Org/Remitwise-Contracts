@@ -1397,6 +1397,77 @@ fn test_unsigned_and_signed_flow_stats_parity() {
     assert_eq!(after_signed.failed_executions, 0);
 }
 
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Modify version
+    let result = client.try_set_version(&owner, &42);
+    assert!(result.is_ok());
+    assert_eq!(client.get_version(), 42);
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Version should be restored
+    assert_eq!(client.get_version(), 1);
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+
+    // Owner can pre_upgrade
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+}
+
+#[test]
+fn test_pre_upgrade_discard() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Discard snapshot
+    let result = client.try_discard_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Restore should now fail (no snapshot)
+    let result = client.try_restore_from_snapshot(&owner);
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidDependency)));
+}
+
 #[test]
 fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     let (env, owner) = setup_test();

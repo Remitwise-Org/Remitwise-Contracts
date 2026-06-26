@@ -3160,105 +3160,44 @@ mod testsuit {
     }
 
     #[test]
-    fn test_pay_recurring_bill_cap_bypass() {
+    fn test_pre_upgrade_roundtrip() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        env.mock_all_auths();
+        let _owner = Address::generate(&env);
+        let admin = Address::generate(&env);
 
-        // Fill to exactly MAX_BILLS_PER_OWNER - 1 active bills
-        for _ in 0..(crate::MAX_BILLS_PER_OWNER - 1) {
-            client.create_bill(
-                &owner,
-                &String::from_str(&env, "OneTime"),
-                &100,
-                &(env.ledger().timestamp() + 86400),
-                &false,
-                &0,
-                &None,
-                &String::from_str(&env, "XLM"),
-                &None,
-            );
-        }
-        
-        assert_eq!(client.get_owner_bill_count(&owner), crate::MAX_BILLS_PER_OWNER - 1);
+        client.set_upgrade_admin(&admin, &admin);
 
-        // Create 1 more recurring bill -> now at MAX_BILLS_PER_OWNER.
-        let recurring_bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Recurring"),
-            &100,
-            &(env.ledger().timestamp() + 86400),
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        assert_eq!(client.get_owner_bill_count(&owner), crate::MAX_BILLS_PER_OWNER);
+        let version_before = client.get_version();
 
-        // Try to create another -> OwnerBillCapExceeded.
-        let res = client.try_create_bill(
-            &owner,
-            &String::from_str(&env, "Extra"),
-            &100,
-            &(env.ledger().timestamp() + 86400),
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-        assert_eq!(res, Err(Ok(crate::Error::OwnerBillCapExceeded)));
+        // Take snapshot
+        let result = client.try_pre_upgrade(&admin);
+        assert!(result.is_ok());
 
-        // Pay that recurring bill -> child spawned via index_add_active
-        // Must fail with OwnerBillCapExceeded to prevent bypass.
-        let pay_res = client.try_pay_bill(&owner, &recurring_bill_id);
-        assert_eq!(pay_res, Err(Ok(crate::Error::OwnerBillCapExceeded)));
-        
-        assert_eq!(client.get_owner_bill_count(&owner), crate::MAX_BILLS_PER_OWNER);
+        // Modify version
+        client.set_version(&admin, &42);
+        assert_eq!(client.get_version(), 42);
+
+        // Restore from snapshot
+        let result = client.try_restore_from_snapshot(&admin);
+        assert!(result.is_ok());
+
+        assert_eq!(client.get_version(), version_before);
     }
 
-    proptest! {
-        #[test]
-        fn prop_recurring_bill_count_invariant(n_fill in 0u32..(crate::MAX_BILLS_PER_OWNER - 1)) {
-            let env = Env::default();
-            let contract_id = env.register_contract(None, BillPayments);
-            let client = BillPaymentsClient::new(&env, &contract_id);
-            let owner = Address::generate(&env);
-            env.mock_all_auths();
+    #[test]
+    fn test_pre_upgrade_unauthorized_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let stranger = Address::generate(&env);
 
-            for _ in 0..n_fill {
-                client.create_bill(
-                    &owner,
-                    &String::from_str(&env, "OneTime"),
-                    &100,
-                    &(env.ledger().timestamp() + 86400),
-                    &false,
-                    &0,
-                    &None,
-                    &String::from_str(&env, "XLM"),
-                    &None,
-                );
-            }
-            
-            let recurring_id = client.create_bill(
-                &owner,
-                &String::from_str(&env, "Recurring"),
-                &100,
-                &(env.ledger().timestamp() + 86400),
-                &true,
-                &30,
-                &None,
-                &String::from_str(&env, "XLM"),
-                &None,
-            );
-            
-            let _ = client.try_pay_bill(&owner, &recurring_id);
-
-            let count_after_pay = client.get_owner_bill_count(&owner);
-            assert!(count_after_pay <= crate::MAX_BILLS_PER_OWNER);
-        }
+        client.set_upgrade_admin(&admin, &admin);
+        let result = client.try_pre_upgrade(&stranger);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 }

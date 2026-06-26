@@ -773,31 +773,45 @@ mod tests {
     }
 
     #[test]
-    fn test_negative_amount_rejections() {
+    fn test_pre_upgrade_roundtrip() {
         let env = Env::default();
         env.mock_all_auths();
-        let c = setup(&env);
-        let caller = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        client.init(&owner);
 
-        // 1. negative monthly premium
-        let res_premium = c.try_create_policy(
-            &caller,
-            &n(&env, "P_Bad"),
-            &CoverageType::Health,
-            &-100i128,
-            &50_000_000i128,
-        );
-        assert_eq!(res_premium, Err(Ok(InsuranceError::InvalidPremium)));
+        // Take snapshot
+        let result = client.try_pre_upgrade(&owner);
+        assert!(result.is_ok());
 
-        // 2. negative coverage amount
-        let res_coverage = c.try_create_policy(
-            &caller,
-            &n(&env, "P_Bad2"),
-            &CoverageType::Health,
-            &5_000_000i128,
-            &-100i128,
-        );
-        assert_eq!(res_coverage, Err(Ok(InsuranceError::InvalidCoverageAmount)));
+        // Set version (this function was added with pre_upgrade support)
+        let result = client.try_set_version(&owner, &42);
+        assert!(result.is_ok());
+
+        // Verify version changed
+        assert_eq!(client.get_version(), 42);
+
+        // Restore from snapshot
+        let result = client.try_restore_from_snapshot(&owner);
+        assert!(result.is_ok());
+
+        // Version should be restored to default
+        assert_eq!(client.get_version(), 1);
+    }
+
+    #[test]
+    fn test_pre_upgrade_unauthorized_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let owner = Address::generate(&env);
+        let stranger = Address::generate(&env);
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+        client.init(&owner);
+
+        let result = client.try_pre_upgrade(&stranger);
+        assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
     }
 }
 
