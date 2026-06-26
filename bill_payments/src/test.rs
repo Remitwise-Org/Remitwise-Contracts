@@ -3158,4 +3158,46 @@ mod testsuit {
         client.unpause(&admin);
         assert!(!client.is_paused());
     }
+
+    #[test]
+    fn test_pre_upgrade_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let _owner = Address::generate(&env);
+        let admin = Address::generate(&env);
+
+        client.set_upgrade_admin(&admin, &admin);
+
+        let version_before = client.get_version();
+
+        // Take snapshot
+        let result = client.try_pre_upgrade(&admin);
+        assert!(result.is_ok());
+
+        // Modify version
+        client.set_version(&admin, &42);
+        assert_eq!(client.get_version(), 42);
+
+        // Restore from snapshot
+        let result = client.try_restore_from_snapshot(&admin);
+        assert!(result.is_ok());
+
+        assert_eq!(client.get_version(), version_before);
+    }
+
+    #[test]
+    fn test_pre_upgrade_unauthorized_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let stranger = Address::generate(&env);
+
+        client.set_upgrade_admin(&admin, &admin);
+        let result = client.try_pre_upgrade(&stranger);
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
 }

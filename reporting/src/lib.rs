@@ -623,14 +623,6 @@ impl ReportingContract {
         Ok(())
     }
 
-    /// Validates that a requested report period is logically ordered.
-    fn validate_period(period_start: u64, period_end: u64) -> Result<(), ReportingError> {
-        if period_start > period_end {
-            return Err(ReportingError::InvalidPeriod);
-        }
-        Ok(())
-    }
-
     /// Verify a [`ContractAddresses`] bundle using the same rules as [`ReportingContract::configure_addresses`].
     ///
     /// Does **not** write storage and does **not** require authorization. Intended for admin UIs and
@@ -958,7 +950,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<RemittanceSummary, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
     }
@@ -1057,7 +1050,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<SavingsReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Self::get_savings_report_internal(&env, user, period_start, period_end)
     }
@@ -1113,7 +1107,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<BillComplianceReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Self::get_bill_compliance_report_internal(&env, user, period_start, period_end)
     }
@@ -1195,7 +1190,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<InsuranceReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Self::get_insurance_report_internal(&env, user, period_start, period_end)
     }
@@ -1263,7 +1259,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<FamilySpendingReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Self::get_family_spending_report_internal(&env, period_start, period_end)
     }
@@ -1572,7 +1569,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<FinancialHealthReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         let health_score =
             Self::calculate_health_score(env.clone(), user.clone(), total_remittance)?;
@@ -1623,7 +1621,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<TopNBillsReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Ok(Self::get_top_bills_report_internal(
             &env,
@@ -1717,7 +1716,8 @@ impl ReportingContract {
         period_start: u64,
         period_end: u64,
     ) -> Result<TopNSavingsReport, ReportingError> {
-        Self::validate_period(period_start, period_end)?;
+        remitwise_common::validate_period(period_start, period_end)
+            .map_err(|_| ReportingError::InvalidPeriod)?;
         user.require_auth();
         Ok(Self::get_top_savings_report_internal(
             &env,
@@ -2059,11 +2059,8 @@ impl ReportingContract {
     )]
     #[allow(deprecated)]
     pub fn get_archived_reports(env: Env, user: Address) -> Vec<ArchivedReport> {
-        user.require_auth();
-        // Delegate to the paged reader with a fixed `DEFAULT_PAGE_LIMIT` cap so
-        // the bounded behaviour is the single source of truth (no duplication
-        // of the cursor/index logic). Returning `.items` mirrors the legacy
-        // signature for back-compat.
+        // Auth is enforced by the delegate get_archived_reports_page call below.
+        // Duplicate require_auth here would cause ExistingValue in Soroban's auth system.
         let ArchivedPage { items, .. } =
             Self::get_archived_reports_page(env, user, 0u32, DEFAULT_PAGE_LIMIT);
         items

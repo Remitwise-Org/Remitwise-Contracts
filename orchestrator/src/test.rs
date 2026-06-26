@@ -1,6 +1,9 @@
 #![cfg(test)]
 
+extern crate std;
+
 use super::*;
+use std::{fs, path::PathBuf};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
@@ -215,6 +218,54 @@ fn compute_test_hash(
         .wrapping_add(amt_hi)
         .wrapping_add(deadline)
         .wrapping_mul(1_000_000_007)
+}
+
+fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
+    &[
+        ("remittance_split.wasm", 48_297),
+        ("savings_goals.wasm", 55_527),
+        ("bill_payments.wasm", 39_523),
+        ("insurance.wasm", 42_057),
+        ("family_wallet.wasm", 63_296),
+    ]
+}
+
+fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), String> {
+    if size <= max_bytes {
+        Ok(())
+    } else {
+        Err(format!(
+            "WASM size for '{}' is {} bytes, which exceeds the budget of {} bytes.",
+            contract, size, max_bytes
+        ))
+    }
+}
+
+#[test]
+fn test_wasm_artifacts_respect_documented_size_budgets() {
+    let release_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    for (filename, max_bytes) in wasm_size_budgets().iter() {
+        let artifact_path = release_dir.join(filename);
+        let metadata = fs::metadata(&artifact_path).unwrap_or_else(|_| {
+            panic!(
+                "Expected wasm artifact '{}' to exist at '{}'. Build wasm artifacts first.",
+                filename,
+                artifact_path.display()
+            )
+        });
+        let size = metadata.len() as usize;
+        verify_wasm_size(filename, size, *max_bytes).unwrap();
+    }
+}
+
+#[test]
+fn test_wasm_size_budget_validation_rejects_oversized_artifacts() {
+    assert!(verify_wasm_size("example.wasm", 10_001, 10_000).is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -1346,6 +1397,77 @@ fn test_unsigned_and_signed_flow_stats_parity() {
     assert_eq!(after_signed.failed_executions, 0);
 }
 
+// ---------------------------------------------------------------------------
+// Pre-upgrade snapshot tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pre_upgrade_roundtrip() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Modify version
+    let result = client.try_set_version(&owner, &42);
+    assert!(result.is_ok());
+    assert_eq!(client.get_version(), 42);
+
+    // Restore from snapshot
+    let result = client.try_restore_from_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Version should be restored
+    assert_eq!(client.get_version(), 1);
+}
+
+#[test]
+fn test_pre_upgrade_unauthorized_fails() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let stranger = Address::generate(&env);
+
+    // Unauthorized pre_upgrade
+    let result = client.try_pre_upgrade(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+
+    // Owner can pre_upgrade
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Unauthorized restore
+    let result = client.try_restore_from_snapshot(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+
+    // Unauthorized discard
+    let result = client.try_discard_snapshot(&stranger);
+    assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
+}
+
+#[test]
+fn test_pre_upgrade_discard() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Take snapshot
+    let result = client.try_pre_upgrade(&owner);
+    assert!(result.is_ok());
+
+    // Discard snapshot
+    let result = client.try_discard_snapshot(&owner);
+    assert!(result.is_ok());
+
+    // Restore should now fail (no snapshot)
+    let result = client.try_restore_from_snapshot(&owner);
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidDependency)));
+}
+
 #[test]
 fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     let (env, owner) = setup_test();
@@ -1373,6 +1495,7 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     assert_eq!(stats.failed_executions, 0);
 }
 
+<<<<<<< add-assert-test
 #[test]
 fn test_double_init_fails() {
     let (env, owner) = setup_test();
@@ -1405,6 +1528,156 @@ fn test_not_initialized_fails() {
     let result2 = client.try_execute_remittance_flow(&RemittanceFlowParams {
         caller: executor.clone(),
         total_amount: 1000i128,
+=======
+// ---------------------------------------------------------------------------
+// MockSplit allocation-length / content hardening tests (Issue #828)
+//
+// The orchestrator calls an external calculate_split whose return vector it
+// does not control. These tests prove that short (0 / 1 / 3 entries) and
+// negative-valued responses all produce a typed `InvalidAmount` and that the
+// EXEC_LOCK is released (not stuck) in every rejection path.
+// ---------------------------------------------------------------------------
+
+/// Mock whose calculate_split returns an empty vec (0 allocations).
+mod mock_split_0 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            Vec::new(&env)
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
+}
+
+/// Mock whose calculate_split returns 1 allocation.
+mod mock_split_1 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 10000i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
+}
+
+/// Mock whose calculate_split returns 3 allocations (one short of required 4).
+mod mock_split_3 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
+}
+
+/// Mock whose calculate_split returns exactly 4 allocations (valid).
+mod mock_split_4 {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
+}
+
+/// Mock whose calculate_split returns a negative savings allocation.
+mod mock_split_negative {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+    #[contract]
+    pub struct Contract;
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            true
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            true
+        }
+    }
+}
+
+/// Helper: build RemittanceFlowParams using the same contract for every role.
+fn flow_params_single(_env: &Env, caller: &Address, mock_id: &Address) -> RemittanceFlowParams {
+    RemittanceFlowParams {
+        caller: caller.clone(),
+        total_amount: 10_000i128,
+>>>>>>> main
         family_wallet: mock_id.clone(),
         remittance_split: mock_id.clone(),
         savings: mock_id.clone(),
@@ -1413,9 +1686,90 @@ fn test_not_initialized_fails() {
         goal_id: 1,
         bill_id: 1,
         policy_id: 1,
+<<<<<<< add-assert-test
     });
     // When not initialized, what happens when we call execute_remittance_flow?
     // Let's check what init does: it sets OWNER, etc. So let's use a function that requires OWNER to exist, like maybe setting something, but let's just check that get_execution_stats returns None
     let result3 = client.get_execution_stats();
     assert_eq!(result3, None, "get_execution_stats should return None when not initialized");
+=======
+    }
+}
+
+#[test]
+fn test_split_0_allocations_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_0::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    // EXEC_LOCK must be released (not stuck).
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_1_allocation_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_1::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_3_allocations_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_3::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_4_allocations_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_4::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert!(
+        result.is_ok(),
+        "4-allocation split should succeed: {:?}",
+        result
+    );
+    assert!(!client.get_execution_state());
+}
+
+#[test]
+fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_split_negative::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+    // No downstream add_to_goal/pay_bill/pay_premium must have been called —
+    // the lock is released, confirming we exited cleanly before execution.
+    assert!(!client.get_execution_state());
+>>>>>>> main
 }
