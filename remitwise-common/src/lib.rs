@@ -351,7 +351,7 @@ impl RemitwiseEvents {
             action,
         );
         
-        #[cfg(any(test, feature = "testutils"))]
+        #[cfg(test)]
         {
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {

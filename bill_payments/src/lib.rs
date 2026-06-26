@@ -1154,6 +1154,7 @@ impl BillPayments {
                 tags: bill.tags.clone(),
                 currency: bill.currency.clone(),
             };
+            let next_bill_amount = next_bill.amount;
             bills.set(next_id, next_bill);
             env.storage()
                 .instance()
@@ -1162,6 +1163,8 @@ impl BillPayments {
             Self::index_add_active(&env, &caller, next_id);
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
+            // Update unpaid total for the new recurring bill
+            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),
@@ -1169,15 +1172,14 @@ impl BillPayments {
         }
 
         let paid_amount = bill.amount;
-        let was_recurring = bill.recurring;
+        let _was_recurring = bill.recurring;
         let bill_ext_ref = bill.external_ref.clone();
         bills.set(bill_id, bill);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
-        if !was_recurring {
-            Self::adjust_unpaid_total(&env, &caller, -paid_amount);
-        }
+        // Always adjust unpaid total when a bill is paid, even if it's recurring
+        Self::adjust_unpaid_total(&env, &caller, -paid_amount);
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller.clone(), bill_ext_ref),
