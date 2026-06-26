@@ -75,6 +75,7 @@ mod remittance_split_mock {
 
 mod savings_goals_mock {
     use crate::{GoalPage, SavingsGoal, SavingsGoalsTrait};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, vec, Address, Env, String as SorobanString, Vec};
 
     #[contract]
@@ -177,6 +178,7 @@ mod insurance_mock {
 
 mod family_wallet_mock {
     use crate::{FamilyWalletTrait, MemberAddressPage, SpendingTracker};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, vec, Address, Env};
 
     #[contract]
