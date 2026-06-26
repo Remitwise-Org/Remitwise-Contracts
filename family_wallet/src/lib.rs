@@ -1163,6 +1163,9 @@ impl FamilyWallet {
         if min_balance < 0 {
             panic!("Emergency min balance must be non-negative");
         }
+        if daily_limit < 0 {
+            panic!("Emergency daily limit must be non-negative");
+        }
 
         Self::extend_instance_ttl(&env);
 

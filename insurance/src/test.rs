@@ -771,4 +771,33 @@ mod tests {
             InsuranceError::NotInitialized,
         );
     }
+
+    #[test]
+    fn test_negative_amount_rejections() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let caller = Address::generate(&env);
+
+        // 1. negative monthly premium
+        let res_premium = c.try_create_policy(
+            &caller,
+            &n(&env, "P_Bad"),
+            &CoverageType::Health,
+            &-100i128,
+            &50_000_000i128,
+        );
+        assert_eq!(res_premium, Err(Ok(InsuranceError::InvalidPremium)));
+
+        // 2. negative coverage amount
+        let res_coverage = c.try_create_policy(
+            &caller,
+            &n(&env, "P_Bad2"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &-100i128,
+        );
+        assert_eq!(res_coverage, Err(Ok(InsuranceError::InvalidCoverageAmount)));
+    }
 }
+
