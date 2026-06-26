@@ -2335,3 +2335,6 @@ mod tests_data_availability;
 
 #[cfg(test)]
 mod tests_archived_pagination_bound;
+
+#[cfg(test)]
+mod tests_safe_math;

@@ -5,6 +5,8 @@
 mod events_schema_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod tests_safe_math;
 
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
