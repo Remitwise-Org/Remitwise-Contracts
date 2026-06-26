@@ -32,5 +32,9 @@ name = "tests_overdue"
 path = "tests/tests_overdue.rs"
 
 [[test]]
+name = "tests_bill_schedule_exec"
+path = "src/tests_bill_schedule_exec.rs"
+
+[[test]]
 name = "unpaid_by_currency_pagination"
 path = "tests/unpaid_by_currency_pagination.rs"

@@ -4,12 +4,21 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = "=21.7.7"
+
+[features]
+testutils = ["soroban-sdk/testutils"]
 
 [dev-dependencies]
 proptest = "1"
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+
+[features]
+testutils = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]

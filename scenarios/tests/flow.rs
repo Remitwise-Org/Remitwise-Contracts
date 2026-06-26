@@ -144,6 +144,7 @@ fn test_end_to_end_flow() {
 /// 6. Bill payment and recurring cycle verification
 /// 7. Financial health report verification
 #[test]
+#[allow(unused_comparisons, clippy::absurd_extreme_comparisons)]
 fn test_recurring_obligations_flow() {
     // ── Phase 1: Environment and contract initialization ──────────────────────
     //

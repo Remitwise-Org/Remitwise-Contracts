@@ -9,6 +9,7 @@ mod test;
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -193,6 +194,27 @@ pub struct ExportSnapshot {
     pub config: SplitConfig,
     pub schedules: Vec<RemittanceSchedule>,
     pub exported_at: u64,
+}
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage before a contract upgrade so that
+/// state can be restored if `post_upgrade` produces inconsistent results.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Core split configuration.
+    pub config: SplitConfig,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
 }
 
 /// Audit log entry for security and compliance.
@@ -579,6 +601,206 @@ impl RemittanceSplit {
             symbol_short!("upgraded"),
             (prev, new_version),
         );
+        Ok(())
+    }
+
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this **before** performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if `post_upgrade` produces inconsistent results or
+    /// if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or contract owner if no upgrade admin is set)
+    /// may take a snapshot.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized yet
+    /// - `Unauthorized` if `caller` is not the upgrade admin or owner
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("split"), symbol_short!("snap_pre"))` on success.
+    pub fn pre_upgrade(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(config.owner.clone());
+        if admin != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        let previous_version = Self::get_version(env.clone());
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            config,
+            version: previous_version,
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+
+        Ok(())
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// `SplitConfig`, version, upgrade admin, and pause state back to
+    /// instance storage. The snapshot is consumed (removed) after a
+    /// successful restore.
+    ///
+    /// Use this to roll back a failed or inconsistent upgrade.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or contract owner if no upgrade admin is set)
+    /// may restore from a snapshot.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized yet
+    /// - `Unauthorized` if `caller` is not the upgrade admin or owner
+    /// - `UnsupportedVersion` if the snapshot version is not supported
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("split"), symbol_short!("snap_rst"))` on success.
+    pub fn restore_from_snapshot(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(config.owner);
+        if admin != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            return Err(RemittanceSplitError::UnsupportedVersion);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        // Restore config
+        env.storage()
+            .instance()
+            .set(&symbol_short!("CONFIG"), &snapshot.config);
+        env.storage().instance().set(
+            &symbol_short!("SPLIT"),
+            &vec![
+                &env,
+                snapshot.config.spending_percent,
+                snapshot.config.savings_percent,
+                snapshot.config.bills_percent,
+                snapshot.config.insurance_percent,
+            ],
+        );
+
+        // Restore version
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+
+        // Restore upgrade admin
+        match &snapshot.upgrade_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
+        }
+
+        // Restore pause state
+        if snapshot.paused {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("PAUSED"), &true);
+        } else {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("PAUSED"), &false);
+        }
+
+        match &snapshot.pause_admin {
+            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
+        }
+
+        // Consume the snapshot
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        Self::append_audit(&env, symbol_short!("snap_rst"), &caller, true);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+
+        Ok(())
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use this after a successful upgrade to clean up the snapshot and
+    /// free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or contract owner if no upgrade admin is set)
+    /// may discard a snapshot.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the contract has not been initialized
+    /// - `Unauthorized` if `caller` is not the upgrade admin or owner
+    pub fn discard_snapshot(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(config.owner);
+        if admin != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        Self::append_audit(&env, symbol_short!("snap_dsc"), &caller, true);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("snap_dsc")),
+            (),
+        );
+
         Ok(())
     }
 

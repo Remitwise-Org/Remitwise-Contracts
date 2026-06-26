@@ -220,7 +220,7 @@ mod goal_completed_event_tests {
             &vec![
                 &env,
                 crate::ContributionItem {
-                    goal_id: goal_id,
+                    goal_id,
                     amount: 1_000_i128,
                 },
             ],
@@ -305,7 +305,7 @@ mod goal_completed_event_tests {
             &vec![
                 &env,
                 crate::ContributionItem {
-                    goal_id: goal_id,
+                    goal_id,
                     amount: 100_i128,
                 },
             ],
