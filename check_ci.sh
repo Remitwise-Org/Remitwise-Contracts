@@ -25,4 +25,14 @@ echo "Running gas benchmarks..."
 echo "Running cross-contract invariant checks..."
 python3 scripts/verify_cross_contract_invariants.py
 
+echo "Checking feature flag consistency..."
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/check_features.py
+elif command -v python >/dev/null 2>&1; then
+  python scripts/check_features.py
+else
+  echo "Error: Python is not installed (required by scripts/check_features.py)"
+  exit 1
+fi
+
 echo "✅ All checks passed!"
