@@ -37,6 +37,14 @@ pub enum CoverageType {
     Liability = 5,
 }
 
+/// Policy mode for access control
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum PolicyMode {
+    Strict = 1,
+}
+
 /// Event categories used for logging across all contracts.
 ///
 /// Determines the high-level classification of an event. The taxonomy is documented in
@@ -424,7 +432,7 @@ impl RemitwiseEvents {
 
 #[cfg(test)]
 mod encoding_stability_tests {
-    use super::{Category, CoverageType, FamilyRole};
+    use super::{Category, CoverageType, FamilyRole, PolicyMode};
     use soroban_sdk::{Env, Map, Vec};
 
     fn round_trip<T>(env: &Env, v: T) -> T
@@ -607,6 +615,39 @@ mod encoding_stability_tests {
         map.set(3u32, CoverageType::Liability);
 
         let mut out_map = Map::<u32, CoverageType>::new(&env);
+        for (k, v) in map.iter() {
+            out_map.set(k, round_trip(&env, v));
+        }
+        assert_eq!(out_map, map);
+    }
+
+    #[test]
+    fn policy_mode_round_trip_and_encoding_stability() {
+        let env = Env::default();
+
+        assert_encoding_matches_discriminant(&env, PolicyMode::Strict, 1);
+
+        fn cover_all_variants(v: PolicyMode) {
+            match v {
+                PolicyMode::Strict => {}
+            }
+        }
+
+        for v in [PolicyMode::Strict] {
+            cover_all_variants(v);
+        }
+
+        let vec = Vec::from_array(&env, [PolicyMode::Strict]);
+        let mut out = Vec::<PolicyMode>::new(&env);
+        for item in vec.iter() {
+            out.push_back(round_trip(&env, item));
+        }
+        assert_eq!(out, vec);
+
+        let mut map = Map::<u32, PolicyMode>::new(&env);
+        map.set(1u32, PolicyMode::Strict);
+
+        let mut out_map = Map::<u32, PolicyMode>::new(&env);
         for (k, v) in map.iter() {
             out_map.set(k, round_trip(&env, v));
         }
