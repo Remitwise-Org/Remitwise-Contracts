@@ -466,6 +466,16 @@ Run tests for all contracts:
 cargo test
 ```
 
+### Feature Flag Consistency
+
+The CI pipeline includes a feature flag consistency check (`scripts/check_features.py`) that verifies every `cfg(feature = "...")` reference in Rust source code has a corresponding entry in the crate's `[features]` section. This catches stale or misspelled feature gates before they reach production.
+
+Run it locally:
+
+```bash
+python3 scripts/check_features.py
+```
+
 ### Encrypted migration payload decode safety
 
 The `data_migration` crate supports an **opaque encrypted payload** transport format for off-chain migration tooling.

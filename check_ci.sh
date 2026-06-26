@@ -25,4 +25,7 @@ echo "Running gas benchmarks..."
 echo "Running cross-contract invariant checks..."
 python3 scripts/verify_cross_contract_invariants.py
 
+echo "Checking feature flag consistency..."
+python3 scripts/check_features.py
+
 echo "✅ All checks passed!"

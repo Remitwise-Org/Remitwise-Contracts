@@ -112,6 +112,11 @@ jobs:
           cargo clippy -p orchestrator --all-targets -- -D warnings
         continue-on-error: false
 
+      - name: Check feature flag consistency
+        run: |
+          python3 scripts/check_features.py
+        continue-on-error: false
+
       - name: Check formatting
         run: |
           cargo fmt --all -- --check
