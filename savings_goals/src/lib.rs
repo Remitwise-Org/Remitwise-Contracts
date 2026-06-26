@@ -1,6 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{
+    EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
@@ -205,6 +207,29 @@ pub struct GoalsExportSnapshot {
     pub checksum: u64,
     pub next_id: u32,
     pub goals: Vec<SavingsGoal>,
+}
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage (IDs, version, admin, pause state)
+/// before a contract upgrade so state can be restored if the upgrade fails.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Next goal ID counter.
+    pub next_id: u32,
+    /// Next schedule ID counter.
+    pub next_schedule_id: u32,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
 }
 
 #[contracttype]
@@ -556,6 +581,135 @@ impl SavingsGoalContract {
             EventPriority::High,
             symbol_short!("upgraded"),
             (prev, new_version),
+        );
+    }
+
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may take a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no upgrade admin is set
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("savings"), symbol_short!("snap_pre"))`.
+    pub fn pre_upgrade(env: Env, caller: Address) {
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            next_id: env
+                .storage()
+                .instance()
+                .get(&DataKey::NextId)
+                .unwrap_or(0),
+            next_schedule_id: env
+                .storage()
+                .instance()
+                .get(&DataKey::NextScheduleId)
+                .unwrap_or(0),
+            version: Self::get_version(env.clone()),
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+        };
+        env.storage()
+            .persistent()
+            .set(&SNAPSHOT_KEY, &snapshot);
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// ID counters, version, upgrade admin, and pause state back to instance
+    /// storage. The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may restore from a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no snapshot exists or version is unsupported
+    /// - If no upgrade admin is set
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("savings"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(env: Env, caller: Address) {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            panic!("Unsupported snapshot version");
+        }
+        Self::extend_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextId, &snapshot.next_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextScheduleId, &snapshot.next_schedule_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::Version, &snapshot.version);
+        match &snapshot.upgrade_admin {
+            Some(addr) => env.storage().instance().set(&DataKey::UpgradeAdmin, addr),
+            None => env.storage().instance().remove(&DataKey::UpgradeAdmin),
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &snapshot.paused);
+        match &snapshot.pause_admin {
+            Some(addr) => env.storage().instance().set(&DataKey::PauseAdmin, addr),
+            None => env.storage().instance().remove(&DataKey::PauseAdmin),
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may discard a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no upgrade admin is set
+    pub fn discard_snapshot(env: Env, caller: Address) {
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("snap_dsc")),
+            (),
         );
     }
 

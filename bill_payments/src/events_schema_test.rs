@@ -12,11 +12,16 @@
 #![cfg(test)]
 
 use super::*;
+use crate::pause_functions::{
+    ARCHIVE, CANCEL_BILL, CANCEL_BILL_SCHEDULE, CREATE_BILL, CREATE_BILL_SCHEDULE,
+    EXECUTE_BILL_SCHEDULES, MODIFY_BILL_SCHEDULE, PAY_BILL, RESTORE,
+};
+use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 use crate::pause_functions::{ARCHIVE, CANCEL_BILL, CREATE_BILL, PAY_BILL, RESTORE};
 use crate::BillPaymentsClient;
 use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::testutils::Events;
-use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val, Address, String, Vec};
+use soroban_sdk::{symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec};
 
 // ---------------------------------------------------------------------------
 // Pause-function symbols
@@ -32,6 +37,10 @@ fn pause_function_symbols_are_stable() {
     assert_eq!(CANCEL_BILL, symbol_short!("can_bill"));
     assert_eq!(ARCHIVE, symbol_short!("archive"));
     assert_eq!(RESTORE, symbol_short!("restore"));
+    assert_eq!(CREATE_BILL_SCHEDULE, symbol_short!("crt_bsch"));
+    assert_eq!(MODIFY_BILL_SCHEDULE, symbol_short!("mod_bsch"));
+    assert_eq!(CANCEL_BILL_SCHEDULE, symbol_short!("can_bsch"));
+    assert_eq!(EXECUTE_BILL_SCHEDULES, symbol_short!("exe_bsch"));
 }
 
 #[test]
@@ -64,8 +73,13 @@ fn remitwise_action_symbols_are_stable() {
         symbol_short!("f_pay_id"),
         symbol_short!("fpay_auth"),
         symbol_short!("f_pay_pd"),
+        symbol_short!("sch_new"),
+        symbol_short!("sch_exec"),
+        symbol_short!("sch_miss"),
+        symbol_short!("sch_mod"),
+        symbol_short!("sch_can"),
     ];
-    assert_eq!(actions.len(), 15);
+    assert_eq!(actions.len(), 20);
 }
 
 // ---------------------------------------------------------------------------
@@ -210,26 +224,30 @@ fn bill_event_secondary_topics_emit_expected_variants() {
         if let Ok(variant) = variant {
             match variant {
                 BillEvent::Cancelled => {
-                    let payload: (u32, Address, u64) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, u64) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_1);
                     assert_eq!(payload.1, owner);
                     found_cancelled = true;
                 }
                 BillEvent::ExternalRefUpdated => {
-                    let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, Option<String>) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_1);
                     assert_eq!(payload.1, owner);
                     assert_eq!(payload.2, Some(String::from_str(&env, "REF1")));
                     found_external_ref = true;
                 }
                 BillEvent::Restored => {
-                    let payload: (u32, Address, u64) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, u64) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.0, bill_id_2);
                     assert_eq!(payload.1, owner);
                     found_restored = true;
                 }
                 BillEvent::Paid => {
-                    let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+                    let payload: (u32, Address, Option<String>) =
+                        TryFromVal::try_from_val(&env, &data).unwrap();
                     assert_eq!(payload.1, owner);
                     found_paid += 1;
                 }
@@ -239,9 +257,15 @@ fn bill_event_secondary_topics_emit_expected_variants() {
     }
 
     assert!(found_cancelled, "BillEvent::Cancelled was not emitted");
-    assert!(found_external_ref, "BillEvent::ExternalRefUpdated was not emitted");
+    assert!(
+        found_external_ref,
+        "BillEvent::ExternalRefUpdated was not emitted"
+    );
     assert!(found_restored, "BillEvent::Restored was not emitted");
-    assert_eq!(found_paid, 1, "Expected exactly one BillEvent::Paid emitted");
+    assert_eq!(
+        found_paid, 1,
+        "Expected exactly one BillEvent::Paid emitted"
+    );
 }
 
 #[test]
@@ -291,12 +315,16 @@ fn batch_pay_bills_emits_paid_events_matching_pay_bill() {
         }
         let variant = BillEvent::try_from_val(&env, &topics.get(1).unwrap());
         if let Ok(BillEvent::Paid) = variant {
-            let payload: (u32, Address, Option<String>) = TryFromVal::try_from_val(&env, &data).unwrap();
+            let payload: (u32, Address, Option<String>) =
+                TryFromVal::try_from_val(&env, &data).unwrap();
             assert!(payload.0 == bill_a || payload.0 == bill_b);
             assert_eq!(payload.1, owner);
             paid_events += 1;
         }
     }
 
-    assert_eq!(paid_events, 2, "batch_pay_bills must emit exactly two BillEvent::Paid events");
+    assert_eq!(
+        paid_events, 2,
+        "batch_pay_bills must emit exactly two BillEvent::Paid events"
+    );
 }
