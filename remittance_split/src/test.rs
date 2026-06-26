@@ -2217,3 +2217,46 @@ fn test_get_split_allocations_percentages_across_all_categories() {
     // insurance = 10 - 3 - 3 - 3 = 1  (dust absorbed)
     assert_eq!(allocs.get(3).unwrap().amount, 1);
 }
+
+#[test]
+fn test_double_init_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
+
+    // First initialize should succeed
+    let result1 = client.try_initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    assert_eq!(result1, Ok(Ok(true)), "first init should succeed");
+
+    // Second initialize should fail with AlreadyInitialized
+    let result2 = client.try_initialize_split(&owner, &1, &token_addr, &50, &25, &15, &10);
+    assert_eq!(result2, Err(Ok(RemittanceSplitError::AlreadyInitialized)), "second init should fail with AlreadyInitialized");
+}
+
+#[test]
+fn test_not_initialized_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    // Try to call a function that returns Option
+    let result = client.get_config();
+    assert!(result.is_none(), "get_config should return None when not initialized");
+
+    // Try to call a function that returns Result (like set_pause_admin)
+    let owner = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let result2 = client.try_set_pause_admin(&owner, &new_admin);
+    assert_eq!(result2, Err(Ok(RemittanceSplitError::NotInitialized)), "set_pause_admin should fail with NotInitialized when not initialized");
+}

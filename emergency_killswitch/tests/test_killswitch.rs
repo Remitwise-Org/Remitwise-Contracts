@@ -4,7 +4,7 @@ use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
-    Address, Env, Symbol, IntoVal,
+    Address, Env, Symbol,
 };
 
 fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
@@ -26,6 +26,22 @@ fn initialize_succeeds_with_valid_address() {
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
+}
+
+#[test]
+fn assert_no_double_init() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    // First initialization should succeed
+    assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
+    // Second initialization should fail with AlreadyInitialized
+    assert_eq!(client.try_initialize(&admin), Err(Ok(Error::AlreadyInitialized)));
+    // Non-initialized functions should fail with NotInitialized before init
+    let env2 = Env::default();
+    let (_, client2) = setup(&env2);
+    let admin2 = Address::generate(&env2);
+    assert_eq!(client2.try_pause(), Err(Ok(Error::NotInitialized)));
 }
 
 #[test]
