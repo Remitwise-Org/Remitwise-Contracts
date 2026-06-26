@@ -30,3 +30,6 @@ compile_errors_*.txt
 # Brief and BM artifacts
 brief.md
 BM/
+
+# Python cache
+__pycache__/
