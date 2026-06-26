@@ -95,6 +95,9 @@ pub mod pause_functions {
     pub const MODIFY_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("mod_bsch");
     pub const CANCEL_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("can_bsch");
     pub const EXECUTE_BILL_SCHEDULES: soroban_sdk::Symbol = symbol_short!("exe_bsch");
+    pub const ADD_TAGS: soroban_sdk::Symbol = symbol_short!("add_tags");
+    pub const REM_TAGS: soroban_sdk::Symbol = symbol_short!("rem_tags");
+    pub const SET_EXT_REF: soroban_sdk::Symbol = symbol_short!("ext_ref");
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
@@ -1719,7 +1722,7 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let owner_bill_count = Self::get_owner_bill_count(&env, bill.owner.clone());
+            let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
             if owner_bill_count >= MAX_BILLS_PER_OWNER {
                 return Err(BillPaymentsError::OwnerBillCapExceeded);
             }
@@ -1769,7 +1772,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
+            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),
@@ -1825,6 +1828,7 @@ impl BillPayments {
     /// - Emits `(bill, tags_add)` with `(bill_id, caller, tags)`.
     pub fn add_tags_to_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::ADD_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -1875,6 +1879,7 @@ impl BillPayments {
     /// - Emits `(bill, tags_rem)` with `(bill_id, caller, tags)`.
     pub fn remove_tags_from_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::REM_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -2296,6 +2301,7 @@ impl BillPayments {
         external_ref: Option<String>,
     ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::SET_EXT_REF)?;
 
         // Validate the new ref if provided
         let validated_ext_ref = Self::validate_optional_external_ref(&env, &external_ref)?;
