@@ -1064,9 +1064,7 @@ impl BillPayments {
             paused: Self::get_global_paused(&env),
             pause_admin: Self::get_pause_admin(&env),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1114,14 +1112,20 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("VERSION"), &snapshot.version);
         match &snapshot.upgrade_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("UPG_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
         }
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &snapshot.paused);
         match &snapshot.pause_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("PAUSE_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
@@ -1234,9 +1238,7 @@ impl BillPayments {
             .get(&STORAGE_BSCHEDS)
             .unwrap_or_else(|| Map::new(&env));
         schedules.set(next_schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         env.storage()
             .instance()
@@ -1307,9 +1309,7 @@ impl BillPayments {
         schedule.recurring = interval > 0;
 
         schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleModified),
@@ -1351,9 +1351,7 @@ impl BillPayments {
         schedule.active = false;
 
         schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         Self::index_remove_bill_schedule(&env, &caller, schedule_id);
 
@@ -1487,9 +1485,7 @@ impl BillPayments {
             );
         }
 
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
@@ -1719,7 +1715,7 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let owner_bill_count = Self::get_owner_bill_count(&env, bill.owner.clone());
+            let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
             if owner_bill_count >= MAX_BILLS_PER_OWNER {
                 return Err(BillPaymentsError::OwnerBillCapExceeded);
             }
@@ -1769,7 +1765,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
+            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),

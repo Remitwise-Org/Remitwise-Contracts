@@ -206,19 +206,20 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
-    prefixed_message.extend_from_slice(domain_separator);
-    prefixed_message.extend_from_slice(message);
+    let mut msg_bytes = soroban_sdk::Bytes::new(env);
+    msg_bytes.extend_from_slice(domain_separator);
+    msg_bytes.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
+    let sig_bytes: soroban_sdk::BytesN<64> = soroban_sdk::Bytes::from_slice(env, signature)
+        .try_into()
+        .map_err(|_| SignatureError::InvalidSignatureLength)?;
+    let pk_bytes: soroban_sdk::BytesN<32> = soroban_sdk::Bytes::from_slice(env, public_key)
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
 
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
-        Ok(())
-    } else {
-        Err(SignatureError::VerificationFailed)
-    }
+    env.crypto()
+        .ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes);
+    Ok(())
 }
 
 /// Validates and canonicalizes a batch of tags without panicking.
@@ -387,7 +388,10 @@ impl RemitwiseEvents {
             let xdr_bytes = val.to_xdr(env);
             let size = xdr_bytes.len();
             if size > 256 {
-                panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
+                panic!(
+                    "Event data size {} exceeds 256-byte budget. Emits must be compact.",
+                    size
+                );
             }
             env.events().publish(topics, val);
         }
