@@ -459,7 +459,7 @@ fn test_verify_signature_valid() {
     let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
 
     // Sign the prefixed message
-    let mut prefixed = Vec::new();
+    let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(domain);
     prefixed.extend_from_slice(message);
     let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
@@ -517,7 +517,7 @@ fn test_verify_signature_wrong_domain() {
 
     let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
 
-    let mut prefixed = Vec::new();
+    let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(domain1);
     prefixed.extend_from_slice(message);
     let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);

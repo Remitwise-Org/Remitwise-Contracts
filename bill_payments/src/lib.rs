@@ -4,7 +4,7 @@
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, check_and_increment_rate_limit, RateLimitError,
 };
 
 use soroban_sdk::{
@@ -20,6 +20,11 @@ const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
 const MAX_CURRENCY_LEN: u32 = 10;
 pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
+
+/// Rate limits for bill payments operations
+pub const CREATE_BILL_RATE_LIMIT: u32 = 100; // per address per 24h
+pub const PAY_BILL_RATE_LIMIT: u32 = 200; // per address per 24h
+pub const CANCEL_BILL_RATE_LIMIT: u32 = 50; // per address per 24h
 const MIN_EXTERNAL_REF_LEN: u32 = 1;
 const MAX_EXTERNAL_REF_LEN: u32 = 64;
 
@@ -128,6 +133,8 @@ pub enum BillPaymentsError {
     OwnerBillCapExceeded = 18,
     /// Tag content contains invalid characters (must be [a-z0-9-_])
     InvalidTagContent = 19,
+    /// Rate limit exceeded for this operation
+    RateLimitExceeded = 20,
 }
 
 pub type Error = BillPaymentsError;
@@ -972,6 +979,14 @@ impl BillPayments {
     ) -> Result<u32, BillPaymentsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
+        
+        // Check rate limit
+        check_and_increment_rate_limit(
+            &env,
+            &owner,
+            pause_functions::CREATE_BILL,
+            CREATE_BILL_RATE_LIMIT,
+        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
         let current_time = env.ledger().timestamp();
         if due_date == 0 || due_date < current_time {
@@ -1091,6 +1106,14 @@ impl BillPayments {
     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
+        
+        // Check rate limit
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::PAY_BILL,
+            PAY_BILL_RATE_LIMIT,
+        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
         Self::extend_instance_ttl(&env);
         let mut bills: Map<u32, Bill> = env
@@ -1919,6 +1942,14 @@ impl BillPayments {
     pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
+        
+        // Check rate limit
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::CANCEL_BILL,
+            CANCEL_BILL_RATE_LIMIT,
+        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()

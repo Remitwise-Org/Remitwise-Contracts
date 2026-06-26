@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracttype, symbol_short, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Map, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -104,6 +104,97 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
+/// Rate limiting constants
+pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours
+const STORAGE_RATE_LIMIT: Symbol = symbol_short!("RATE_LIM");
+
+/// Rate limit record: stores count per address + operation + window
+#[contracttype]
+#[derive(Clone)]
+pub struct RateLimitRecord {
+    pub count: u32,
+    pub window_id: u64,
+}
+
+/// Rate limit error
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RateLimitError {
+    RateLimitExceeded,
+}
+
+/// Helper to check and increment rate limit
+/// 
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `caller` - Address of the caller
+/// * `operation` - Symbol identifying the operation to rate limit
+/// * `limit` - Maximum allowed operations per window
+/// 
+/// # Returns
+/// * `Ok(())` if within limit
+/// * `Err(RateLimitError::RateLimitExceeded)` if limit exceeded
+pub fn check_and_increment_rate_limit(
+    env: &Env,
+    caller: &Address,
+    operation: Symbol,
+    limit: u32,
+) -> Result<(), RateLimitError> {
+    let now = env.ledger().timestamp();
+    let window_id = (now / RATE_LIMIT_WINDOW_SECONDS) * RATE_LIMIT_WINDOW_SECONDS;
+    
+    let key = (caller.clone(), operation, window_id);
+    
+    let mut rate_limits: Map<(Address, Symbol, u64), RateLimitRecord> = env
+        .storage()
+        .instance()
+        .get(&STORAGE_RATE_LIMIT)
+        .unwrap_or_else(|| Map::new(env));
+    
+    let record = rate_limits.get(key.clone()).unwrap_or_else(|| RateLimitRecord {
+        count: 0,
+        window_id,
+    });
+    
+    if record.count >= limit {
+        return Err(RateLimitError::RateLimitExceeded);
+    }
+    
+    let new_record = RateLimitRecord {
+        count: record.count + 1,
+        window_id,
+    };
+    
+    rate_limits.set(key, new_record);
+    env.storage().instance().set(&STORAGE_RATE_LIMIT, &rate_limits);
+    
+    Ok(())
+}
+
+/// Helper to get current rate limit status for an operation
+pub fn get_rate_limit_status(
+    env: &Env,
+    caller: &Address,
+    operation: Symbol,
+) -> (u32, u64) {
+    let now = env.ledger().timestamp();
+    let window_id = (now / RATE_LIMIT_WINDOW_SECONDS) * RATE_LIMIT_WINDOW_SECONDS;
+    
+    let key = (caller.clone(), operation, window_id);
+    
+    let rate_limits: Map<(Address, Symbol, u64), RateLimitRecord> = env
+        .storage()
+        .instance()
+        .get(&STORAGE_RATE_LIMIT)
+        .unwrap_or_else(|| Map::new(env));
+    
+    let record = rate_limits.get(key).unwrap_or_else(|| RateLimitRecord {
+        count: 0,
+        window_id,
+    });
+    
+    (record.count, window_id + RATE_LIMIT_WINDOW_SECONDS)
+}
+
 /// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
 /// # Contract
@@ -180,15 +271,16 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
-    prefixed_message.extend_from_slice(domain_separator);
-    prefixed_message.extend_from_slice(message);
+    let domain_bytes = soroban_sdk::Bytes::from_slice(env, domain_separator);
+    let msg_bytes = soroban_sdk::Bytes::from_slice(env, message);
+    let mut prefixed_bytes = soroban_sdk::Bytes::new(env);
+    prefixed_bytes.append(&domain_bytes);
+    prefixed_bytes.append(&msg_bytes);
 
     let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
     let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
 
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
+    if soroban_sdk::crypto::Ed25519::verify(&pk_bytes, &prefixed_bytes, &sig_bytes) {
         Ok(())
     } else {
         Err(SignatureError::VerificationFailed)
@@ -353,13 +445,13 @@ impl RemitwiseEvents {
         
         #[cfg(any(test, feature = "testutils"))]
         {
+            use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                if let Ok(xdr_bytes) = soroban_sdk::xdr::ToXdr::to_xdr(&sc_val) {
-                    let size = xdr_bytes.len();
-                    if size > 256 {
-                        panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
-                    }
+                let xdr_bytes = sc_val.to_xdr(env);
+                let size = xdr_bytes.len();
+                if size > 256 {
+                    panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
                 }
             }
             env.events().publish(topics, val);
