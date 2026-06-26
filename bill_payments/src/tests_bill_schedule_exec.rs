@@ -25,13 +25,13 @@ fn create_owner_bill(
 ) -> u32 {
     client.create_bill(
         owner,
-        &String::from_str(&client.env(), name),
+        &String::from_str(&client.env, name),
         &amount,
         &due_date,
         &false,
         &0,
         &None,
-        &String::from_str(&client.env(), "XLM"),
+        &String::from_str(&client.env, "XLM"),
         &None,
     )
 }
