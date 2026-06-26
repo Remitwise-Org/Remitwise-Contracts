@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracttype, symbol_short, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -128,6 +128,26 @@ pub fn clamp_limit(limit: u32) -> u32 {
         MAX_PAGE_LIMIT
     } else {
         limit
+    }
+}
+
+/// Error related to time and periods.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TimeError {
+    InvalidPeriod = 7,
+}
+
+/// Validates that a requested period is logically ordered.
+///
+/// # Errors
+/// Returns `TimeError::InvalidPeriod` if `start > end`.
+pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
+    if start > end {
+        Err(TimeError::InvalidPeriod)
+    } else {
+        Ok(())
     }
 }
 
@@ -337,7 +357,7 @@ impl RemitwiseEvents {
     /// * `data` – The event payload implementing `IntoVal`.
     ///
     /// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
-    /// 
+    ///
     /// **Size Budget**: Event data must be compact (topics + small payload, not bulk records).
     /// The recommended maximum serialized size for the `data` payload is 256 bytes.
     /// Oversized payloads will trigger a debug/test assertion.
@@ -356,22 +376,25 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
-        
-        #[cfg(test)]
+
+        #[cfg(any(test, feature = "testutils"))]
         {
+            use soroban_sdk::xdr::ToXdr;
+            use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                if let Ok(xdr_bytes) = soroban_sdk::xdr::ToXdr::to_xdr(&sc_val) {
-                    let size = xdr_bytes.len();
-                    if size > 256 {
-                        panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
-                    }
+                let xdr_bytes = sc_val.to_xdr(env);
+                let size = xdr_bytes.len();
+                if size > 256 {
+                    panic!(
+                        "Event data size {} exceeds the 256-byte budget. Emits must be compact.",
+                        size
+                    );
                 }
             }
             env.events().publish(topics, val);
-            return;
         }
-
+        #[cfg(not(any(test, feature = "testutils")))]
         env.events().publish(topics, data);
     }
 
