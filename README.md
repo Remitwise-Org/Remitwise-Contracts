@@ -308,6 +308,7 @@ To run an example, use `cargo run --example <example_name>`:
 
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
+- [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
