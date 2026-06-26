@@ -206,19 +206,27 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
+    extern crate alloc;
+    let mut prefixed_message = alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
     prefixed_message.extend_from_slice(domain_separator);
     prefixed_message.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
+    let mut pk_array = [0u8; 32];
+    pk_array.copy_from_slice(public_key);
+    let pk_bytes = soroban_sdk::BytesN::from_array(env, &pk_array);
+
+    let mut sig_array = [0u8; 64];
+    sig_array.copy_from_slice(signature);
+    let sig_bytes = soroban_sdk::BytesN::from_array(env, &sig_array);
+
     let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
 
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
-        Ok(())
-    } else {
-        Err(SignatureError::VerificationFailed)
-    }
+    env.crypto().ed25519_verify(
+        &pk_bytes,
+        &msg_bytes,
+        &sig_bytes
+    );
+    Ok(())
 }
 
 /// Validates and canonicalizes a batch of tags without panicking.
