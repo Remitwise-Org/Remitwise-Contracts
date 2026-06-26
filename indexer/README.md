@@ -452,3 +452,5 @@ MIT
 For issues and questions:
 - GitHub Issues: [Remitwise-Contracts/issues](https://github.com/your-org/Remitwise-Contracts/issues)
 - Documentation: [ARCHITECTURE.md](../ARCHITECTURE.md)
+- Event Indexing Reference: [INDEXING.md](../docs/INDEXING.md)
+

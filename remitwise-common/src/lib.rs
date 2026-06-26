@@ -216,6 +216,26 @@ pub fn clamp_limit(limit: u32) -> u32 {
     }
 }
 
+/// Error related to time and periods.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TimeError {
+    InvalidPeriod = 7,
+}
+
+/// Validates that a requested period is logically ordered.
+///
+/// # Errors
+/// Returns `TimeError::InvalidPeriod` if `start > end`.
+pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
+    if start > end {
+        Err(TimeError::InvalidPeriod)
+    } else {
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tag canonicalization
 // ---------------------------------------------------------------------------
@@ -423,10 +443,11 @@ impl RemitwiseEvents {
     /// * `data` – The event payload implementing `IntoVal`.
     ///
     /// The emitted event follows the topic schema defined in `docs/EVENT_TAXONOMY.md`.
-    /// 
+    ///
     /// **Size Budget**: Event data must be compact (topics + small payload, not bulk records).
     /// The recommended maximum serialized size for the `data` payload is 256 bytes.
     /// Oversized payloads will trigger a debug/test assertion.
+    #[allow(unexpected_cfgs)]
     pub fn emit<T>(
         env: &soroban_sdk::Env,
         category: EventCategory,
@@ -442,7 +463,7 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
-        
+
         #[cfg(any(test, feature = "testutils"))]
         {
             use soroban_sdk::TryFromVal;
@@ -455,9 +476,9 @@ impl RemitwiseEvents {
                 }
             }
             env.events().publish(topics, val);
-            return;
         }
 
+        #[cfg(not(any(test, feature = "testutils")))]
         env.events().publish(topics, data);
     }
 

@@ -436,7 +436,7 @@ fn test_schedule_pagination_stable_cursors() {
     // Create schedules
     let id1 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
     let id2 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
-    let id3 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
+    let _id3 = client.create_remittance_schedule(&owner, &amount, &next_due, &interval);
 
     // Test that repeated calls with same cursor return same results
     let page1_a = client.get_schedules_paginated(&owner, &0, &2);

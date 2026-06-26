@@ -25,6 +25,7 @@ stateDiagram-v2
     Paused --> Paused : schedule_unpause(time) (time >= now)
     Paused --> Active : unpause() (only when now >= time)
     Paused --> Paused : pause() (cancels/removes schedule)
+    Paused --> Active : clear_emergency_state() (admin, immediate)
 ```
 
 #### A. Global Pause (`pause`)
@@ -42,6 +43,15 @@ stateDiagram-v2
 #### D. Read-Only Query (`is_paused`)
 - **Action**: Returns the current pause status.
 - **Invariant**: The return value of `is_paused()` remains `true` throughout the incident and the cooling-off window. It only returns `false` *after* the `unpause()` function has been successfully executed by the admin after the timelock expires.
+
+#### E. Emergency Recovery (`clear_emergency_state`)
+- **Action**: Admin-only escape hatch that lifts the global pause **immediately**, bypassing the timelock.
+- **Why it exists**: The timelock can leave the contract in a *stuck-paused* state with no usable recovery short of redeploying. Because `pause()` removes any pending `DataKey::UnpauseSchedule` (invariant A), a re-pause during an incident leaves `GlobalPaused = true` with no schedule, so `unpause()` fails with `Error::InvalidSchedule` no matter how far the ledger advances. An operator who scheduled an unpause far in the future by mistake is similarly stuck until that timestamp.
+- **Behaviour**: Sets `DataKey::GlobalPaused` to `false` and removes any pending `DataKey::UnpauseSchedule` in a single call. It is **idempotent** — calling it while the contract is active is a successful no-op.
+- **Scope**: Clears only the *global* pause. Module-level (`pause_module`) and function-level (`pause_function`) pauses are intentionally preserved; lift those with `unpause_module` / `unpause_function`.
+- **Authorization**: Requires the killswitch admin (`admin.require_auth()`); returns `Error::NotInitialized` if the contract has no admin set.
+- **Trade-off**: This deliberately bypasses the cooling-off window. The timelock still governs the normal `schedule_unpause` → `unpause` path; `clear_emergency_state` is the break-glass recovery reserved for the admin when the normal path is unusable.
+- **Event**: Emits `("emergency", "cleared")` with `("GLOBAL", timestamp)`.
 
 ---
 
@@ -74,3 +84,9 @@ All invariants are verified by robust unit tests in `emergency_killswitch/tests/
 2. **`test_re_pause_cancels_schedule`**: Verifies that calling `pause()` cancels any pending unpause schedule, causing subsequent `unpause()` calls to fail with `Error::InvalidSchedule` even if the ledger moves past the originally scheduled timestamp.
 3. **`test_timelock_bypass_rejection`**: Verifies that past-dated schedules are immediately rejected by `schedule_unpause()`.
 4. **Boundary conditions**: Validates that unpause is successful exactly at the boundary of the scheduled timestamp (`ledger.timestamp() == scheduled_time`).
+5. **`test_clear_emergency_state_recovers_stuck_pause`**: Verifies that `clear_emergency_state()` lifts the global pause from the stuck state produced by a re-pause (where `unpause()` fails with `Error::InvalidSchedule`).
+6. **`test_clear_emergency_state_bypasses_timelock`**: Verifies that `clear_emergency_state()` succeeds before a scheduled unpause time and wipes the pending schedule.
+7. **`test_clear_emergency_state_is_idempotent_when_active`**: Verifies that calling `clear_emergency_state()` on an unpaused contract is a successful no-op.
+8. **`test_clear_emergency_state_requires_initialization`**: Verifies that `clear_emergency_state()` returns `Error::NotInitialized` before an admin is set.
+9. **`test_clear_emergency_state_requires_admin_auth`**: Verifies that `clear_emergency_state()` rejects callers that are not the admin.
+10. **`test_clear_emergency_state_preserves_module_and_function_pauses`**: Verifies that the recovery clears only the global pause and leaves module- and function-level pauses intact.

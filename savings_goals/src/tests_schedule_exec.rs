@@ -39,7 +39,7 @@ use testutils::set_ledger_time;
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
 
-fn setup(env: &Env) -> (SavingsGoalContractClient, Address) {
+fn setup(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(env, &contract_id);
     env.mock_all_auths();

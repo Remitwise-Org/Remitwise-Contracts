@@ -410,6 +410,76 @@ cat gas_comparison_report.txt
 - [ ] Gas costs are within acceptable range
 - [ ] TTL management works correctly
 
+## Pre-Upgrade Snapshot Hook
+
+All RemitWise contracts implement a `pre_upgrade` function that captures critical contract state
+(admin addresses, version, ID counters, configuration) into persistent storage **before** a contract
+upgrade. This enables deterministic rollback if the `post_upgrade` handler detects an inconsistency.
+
+### Architecture
+
+1. **Capture** — Before deploying the new WASM, call `pre_upgrade()` on the current contract.
+   It writes a `PreUpgradeSnapshot` struct under `symbol_short!("SNAPSHOT")` in persistent storage.
+   The snapshot is versioned (`SNAPSHOT_VERSION` in `remitwise-common`) so future migrations can
+   handle legacy formats.
+
+2. **Deploy** — Perform the contract upgrade (`set_upgrade_authority` + `set_version` + deploy new WASM).
+
+3. **Post-Upgrade Validation** — The new `post_upgrade` handler (in the new contract) can call
+   `restore_from_snapshot()` to revert instance state to the captured snapshot, effectively
+   cancelling any inadvertent state changes caused by the upgrade process.
+
+4. **Discard** — After a successful upgrade, call `discard_snapshot()` to remove the snapshot
+   from storage.
+
+### Authorization
+
+- Contracts with an **UPG_ADM** (upgrade admin) require UPG_ADM authorization.
+- Contracts without UPG_ADM use **contract owner** authorization as fallback.
+
+### Events
+
+Each contract emits scoped events under their existing event prefix:
+- `snap_pre` — snapshot taken
+- `snap_rst` — snapshot restored  
+- `snap_dsc` — snapshot discarded
+
+### Snapshot Contents Per Contract
+
+| Contract           | Captured State                                                  |
+|--------------------|----------------------------------------------------------------|
+| Remittance Split   | owner, version, upgrade_admin, pause_admin, fee_pct, paused    |
+| Savings Goals      | owner, version, upgrade_admin, pause_admin, goal_counter       |
+| Bill Payments      | owner, version, upgrade_admin, pause_admin, bill_counter       |
+| Insurance          | owner, version, policy_count, active_policies, initialized     |
+| Family Wallet      | owner, version, pause_admin, upgrade_admin, emergency_config, next_tx, prop_exp |
+| Orchestrator       | owner, version, all 5 dependency addresses, execution_state, stats, param_ids |
+
+### Testing
+
+Run the per-contract pre_upgrade roundtrip tests:
+
+```bash
+cargo test -p remittance_split test_pre_upgrade
+cargo test -p savings_goals test_pre_upgrade
+cargo test -p bill_payments test_pre_upgrade
+cargo test -p insurance test_pre_upgrade
+cargo test -p family_wallet test_pre_upgrade
+cargo test -p orchestrator test_pre_upgrade
+```
+
+### Rollback Procedure Using Snapshots
+
+If a `post_upgrade` handler fails or returns an unexpected state:
+
+1. Identify the failing contract and its deployed instance.
+2. Invoke `restore_from_snapshot` on the upgraded contract (authorized by UPG_ADM or owner).
+3. Verify that critical state (owner, version, counters) matches the pre-upgrade values.
+4. If the snapshot is no longer needed, call `discard_snapshot`.
+
+> **Safety**: Snapshots survive contract upgrades because they are stored in persistent storage
+> (not instance storage). The snapshot is only removed by an explicit `discard_snapshot` call.
+
 ## Rollback Procedures
 
 If issues are discovered after upgrade:
@@ -526,6 +596,7 @@ Upgrade is considered successful when:
 - [Stellar Protocol Upgrades](https://stellar.org/developers/docs/fundamentals-and-concepts/stellar-consensus-protocol#protocol-upgrades)
 - [Soroban Discord](https://discord.gg/stellar)
 - [Stellar Stack Exchange](https://stellar.stackexchange.com/)
+- [docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md) - Step-by-step contract upgrade runbook and rollback plan
 
 ## Support
 
