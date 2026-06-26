@@ -475,9 +475,7 @@ fn test_no_duplicate_keys_within_contract() {
     let mut violations = Vec::new();
 
     for key_def in &keys {
-        let entry = contract_keys
-            .entry(key_def.contract)
-            .or_default();
+        let entry = contract_keys.entry(key_def.contract).or_default();
 
         if !entry.insert(key_def.key) {
             violations.push(format!(

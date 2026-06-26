@@ -621,10 +621,7 @@ impl RemittanceSplit {
     ///
     /// # Events
     /// Emits `(symbol_short!("split"), symbol_short!("snap_pre"))` on success.
-    pub fn pre_upgrade(
-        env: Env,
-        caller: Address,
-    ) -> Result<(), RemittanceSplitError> {
+    pub fn pre_upgrade(env: Env, caller: Address) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
         Self::extend_instance_ttl(&env);
 
@@ -649,9 +646,7 @@ impl RemittanceSplit {
             pause_admin: Self::get_pause_admin(&env),
         };
 
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
 
         env.events().publish(
             (symbol_short!("split"), symbol_short!("snap_pre")),
@@ -681,10 +676,7 @@ impl RemittanceSplit {
     ///
     /// # Events
     /// Emits `(symbol_short!("split"), symbol_short!("snap_rst"))` on success.
-    pub fn restore_from_snapshot(
-        env: Env,
-        caller: Address,
-    ) -> Result<(), RemittanceSplitError> {
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
 
         let config: SplitConfig = env
@@ -732,7 +724,10 @@ impl RemittanceSplit {
 
         // Restore upgrade admin
         match &snapshot.upgrade_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("UPG_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
         }
 
@@ -748,7 +743,10 @@ impl RemittanceSplit {
         }
 
         match &snapshot.pause_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("PAUSE_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
         }
 
@@ -776,10 +774,7 @@ impl RemittanceSplit {
     /// # Errors
     /// - `NotInitialized` if the contract has not been initialized
     /// - `Unauthorized` if `caller` is not the upgrade admin or owner
-    pub fn discard_snapshot(
-        env: Env,
-        caller: Address,
-    ) -> Result<(), RemittanceSplitError> {
+    pub fn discard_snapshot(env: Env, caller: Address) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
 
         let config: SplitConfig = env
@@ -796,10 +791,8 @@ impl RemittanceSplit {
         env.storage().persistent().remove(&SNAPSHOT_KEY);
 
         Self::append_audit(&env, symbol_short!("snap_dsc"), &caller, true);
-        env.events().publish(
-            (symbol_short!("split"), symbol_short!("snap_dsc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("split"), symbol_short!("snap_dsc")), ());
 
         Ok(())
     }

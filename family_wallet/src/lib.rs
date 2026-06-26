@@ -3123,9 +3123,7 @@ impl FamilyWallet {
                 .get(&symbol_short!("PROP_EXP"))
                 .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         env.events().publish(
             (symbol_short!("family"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -3180,7 +3178,10 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("PAUSED"), &snapshot.paused);
         match &snapshot.pause_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("PAUSE_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
         }
 
@@ -3191,7 +3192,10 @@ impl FamilyWallet {
 
         // Restore upgrade admin
         match &snapshot.upgrade_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("UPG_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
         }
 
@@ -3246,10 +3250,8 @@ impl FamilyWallet {
             panic!("Unauthorized");
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
-        env.events().publish(
-            (symbol_short!("family"), symbol_short!("snap_dsc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("family"), symbol_short!("snap_dsc")), ());
         true
     }
 

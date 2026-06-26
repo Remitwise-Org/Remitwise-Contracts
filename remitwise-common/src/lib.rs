@@ -387,7 +387,10 @@ impl RemitwiseEvents {
             let xdr_bytes = val.to_xdr(env);
             let size = xdr_bytes.len();
             if size > 256 {
-                panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
+                panic!(
+                    "Event data size {} exceeds 256-byte budget. Emits must be compact.",
+                    size
+                );
             }
             env.events().publish(topics, val);
         }

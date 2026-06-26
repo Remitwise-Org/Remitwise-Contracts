@@ -33,140 +33,658 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
         // ===================================================================
         // remittance_split
         // ===================================================================
-        StorageKeyEntry { key: "CONFIG",     contract: "remittance_split", type_name: "SplitConfig",                       tier: "instance" },
-        StorageKeyEntry { key: "SPLIT",      contract: "remittance_split", type_name: "Vec<u32>",                          tier: "instance" },
-        StorageKeyEntry { key: "NONCES",     contract: "remittance_split", type_name: "Map<Address, u64>",                 tier: "instance" },
-        StorageKeyEntry { key: "AUDIT",      contract: "remittance_split", type_name: "Vec<AuditEntry>",                   tier: "instance" },
-        StorageKeyEntry { key: "PAUSE_ADM",  contract: "remittance_split", type_name: "Address",                           tier: "instance" },
-        StorageKeyEntry { key: "PAUSED",     contract: "remittance_split", type_name: "bool",                              tier: "instance" },
-        StorageKeyEntry { key: "UPG_ADM",    contract: "remittance_split", type_name: "Address",                           tier: "instance" },
-        StorageKeyEntry { key: "VERSION",    contract: "remittance_split", type_name: "u32",                               tier: "instance" },
-        StorageKeyEntry { key: "NEXT_RSCH",  contract: "remittance_split", type_name: "u32",                               tier: "instance" },
+        StorageKeyEntry {
+            key: "CONFIG",
+            contract: "remittance_split",
+            type_name: "SplitConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "SPLIT",
+            contract: "remittance_split",
+            type_name: "Vec<u32>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NONCES",
+            contract: "remittance_split",
+            type_name: "Map<Address, u64>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "AUDIT",
+            contract: "remittance_split",
+            type_name: "Vec<AuditEntry>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSE_ADM",
+            contract: "remittance_split",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSED",
+            contract: "remittance_split",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "UPG_ADM",
+            contract: "remittance_split",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "VERSION",
+            contract: "remittance_split",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NEXT_RSCH",
+            contract: "remittance_split",
+            type_name: "u32",
+            tier: "instance",
+        },
         // DataKey variants (used with persistent storage)
-        StorageKeyEntry { key: "DataKey::Schedule",       contract: "remittance_split", type_name: "RemittanceSchedule", tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::OwnerSchedules", contract: "remittance_split", type_name: "Vec<u32>",           tier: "persistent" },
-
+        StorageKeyEntry {
+            key: "DataKey::Schedule",
+            contract: "remittance_split",
+            type_name: "RemittanceSchedule",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::OwnerSchedules",
+            contract: "remittance_split",
+            type_name: "Vec<u32>",
+            tier: "persistent",
+        },
         // ===================================================================
         // savings_goals
         // ===================================================================
-        StorageKeyEntry { key: "DataKey::NextId",              contract: "savings_goals", type_name: "u32",                     tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Goal",                contract: "savings_goals", type_name: "SavingsGoal",             tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::ArchivedGoal",        contract: "savings_goals", type_name: "ArchivedSavingsGoal",    tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::OwnerGoals",          contract: "savings_goals", type_name: "Vec<u32>",               tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::ArchivedGoalsIndex",  contract: "savings_goals", type_name: "Vec<u32>",               tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::TagIndex",            contract: "savings_goals", type_name: "Vec<u32>",               tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::PauseAdmin",          contract: "savings_goals", type_name: "Address",                 tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Paused",              contract: "savings_goals", type_name: "bool",                    tier: "instance" },
-        StorageKeyEntry { key: "DataKey::PausedFunctions",     contract: "savings_goals", type_name: "Map<Symbol, bool>",      tier: "instance" },
-        StorageKeyEntry { key: "DataKey::UnpauseAt",           contract: "savings_goals", type_name: "u64",                     tier: "instance" },
-        StorageKeyEntry { key: "DataKey::UpgradeAdmin",        contract: "savings_goals", type_name: "Address",                 tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Version",             contract: "savings_goals", type_name: "u32",                     tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Nonces",              contract: "savings_goals", type_name: "u64",                     tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Audit",               contract: "savings_goals", type_name: "Vec<AuditEntry>",         tier: "instance" },
-        StorageKeyEntry { key: "DataKey::NextScheduleId",      contract: "savings_goals", type_name: "u32",                     tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Schedule",            contract: "savings_goals", type_name: "SavingsSchedule",         tier: "persistent" },
-        StorageKeyEntry { key: "DataKey::OwnerSchedules",      contract: "savings_goals", type_name: "Vec<u32>",               tier: "persistent" },
-
+        StorageKeyEntry {
+            key: "DataKey::NextId",
+            contract: "savings_goals",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Goal",
+            contract: "savings_goals",
+            type_name: "SavingsGoal",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::ArchivedGoal",
+            contract: "savings_goals",
+            type_name: "ArchivedSavingsGoal",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::OwnerGoals",
+            contract: "savings_goals",
+            type_name: "Vec<u32>",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::ArchivedGoalsIndex",
+            contract: "savings_goals",
+            type_name: "Vec<u32>",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::TagIndex",
+            contract: "savings_goals",
+            type_name: "Vec<u32>",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PauseAdmin",
+            contract: "savings_goals",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Paused",
+            contract: "savings_goals",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PausedFunctions",
+            contract: "savings_goals",
+            type_name: "Map<Symbol, bool>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::UnpauseAt",
+            contract: "savings_goals",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::UpgradeAdmin",
+            contract: "savings_goals",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Version",
+            contract: "savings_goals",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Nonces",
+            contract: "savings_goals",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Audit",
+            contract: "savings_goals",
+            type_name: "Vec<AuditEntry>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::NextScheduleId",
+            contract: "savings_goals",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Schedule",
+            contract: "savings_goals",
+            type_name: "SavingsSchedule",
+            tier: "persistent",
+        },
+        StorageKeyEntry {
+            key: "DataKey::OwnerSchedules",
+            contract: "savings_goals",
+            type_name: "Vec<u32>",
+            tier: "persistent",
+        },
         // ===================================================================
         // bill_payments
         // ===================================================================
-        StorageKeyEntry { key: "BILLS",      contract: "bill_payments", type_name: "Vec<Bill>",                       tier: "instance" },
-        StorageKeyEntry { key: "NEXT_ID",    contract: "bill_payments", type_name: "u32",                             tier: "instance" },
-        StorageKeyEntry { key: "ARCH_BILL",  contract: "bill_payments", type_name: "Vec<ArchivedBill>",               tier: "instance" },
-        StorageKeyEntry { key: "STOR_STAT",  contract: "bill_payments", type_name: "StorageStats",                    tier: "instance" },
-        StorageKeyEntry { key: "PAUSE_ADM",  contract: "bill_payments", type_name: "Address",                         tier: "instance" },
-        StorageKeyEntry { key: "PAUSED",     contract: "bill_payments", type_name: "bool",                            tier: "instance" },
-        StorageKeyEntry { key: "PAUSED_FN",  contract: "bill_payments", type_name: "Map<Symbol, bool>",              tier: "instance" },
-        StorageKeyEntry { key: "UNP_AT",     contract: "bill_payments", type_name: "u64",                             tier: "instance" },
-        StorageKeyEntry { key: "UPG_ADM",    contract: "bill_payments", type_name: "Address",                         tier: "instance" },
-        StorageKeyEntry { key: "VERSION",    contract: "bill_payments", type_name: "u32",                             tier: "instance" },
-        StorageKeyEntry { key: "UNPD_TOT",   contract: "bill_payments", type_name: "Map<Address, i128>",             tier: "instance" },
-        StorageKeyEntry { key: "EXTRIDX",    contract: "bill_payments", type_name: "Map<Address, Map<String, u32>>", tier: "instance" },
-        StorageKeyEntry { key: "OWN_IDX",    contract: "bill_payments", type_name: "Map<Address, Vec<u32>>",        tier: "instance" },
-        StorageKeyEntry { key: "ARCH_IDX",   contract: "bill_payments", type_name: "Map<Address, Vec<u32>>",        tier: "instance" },
-        StorageKeyEntry { key: "CUR_IDX",    contract: "bill_payments", type_name: "Map<(Address, String), Vec<u32>>", tier: "instance" },
-        StorageKeyEntry { key: "NEXT_BSCH",  contract: "bill_payments", type_name: "u32",                             tier: "instance" },
-        StorageKeyEntry { key: "OWN_BSCH",   contract: "bill_payments", type_name: "Map<Address, Vec<u32>>",        tier: "instance" },
-        StorageKeyEntry { key: "BSCHEDS",    contract: "bill_payments", type_name: "Map<u32, BillSchedule>",          tier: "instance" },
-
+        StorageKeyEntry {
+            key: "BILLS",
+            contract: "bill_payments",
+            type_name: "Vec<Bill>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NEXT_ID",
+            contract: "bill_payments",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ARCH_BILL",
+            contract: "bill_payments",
+            type_name: "Vec<ArchivedBill>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "STOR_STAT",
+            contract: "bill_payments",
+            type_name: "StorageStats",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSE_ADM",
+            contract: "bill_payments",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSED",
+            contract: "bill_payments",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSED_FN",
+            contract: "bill_payments",
+            type_name: "Map<Symbol, bool>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "UNP_AT",
+            contract: "bill_payments",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "UPG_ADM",
+            contract: "bill_payments",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "VERSION",
+            contract: "bill_payments",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "UNPD_TOT",
+            contract: "bill_payments",
+            type_name: "Map<Address, i128>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EXTRIDX",
+            contract: "bill_payments",
+            type_name: "Map<Address, Map<String, u32>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "OWN_IDX",
+            contract: "bill_payments",
+            type_name: "Map<Address, Vec<u32>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ARCH_IDX",
+            contract: "bill_payments",
+            type_name: "Map<Address, Vec<u32>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "CUR_IDX",
+            contract: "bill_payments",
+            type_name: "Map<(Address, String), Vec<u32>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NEXT_BSCH",
+            contract: "bill_payments",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "OWN_BSCH",
+            contract: "bill_payments",
+            type_name: "Map<Address, Vec<u32>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "BSCHEDS",
+            contract: "bill_payments",
+            type_name: "Map<u32, BillSchedule>",
+            tier: "instance",
+        },
         // ===================================================================
         // insurance
         // ===================================================================
-        StorageKeyEntry { key: "DataKey::Owner",          contract: "insurance", type_name: "Address",   tier: "instance" },
-        StorageKeyEntry { key: "DataKey::PolicyCount",    contract: "insurance", type_name: "u32",       tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Policy",         contract: "insurance", type_name: "Policy",    tier: "instance" },
-        StorageKeyEntry { key: "DataKey::ActivePolicies", contract: "insurance", type_name: "Vec<u32>", tier: "instance" },
-        StorageKeyEntry { key: "DataKey::OwnerPolicies",  contract: "insurance", type_name: "Vec<u32>", tier: "instance" },
-        StorageKeyEntry { key: "DataKey::Initialized",    contract: "insurance", type_name: "bool",     tier: "instance" },
-        StorageKeyEntry { key: "VERSION",                 contract: "insurance", type_name: "u32",       tier: "instance" },
-
+        StorageKeyEntry {
+            key: "DataKey::Owner",
+            contract: "insurance",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PolicyCount",
+            contract: "insurance",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Policy",
+            contract: "insurance",
+            type_name: "Policy",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::ActivePolicies",
+            contract: "insurance",
+            type_name: "Vec<u32>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::OwnerPolicies",
+            contract: "insurance",
+            type_name: "Vec<u32>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::Initialized",
+            contract: "insurance",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "VERSION",
+            contract: "insurance",
+            type_name: "u32",
+            tier: "instance",
+        },
         // ===================================================================
         // family_wallet
         // ===================================================================
-        StorageKeyEntry { key: "OWNER",      contract: "family_wallet", type_name: "Address",                                  tier: "instance" },
-        StorageKeyEntry { key: "MEMBERS",    contract: "family_wallet", type_name: "Map<Address, FamilyMember>",               tier: "instance" },
-        StorageKeyEntry { key: "MS_WDRAW",   contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "MS_SPLIT",   contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "MS_ROLE",    contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "MS_EMERG",   contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "MS_POL",     contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "MS_REG",     contract: "family_wallet", type_name: "MultiSigConfig",                           tier: "instance" },
-        StorageKeyEntry { key: "PEND_TXS",   contract: "family_wallet", type_name: "Map<u64, PendingTransaction>",            tier: "instance" },
-        StorageKeyEntry { key: "EXEC_TXS",   contract: "family_wallet", type_name: "Map<u64, ExecutedTxMeta>",                tier: "instance" },
-        StorageKeyEntry { key: "NEXT_TX",    contract: "family_wallet", type_name: "u64",                                     tier: "instance" },
-        StorageKeyEntry { key: "EM_CONF",    contract: "family_wallet", type_name: "EmergencyConfig",                          tier: "instance" },
-        StorageKeyEntry { key: "EM_MODE",    contract: "family_wallet", type_name: "bool",                                     tier: "instance" },
-        StorageKeyEntry { key: "EM_LAST",    contract: "family_wallet", type_name: "u64",                                     tier: "instance" },
-        StorageKeyEntry { key: "EM_VOL",     contract: "family_wallet", type_name: "i128",                                    tier: "instance" },
-        StorageKeyEntry { key: "ARCH_TX",    contract: "family_wallet", type_name: "Map<u64, ArchivedTransaction>",           tier: "instance" },
-        StorageKeyEntry { key: "STOR_STAT",  contract: "family_wallet", type_name: "StorageStats",                            tier: "instance" },
-        StorageKeyEntry { key: "ROLE_EXP",   contract: "family_wallet", type_name: "Map<Address, u64>",                       tier: "instance" },
-        StorageKeyEntry { key: "PREC_LIM",   contract: "family_wallet", type_name: "Map<Address, PrecisionLimitOpt>",         tier: "instance" },
-        StorageKeyEntry { key: "SPND_TRK",   contract: "family_wallet", type_name: "Map<Address, SpendingTracker>",           tier: "instance" },
-        StorageKeyEntry { key: "PAUSED",     contract: "family_wallet", type_name: "bool",                                    tier: "instance" },
-        StorageKeyEntry { key: "PAUSE_ADM",  contract: "family_wallet", type_name: "Address",                                 tier: "instance" },
-        StorageKeyEntry { key: "UPG_ADM",    contract: "family_wallet", type_name: "Address",                                 tier: "instance" },
-        StorageKeyEntry { key: "VERSION",    contract: "family_wallet", type_name: "u32",                                     tier: "instance" },
-        StorageKeyEntry { key: "ACC_AUDIT",  contract: "family_wallet", type_name: "Vec<AuditEntry>",                        tier: "instance" },
-        StorageKeyEntry { key: "PROP_EXP",   contract: "family_wallet", type_name: "u64",                                     tier: "instance" },
-
+        StorageKeyEntry {
+            key: "OWNER",
+            contract: "family_wallet",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MEMBERS",
+            contract: "family_wallet",
+            type_name: "Map<Address, FamilyMember>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_WDRAW",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_SPLIT",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_ROLE",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_EMERG",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_POL",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "MS_REG",
+            contract: "family_wallet",
+            type_name: "MultiSigConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PEND_TXS",
+            contract: "family_wallet",
+            type_name: "Map<u64, PendingTransaction>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EXEC_TXS",
+            contract: "family_wallet",
+            type_name: "Map<u64, ExecutedTxMeta>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NEXT_TX",
+            contract: "family_wallet",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EM_CONF",
+            contract: "family_wallet",
+            type_name: "EmergencyConfig",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EM_MODE",
+            contract: "family_wallet",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EM_LAST",
+            contract: "family_wallet",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EM_VOL",
+            contract: "family_wallet",
+            type_name: "i128",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ARCH_TX",
+            contract: "family_wallet",
+            type_name: "Map<u64, ArchivedTransaction>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "STOR_STAT",
+            contract: "family_wallet",
+            type_name: "StorageStats",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ROLE_EXP",
+            contract: "family_wallet",
+            type_name: "Map<Address, u64>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PREC_LIM",
+            contract: "family_wallet",
+            type_name: "Map<Address, PrecisionLimitOpt>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "SPND_TRK",
+            contract: "family_wallet",
+            type_name: "Map<Address, SpendingTracker>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSED",
+            contract: "family_wallet",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PAUSE_ADM",
+            contract: "family_wallet",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "UPG_ADM",
+            contract: "family_wallet",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "VERSION",
+            contract: "family_wallet",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ACC_AUDIT",
+            contract: "family_wallet",
+            type_name: "Vec<AuditEntry>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PROP_EXP",
+            contract: "family_wallet",
+            type_name: "u64",
+            tier: "instance",
+        },
         // ===================================================================
         // reporting
         // ===================================================================
-        StorageKeyEntry { key: "ADMIN",     contract: "reporting", type_name: "Address",                                        tier: "instance" },
-        StorageKeyEntry { key: "PEND_ADM",  contract: "reporting", type_name: "Address",                                        tier: "instance" },
-        StorageKeyEntry { key: "ADDRS",     contract: "reporting", type_name: "ContractAddresses",                              tier: "instance" },
-        StorageKeyEntry { key: "REPORTS",   contract: "reporting", type_name: "Map<(Address, u64), FinancialHealthReport>",    tier: "instance" },
-        StorageKeyEntry { key: "ARCH_RPT",  contract: "reporting", type_name: "Map<(Address, u64), ArchivedReport>",           tier: "instance" },
-        StorageKeyEntry { key: "ARCH_IDX",  contract: "reporting", type_name: "Map<Address, Vec<u64>>",                        tier: "instance" },
-        StorageKeyEntry { key: "STOR_STAT", contract: "reporting", type_name: "StorageStats",                                  tier: "instance" },
-
+        StorageKeyEntry {
+            key: "ADMIN",
+            contract: "reporting",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "PEND_ADM",
+            contract: "reporting",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ADDRS",
+            contract: "reporting",
+            type_name: "ContractAddresses",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "REPORTS",
+            contract: "reporting",
+            type_name: "Map<(Address, u64), FinancialHealthReport>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ARCH_RPT",
+            contract: "reporting",
+            type_name: "Map<(Address, u64), ArchivedReport>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "ARCH_IDX",
+            contract: "reporting",
+            type_name: "Map<Address, Vec<u64>>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "STOR_STAT",
+            contract: "reporting",
+            type_name: "StorageStats",
+            tier: "instance",
+        },
         // ===================================================================
         // orchestrator
         // ===================================================================
-        StorageKeyEntry { key: "OWNER",     contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "FW_ADDR",   contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "RS_ADDR",   contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "SG_ADDR",   contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "BP_ADDR",   contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "INS_ADDR",  contract: "orchestrator", type_name: "Address",                    tier: "instance" },
-        StorageKeyEntry { key: "EXEC_LOCK", contract: "orchestrator", type_name: "bool",                       tier: "instance" },
-        StorageKeyEntry { key: "NONCES",    contract: "orchestrator", type_name: "Map<Address, u64>",          tier: "instance" },
-        StorageKeyEntry { key: "GOAL_ID",   contract: "orchestrator", type_name: "u32",                        tier: "instance" },
-        StorageKeyEntry { key: "BILL_ID",   contract: "orchestrator", type_name: "u32",                        tier: "instance" },
-        StorageKeyEntry { key: "POL_ID",    contract: "orchestrator", type_name: "u32",                        tier: "instance" },
-        StorageKeyEntry { key: "STATS",     contract: "orchestrator", type_name: "ExecutionStats",             tier: "instance" },
-        StorageKeyEntry { key: "VERSION",   contract: "orchestrator", type_name: "u32",                        tier: "instance" },
-        StorageKeyEntry { key: "AUDIT",     contract: "orchestrator", type_name: "Vec<AuditEntry>",            tier: "instance" },
-
+        StorageKeyEntry {
+            key: "OWNER",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "FW_ADDR",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "RS_ADDR",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "SG_ADDR",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "BP_ADDR",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "INS_ADDR",
+            contract: "orchestrator",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "EXEC_LOCK",
+            contract: "orchestrator",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "NONCES",
+            contract: "orchestrator",
+            type_name: "Map<Address, u64>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "GOAL_ID",
+            contract: "orchestrator",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "BILL_ID",
+            contract: "orchestrator",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "POL_ID",
+            contract: "orchestrator",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "STATS",
+            contract: "orchestrator",
+            type_name: "ExecutionStats",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "VERSION",
+            contract: "orchestrator",
+            type_name: "u32",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "AUDIT",
+            contract: "orchestrator",
+            type_name: "Vec<AuditEntry>",
+            tier: "instance",
+        },
         // ===================================================================
         // emergency_killswitch
         // ===================================================================
-        StorageKeyEntry { key: "DataKey::Admin",           contract: "emergency_killswitch", type_name: "Address",    tier: "instance" },
-        StorageKeyEntry { key: "DataKey::GlobalPaused",    contract: "emergency_killswitch", type_name: "bool",       tier: "instance" },
-        StorageKeyEntry { key: "DataKey::ModulePaused",    contract: "emergency_killswitch", type_name: "bool",       tier: "instance" },
-        StorageKeyEntry { key: "DataKey::PausedFunctions", contract: "emergency_killswitch", type_name: "Vec<Symbol>", tier: "instance" },
-        StorageKeyEntry { key: "DataKey::UnpauseSchedule", contract: "emergency_killswitch", type_name: "u64",        tier: "instance" },
+        StorageKeyEntry {
+            key: "DataKey::Admin",
+            contract: "emergency_killswitch",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::GlobalPaused",
+            contract: "emergency_killswitch",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::ModulePaused",
+            contract: "emergency_killswitch",
+            type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PausedFunctions",
+            contract: "emergency_killswitch",
+            type_name: "Vec<Symbol>",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::UnpauseSchedule",
+            contract: "emergency_killswitch",
+            type_name: "u64",
+            tier: "instance",
+        },
     ]
 }
 
@@ -197,7 +715,10 @@ fn test_storage_key_type_snapshot_unchanged() {
             errors.push(format!("{}: empty key", entry.contract));
         }
         if entry.type_name.is_empty() {
-            errors.push(format!("{}.{}: missing type_name", entry.contract, entry.key));
+            errors.push(format!(
+                "{}.{}: missing type_name",
+                entry.contract, entry.key
+            ));
         }
         if entry.tier.is_empty() {
             errors.push(format!("{}.{}: missing tier", entry.contract, entry.key));
@@ -252,9 +773,11 @@ fn test_storage_key_type_snapshot_unchanged() {
         );
     }
 
-    println!("✅ Storage key snapshot self-validates ({} entries across {} contracts)",
+    println!(
+        "✅ Storage key snapshot self-validates ({} entries across {} contracts)",
         entries.len(),
-        seen.len());
+        seen.len()
+    );
 }
 
 #[test]
@@ -306,8 +829,10 @@ fn test_no_key_reused_with_different_type() {
         );
     }
 
-    println!("✅ No storage key has been reused with a different type or tier ({} historical keys)",
-        historical.len());
+    println!(
+        "✅ No storage key has been reused with a different type or tier ({} historical keys)",
+        historical.len()
+    );
 }
 
 #[test]

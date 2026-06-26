@@ -3989,7 +3989,10 @@ mod tests {
         let mut tracker = MigrationTracker::new();
 
         import_from_json(&bytes, &mut tracker, 1_000).unwrap();
-        assert!(tracker.is_imported(&snapshot), "tracker must reflect first import");
+        assert!(
+            tracker.is_imported(&snapshot),
+            "tracker must reflect first import"
+        );
 
         // Untracked call: throwaway tracker has no record of the above import.
         let result = import_from_json_untracked(&bytes);

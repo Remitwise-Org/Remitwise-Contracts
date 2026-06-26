@@ -815,4 +815,3 @@ mod tests {
         assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
     }
 }
-

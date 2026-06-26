@@ -204,7 +204,7 @@ jobs:
         continue-on-error: true
 
   storage-key-validation:
-    name: Storage Key Naming Convention Validation
+    name: Storage Key Convention + Snapshot Validation
     runs-on: macos-latest
     timeout-minutes: 5
 
@@ -228,9 +228,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run storage key naming convention tests
+      - name: Run storage key validation tests
         run: |
           cargo test --package testutils storage_key_naming_test -- --nocapture
+          cargo test --package testutils storage_key_snapshot_test -- --nocapture
         continue-on-error: false
 
   gas-benchmarks:

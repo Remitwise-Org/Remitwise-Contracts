@@ -1064,9 +1064,7 @@ impl BillPayments {
             paused: Self::get_global_paused(&env),
             pause_admin: Self::get_pause_admin(&env),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1114,14 +1112,20 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("VERSION"), &snapshot.version);
         match &snapshot.upgrade_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("UPG_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("UPG_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
         }
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &snapshot.paused);
         match &snapshot.pause_admin {
-            Some(addr) => env.storage().instance().set(&symbol_short!("PAUSE_ADM"), addr),
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("PAUSE_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
@@ -1234,9 +1238,7 @@ impl BillPayments {
             .get(&STORAGE_BSCHEDS)
             .unwrap_or_else(|| Map::new(&env));
         schedules.set(next_schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         env.storage()
             .instance()
@@ -1307,9 +1309,7 @@ impl BillPayments {
         schedule.recurring = interval > 0;
 
         schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleModified),
@@ -1351,9 +1351,7 @@ impl BillPayments {
         schedule.active = false;
 
         schedules.set(schedule_id, schedule);
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
         Self::index_remove_bill_schedule(&env, &caller, schedule_id);
 
@@ -1487,9 +1485,7 @@ impl BillPayments {
             );
         }
 
-        env.storage()
-            .instance()
-            .set(&STORAGE_BSCHEDS, &schedules);
+        env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);

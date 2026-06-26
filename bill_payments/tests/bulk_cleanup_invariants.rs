@@ -105,7 +105,11 @@ fn pay_and_archive(client: &BillPaymentsClient, owner: &Address, ids: &[u32]) ->
 }
 
 /// Collect all archived bill IDs for `owner` via full pagination.
-fn all_archived_ids(_env: &Env, client: &BillPaymentsClient, owner: &Address) -> std::vec::Vec<u32> {
+fn all_archived_ids(
+    _env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+) -> std::vec::Vec<u32> {
     let mut ids = std::vec::Vec::new();
     let mut cursor = 0u32;
     loop {

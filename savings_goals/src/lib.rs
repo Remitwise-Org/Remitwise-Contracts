@@ -608,11 +608,7 @@ impl SavingsGoalContract {
         }
         let snapshot = PreUpgradeSnapshot {
             schema_version: SNAPSHOT_VERSION,
-            next_id: env
-                .storage()
-                .instance()
-                .get(&DataKey::NextId)
-                .unwrap_or(0),
+            next_id: env.storage().instance().get(&DataKey::NextId).unwrap_or(0),
             next_schedule_id: env
                 .storage()
                 .instance()
@@ -623,9 +619,7 @@ impl SavingsGoalContract {
             paused: Self::get_global_paused(&env),
             pause_admin: Self::get_pause_admin(&env),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -707,10 +701,8 @@ impl SavingsGoalContract {
             panic!("Unauthorized");
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
-        env.events().publish(
-            (symbol_short!("savings"), symbol_short!("snap_dsc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("savings"), symbol_short!("snap_dsc")), ());
     }
 
     // -----------------------------------------------------------------------

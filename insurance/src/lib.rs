@@ -668,7 +668,11 @@ impl Insurance {
     /// # Errors
     /// - `Unauthorized` if `caller` is not the contract owner
     /// - `NotInitialized` if the contract has not been initialized
-    pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<bool, InsuranceError> {
+    pub fn set_version(
+        env: Env,
+        caller: Address,
+        new_version: u32,
+    ) -> Result<bool, InsuranceError> {
         Self::require_initialized(&env)?;
         caller.require_auth();
         let owner = Self::get_owner(&env)?;
@@ -726,9 +730,7 @@ impl Insurance {
             active_policies: active,
             version: Self::get_version(env.clone()),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         env.events().publish(
             (symbol_short!("insurance"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -818,10 +820,8 @@ impl Insurance {
             return Err(InsuranceError::Unauthorized);
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
-        env.events().publish(
-            (symbol_short!("insurance"), symbol_short!("snap_dsc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("insurance"), symbol_short!("snap_dsc")), ());
         Ok(())
     }
 }

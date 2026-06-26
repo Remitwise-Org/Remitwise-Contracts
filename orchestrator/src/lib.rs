@@ -600,10 +600,7 @@ impl Orchestrator {
     ///
     /// # Events
     /// Emits `(symbol_short!("orch"), symbol_short!("snap_pre"))`.
-    pub fn pre_upgrade(
-        env: Env,
-        caller: Address,
-    ) -> Result<bool, OrchestratorError> {
+    pub fn pre_upgrade(env: Env, caller: Address) -> Result<bool, OrchestratorError> {
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -658,11 +655,7 @@ impl Orchestrator {
             savings_goals: sg_addr,
             bill_payments: bp_addr,
             insurance: ins_addr,
-            execution_locked: env
-                .storage()
-                .instance()
-                .get(&EXEC_LOCK)
-                .unwrap_or(false),
+            execution_locked: env.storage().instance().get(&EXEC_LOCK).unwrap_or(false),
             stats,
             goal_id: env
                 .storage()
@@ -680,9 +673,7 @@ impl Orchestrator {
                 .get(&symbol_short!("POL_ID"))
                 .unwrap_or(1),
         };
-        env.storage()
-            .persistent()
-            .set(&SNAPSHOT_KEY, &snapshot);
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -706,10 +697,7 @@ impl Orchestrator {
     ///
     /// # Events
     /// Emits `(symbol_short!("orch"), symbol_short!("snap_rst"))`.
-    pub fn restore_from_snapshot(
-        env: Env,
-        caller: Address,
-    ) -> Result<bool, OrchestratorError> {
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<bool, OrchestratorError> {
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -794,10 +782,7 @@ impl Orchestrator {
     ///
     /// # Errors
     /// - `Unauthorized` if `caller` is not the owner
-    pub fn discard_snapshot(
-        env: Env,
-        caller: Address,
-    ) -> Result<bool, OrchestratorError> {
+    pub fn discard_snapshot(env: Env, caller: Address) -> Result<bool, OrchestratorError> {
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -808,10 +793,8 @@ impl Orchestrator {
             return Err(OrchestratorError::Unauthorized);
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
-        env.events().publish(
-            (symbol_short!("orch"), symbol_short!("snap_dsc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("orch"), symbol_short!("snap_dsc")), ());
         Ok(true)
     }
 

@@ -6718,9 +6718,21 @@ fn test_pre_upgrade_roundtrip() {
 
     // Create a goal (next_id advances from 1 to 2)
     let user = Address::generate(&env);
-    let id1 = client.create_goal(&user, &String::from_str(&env, "Test"), &1000, &2000000000, &false);
+    let id1 = client.create_goal(
+        &user,
+        &String::from_str(&env, "Test"),
+        &1000,
+        &2000000000,
+        &false,
+    );
     assert_eq!(id1, 1);
-    let id2 = client.create_goal(&user, &String::from_str(&env, "Test2"), &2000, &2000000000, &false);
+    let id2 = client.create_goal(
+        &user,
+        &String::from_str(&env, "Test2"),
+        &2000,
+        &2000000000,
+        &false,
+    );
     assert_eq!(id2, 2);
 
     // Restore from snapshot
@@ -6728,7 +6740,13 @@ fn test_pre_upgrade_roundtrip() {
     assert!(result.is_ok());
 
     // Next ID should be restored to 1 (snapshot was taken before creating any goals)
-    let id_new = client.create_goal(&user, &String::from_str(&env, "Restored"), &500, &2000000000, &false);
+    let id_new = client.create_goal(
+        &user,
+        &String::from_str(&env, "Restored"),
+        &500,
+        &2000000000,
+        &false,
+    );
     assert_eq!(id_new, 1);
 }
 

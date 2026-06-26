@@ -3,9 +3,7 @@
 extern crate std;
 
 use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
-use soroban_sdk::{
-    testutils::Address as AddressTrait, Address, Env, String, Symbol,
-};
+use soroban_sdk::{testutils::Address as AddressTrait, Address, Env, String, Symbol};
 use testutils::{generate_test_address, set_ledger_time, setup_test_env};
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
@@ -159,7 +157,10 @@ fn test_recurring_schedule_advances_next_due_and_missed_count() {
     assert_eq!(executed.len(), 1);
 
     let schedule = client.get_bill_schedule(schedule_id).unwrap();
-    assert!(schedule.next_due > now + 5 * 86400, "next_due must be future");
+    assert!(
+        schedule.next_due > now + 5 * 86400,
+        "next_due must be future"
+    );
     assert_eq!(
         schedule.missed_count, 4,
         "4 intervals should have been missed"
@@ -187,13 +188,7 @@ fn test_modify_bill_schedule_updates_next_bill() {
         .unwrap();
 
     client
-        .modify_bill_schedule(
-            &owner,
-            &schedule_id,
-            &2500,
-            &(now + 2 * 86400),
-            &86400,
-        )
+        .modify_bill_schedule(&owner, &schedule_id, &2500, &(now + 2 * 86400), &86400)
         .unwrap();
 
     set_ledger_time(&env, 1, now + 3 * 86400);
@@ -241,13 +236,7 @@ fn test_execution_respects_max_bills_per_owner() {
     let now = env.ledger().timestamp();
     // Fill up to MAX_BILLS_PER_OWNER
     for i in 0..bill_payments::MAX_BILLS_PER_OWNER {
-        create_owner_bill(
-            &client,
-            &owner,
-            &format!("Bill{}", i),
-            1000,
-            now + i,
-        );
+        create_owner_bill(&client, &owner, &format!("Bill{}", i), 1000, now + i);
     }
 
     client
@@ -360,13 +349,8 @@ fn test_modify_bill_schedule_unauthorized_fails() {
         )
         .unwrap();
 
-    let result = client.try_modify_bill_schedule(
-        &intruder,
-        &schedule_id,
-        &2000,
-        &(now + 2000),
-        &86400,
-    );
+    let result =
+        client.try_modify_bill_schedule(&intruder, &schedule_id, &2000, &(now + 2000), &86400);
     assert_eq!(result, Err(Ok(BillPaymentsError::Unauthorized)));
 }
 
@@ -403,7 +387,11 @@ fn test_execute_due_bill_schedules_respects_global_pause() {
 
     set_ledger_time(&env, 1, now + 2000);
     let executed = client.execute_due_bill_schedules();
-    assert_eq!(executed.len(), 0, "paused contract must not execute schedules");
+    assert_eq!(
+        executed.len(),
+        0,
+        "paused contract must not execute schedules"
+    );
 }
 
 // ─── 9. Event emission ────────────────────────────────────────────────────────

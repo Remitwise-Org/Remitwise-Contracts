@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn get_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,7 +57,8 @@ fn test_workspace_passes_dependency_policy() {
     let manifest_path = workspace_root.join("Cargo.toml");
 
     // Clear target dir env var if set to ensure clean run or inherit it
-    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
+    let target_dir =
+        std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
 
     let status = cmd
         .arg("--config")
@@ -69,7 +70,10 @@ fn test_workspace_passes_dependency_policy() {
         .status()
         .expect("failed to execute cargo-deny");
 
-    assert!(status.success(), "Workspace did not pass cargo-deny dependency check");
+    assert!(
+        status.success(),
+        "Workspace did not pass cargo-deny dependency check"
+    );
 }
 
 #[test]
@@ -90,7 +94,8 @@ fn test_gpl_dependency_rejected() {
         .join("gpl_fixture")
         .join("Cargo.toml");
 
-    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
+    let target_dir =
+        std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
 
     let output = cmd
         .arg("--config")
@@ -104,11 +109,14 @@ fn test_gpl_dependency_rejected() {
         .expect("failed to execute cargo-deny");
 
     // The validation MUST fail (exit status non-zero) because the fixture contains a GPL-licensed dependency
-    assert!(!output.status.success(), "GPL dependency check should have failed, but it succeeded");
-    
+    assert!(
+        !output.status.success(),
+        "GPL dependency check should have failed, but it succeeded"
+    );
+
     let stderr_str = String::from_utf8_lossy(&output.stderr);
     let stdout_str = String::from_utf8_lossy(&output.stdout);
-    
+
     assert!(
         stderr_str.contains("rejected") || stdout_str.contains("rejected"),
         "Failure logs should indicate the GPL license was rejected. Stdout:\n{}\nStderr:\n{}",
@@ -135,7 +143,8 @@ fn test_yanked_crate_rejected() {
         .join("yanked_fixture")
         .join("Cargo.toml");
 
-    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
+    let target_dir =
+        std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "/tmp/target".to_string());
 
     let output = cmd
         .arg("--config")
@@ -149,11 +158,14 @@ fn test_yanked_crate_rejected() {
         .expect("failed to execute cargo-deny");
 
     // The validation MUST fail because the fixture depends on a yanked crate (serde 1.0.95)
-    assert!(!output.status.success(), "Yanked crate check should have failed, but it succeeded");
-    
+    assert!(
+        !output.status.success(),
+        "Yanked crate check should have failed, but it succeeded"
+    );
+
     let stderr_str = String::from_utf8_lossy(&output.stderr);
     let stdout_str = String::from_utf8_lossy(&output.stdout);
-    
+
     assert!(
         stderr_str.contains("yanked") || stdout_str.contains("yanked"),
         "Failure logs should indicate a yanked crate was detected. Stdout:\n{}\nStderr:\n{}",

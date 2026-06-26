@@ -3,12 +3,12 @@
 extern crate std;
 
 use super::*;
-use std::{fs, path::PathBuf};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
     Address, Env, FromVal, IntoVal, Symbol, Vec,
 };
+use std::{fs, path::PathBuf};
 
 #[contract]
 pub struct MockContract;

@@ -9,8 +9,8 @@ fn get_workspace_root() -> PathBuf {
 }
 
 fn check_lockfile(lockfile_path: &std::path::Path, expected_version: &str) -> Result<(), String> {
-    let content = fs::read_to_string(lockfile_path)
-        .map_err(|e| format!("Failed to read lockfile: {}", e))?;
+    let content =
+        fs::read_to_string(lockfile_path).map_err(|e| format!("Failed to read lockfile: {}", e))?;
 
     // Normalize CRLF to LF
     let content = content.replace("\r\n", "\n");
@@ -38,7 +38,9 @@ fn check_lockfile(lockfile_path: &std::path::Path, expected_version: &str) -> Re
                     ));
                 }
             } else {
-                return Err("soroban-sdk package entry in Cargo.lock is missing a version.".to_string());
+                return Err(
+                    "soroban-sdk package entry in Cargo.lock is missing a version.".to_string(),
+                );
             }
         }
     }
@@ -55,7 +57,7 @@ fn test_lockfile_expected_soroban_sdk_version() {
     let workspace_root = get_workspace_root();
     let lockfile_path = workspace_root.join("Cargo.lock");
     let expected = "21.7.7";
-    
+
     assert!(
         check_lockfile(&lockfile_path, expected).is_ok(),
         "Happy path: expected soroban-sdk version 21.7.7 should pass"
@@ -71,13 +73,13 @@ version = "22.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dcdf04484af7cc731a7a48ad1d9f5f940370edeea84734434ceaf398a6b862e"
 "#;
-    
+
     let temp_dir = std::env::temp_dir();
     let mock_path = temp_dir.join("mock_Cargo.lock");
     fs::write(&mock_path, mock_lockfile_content).unwrap();
 
     let result = check_lockfile(&mock_path, "21.7.7");
-    
+
     let _ = fs::remove_file(&mock_path);
 
     assert!(

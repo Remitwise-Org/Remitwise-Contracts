@@ -290,10 +290,7 @@ fn test_boundary_last_page_has_one_item() {
 
     let page2 = client.get_archived_bills_page(&owner, &page1.next_cursor, &4);
     assert_eq!(page2.count, 1, "last page must contain exactly 1 item");
-    assert_eq!(
-        page2.next_cursor, 0,
-        "next_cursor must be 0 on last page"
-    );
+    assert_eq!(page2.next_cursor, 0, "next_cursor must be 0 on last page");
 }
 
 /// Regression: cursor set to the last item's ID must return an empty page,
@@ -370,7 +367,11 @@ fn test_boundary_limit_one_traverses_all_items() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected.len(), 5, "limit=1 traversal must visit all 5 items");
+    assert_eq!(
+        collected.len(),
+        5,
+        "limit=1 traversal must visit all 5 items"
+    );
 
     // No duplicates and strictly ascending
     for i in 1..collected.len() {
@@ -395,7 +396,10 @@ fn test_boundary_stale_cursor_after_bulk_cleanup_returns_empty() {
     let page1 = client.get_archived_bills_page(&owner, &0, &4);
     assert_eq!(page1.count, 4);
     let stale_cursor = page1.next_cursor;
-    assert!(stale_cursor > 0, "test requires a valid mid-traversal cursor");
+    assert!(
+        stale_cursor > 0,
+        "test requires a valid mid-traversal cursor"
+    );
 
     // Wipe all archived bills before resuming
     client.bulk_cleanup_bills(&owner, &u64::MAX);
@@ -660,7 +664,7 @@ fn test_cursor_far_beyond_max_id_returns_empty() {
     let env = make_env();
     let (client, owner) = setup_client(&env);
     create_pay_archive(&env, &client, &owner, 5);
-    
+
     // Use a cursor way beyond the highest ID
     let page = client.get_archived_bills_page(&owner, &999999, &10);
     assert_eq!(page.count, 0);
@@ -674,19 +678,19 @@ fn test_alternating_restore_maintains_pagination() {
     let env = make_env();
     let (client, owner) = setup_client(&env);
     create_pay_archive(&env, &client, &owner, 10);
-    
+
     // Get initial IDs
     let initial = paginate_all(&client, &owner, 50);
     assert_eq!(initial.len(), 10);
-    
+
     // Restore every other bill (2, 4, 6, 8, 10)
     for i in (1..=9).step_by(2) {
         client.restore_bill(&owner, &initial[i]);
     }
-    
+
     let after = paginate_all(&client, &owner, 50);
     assert_eq!(after.len(), 5, "should have 5 bills remaining");
-    
+
     // Verify only odd-indexed bills remain
     for id in after.iter() {
         let original_idx = initial.iter().position(|&x| x == *id).unwrap();
@@ -700,14 +704,14 @@ fn test_large_dataset_small_limit_completes() {
     let env = make_env();
     let (client, owner) = setup_client(&env);
     create_pay_archive(&env, &client, &owner, 50);
-    
+
     // Paginate with very small limit
     let all_ids = paginate_all(&client, &owner, 2);
     assert_eq!(all_ids.len(), 50);
-    
+
     // Verify strictly ascending
     for i in 1..all_ids.len() {
-        assert!(all_ids[i] > all_ids[i-1]);
+        assert!(all_ids[i] > all_ids[i - 1]);
     }
 }
 
@@ -716,14 +720,14 @@ fn test_large_dataset_small_limit_completes() {
 fn test_empty_then_archive_one_returns_single_item() {
     let env = make_env();
     let (client, owner) = setup_client(&env);
-    
+
     // Start with empty archive
     let empty = client.get_archived_bills_page(&owner, &0, &10);
     assert_eq!(empty.count, 0);
-    
+
     // Archive one bill
     create_pay_archive(&env, &client, &owner, 1);
-    
+
     let after = client.get_archived_bills_page(&owner, &0, &10);
     assert_eq!(after.count, 1);
     assert_eq!(after.next_cursor, 0);
@@ -736,15 +740,15 @@ fn test_cursor_at_first_id_skips_first_item() {
     let env = make_env();
     let (client, owner) = setup_client(&env);
     create_pay_archive(&env, &client, &owner, 5);
-    
+
     // Get all items
     let all = client.get_archived_bills_page(&owner, &0, &50);
     let first_id = all.items.first().unwrap().id;
-    
+
     // Use first ID as cursor
     let page = client.get_archived_bills_page(&owner, &first_id, &50);
     assert_eq!(page.count, 4, "should skip first item and return 4");
-    
+
     // First item should not be in results
     for bill in page.items.iter() {
         assert_ne!(bill.id, first_id, "first item should not appear");
