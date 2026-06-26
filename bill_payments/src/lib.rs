@@ -1719,7 +1719,7 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let owner_bill_count = Self::get_owner_bill_count(&env, bill.owner.clone());
+            let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
             if owner_bill_count >= MAX_BILLS_PER_OWNER {
                 return Err(BillPaymentsError::OwnerBillCapExceeded);
             }
@@ -1769,7 +1769,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
+            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),
