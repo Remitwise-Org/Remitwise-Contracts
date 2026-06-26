@@ -253,6 +253,16 @@ impl Insurance {
             .ok_or(InsuranceError::NotInitialized)
     }
 
+    fn advance_next_payment_date(previous_due: u64, now: u64) -> u64 {
+        if now < previous_due {
+            previous_due.saturating_add(THIRTY_DAYS_SECS)
+        } else {
+            let elapsed = now.saturating_sub(previous_due);
+            let periods = (elapsed / THIRTY_DAYS_SECS).saturating_add(1);
+            previous_due.saturating_add(periods.saturating_mul(THIRTY_DAYS_SECS))
+        }
+    }
+
     fn load_policy(env: &Env, policy_id: u32) -> Result<Policy, InsuranceError> {
         env.storage()
             .instance()
@@ -409,7 +419,7 @@ impl Insurance {
 
         let now = env.ledger().timestamp();
         policy.last_payment_at = now;
-        policy.next_payment_date = now + THIRTY_DAYS_SECS;
+        policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
 
         env.storage()
             .instance()
@@ -449,8 +459,19 @@ impl Insurance {
             if policy.active && policy.owner == caller {
                 let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
-                policy.next_payment_date = now + THIRTY_DAYS_SECS;
+                policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
+                let next_payment_date = policy.next_payment_date;
                 env.storage().instance().set(&DataKey::Policy(id), &policy);
+                env.events().publish(
+                    (symbol_short!("paid"), symbol_short!("premium")),
+                    PremiumPaidEvent {
+                        policy_id: id,
+                        name: policy.name.clone(),
+                        amount: policy.monthly_premium,
+                        next_payment_date,
+                        timestamp: now,
+                    },
+                );
                 count += 1;
             }
         }
@@ -828,3 +849,5 @@ impl Insurance {
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod next_payment_scheduling_tests;
