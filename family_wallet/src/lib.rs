@@ -800,6 +800,33 @@ impl FamilyWallet {
             );
         }
 
+        let config: MultiSigConfig = env
+            .storage()
+            .instance()
+            .get(&Self::get_config_key(resolved_tx_type))
+            .unwrap_or_else(|| panic!("Multi-sig config not found"));
+
+        let mut valid_signatures: u32 = 0;
+        for authorized_signer in config.signers.iter() {
+            if authorized_signer.clone() == proposer {
+                valid_signatures += 1;
+                break;
+            }
+        }
+
+        if valid_signatures >= config.threshold {
+            let executed = Self::execute_transaction_internal(
+                &env,
+                &proposer,
+                &resolved_tx_type,
+                &data,
+                false,
+            );
+            if executed == 0 {
+                return 0;
+            }
+        }
+
         Self::extend_instance_ttl(&env);
 
         let mut next_tx_id: u64 = env
@@ -817,9 +844,6 @@ impl FamilyWallet {
 
         let timestamp = env.ledger().timestamp();
 
-        let mut signatures = Vec::new(&env);
-        signatures.push_back(proposer.clone());
-
         let expiry_duration: u64 = env
             .storage()
             .instance()
@@ -831,6 +855,9 @@ impl FamilyWallet {
         } else {
             timestamp + expiry_duration
         };
+
+        let mut signatures = Vec::new(&env);
+        signatures.push_back(proposer.clone());
 
         let pending_tx = PendingTransaction {
             tx_id,

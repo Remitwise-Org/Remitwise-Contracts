@@ -219,7 +219,15 @@ impl BillPayments {
             .instance()
             .get(&STORAGE_OWNER_INDEX)
             .unwrap_or_else(|| Map::new(env));
-        let ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
+        let len = ids.len();
+        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+            ids.push_back(bill_id);
+            idx.set(owner.clone(), ids);
+            env.storage().instance().set(&STORAGE_OWNER_INDEX, &idx);
+            return;
+        }
+
         let mut new_ids: Vec<u32> = Vec::new(env);
         let mut inserted = false;
         for id in ids.iter() {
@@ -387,7 +395,14 @@ impl BillPayments {
     fn index_add_currency(env: &Env, owner: &Address, currency: &String, bill_id: u32) {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
-        let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
+        let mut ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
+        let len = ids.len();
+        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+            ids.push_back(bill_id);
+            idx.set(key, ids);
+            Self::save_currency_index(env, &idx);
+            return;
+        }
 
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);

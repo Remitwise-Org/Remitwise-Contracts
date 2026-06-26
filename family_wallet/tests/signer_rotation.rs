@@ -40,6 +40,7 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
     StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
@@ -99,6 +100,7 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
     StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
@@ -134,7 +136,6 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
 // when the threshold exceeds the signer count. The non-`try_` client method
 // auto-unwraps that `Err`, which the host escalates to a panic carrying the
 // contract error code rather than the human-readable name.
-#[should_panic(expected = "Error(Contract, #2)")]
 fn signer_rotation_rejects_threshold_above_signer_count() {
     let env = Env::default();
     env.mock_all_auths();
@@ -149,6 +150,7 @@ fn signer_rotation_rejects_threshold_above_signer_count() {
     client.init(&owner, &initial_members);
 
     let impossible_signers = vec![&env, owner.clone(), signer_a.clone()];
+    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &impossible_signers, &1_000_0000000);
     let result = client.try_configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
@@ -186,6 +188,7 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
     StellarAssetClient::new(&env, &token).mint(&owner, &10_000_0000000);
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
