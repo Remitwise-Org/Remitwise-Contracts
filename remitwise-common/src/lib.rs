@@ -221,6 +221,41 @@ pub fn verify_signature(
     }
 }
 
+/// Typed error for slash signature verification.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SlashError {
+    InvalidSignature = 8,
+}
+
+/// Verify an optional second-party slash signature.
+///
+/// This provides a defence-in-depth gate before executing destructive slash operations.
+/// 
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `message` - The payload being authorized (e.g. amount or slash payload)
+/// * `signature` - Optional 64-byte Ed25519 signature
+/// * `public_key` - 32-byte Ed25519 public key of the second party
+///
+/// # Returns
+/// * `Ok(())` if signature is valid or not provided (optional gate)
+/// * `Err(SlashError)` if the provided signature is invalid
+pub fn verify_slash_signature(
+    env: &soroban_sdk::Env,
+    message: &[u8],
+    signature: Option<&[u8]>,
+    public_key: &[u8],
+) -> Result<(), SlashError> {
+    if let Some(sig) = signature {
+        if verify_signature(env, b"slash-auth", message, sig, public_key).is_err() {
+            return Err(SlashError::InvalidSignature);
+        }
+    }
+    Ok(())
+}
+
 /// Validates and canonicalizes a batch of tags without panicking.
 ///
 /// # Rules
