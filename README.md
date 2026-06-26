@@ -6,12 +6,15 @@ Stellar Soroban smart contracts for the RemitWise remittance platform.
 
 This workspace contains the core smart contracts that power RemitWise's post-remittance financial planning features:
 
-- **remittance_split**: Automatically splits remittances into spending, savings, bills, and insurance
-- **savings_goals**: Goal-based savings with target dates and locked funds
-- **bill_payments**: Automated bill payment tracking and scheduling
-- **insurance**: Micro-insurance policy management and premium payments
-- **family_wallet**: Family governance, multisig approvals, and emergency transfer controls
-- **remitwise-common**: Shared types and utilities used across contracts
+- **[remittance_split](remittance_split/README.md)**: Automatically splits remittances into spending, savings, bills, and insurance
+- **[savings_goals](savings_goals/README.md)**: Goal-based savings with target dates and locked funds
+- **[bill_payments](bill_payments/README.md)**: Automated bill payment tracking and scheduling
+- **[insurance](insurance/README.md)**: Micro-insurance policy management and premium payments
+- **[family_wallet](family_wallet/README.md)**: Family governance, multisig approvals, and emergency transfer controls
+- **[orchestrator](orchestrator/README.md)**: Cross-contract coordination and execution of end-to-end remittance flows
+- **[reporting](reporting/README.md)**: Financial reporting and insights
+- **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
+- **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
 
 ## Shared Components
 
@@ -267,6 +270,7 @@ If you encounter issues with a specific Soroban version:
 ### Additional Resources
 
 - **[UPGRADE_GUIDE.md](UPGRADE_GUIDE.md)** - Comprehensive upgrade procedures and version-specific migration guides
+- **[docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md)** - Step-by-step contract upgrade runbook and rollback plan for operators
 - **[VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md)** - Detailed compatibility matrix and testing status
 - **[COMPATIBILITY_QUICK_REFERENCE.md](COMPATIBILITY_QUICK_REFERENCE.md)** - Quick reference for common compatibility tasks
 - **[.github/SOROBAN_VERSION_CHECKLIST.md](.github/SOROBAN_VERSION_CHECKLIST.md)** - Validation checklist for new versions
@@ -302,8 +306,10 @@ To run an example, use `cargo run --example <example_name>`:
 
 ## Documentation
 
+- [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
+- [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
@@ -597,6 +603,7 @@ After verifying optimizations:
 ### Documentation
 
 - **[Benchmarking Guide](benchmarks/README.md)**: Complete benchmarking documentation
+- **[Gas Tuning Guide](docs/GAS_TUNING.md)**: How to interpret gas snapshots and optimize costs
 - **[Gas Optimization Guide](docs/gas-optimization.md)**: Optimization strategies and best practices
 - **[Baseline Results](benchmarks/baseline.json)**: Current performance baseline
 - **[Threshold Configuration](benchmarks/thresholds.json)**: Regression detection thresholds
@@ -731,6 +738,8 @@ A comprehensive security review and threat model is available in [THREAT_MODEL.m
 - [SECURITY-003] Add Rate Limiting to Emergency Transfers (HIGH)
 - [SECURITY-004] Replace Checksum with Cryptographic Hash (MEDIUM)
 - [SECURITY-005] Implement Storage Bounds and Entity Limits (MEDIUM)
+
+> **PR Review Checklist:** Before merging security-sensitive PRs, reviewers must complete the [Security Review Checklist](docs/SECURITY_REVIEW.md).
 
 See the [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE) directory for detailed security issue descriptions.
 

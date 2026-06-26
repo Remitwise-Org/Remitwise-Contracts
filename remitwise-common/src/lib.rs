@@ -143,6 +143,58 @@ pub enum TagError {
     InvalidChar { position: u32 },
 }
 
+/// Signature verification failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SignatureError {
+    /// Invalid signature length (must be 64 bytes for Ed25519).
+    InvalidSignatureLength,
+    /// Invalid public key length (must be 32 bytes for Ed25519).
+    InvalidPublicKeyLength,
+    /// Signature verification failed.
+    VerificationFailed,
+}
+
+/// Verify an Ed25519 signature with domain separation.
+///
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `domain_separator` - Domain separator to prevent cross-domain replay attacks
+/// * `message` - The message to verify
+/// * `signature` - The Ed25519 signature (64 bytes)
+/// * `public_key` - The Ed25519 public key (32 bytes)
+///
+/// # Returns
+/// * `Ok(())` if the signature is valid
+/// * `Err(SignatureError)` if verification fails
+pub fn verify_signature(
+    env: &soroban_sdk::Env,
+    domain_separator: &[u8],
+    message: &[u8],
+    signature: &[u8],
+    public_key: &[u8],
+) -> Result<(), SignatureError> {
+    if signature.len() != 64 {
+        return Err(SignatureError::InvalidSignatureLength);
+    }
+    if public_key.len() != 32 {
+        return Err(SignatureError::InvalidPublicKeyLength);
+    }
+
+    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
+    prefixed_message.extend_from_slice(domain_separator);
+    prefixed_message.extend_from_slice(message);
+
+    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
+    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
+    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
+
+    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
+        Ok(())
+    } else {
+        Err(SignatureError::VerificationFailed)
+    }
+}
+
 /// Validates and canonicalizes a batch of tags without panicking.
 ///
 /// # Rules
@@ -299,7 +351,7 @@ impl RemitwiseEvents {
             action,
         );
         
-        #[cfg(any(test, feature = "testutils"))]
+        #[cfg(test)]
         {
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {

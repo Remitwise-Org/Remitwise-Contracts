@@ -2217,3 +2217,50 @@ fn test_get_split_allocations_percentages_across_all_categories() {
     // insurance = 10 - 3 - 3 - 3 = 1  (dust absorbed)
     assert_eq!(allocs.get(3).unwrap().amount, 1);
 }
+
+#[test]
+fn test_negative_amount_rejections() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, owner, token_addr, _) = setup_split(&env, 40, 30, 20, 10);
+    let accounts = sample_accounts(&env);
+
+    let nonce = 1u64;
+    let deadline = env.ledger().timestamp() + 3600;
+    let request_hash = RemittanceSplit::compute_request_hash(
+        symbol_short!("distrib"),
+        owner.clone(),
+        nonce,
+        -100,
+        deadline,
+    );
+
+    // 1. calculate_split with negative amount
+    let res_calc = client.try_calculate_split(&-100);
+    assert_eq!(res_calc, Err(Ok(RemittanceSplitError::InvalidAmount)));
+
+    // 2. distribute_usdc with negative amount
+    let res_dist = client.try_distribute_usdc(
+        &token_addr,
+        &owner,
+        &nonce,
+        &deadline,
+        &request_hash,
+        &accounts,
+        &-100,
+    );
+    assert_eq!(res_dist, Err(Ok(RemittanceSplitError::InvalidAmount)));
+
+    // 3. distribute_usdc_hashed with negative amount
+    let request = DistributeUsdcRequest {
+        usdc_contract: token_addr,
+        from: owner.clone(),
+        nonce,
+        accounts,
+        total_amount: -100,
+        deadline,
+    };
+    let hash = client.get_request_hash(&request);
+    let res_dist_hash = client.try_distribute_usdc_hashed(&request, &hash);
+    assert_eq!(res_dist_hash, Err(Ok(RemittanceSplitError::InvalidAmount)));
+}

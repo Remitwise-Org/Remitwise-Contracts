@@ -446,3 +446,82 @@ fn test_clamp_limit_u32_max_contract_regression() {
     assert!((1..=MAX_PAGE_LIMIT).contains(&clamped));
     assert_eq!(clamp_limit(clamped), clamped);
 }
+
+// ─── verify_signature tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_verify_signature_valid() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    // Generate a keypair
+    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+
+    // Sign the prefixed message
+    let mut prefixed = Vec::new();
+    prefixed.extend_from_slice(domain);
+    prefixed.extend_from_slice(message);
+    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+
+    // Verify the signature
+    let result = verify_signature(&env, domain, message, &signature, &pk);
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_signature_invalid_signature() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let invalid_signature = [0u8; 64];
+
+    let result = verify_signature(&env, domain, message, &invalid_signature, &pk);
+    assert_eq!(result, Err(SignatureError::VerificationFailed));
+}
+
+#[test]
+fn test_verify_signature_invalid_signature_length() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let short_signature = [0u8; 32];
+
+    let result = verify_signature(&env, domain, message, &short_signature, &pk);
+    assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
+}
+
+#[test]
+fn test_verify_signature_invalid_public_key_length() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let short_pk = [0u8; 16];
+    let signature = [0u8; 64];
+
+    let result = verify_signature(&env, domain, message, &signature, &short_pk);
+    assert_eq!(result, Err(SignatureError::InvalidPublicKeyLength));
+}
+
+#[test]
+fn test_verify_signature_wrong_domain() {
+    let env = Env::default();
+    let domain1 = b"domain1";
+    let domain2 = b"domain2";
+    let message = b"hello world";
+
+    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+
+    let mut prefixed = Vec::new();
+    prefixed.extend_from_slice(domain1);
+    prefixed.extend_from_slice(message);
+    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+
+    let result = verify_signature(&env, domain2, message, &signature, &pk);
+    assert_eq!(result, Err(SignatureError::VerificationFailed));
+}

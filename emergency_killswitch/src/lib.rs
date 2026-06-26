@@ -131,6 +131,40 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
+    /// Admin-only recovery path that immediately clears the global emergency
+    /// pause, bypassing the unpause timelock.
+    ///
+    /// [unpause] can only succeed once a future [schedule_unpause] has been set
+    /// *and* the ledger has reached it. A re-[pause] removes any pending
+    /// schedule (see [pause]), so a contract can be left globally paused with no
+    /// valid schedule — at which point `unpause` fails with
+    /// [Error::InvalidSchedule] and the only options were to wait out a stale
+    /// schedule or redeploy. This entrypoint lets the admin recover from that
+    /// stuck-paused state in a single call.
+    ///
+    /// Sets [DataKey::GlobalPaused] to `false` and removes any pending
+    /// [DataKey::UnpauseSchedule]. It is idempotent: calling it when the
+    /// contract is not paused is a successful no-op. Module- and function-level
+    /// pauses are intentionally left untouched — lift those with
+    /// [unpause_module] / [unpause_function].
+    ///
+    /// Emits an `emergency`/`cleared` event on success.
+    pub fn clear_emergency_state(env: Env) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::GlobalPaused, &false);
+        env.storage().instance().remove(&DataKey::UnpauseSchedule);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("cleared")),
+            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+        );
+        Ok(())
+    }
+
     pub fn schedule_unpause(env: Env, time: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -151,6 +185,43 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .get(&DataKey::GlobalPaused)
+            .unwrap_or(false)
+    }
+
+    /// Returns the pending unpause timestamp set by `schedule_unpause`, or `None` if no unpause
+    /// is scheduled. The schedule is cleared when `pause` or `unpause` is called.
+    ///
+    /// No authentication required — the schedule is observable on-chain.
+    pub fn get_unpause_schedule(env: Env) -> Option<u64> {
+        env.storage().instance().get(&DataKey::UnpauseSchedule)
+    }
+
+    /// Returns the list of paused function names for `module_id`, or an empty vec if none.
+    ///
+    /// Bounded by [`MAX_PAUSED_FUNCTIONS`] (10); no pagination required.
+    ///
+    /// Note: a function may appear unpaused here yet still be blocked if the module
+    /// (`is_module_paused`) or global pause (`is_paused`) is active — the precedence order
+    /// is global → module → function.
+    ///
+    /// No authentication required — state is observable on-chain.
+    pub fn list_paused_functions(env: Env, module_id: Symbol) -> Vec<Symbol> {
+        env.storage()
+            .instance()
+            .get(&DataKey::PausedFunctions(module_id))
+            .unwrap_or(Vec::new(&env))
+    }
+
+    /// Returns whether `module_id` is directly paused via `pause_module`.
+    ///
+    /// Note: this reflects only the module-level flag. For the full precedence check
+    /// (global → module → function) use `is_function_paused`.
+    ///
+    /// No authentication required — state is observable on-chain.
+    pub fn is_module_paused(env: Env, module_id: Symbol) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::ModulePaused(module_id))
             .unwrap_or(false)
     }
 

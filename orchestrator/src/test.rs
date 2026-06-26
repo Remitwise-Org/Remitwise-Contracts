@@ -1,6 +1,9 @@
 #![cfg(test)]
 
+extern crate std;
+
 use super::*;
+use std::{fs, path::PathBuf};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
@@ -215,6 +218,54 @@ fn compute_test_hash(
         .wrapping_add(amt_hi)
         .wrapping_add(deadline)
         .wrapping_mul(1_000_000_007)
+}
+
+fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
+    &[
+        ("remittance_split.wasm", 48_297),
+        ("savings_goals.wasm", 55_527),
+        ("bill_payments.wasm", 39_523),
+        ("insurance.wasm", 42_057),
+        ("family_wallet.wasm", 63_296),
+    ]
+}
+
+fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), String> {
+    if size <= max_bytes {
+        Ok(())
+    } else {
+        Err(format!(
+            "WASM size for '{}' is {} bytes, which exceeds the budget of {} bytes.",
+            contract, size, max_bytes
+        ))
+    }
+}
+
+#[test]
+fn test_wasm_artifacts_respect_documented_size_budgets() {
+    let release_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release");
+
+    for (filename, max_bytes) in wasm_size_budgets().iter() {
+        let artifact_path = release_dir.join(filename);
+        let metadata = fs::metadata(&artifact_path).unwrap_or_else(|_| {
+            panic!(
+                "Expected wasm artifact '{}' to exist at '{}'. Build wasm artifacts first.",
+                filename,
+                artifact_path.display()
+            )
+        });
+        let size = metadata.len() as usize;
+        verify_wasm_size(filename, size, *max_bytes).unwrap();
+    }
+}
+
+#[test]
+fn test_wasm_size_budget_validation_rejects_oversized_artifacts() {
+    assert!(verify_wasm_size("example.wasm", 10_001, 10_000).is_err());
 }
 
 // ---------------------------------------------------------------------------
@@ -1371,4 +1422,24 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     assert_eq!(stats.total_executions, 0);
     assert_eq!(stats.successful_executions, 0);
     assert_eq!(stats.failed_executions, 0);
+}
+
+#[test]
+fn test_negative_amount_rejections() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    // 1. execute_remittance_flow with negative amount
+    let res_unsigned = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, -100));
+    assert_eq!(res_unsigned, Err(Ok(OrchestratorError::InvalidAmount)));
+
+    // 2. execute_remittance_flow_signed with negative amount
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, -100, deadline);
+    let res_signed = client.try_execute_remittance_flow_signed(&caller, &-100, &0, &deadline, &hash);
+    assert_eq!(res_signed, Err(Ok(OrchestratorError::InvalidAmount)));
 }

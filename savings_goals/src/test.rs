@@ -4844,6 +4844,51 @@ mod migration_e2e_tests {
         );
     }
 
+    #[test]
+    fn test_noop_upgrade_snapshot_preserves_storage() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SavingsGoalContract);
+        let client = SavingsGoalContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        // 1. Initial init
+        client.init();
+        let initial_snap = client.export_snapshot(&owner);
+
+        // 2. State modification (Sad path: ensure checksum changes when state changes)
+        let goal_id = client.create_goal(
+            &owner,
+            &String::from_str(&env, "House"),
+            &50_000i128,
+            &3_000_000_000u64,
+            &false,
+        );
+        client.add_to_goal(&owner, &goal_id, &5_000i128);
+
+        let pre_upgrade_snap = client.export_snapshot(&owner);
+        // Explicit sad path: verify the checksum actually catches state changes
+        assert_ne!(
+            pre_upgrade_snap.checksum, initial_snap.checksum,
+            "sanity check: state actually changed"
+        );
+
+        // 3. Act: re-run init simulating a post-upgrade initialization (No-op upgrade)
+        client.init();
+
+        let post_upgrade_snap = client.export_snapshot(&owner);
+
+        // 4. Assert: storage is unchanged by the second init
+        assert_eq!(
+            pre_upgrade_snap.checksum, post_upgrade_snap.checksum,
+            "Re-running init must not mutate storage checksum"
+        );
+        assert_eq!(
+            pre_upgrade_snap.schema_version, post_upgrade_snap.schema_version,
+            "Re-running init must not change schema version"
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Multi-goal, multi-owner export
     // -------------------------------------------------------------------------
@@ -6620,4 +6665,41 @@ fn test_import_snapshot_owner_indices_are_consistent() {
         id_new > snapshot.next_id,
         "new goal id must be greater than snapshot's next_id"
     );
+}
+
+#[test]
+fn test_negative_amount_rejections() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let user = Address::generate(&env);
+    let name = String::from_str(&env, "Goal 1");
+    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+
+    // 1. create_goal with negative amount
+    let res_create = client.try_create_goal(&user, &name, &-100, &1735689600, &false);
+    assert_eq!(res_create, Err(Ok(SavingsGoalError::InvalidAmount)));
+
+    // 2. add_to_goal with negative amount
+    let res_add = client.try_add_to_goal(&user, &goal_id, &-50);
+    assert_eq!(res_add, Err(Ok(SavingsGoalError::InvalidAmount)));
+
+    // 3. withdraw_from_goal with negative amount
+    let res_withdraw = client.try_withdraw_from_goal(&user, &goal_id, &-50);
+    assert_eq!(res_withdraw, Err(Ok(SavingsGoalError::InvalidAmount)));
+
+    // 4. create_savings_schedule with negative/zero amount
+    let res_schedule_create1 = client.try_create_savings_schedule(&user, &goal_id, &-100, &1735689600, &3600);
+    assert!(res_schedule_create1.is_err());
+    let res_schedule_create2 = client.try_create_savings_schedule(&user, &goal_id, &0, &1735689600, &3600);
+    assert!(res_schedule_create2.is_err());
+
+    // 5. modify_savings_schedule with negative/zero amount
+    let res_schedule_modify1 = client.try_modify_savings_schedule(&user, &goal_id, &-100, &1735689600, &3600);
+    assert!(res_schedule_modify1.is_err());
+    let res_schedule_modify2 = client.try_modify_savings_schedule(&user, &goal_id, &0, &1735689600, &3600);
+    assert!(res_schedule_modify2.is_err());
 }

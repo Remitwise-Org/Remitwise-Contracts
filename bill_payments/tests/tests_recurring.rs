@@ -61,6 +61,22 @@ impl RecurringHarness<'_> {
         }
     }
 
+    fn sum_unpaid_bills(&self) -> i128 {
+        let mut cursor = 0u32;
+        let mut sum = 0i128;
+        loop {
+            let page = self.client.get_unpaid_bills(&self.owner, &cursor, &50);
+            for bill in page.items.iter() {
+                sum += bill.amount;
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        sum
+    }
+
     fn create_recurring(
         &self,
         name: &str,
@@ -222,8 +238,14 @@ fn test_recurring_pay_spawns_one_child_with_all_cloned_fields() {
         &tags(&h.env, &["monthly", "essential"]),
     );
 
+    let total_before = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(total_before, amount, "total before should be parent amount");
+
     let parent = h.client.get_bill(&parent_id).unwrap();
     h.pay_at(parent_id, due_date - 1);
+
+    let total_after = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(total_after, amount, "total after should still be amount (subtract parent, add child)");
 
     let child_id = h.child_id(parent_id);
     let child = h.client.get_bill(&child_id).unwrap();
@@ -418,4 +440,35 @@ fn test_create_bill_invalid_due_date_boundaries() {
         &None,
     );
     assert_eq!(zero, Err(Ok(BillPaymentsError::InvalidDueDate)));
+}
+
+#[test]
+fn test_sum_unpaid_bills_equals_get_total_unpaid() {
+    let h = RecurringHarness::new(1_000_000);
+    let due_date = 2_000_000u64;
+
+    // Create multiple bills
+    h.create_one_time("One-time 1", 100, due_date);
+    h.create_recurring("Recurring 1", 200, due_date, 30, "XLM");
+    h.create_one_time("One-time 2", 300, due_date);
+
+    let sum = h.sum_unpaid_bills();
+    let get_total = h.client.get_total_unpaid(&h.owner);
+
+    assert_eq!(sum, 600, "sum of bills should equal get_total_unpaid");
+    assert_eq!(sum, get_total, "sum_unpaid_bills == get_total_unpaid");
+
+    // Pay the first one-time bill
+    h.pay_at(1, due_date);
+    let sum_after_pay_one_time = h.sum_unpaid_bills();
+    let get_total_after_pay_one_time = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(sum_after_pay_one_time, 500, "after paying one-time, sum is 200 + 300");
+    assert_eq!(sum_after_pay_one_time, get_total_after_pay_one_time);
+
+    // Pay the recurring bill, which should spawn a new one
+    h.pay_at(2, due_date);
+    let sum_after_pay_recurring = h.sum_unpaid_bills();
+    let get_total_after_pay_recurring = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(sum_after_pay_recurring, 500, "after paying recurring, sum remains 200 + 300 (new child)");
+    assert_eq!(sum_after_pay_recurring, get_total_after_pay_recurring);
 }

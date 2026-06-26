@@ -303,6 +303,37 @@ The orchestrator makes the following cross-contract calls:
 
 ---
 
+## 8. Emergency Killswitch Contract
+
+The killswitch is the contract operators reach for during an incident. Pause checks follow a
+strict precedence order: **global → module → function**. A function blocked at a higher level
+remains blocked even if its own function-level flag is clear.
+
+| Public Method | Required Caller | Access Control Details |
+|---|---|---|
+| `initialize` | Anyone (once) | Sets admin. Rejects contract's own address. Fails if already initialized. |
+| `transfer_admin` | Admin | Admin must authorize. Rejects self-address and current admin as new admin. Emits `AdminTransferred`. |
+| `pause` | Admin | Admin only. Sets global pause flag, clears any pending unpause schedule. |
+| `unpause` | Admin | Admin only. Requires a valid `schedule_unpause` timestamp ≥ current ledger time. Clears schedule on success. |
+| `schedule_unpause` | Admin | Admin only. Stores a future timestamp; must be ≥ current ledger time. |
+| `pause_module` | Admin | Admin only. Sets `ModulePaused(module_id)` flag. |
+| `unpause_module` | Admin | Admin only. Clears `ModulePaused(module_id)` flag. |
+| `pause_function` | Admin | Admin only. Appends func to `PausedFunctions(module_id)`. Capped at `MAX_PAUSED_FUNCTIONS` (10). |
+| `unpause_function` | Admin | Admin only. Removes func from `PausedFunctions(module_id)`. |
+| **Read / Observability** |||
+| `is_paused` | Anyone | No auth. Returns global pause flag. |
+| `is_function_paused` | Anyone | No auth. Precedence: global → module → function. |
+| `get_unpause_schedule` | Anyone | No auth. Returns pending unpause timestamp or `None` if none scheduled. |
+| `list_paused_functions` | Anyone | No auth. Returns `PausedFunctions(module_id)` vec (empty if none). Bounded by `MAX_PAUSED_FUNCTIONS` (10); no pagination required. Does **not** reflect module- or global-level pauses — use `is_function_paused` for the full check. |
+| `is_module_paused` | Anyone | No auth. Returns `ModulePaused(module_id)` flag directly. Does **not** include global-pause state. |
+
+### Risky Functions - Emergency Killswitch
+- **`transfer_admin`**: Irreversibly changes the sole authority over the killswitch. A botched transfer could leave the killswitch unrecoverable.
+- **`pause`**: Immediately halts the system globally and silently drops any pending unpause schedule.
+- **`unpause`**: Requires a pre-set schedule; calling without one returns `InvalidSchedule`, preventing accidental unpauses.
+
+---
+
 ## Cross-Contract Call Summary
 
 | Caller Contract | Called Contract | Function Called | Constraint |
