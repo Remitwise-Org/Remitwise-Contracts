@@ -229,14 +229,13 @@ impl Orchestrator {
         let rs_client = interface::RemittanceSplitClient::new(env, &params.remittance_split);
         let allocations = rs_client.calculate_split(&params.total_amount);
 
-        if allocations.len() < 4 {
-            return Err(OrchestratorError::InvalidAmount);
-        }
-
-        let _spending_amt = allocations.get_unchecked(0);
-        let savings_amt = allocations.get_unchecked(1);
-        let bills_amt = allocations.get_unchecked(2);
-        let insurance_amt = allocations.get_unchecked(3);
+        // Allocations come from an external contract whose return vector we do not
+        // control. Validate bounds explicitly so a short or malformed response
+        // returns InvalidAmount instead of panicking with EXEC_LOCK held.
+        let _spending_amt = allocations.get(0).ok_or(OrchestratorError::InvalidAmount)?;
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
 
         // 3. Downstream calls
         if savings_amt > 0 {
@@ -668,18 +667,19 @@ impl Orchestrator {
             return Err(OrchestratorError::Unauthorized);
         }
 
-        // Pre-calculate split (read-only call) — establishes the amounts
-        // that will be forwarded to each downstream contract.
+        // Allocations come from an external contract whose return vector we do not
+        // control. Validate each index explicitly: a short, reordered, or hostile
+        // response must return InvalidAmount rather than panic while EXEC_LOCK is held.
         let rs_client = interface::RemittanceSplitClient::new(env, &rs_addr);
         let allocations = rs_client.calculate_split(&amount);
         if allocations.len() < 4 {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        let _spending_amt = allocations.get_unchecked(0);
-        let savings_amt = allocations.get_unchecked(1);
-        let bills_amt = allocations.get_unchecked(2);
-        let insurance_amt = allocations.get_unchecked(3);
+        let _spending_amt = allocations.get(0).ok_or(OrchestratorError::InvalidAmount)?;
+        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
 
         // ---------------------------------------------------------------
         // Execution phase — writes with compensation tracking
