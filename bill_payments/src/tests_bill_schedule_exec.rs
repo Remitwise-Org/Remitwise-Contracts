@@ -2,9 +2,9 @@
 
 extern crate std;
 
-use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError, BillEvent};
 use soroban_sdk::{
-    testutils::Address as AddressTrait, Address, Env, String, Symbol,
+    testutils::{Address as AddressTrait, Events}, Address, Env, String, Symbol, TryFromVal,
 };
 use testutils::{generate_test_address, set_ledger_time, setup_test_env};
 
@@ -24,13 +24,13 @@ fn create_owner_bill(
 ) -> u32 {
     client.create_bill(
         owner,
-        &String::from_str(&client.env(), name),
+        &String::from_str(&client.env, name),
         &amount,
         &due_date,
         &false,
         &0,
         &None,
-        &String::from_str(&client.env(), "XLM"),
+        &String::from_str(&client.env, "XLM"),
         &None,
     )
 }
@@ -52,8 +52,7 @@ fn test_create_schedule_generates_bill_with_schedule_id() {
             &String::from_str(&env, "XLM"),
             &(now + 86400),
             &86400,
-        )
-        .unwrap();
+        );
 
     // Advance time past next_due
     set_ledger_time(&env, 1, now + 2 * 86400);
@@ -63,7 +62,7 @@ fn test_create_schedule_generates_bill_with_schedule_id() {
     assert_eq!(executed.get(0).unwrap(), schedule_id);
 
     // The generated bill should have schedule_id set
-    let bills = client.get_all_unpaid_bills_legacy(owner.clone());
+    let bills = client.get_all_unpaid_bills_legacy(&owner);
     assert_eq!(bills.len(), 1, "one bill should be generated");
     assert_eq!(bills.get(0).unwrap().schedule_id, Some(schedule_id));
     assert_eq!(bills.get(0).unwrap().amount, 10000);
@@ -89,8 +88,7 @@ fn test_no_double_execution_same_ledger_recurring() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 2000);
     let first = client.execute_due_bill_schedules();
@@ -103,7 +101,7 @@ fn test_no_double_execution_same_ledger_recurring() {
         "second call in same ledger must not execute"
     );
 
-    let bills = client.get_all_unpaid_bills_legacy(owner.clone());
+    let bills = client.get_all_unpaid_bills_legacy(&owner);
     assert_eq!(bills.len(), 1, "exactly one bill must exist");
 }
 
@@ -122,8 +120,7 @@ fn test_one_off_schedule_executed_once() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &0,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 2000);
     let first = client.execute_due_bill_schedules();
@@ -151,14 +148,13 @@ fn test_recurring_schedule_advances_next_due_and_missed_count() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 5 * 86400);
     let executed = client.execute_due_bill_schedules();
     assert_eq!(executed.len(), 1);
 
-    let schedule = client.get_bill_schedule(schedule_id).unwrap();
+    let schedule = client.get_bill_schedule(&schedule_id).unwrap();
     assert!(schedule.next_due > now + 5 * 86400, "next_due must be future");
     assert_eq!(
         schedule.missed_count, 4,
@@ -183,8 +179,7 @@ fn test_modify_bill_schedule_updates_next_bill() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     client
         .modify_bill_schedule(
@@ -193,13 +188,12 @@ fn test_modify_bill_schedule_updates_next_bill() {
             &2500,
             &(now + 2 * 86400),
             &86400,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 3 * 86400);
     client.execute_due_bill_schedules();
 
-    let bills = client.get_all_unpaid_bills_legacy(owner.clone());
+    let bills = client.get_all_unpaid_bills_legacy(&owner);
     assert_eq!(bills.len(), 1);
     assert_eq!(bills.get(0).unwrap().amount, 2500);
 }
@@ -219,10 +213,9 @@ fn test_cancel_bill_schedule_prevents_execution() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
-    client.cancel_bill_schedule(&owner, &schedule_id).unwrap();
+    client.cancel_bill_schedule(&owner, &schedule_id);
 
     set_ledger_time(&env, 1, now + 2000);
     let executed = client.execute_due_bill_schedules();
@@ -246,7 +239,7 @@ fn test_execution_respects_max_bills_per_owner() {
             &owner,
             &format!("Bill{}", i),
             1000,
-            now + i,
+            now + i as u64,
         );
     }
 
@@ -258,14 +251,13 @@ fn test_execution_respects_max_bills_per_owner() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 2000);
     let executed = client.execute_due_bill_schedules();
     assert_eq!(executed.len(), 1, "schedule must execute");
 
-    let bills = client.get_all_unpaid_bills_legacy(owner.clone());
+    let bills = client.get_all_unpaid_bills_legacy(&owner);
     assert_eq!(
         bills.len() as u32,
         bill_payments::MAX_BILLS_PER_OWNER,
@@ -289,10 +281,9 @@ fn test_get_bill_schedules_returns_owner_schedules() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
-    let schedules = client.get_bill_schedules(owner);
+    let schedules = client.get_bill_schedules(&owner);
     assert_eq!(schedules.len(), 1);
     assert_eq!(schedules.get(0).unwrap().amount, 8000);
 }
@@ -302,7 +293,7 @@ fn test_get_bill_schedule_returns_none_for_missing() {
     let env = Env::default();
     let (client, _owner) = setup(&env);
 
-    let sched = client.get_bill_schedule(9999);
+    let sched = client.get_bill_schedule(&9999);
     assert!(sched.is_none());
 }
 
@@ -357,8 +348,7 @@ fn test_modify_bill_schedule_unauthorized_fails() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     let result = client.try_modify_bill_schedule(
         &intruder,
@@ -387,8 +377,8 @@ fn test_execute_due_bill_schedules_respects_global_pause() {
     let (client, owner) = setup(&env);
 
     let now = env.ledger().timestamp();
-    client.set_pause_admin(owner.clone(), owner.clone());
-    client.pause(owner.clone());
+    client.set_pause_admin(&owner, &owner);
+    client.pause(&owner);
 
     client
         .create_bill_schedule(
@@ -398,8 +388,7 @@ fn test_execute_due_bill_schedules_respects_global_pause() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     set_ledger_time(&env, 1, now + 2000);
     let executed = client.execute_due_bill_schedules();
@@ -437,8 +426,7 @@ fn test_schedule_events_emitted() {
             &String::from_str(&env, "XLM"),
             &(now + 1000),
             &86400,
-        )
-        .unwrap();
+        );
 
     assert_eq!(
         count_bill_event_variant(&env, BillEvent::ScheduleCreated),

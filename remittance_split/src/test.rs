@@ -86,7 +86,7 @@ fn test_distribution_completed_event() {
 
     // 1. Initialize split
     // percentages: 40, 30, 20, 10
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
 
     // 2. Setup destination accounts
     let accounts = AccountGroup {
@@ -161,7 +161,7 @@ fn test_distribution_event_topic_correctness() {
     let token_addr = token_contract.address();
     let stellar_client = StellarAssetClient::new(&env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &50, &50, &0, &0);
+    client.initialize_split(&owner, &0, &token_addr, &5000, &5000, &0, &0);
 
     let accounts = AccountGroup {
         spending: Address::generate(&env),
@@ -263,7 +263,7 @@ fn test_ttl_extensions() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _owner, _token_addr, _stellar_client) = setup_split(&env, 40, 30, 20, 10);
+    let (client, _owner, _token_addr, _stellar_client) = setup_split(&env, 4000, 3000, 2000, 1000);
 
     // Check Instance TTL extension (CONFIG).
     // Initial sequence is 0. Threshold is INSTANCE_LIFETIME_THRESHOLD.
@@ -381,7 +381,7 @@ fn test_distribute_usdc_deadline_expired() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline in the past (500 < 1000)
     let request = DistributeUsdcRequest {
@@ -421,7 +421,7 @@ fn test_distribute_usdc_deadline_too_far() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline > MAX_DEADLINE_WINDOW_SECS from now
     let request = DistributeUsdcRequest {
@@ -461,7 +461,7 @@ fn test_distribute_usdc_deadline_zero() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline = 0
     let request = DistributeUsdcRequest {
@@ -501,7 +501,7 @@ fn test_distribute_usdc_hash_mismatch() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create valid request
     let request = DistributeUsdcRequest {
@@ -544,7 +544,7 @@ fn test_distribute_usdc_deadline_at_boundary() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline exactly at MAX_DEADLINE_WINDOW_SECS boundary
     let request = DistributeUsdcRequest {
@@ -851,7 +851,7 @@ fn setup_request_hash_distribution(
     let token_addr = token_contract.address();
     let stellar_client = StellarAssetClient::new(env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
 
     (client, owner, token_addr, stellar_client)
 }
@@ -1054,7 +1054,7 @@ fn test_request_hash_hashed_path_rejects_untrusted_token_contract() {
 #[test]
 fn test_execute_due_remittance_schedules_basic() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1087,7 +1087,7 @@ fn test_execute_due_remittance_schedules_basic() {
 #[test]
 fn test_execute_recurring_remittance_schedule() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1121,7 +1121,7 @@ fn test_execute_recurring_remittance_schedule() {
 #[test]
 fn test_execute_missed_remittance_schedules() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1149,7 +1149,7 @@ fn test_execute_missed_remittance_schedules() {
 #[test]
 fn test_execute_idempotent_oneshot() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1186,7 +1186,7 @@ fn test_execute_idempotent_oneshot() {
 #[test]
 fn test_execute_idempotent_recurring() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1224,7 +1224,7 @@ fn test_execute_idempotent_recurring() {
 #[test]
 fn test_execute_skips_inactive_schedules() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1246,7 +1246,7 @@ fn test_execute_skips_inactive_schedules() {
 #[test]
 fn test_execute_skips_not_yet_due() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1274,7 +1274,7 @@ fn test_execute_skips_not_yet_due() {
 #[test]
 fn test_execute_exactly_equal_next_due() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1293,7 +1293,7 @@ fn test_execute_exactly_equal_next_due() {
 #[test]
 fn test_execute_empty_schedule_set() {
     let env = Env::default();
-    let (client, _owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1309,7 +1309,7 @@ fn test_execute_empty_schedule_set() {
 #[test]
 fn test_execute_all_inactive_set() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1336,7 +1336,7 @@ fn test_execute_all_inactive_set() {
 #[test]
 fn test_execute_paused_contract_returns_empty() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1385,7 +1385,7 @@ fn test_execute_due_remittance_schedules_fanout_dust_conservation() {
 
     // Use one contract instance with a fixed split regime.
     // (Percentages are fixed per RemittanceSplit instance.)
-    let (client, owner, _token_addr, _stellar_client) = setup_split(&env, 37, 33, 20, 10);
+    let (client, owner, _token_addr, _stellar_client) = setup_split(&env, 3700, 3300, 2000, 1000);
 
     // Seed due schedules at/under a single ledger time.
     // Include both one-off (interval=0) and recurring (interval>0).
@@ -1537,7 +1537,7 @@ fn test_execute_due_remittance_schedules_fanout_dust_conservation() {
 #[test]
 fn test_execute_mixed_due_not_due() {
     let env = Env::default();
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     env.mock_all_auths();
     set_time(&env, 1_000);
@@ -1611,7 +1611,7 @@ fn setup_signed_distribution(
     let token_addr = token_contract.address();
     let stellar_client = soroban_sdk::token::StellarAssetClient::new(env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
     stellar_client.mint(&owner, &10_000i128);
 
     (client, owner, token_addr, stellar_client)
@@ -1798,7 +1798,7 @@ fn test_invalid_deadline_does_not_advance_nonce() {
 #[test]
 fn test_get_schedules_paginated_full_scale_cursor_monotonicity() {
     let env = Env::default();
-    let (client, owner, _, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _, _) = setup_split(&env, 5000, 3000, 1500, 500);
     let other_owner = Address::generate(&env);
 
     let amount = 1_000i128;
@@ -1973,7 +1973,7 @@ fn test_get_split_allocations_single_100_percent_spending() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 100, 0, 0, 0);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 10000, 0, 0, 0);
     let _ = client; // client used only to initialize; call through impl directly
 
     let total: i128 = 500;
@@ -2001,7 +2001,7 @@ fn test_get_split_allocations_single_100_percent_insurance() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 0, 0, 0, 100);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 0, 0, 0, 10000);
     let _ = client;
 
     let total: i128 = 333;
@@ -2058,7 +2058,7 @@ fn test_get_split_allocations_amount_one_conservation() {
     set_time(&env, 1_000);
 
     // 25/25/25/25: each floor = floor(1*25/100) = 0; insurance = 1 - 0 - 0 - 0 = 1
-    let (client, _owner, _token_addr, _) = setup_split(&env, 25, 25, 25, 25);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 2500, 2500, 2500, 2500);
     let _ = client;
 
     let allocs = env
@@ -2081,7 +2081,7 @@ fn test_get_split_allocations_ordering_is_deterministic() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 40, 30, 20, 10);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 4000, 3000, 2000, 1000);
     let _ = client;
 
     let total: i128 = 1_000;
@@ -2113,7 +2113,7 @@ fn test_get_split_allocations_order_matches_get_split() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 40, 30, 20, 10);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 4000, 3000, 2000, 1000);
 
     let total: i128 = 1_000;
     let split = env.as_contract(&client.address, || RemittanceSplit::get_split(&env)); // [40, 30, 20, 10]
@@ -2169,7 +2169,7 @@ fn test_get_split_allocations_large_amount_single_slot() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 100, 0, 0, 0);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 10000, 0, 0, 0);
     let _ = client;
 
     let total: i128 = i128::MAX / 100;
@@ -2194,7 +2194,7 @@ fn test_get_split_allocations_percentages_across_all_categories() {
     set_time(&env, 1_000);
 
     // 33/33/33/1 — non-round split that produces visible dust
-    let (client, _owner, _token_addr, _) = setup_split(&env, 33, 33, 33, 1);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 3300, 3300, 3300, 100);
     let _ = client;
 
     let total: i128 = 10;
@@ -2221,7 +2221,7 @@ fn test_pre_upgrade_roundtrip() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     // Set upgrade admin
     let admin = Address::generate(&env);
@@ -2232,12 +2232,12 @@ fn test_pre_upgrade_roundtrip() {
     assert!(result.is_ok());
 
     // Modify state — change split percentages and version
-    client.update_split(&owner, &1, &20, &30, &30, &20);
+    client.update_split(&owner, &1, &2000, &3000, &3000, &2000);
     client.set_version(&admin, &99);
 
     // Verify state changed
     let split = client.get_split();
-    assert_eq!(split.get(0).unwrap(), 20);
+    assert_eq!(split.get(0).unwrap(), 2000);
     assert_eq!(client.get_version(), 99);
 
     // Restore from snapshot
@@ -2246,8 +2246,8 @@ fn test_pre_upgrade_roundtrip() {
 
     // Verify state was restored
     let split = client.get_split();
-    assert_eq!(split.get(0).unwrap(), 50);
-    assert_eq!(split.get(1).unwrap(), 30);
+    assert_eq!(split.get(0).unwrap(), 5000);
+    assert_eq!(split.get(1).unwrap(), 3000);
     assert_eq!(client.get_version(), 1);
 }
 
@@ -2257,7 +2257,7 @@ fn test_pre_upgrade_unauthorized_fails() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, _owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
 
     // Set upgrade admin
     let admin = Address::generate(&env);
@@ -2274,11 +2274,63 @@ fn test_pre_upgrade_discard() {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let (client, owner, _token_addr, _) = setup_split(&env, 5000, 3000, 1500, 500);
     let admin = Address::generate(&env);
     client.set_upgrade_admin(&owner, &admin);
 
     client.pre_upgrade(&admin);
     let result = client.try_discard_snapshot(&admin);
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_initialize_split_percentage_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Call try_initialize_split with spending_percent = 10_001
+    let result = client.try_initialize_split(
+        &owner,
+        &0,
+        &token_addr,
+        &10_001,
+        &0,
+        &0,
+        &0,
+    );
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
+}
+
+#[test]
+fn test_initialize_split_percentages_invalid_sum() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Call try_initialize_split with sum = 9_999
+    let result = client.try_initialize_split(
+        &owner,
+        &0,
+        &token_addr,
+        &4000,
+        &3000,
+        &2000,
+        &999,
+    );
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
 }

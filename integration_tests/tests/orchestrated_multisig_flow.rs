@@ -64,7 +64,7 @@ fn test_orchestrated_multisig_flow() {
     family_wallet_client.update_spending_limit(&admin, &user, &100i128);
 
     let mock_usdc = Address::generate(&env);
-    remittance_client.initialize_split(&admin, &0u64, &mock_usdc, &40u32, &30u32, &20u32, &10u32);
+    remittance_client.initialize_split(&admin, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32);
 
     savings_client.init();
 

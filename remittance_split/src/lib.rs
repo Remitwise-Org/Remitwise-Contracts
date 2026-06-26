@@ -821,17 +821,17 @@ impl RemittanceSplit {
         insurance_percent: u32,
     ) -> Result<(), RemittanceSplitError> {
         // Per-bucket upper-bound check — must precede sum check.
-        if spending_percent > 100
-            || savings_percent > 100
-            || bills_percent > 100
-            || insurance_percent > 100
+        if spending_percent > 10_000
+            || savings_percent > 10_000
+            || bills_percent > 10_000
+            || insurance_percent > 10_000
         {
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(RemittanceSplitError::PercentageOutOfRange);
         }
         // Global sum invariant.
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 100 {
-            return Err(RemittanceSplitError::InvalidPercentages);
+        if total != 10_000 {
+            return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
         Ok(())
     }
@@ -1016,7 +1016,7 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .get(&symbol_short!("SPLIT"))
-            .unwrap_or_else(|| vec![&env, 50, 30, 15, 5])
+            .unwrap_or_else(|| vec![&env, 5000, 3000, 1500, 500])
     }
 
     pub fn get_config(env: Env) -> Option<SplitConfig> {
@@ -1048,15 +1048,15 @@ impl RemittanceSplit {
 
         let spending = total_amount
             .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         let savings = total_amount
             .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         let bills = total_amount
             .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         // Insurance gets the remainder to handle rounding
         let insurance = total_amount
@@ -1511,13 +1511,13 @@ impl RemittanceSplit {
 
         // 4. Per-field percentage range — reject values that could not have
         //    been produced by a valid initialize_split / update_split call.
-        if snapshot.config.spending_percent > 100
-            || snapshot.config.savings_percent > 100
-            || snapshot.config.bills_percent > 100
-            || snapshot.config.insurance_percent > 100
+        if snapshot.config.spending_percent > 10_000
+            || snapshot.config.savings_percent > 10_000
+            || snapshot.config.bills_percent > 10_000
+            || snapshot.config.insurance_percent > 10_000
         {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(RemittanceSplitError::PercentageOutOfRange);
         }
 
         // 5. Sum constraint
@@ -1525,7 +1525,7 @@ impl RemittanceSplit {
             + snapshot.config.savings_percent
             + snapshot.config.bills_percent
             + snapshot.config.insurance_percent;
-        if total != 100 {
+        if total != 10_000 {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
@@ -1663,12 +1663,12 @@ impl RemittanceSplit {
         }
 
         // 4. Per-field range
-        if snapshot.config.spending_percent > 100
-            || snapshot.config.savings_percent > 100
-            || snapshot.config.bills_percent > 100
-            || snapshot.config.insurance_percent > 100
+        if snapshot.config.spending_percent > 10_000
+            || snapshot.config.savings_percent > 10_000
+            || snapshot.config.bills_percent > 10_000
+            || snapshot.config.insurance_percent > 10_000
         {
-            return Err(RemittanceSplitError::InvalidPercentages);
+            return Err(RemittanceSplitError::PercentageOutOfRange);
         }
 
         // 5. Sum constraint
@@ -1676,8 +1676,8 @@ impl RemittanceSplit {
             + snapshot.config.savings_percent
             + snapshot.config.bills_percent
             + snapshot.config.insurance_percent;
-        if total != 100 {
-            return Err(RemittanceSplitError::InvalidPercentages);
+        if total != 10_000 {
+            return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
 
         // 6. Timestamp sanity
@@ -2054,15 +2054,15 @@ impl RemittanceSplit {
 
         let spending = total_amount
             .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         let savings = total_amount
             .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         let bills = total_amount
             .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
+            .and_then(|n| n.checked_div(10_000))
             .ok_or(RemittanceSplitError::Overflow)?;
         let insurance = total_amount
             .checked_sub(spending)

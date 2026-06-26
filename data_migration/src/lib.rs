@@ -1270,7 +1270,7 @@ impl RollbackMetadata {
 /// # Invariants
 ///
 /// ## `RemittanceSplit`
-/// `spending_percent + savings_percent + bills_percent + insurance_percent == 100`.
+/// `spending_percent + savings_percent + bills_percent + insurance_percent == 10000`.
 ///
 /// ## `SavingsGoals`
 /// - `next_id >= max(goal.id)` — counter must not have been wound back.
@@ -1281,14 +1281,27 @@ impl RollbackMetadata {
 fn validate_payload_semantics(payload: &SnapshotPayload) -> Result<(), MigrationError> {
     match payload {
         SnapshotPayload::RemittanceSplit(export) => {
+            if export.spending_percent > 10_000
+                || export.savings_percent > 10_000
+                || export.bills_percent > 10_000
+                || export.insurance_percent > 10_000
+            {
+                return Err(MigrationError::ValidationFailed(format!(
+                    "RemittanceSplit percentages must be <= 10000 (basis points), got (spending={}, savings={}, bills={}, insurance={})",
+                    export.spending_percent,
+                    export.savings_percent,
+                    export.bills_percent,
+                    export.insurance_percent,
+                )));
+            }
             let sum = export
                 .spending_percent
                 .saturating_add(export.savings_percent)
                 .saturating_add(export.bills_percent)
                 .saturating_add(export.insurance_percent);
-            if sum != 100 {
+            if sum != 10_000 {
                 return Err(MigrationError::ValidationFailed(format!(
-                    "RemittanceSplit percentages must sum to 100, got {} \
+                    "RemittanceSplit percentages must sum to 10000 (basis points), got {} \
                      (spending={}, savings={}, bills={}, insurance={})",
                     sum,
                     export.spending_percent,
@@ -1363,10 +1376,10 @@ mod tests {
     fn sample_remittance_payload() -> SnapshotPayload {
         SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
             owner: "GABC".into(),
-            spending_percent: 50,
-            savings_percent: 30,
-            bills_percent: 15,
-            insurance_percent: 5,
+            spending_percent: 5000,
+            savings_percent: 3000,
+            bills_percent: 1500,
+            insurance_percent: 500,
         })
     }
 
@@ -1509,10 +1522,10 @@ mod tests {
         let second_snapshot = ExportSnapshot::new(
             SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
                 owner: "GABC".into(),
-                spending_percent: 45,
-                savings_percent: 35,
-                bills_percent: 15,
-                insurance_percent: 5,
+                spending_percent: 4500,
+                savings_percent: 3500,
+                bills_percent: 1500,
+                insurance_percent: 500,
             }),
             ExportFormat::Json,
         );
@@ -3555,14 +3568,14 @@ mod tests {
     // --- RemittanceSplit: direct validate_for_import ---
 
     #[test]
-    fn test_semantic_remittance_split_valid_sum_100_accepted() {
-        let snapshot = make_remittance_snapshot(50, 30, 15, 5);
+    fn test_semantic_remittance_split_valid_sum_10000_accepted() {
+        let snapshot = make_remittance_snapshot(5000, 3000, 1500, 500);
         assert!(snapshot.validate_for_import().is_ok());
     }
 
     #[test]
-    fn test_semantic_remittance_split_sum_99_rejected() {
-        let snapshot = make_remittance_snapshot(50, 30, 15, 4);
+    fn test_semantic_remittance_split_sum_9999_rejected() {
+        let snapshot = make_remittance_snapshot(5000, 3000, 1500, 499);
         assert!(matches!(
             snapshot.validate_for_import(),
             Err(MigrationError::ValidationFailed(_))
@@ -3570,8 +3583,17 @@ mod tests {
     }
 
     #[test]
-    fn test_semantic_remittance_split_sum_101_rejected() {
-        let snapshot = make_remittance_snapshot(50, 30, 15, 6);
+    fn test_semantic_remittance_split_sum_10001_rejected() {
+        let snapshot = make_remittance_snapshot(5000, 3000, 1500, 501);
+        assert!(matches!(
+            snapshot.validate_for_import(),
+            Err(MigrationError::ValidationFailed(_))
+        ));
+    }
+
+    #[test]
+    fn test_semantic_remittance_split_single_value_out_of_range_rejected() {
+        let snapshot = make_remittance_snapshot(10001, 0, 0, 0);
         assert!(matches!(
             snapshot.validate_for_import(),
             Err(MigrationError::ValidationFailed(_))
@@ -3588,9 +3610,9 @@ mod tests {
     }
 
     #[test]
-    fn test_semantic_remittance_split_sum_255_rejected() {
-        // 64 + 64 + 64 + 63 = 255
-        let snapshot = make_remittance_snapshot(64, 64, 64, 63);
+    fn test_semantic_remittance_split_sum_25500_rejected() {
+        // 6400 + 6400 + 6400 + 6300 = 25500
+        let snapshot = make_remittance_snapshot(6400, 6400, 6400, 6300);
         assert!(matches!(
             snapshot.validate_for_import(),
             Err(MigrationError::ValidationFailed(_))
@@ -3601,7 +3623,7 @@ mod tests {
 
     #[test]
     fn test_semantic_remittance_split_invalid_rejected_via_json_untracked() {
-        let snapshot = make_remittance_snapshot(50, 30, 15, 4); // sum = 99
+        let snapshot = make_remittance_snapshot(5000, 3000, 1500, 499); // sum = 9999
         let bytes = export_to_json(&snapshot).unwrap();
         assert!(matches!(
             import_from_json_untracked(&bytes),
@@ -3611,7 +3633,7 @@ mod tests {
 
     #[test]
     fn test_semantic_remittance_split_invalid_rejected_via_binary_untracked() {
-        let snapshot = make_remittance_snapshot(50, 30, 15, 6); // sum = 101
+        let snapshot = make_remittance_snapshot(5000, 3000, 1500, 501); // sum = 10001
         let bytes = export_to_binary(&snapshot).unwrap();
         assert!(matches!(
             import_from_binary_untracked(&bytes),
@@ -3632,7 +3654,7 @@ mod tests {
 
     #[test]
     fn test_semantic_remittance_split_invalid_rejected_via_tracked_binary() {
-        let snapshot = make_remittance_snapshot(64, 64, 64, 63); // sum = 255
+        let snapshot = make_remittance_snapshot(6400, 6400, 6400, 6300); // sum = 25500
         let bytes = export_to_binary(&snapshot).unwrap();
         let mut tracker = MigrationTracker::new();
         assert!(matches!(

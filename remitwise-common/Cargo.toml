@@ -9,16 +9,11 @@ testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = "=21.7.7"
-
-[features]
-testutils = ["soroban-sdk/testutils"]
+ed25519-dalek = { version = "2.1.1", default-features = false }
 
 [dev-dependencies]
 proptest = "1"
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
-
-[features]
-testutils = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]

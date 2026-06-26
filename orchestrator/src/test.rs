@@ -230,11 +230,11 @@ fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
     ]
 }
 
-fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), String> {
+fn verify_wasm_size(contract: &str, size: usize, max_bytes: usize) -> Result<(), std::string::String> {
     if size <= max_bytes {
         Ok(())
     } else {
-        Err(format!(
+        Err(std::format!(
             "WASM size for '{}' is {} bytes, which exceeds the budget of {} bytes.",
             contract, size, max_bytes
         ))

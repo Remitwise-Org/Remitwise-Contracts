@@ -1,6 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+extern crate alloc;
+
 use soroban_sdk::{contracterror, contracttype, symbol_short, Symbol};
 
 /// Financial categories for remittance allocation
@@ -193,7 +195,7 @@ pub enum SignatureError {
 /// * `Ok(())` if the signature is valid
 /// * `Err(SignatureError)` if verification fails
 pub fn verify_signature(
-    env: &soroban_sdk::Env,
+    _env: &soroban_sdk::Env,
     domain_separator: &[u8],
     message: &[u8],
     signature: &[u8],
@@ -206,19 +208,21 @@ pub fn verify_signature(
         return Err(SignatureError::InvalidPublicKeyLength);
     }
 
-    let mut prefixed_message = Vec::with_capacity(domain_separator.len() + message.len());
+    let sig_arr: [u8; 64] = signature.try_into().map_err(|_| SignatureError::InvalidSignatureLength)?;
+    let pk_arr: [u8; 32] = public_key.try_into().map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pk_arr)
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let sig = ed25519_dalek::Signature::from_bytes(&sig_arr);
+
+    let mut prefixed_message = alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
     prefixed_message.extend_from_slice(domain_separator);
     prefixed_message.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
-
-    if soroban_sdk::crypto::ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes) {
-        Ok(())
-    } else {
-        Err(SignatureError::VerificationFailed)
-    }
+    use ed25519_dalek::Verifier;
+    verifying_key.verify(&prefixed_message, &sig)
+        .map_err(|_| SignatureError::VerificationFailed)?;
+    Ok(())
 }
 
 /// Validates and canonicalizes a batch of tags without panicking.
@@ -383,7 +387,6 @@ impl RemitwiseEvents {
             use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
-            use soroban_sdk::xdr::ToXdr;
             let xdr_bytes = val.to_xdr(env);
             let size = xdr_bytes.len();
             if size > 256 {
