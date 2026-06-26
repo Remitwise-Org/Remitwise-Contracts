@@ -36,7 +36,7 @@ fn tags(env: &Env, items: &[&str]) -> Vec<String> {
 }
 
 // helper: extract the nth tag as a std::String for assertions
-fn get(env: &Env, v: &Vec<String>, i: u32) -> std::string::String {
+fn get(_env: &Env, v: &Vec<String>, i: u32) -> std::string::String {
     let s = v.get(i).unwrap();
     let mut buf = std::vec![0u8; s.len() as usize];
     s.copy_into_slice(&mut buf);
