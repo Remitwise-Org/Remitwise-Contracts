@@ -733,6 +733,12 @@ Incoming Remittance → remittance_split → [savings_goals, bill_payments, insu
 - **Risk:** Partial system pause, inconsistent security posture
 - **Recommendation:** Implement global pause mechanism or pause state synchronization
 
+❌ **Software Supply-Chain Vulnerabilities & GPL Compliance Risks**
+- **Gap:** Pre-existing dependency tree lacked automated gatekeeping for copyleft licenses (GPL/AGPL/LGPL) and yanked crate versions, introducing compliance risks and dependency vulnerabilities.
+- **Missing Control:** Automated build-time and CI/CD validation to block non-compliant licenses and yanked packages.
+- **Risk:** Legal liability/obligations under copyleft terms; execution of contracts compiled with compromised or retracted libraries.
+- **Recommendation:** Integrate dependency policy gatekeeping (using `cargo-deny`) into workspace tooling and CI checks.
+
 ### 5.3 Medium-Priority Gaps
 
 ❌ **No Storage Bounds**
@@ -1458,6 +1464,13 @@ The following security issues have been created for tracking and implementation:
 - **Requirement:** Complete audit trail of all financial operations
 - **Status:** ✅ Implemented via events and audit logs
 - **Recommendation:** Ensure audit logs are preserved and accessible
+
+### 11.4 Software Supply-Chain Compliance
+
+- **GPL License Compliance:** Risk of intellectual property and copyleft compliance violations if GPL/AGPL dependencies are transitively included in the smart contract codebase or supporting client libraries.
+- **Yanked Crates:** Risk of building with yanked or deprecated dependencies that contain known vulnerabilities, logic errors, or security advisories.
+- **Status:** ✅ Implemented via workspace-wide `cargo-deny` configuration (`deny.toml`) and automated pre-commit and CI verification pipeline checking licenses and advisory/yank status.
+- **Recommendation:** Periodically update the advisory database and audit dependencies to ensure no new copyleft or yanked crates slip into the dependency tree.
 
 ---
 
