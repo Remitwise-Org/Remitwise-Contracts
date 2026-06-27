@@ -85,6 +85,8 @@ pub enum RemittanceSplitError {
     NoPendingTreasury = 26,
     /// The caller of `accept_treasury` is not the proposed treasury address.
     PendingTreasuryMismatch = 27,
+    /// The `get_request_hash` return value exceeds the on-chain Bytes size limit.
+    BytesReturnTooLarge = 28,
 }
 
 #[derive(Clone)]
