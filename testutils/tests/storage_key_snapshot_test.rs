@@ -100,6 +100,18 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             type_name: "Vec<u32>",
             tier: "persistent",
         },
+        StorageKeyEntry {
+            key: "TREASURY",
+            contract: "remittance_split",
+            type_name: "Address",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "TRES_PEND",
+            contract: "remittance_split",
+            type_name: "Address",
+            tier: "instance",
+        },
         // ===================================================================
         // savings_goals
         // ===================================================================

@@ -76,6 +76,16 @@ fn get_all_storage_keys() -> Vec<StorageKey> {
             contract: "remittance_split",
             description: "Contract version",
         },
+        StorageKey {
+            key: "TREASURY",
+            contract: "remittance_split",
+            description: "Protocol treasury address",
+        },
+        StorageKey {
+            key: "TRES_PEND",
+            contract: "remittance_split",
+            description: "Pending treasury address (two-step handshake)",
+        },
         // savings_goals
         StorageKey {
             key: "GOALS",
