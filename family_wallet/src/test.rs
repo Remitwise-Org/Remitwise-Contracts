@@ -1,5 +1,6 @@
 #![allow(clippy::all)]
 use super::*;
+use proptest::prelude::*;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger, LedgerInfo},
@@ -103,6 +104,22 @@ fn test_withdrawal_tier_boundary_matrix() {
         select_withdrawal_tier(5001, spending_limit),
         WithdrawalTier::Large
     );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+    #[test]
+    fn test_withdrawal_tier_classification_is_total(
+        amount in any::<i128>(),
+        spending_limit in any::<i128>()
+    ) {
+        let tier = select_withdrawal_tier(amount, spending_limit);
+        if amount <= spending_limit {
+            assert_eq!(tier, WithdrawalTier::Regular);
+        } else {
+            assert_eq!(tier, WithdrawalTier::Large);
+        }
+    }
 }
 
 #[test]
