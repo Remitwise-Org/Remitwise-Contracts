@@ -100,6 +100,9 @@ pub mod pause_functions {
     pub const MODIFY_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("mod_bsch");
     pub const CANCEL_BILL_SCHEDULE: soroban_sdk::Symbol = symbol_short!("can_bsch");
     pub const EXECUTE_BILL_SCHEDULES: soroban_sdk::Symbol = symbol_short!("exe_bsch");
+    pub const ADD_TAGS: soroban_sdk::Symbol = symbol_short!("add_tags");
+    pub const REM_TAGS: soroban_sdk::Symbol = symbol_short!("rem_tags");
+    pub const SET_EXT_REF: soroban_sdk::Symbol = symbol_short!("ext_ref");
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
@@ -1853,6 +1856,7 @@ impl BillPayments {
     /// - Emits `(bill, tags_add)` with `(bill_id, caller, tags)`.
     pub fn add_tags_to_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::ADD_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -1903,6 +1907,7 @@ impl BillPayments {
     /// - Emits `(bill, tags_rem)` with `(bill_id, caller, tags)`.
     pub fn remove_tags_from_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::REM_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -2324,6 +2329,7 @@ impl BillPayments {
         external_ref: Option<String>,
     ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::SET_EXT_REF)?;
 
         // Validate the new ref if provided
         let validated_ext_ref = Self::validate_optional_external_ref(&env, &external_ref)?;
