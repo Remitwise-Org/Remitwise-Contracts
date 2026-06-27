@@ -327,6 +327,7 @@ To run an example, use `cargo run --example <example_name>`:
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
