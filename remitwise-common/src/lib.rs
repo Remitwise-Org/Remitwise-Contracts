@@ -532,13 +532,8 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
-<<<<<<< add-assert-test
-        
-        #[cfg(test)]
-=======
 
-        #[cfg(any(test, feature = "testutils"))]
->>>>>>> main
+        #[cfg(test)]
         {
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
@@ -552,7 +547,7 @@ impl RemitwiseEvents {
             env.events().publish(topics, val);
         }
 
-        #[cfg(not(any(test, feature = "testutils")))]
+        #[cfg(not(test))]
         env.events().publish(topics, data);
     }
 
@@ -576,11 +571,120 @@ impl RemitwiseEvents {
         let data = (action, count);
         env.events().publish(topics, data);
     }
+
+    /// Test helper: asserts that the most recently emitted Remitwise event has
+    /// the expected category, priority, action, and that `data_pred` accepts
+    /// the decoded payload. Uses `env.events().all()` so the assertion covers
+    /// the real published event stream instead of a mock.
+    ///
+    /// Panics when no event has been emitted, when the topic tuple does not
+    /// match the `(Remitwise, category, priority, action)` schema emitted by
+    /// `EventEmitter::emit`, or when the data predicate returns false.
+    #[cfg(test)]
+    pub fn assert_last_event<T, F>(
+        env: &soroban_sdk::Env,
+        expected_category: EventCategory,
+        expected_priority: EventPriority,
+        expected_action: Symbol,
+        data_pred: F,
+    ) where
+        T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
+        F: FnOnce(&T) -> bool,
+    {
+        use soroban_sdk::TryFromVal;
+
+        let all = env.events().all();
+        let (_cid, topics, data) = all
+            .last()
+            .expect("expected at least one emitted event");
+
+        // Topic schema emitted by `EventEmitter::emit`:
+        // (symbol_short!("Remitwise"), category_u32, priority_u32, action)
+        assert_eq!(
+            topics.len(),
+            4,
+            "expected a 4-element Remitwise event topic tuple"
+        );
+        assert_eq!(
+            topics.get(0).unwrap(),
+            symbol_short!("Remitwise").into_val(env),
+            "first topic must be the Remitwise marker"
+        );
+        assert_eq!(
+            topics.get(1).unwrap(),
+            expected_category.to_u32().into_val(env),
+            "event category mismatch"
+        );
+        assert_eq!(
+            topics.get(2).unwrap(),
+            expected_priority.to_u32().into_val(env),
+            "event priority mismatch"
+        );
+        assert_eq!(
+            topics.get(3).unwrap(),
+            expected_action.into_val(env),
+            "event action mismatch"
+        );
+
+        let payload: T = T::try_from_val(env, &data).expect("failed to decode event data");
+        assert!(
+            data_pred(&payload),
+            "event data predicate failed for action {:?}",
+            expected_action
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Encoding stability tests (cross-contract ABI)
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod assert_event_tests {
+    use super::{EventCategory, EventEmitter, EventPriority};
+
+    #[test]
+    fn assert_last_event_matches_emitted_topic_and_data() {
+        let env = soroban_sdk::Env::default();
+        let action = soroban_sdk::Symbol::new(&env, "test_act");
+
+        EventEmitter::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            action,
+            (1u32, 2u32),
+        );
+
+        EventEmitter::assert_last_event::<(u32, u32), _>(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            action,
+            |(a, b)| *a == 1 && *b == 2,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "event action mismatch")]
+    fn assert_last_event_panics_on_action_mismatch() {
+        let env = soroban_sdk::Env::default();
+        EventEmitter::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            soroban_sdk::Symbol::new(&env, "one"),
+            1u32,
+        );
+        EventEmitter::assert_last_event::<u32, _>(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            soroban_sdk::Symbol::new(&env, "two"),
+            |_| true,
+        );
+    }
+}
 
 #[cfg(test)]
 mod encoding_stability_tests {
