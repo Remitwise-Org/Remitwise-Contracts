@@ -43,6 +43,13 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
     client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
     client.configure_multisig(
         &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &original_signers,
+        &1_000_0000000,
+    );
+    client.configure_multisig(
+        &owner,
         &TransactionType::LargeWithdrawal,
         &3,
         &original_signers,
@@ -101,6 +108,13 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
     client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &original_signers,
+        &1_000_0000000,
+    );
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
@@ -189,6 +203,13 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
 
     let original_signers = vec![&env, owner.clone(), signer_a.clone(), signer_b.clone()];
     client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &original_signers, &1_000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &original_signers,
+        &1_000_0000000,
+    );
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
