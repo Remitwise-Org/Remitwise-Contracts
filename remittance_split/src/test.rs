@@ -2392,3 +2392,645 @@ fn test_not_initialized_fails() {
     let result2 = client.try_set_pause_admin(&owner, &new_admin);
     assert_eq!(result2, Err(Ok(RemittanceSplitError::NotInitialized)), "set_pause_admin should fail with NotInitialized when not initialized");
 }
+
+// ---------------------------------------------------------------------------
+// Helper: set ledger timestamp
+// ---------------------------------------------------------------------------
+
+fn set_time(env: &Env, ts: u64) {
+    let proto = env.ledger().protocol_version();
+    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        protocol_version: proto,
+        sequence_number: 100,
+        timestamp: ts,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 100_000,
+    });
+}
+
+// ---------------------------------------------------------------------------
+// export_snapshot / import_snapshot — basic round-trip (no schedules)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_export_import_snapshot_no_schedules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    // nonce = 1 after init
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.version, 1);
+    assert_eq!(snapshot.schedules.len(), 0);
+    assert_eq!(snapshot.next_rsch, 0);
+
+    // import must succeed and config must be restored
+    let ok = client.import_snapshot(&owner, &1, &snapshot);
+    assert!(ok);
+    let config = client.get_config().unwrap();
+    assert_eq!(config.spending_percent, 50);
+    assert_eq!(config.savings_percent, 30);
+}
+
+// ---------------------------------------------------------------------------
+// export_snapshot — includes schedules
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_export_snapshot_includes_schedules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &5000, &86400);
+    client.create_remittance_schedule(&owner, &1000, &10000, &0);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.next_rsch, 2);
+    assert_eq!(snapshot.schedules.len(), 2);
+    assert_eq!(snapshot.schedules.get(0).unwrap().id, 1);
+    assert_eq!(snapshot.schedules.get(1).unwrap().id, 2);
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — owner index is rebuilt (core bug fix)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_rebuilds_owner_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &5000, &86400);
+    client.create_remittance_schedule(&owner, &1000, &10000, &86400);
+
+    // Export and then import on a fresh contract instance
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+
+    // nonce = 1 after initialize_split on the fresh contract
+    c2.import_snapshot(&owner, &1, &snapshot);
+
+    // Owner-scoped query must return both imported schedules
+    let schedules = c2.get_remittance_schedules(&owner);
+    assert_eq!(schedules.len(), 2, "owner index must be rebuilt on import");
+
+    // Verify both ids are present
+    let mut found_1 = false;
+    let mut found_2 = false;
+    for s in schedules.iter() {
+        if s.id == 1 { found_1 = true; }
+        if s.id == 2 { found_2 = true; }
+    }
+    assert!(found_1, "schedule id=1 must be visible after import");
+    assert!(found_2, "schedule id=2 must be visible after import");
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — multi-owner schedules grouped correctly
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_multi_owner_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner1 = Address::generate(&env);
+    let owner2 = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner1, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner1, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner1, &500, &5000, &86400);
+    client.create_remittance_schedule(&owner2, &200, &6000, &86400);
+    client.create_remittance_schedule(&owner1, &300, &7000, &86400);
+
+    let snapshot = client.export_snapshot(&owner1).unwrap();
+
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner1, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner1, &1, &snapshot);
+
+    let s1 = c2.get_remittance_schedules(&owner1);
+    let s2 = c2.get_remittance_schedules(&owner2);
+    assert_eq!(s1.len(), 2, "owner1 should see exactly 2 schedules");
+    assert_eq!(s2.len(), 1, "owner2 should see exactly 1 schedule");
+
+    // Verify no cross-owner leakage
+    for s in s1.iter() {
+        assert_eq!(s.owner, owner1, "owner1 index must not contain owner2 schedules");
+    }
+    for s in s2.iter() {
+        assert_eq!(s.owner, owner2, "owner2 index must not contain owner1 schedules");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — NEXT_RSCH is advanced
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_advances_next_rsch() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &5000, &86400);
+    client.create_remittance_schedule(&owner, &500, &6000, &86400);
+    // next_rsch == 2 at this point
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.next_rsch, 2);
+
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner, &1, &snapshot);
+
+    // A new schedule created after import must get id 3, not 1
+    let new_id = c2.create_remittance_schedule(&owner, &100, &9000, &86400);
+    assert_eq!(new_id, 3, "NEXT_RSCH must have been advanced past max imported id");
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — last_executed and missed_count preserved
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_preserves_last_executed_and_missed_count() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &2000, &1000);
+
+    // Execute the schedule so last_executed and missed_count are set
+    set_time(&env, 4500); // 2000 + 2*1000 = 4000 passed, 1 missed
+    client.execute_due_remittance_schedules();
+
+    let s = client.get_remittance_schedule(&1).unwrap();
+    assert!(s.last_executed.is_some(), "last_executed must be set after execution");
+    assert!(s.missed_count >= 1, "missed_count must be at least 1");
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner, &1, &snapshot);
+
+    let imported = c2.get_remittance_schedule(&1).unwrap();
+    assert_eq!(imported.last_executed, s.last_executed, "last_executed must be preserved");
+    assert_eq!(imported.missed_count, s.missed_count, "missed_count must be preserved");
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — re-import clears stale owner index
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reimport_clears_stale_owner_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &5000, &86400);
+    client.create_remittance_schedule(&owner, &500, &6000, &86400);
+
+    // Take snapshot1 (2 schedules), then add a 3rd
+    let snap1 = client.export_snapshot(&owner).unwrap();
+    client.create_remittance_schedule(&owner, &500, &7000, &86400);
+
+    // Take snapshot2 (3 schedules) then re-import snapshot1
+    let _snap2 = client.export_snapshot(&owner).unwrap();
+
+    // nonce incremented by: init(1) + 3 creates (no nonce) + export×2 (no nonce) = 1
+    // snapshot import uses nonce 1 for first import_snapshot call
+    client.import_snapshot(&owner, &1, &snap1);
+
+    // After re-importing snapshot1 the contract should have exactly 2 schedules
+    let schedules = client.get_remittance_schedules(&owner);
+    assert_eq!(
+        schedules.len(),
+        2,
+        "re-import must replace stale index; should have 2 schedules not 3"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — empty schedule list
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_empty_schedules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    // No schedules created — snapshot has empty list
+    let snapshot = client.export_snapshot(&owner).unwrap();
+    assert_eq!(snapshot.schedules.len(), 0);
+
+    client.import_snapshot(&owner, &1, &snapshot);
+
+    let schedules = client.get_remittance_schedules(&owner);
+    assert_eq!(schedules.len(), 0, "empty snapshot must result in empty schedule list");
+}
+
+// ---------------------------------------------------------------------------
+// import_snapshot — checksum mismatch rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_import_snapshot_bad_checksum_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    let bad_snapshot = ExportSnapshot {
+        checksum: snapshot.checksum.wrapping_add(1),
+        ..snapshot
+    };
+    let result = client.try_import_snapshot(&owner, &1, &bad_snapshot);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::ChecksumMismatch)));
+}
+
+// ---------------------------------------------------------------------------
+// get_schedules_paginated — basic pagination
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_get_schedules_paginated_first_page() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    for due in &[5000u64, 6000, 7000, 8000, 9000] {
+        client.create_remittance_schedule(&owner, &100, due, &86400);
+    }
+
+    let page = client.get_schedules_paginated(&owner, &0, &3);
+    assert_eq!(page.count, 3);
+    assert_eq!(page.items.len(), 3);
+    assert_ne!(page.next_cursor, 0, "there should be a next page");
+}
+
+#[test]
+fn test_get_schedules_paginated_last_page() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    for due in &[5000u64, 6000, 7000, 8000, 9000] {
+        client.create_remittance_schedule(&owner, &100, due, &86400);
+    }
+
+    // page 1: ids 1,2,3  → next_cursor = 4
+    let page1 = client.get_schedules_paginated(&owner, &0, &3);
+    assert_eq!(page1.next_cursor, 4);
+
+    // page 2: ids 4,5 → next_cursor = 0
+    let page2 = client.get_schedules_paginated(&owner, &page1.next_cursor, &3);
+    assert_eq!(page2.count, 2);
+    assert_eq!(page2.next_cursor, 0, "last page must have next_cursor = 0");
+}
+
+#[test]
+fn test_get_schedules_paginated_owner_isolation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner1 = Address::generate(&env);
+    let owner2 = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner1, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner1, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner1, &100, &5000, &86400);
+    client.create_remittance_schedule(&owner2, &200, &6000, &86400);
+    client.create_remittance_schedule(&owner1, &300, &7000, &86400);
+
+    let page = client.get_schedules_paginated(&owner1, &0, &10);
+    assert_eq!(page.count, 2, "paginated results must be owner-isolated");
+    for s in page.items.iter() {
+        assert_eq!(s.owner, owner1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// get_schedules_paginated — after import, imported schedules are visible
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_paginated_query_sees_imported_schedules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &100, &5000, &86400);
+    client.create_remittance_schedule(&owner, &200, &6000, &86400);
+    client.create_remittance_schedule(&owner, &300, &7000, &86400);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    // fresh contract
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner, &1, &snapshot);
+
+    // All 3 imported schedules must be visible through the paginated reader
+    let page = c2.get_schedules_paginated(&owner, &0, &10);
+    assert_eq!(page.count, 3, "all imported schedules must be visible via pagination");
+    assert_eq!(page.next_cursor, 0, "single page must have no next cursor");
+}
+
+// ---------------------------------------------------------------------------
+// execute_due_remittance_schedules
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_execute_due_remittance_schedules_basic() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &2000, &86400);
+
+    // Before due date — nothing should execute
+    set_time(&env, 1500);
+    let executed = client.execute_due_remittance_schedules();
+    assert_eq!(executed.len(), 0);
+
+    // At/after due date
+    set_time(&env, 2000);
+    let executed = client.execute_due_remittance_schedules();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(executed.get(0).unwrap(), 1);
+
+    let s = client.get_remittance_schedule(&1).unwrap();
+    assert!(s.last_executed.is_some());
+    assert_eq!(s.last_executed.unwrap(), 2000);
+}
+
+#[test]
+fn test_execute_due_one_shot_becomes_inactive() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    // interval=0 → one-shot
+    client.create_remittance_schedule(&owner, &500, &2000, &0);
+
+    set_time(&env, 2001);
+    client.execute_due_remittance_schedules();
+
+    let s = client.get_remittance_schedule(&1).unwrap();
+    assert!(!s.active, "one-shot schedule must become inactive after execution");
+}
+
+#[test]
+fn test_execute_due_recurring_advances_next_due() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &2000, &1000);
+
+    set_time(&env, 2000);
+    client.execute_due_remittance_schedules();
+
+    let s = client.get_remittance_schedule(&1).unwrap();
+    assert!(s.active, "recurring schedule must remain active");
+    assert_eq!(s.next_due, 3000, "next_due must advance by interval");
+    assert_eq!(s.missed_count, 0, "no missed cycles");
+}
+
+#[test]
+fn test_execute_due_missed_cycles_counted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    // interval=1000, next_due=2000; at t=4500 → 2 intervals missed (3000, 4000)
+    client.create_remittance_schedule(&owner, &500, &2000, &1000);
+
+    set_time(&env, 4500);
+    client.execute_due_remittance_schedules();
+
+    let s = client.get_remittance_schedule(&1).unwrap();
+    assert_eq!(s.missed_count, 2, "two missed cycles must be counted");
+    assert_eq!(s.next_due, 5000, "next_due must be advanced past current time");
+}
+
+// ---------------------------------------------------------------------------
+// execute_due — imported schedules participate in due sweep
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_imported_schedules_participate_in_due_sweep() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner, &500, &2000, &86400);
+    client.create_remittance_schedule(&owner, &300, &3000, &86400);
+
+    let snapshot = client.export_snapshot(&owner).unwrap();
+
+    // Import onto a fresh contract, advance time past first schedule's due date
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner, &1, &snapshot);
+
+    // Advance time so that schedule id=1 (due=2000) is due but id=2 (due=3000) is not
+    set_time(&env2, 2500);
+    let executed = c2.execute_due_remittance_schedules();
+    assert_eq!(executed.len(), 1, "exactly one schedule must be executed");
+    assert_eq!(executed.get(0).unwrap(), 1, "schedule id=1 must be executed");
+}
+
+// ---------------------------------------------------------------------------
+// Full export→import→query round-trip (multi-owner, multiple assertions)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_full_export_import_round_trip() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner_a, 0);
+
+    set_time(&env, 1000);
+    client.initialize_split(&owner_a, &0, &token_id, &50, &30, &15, &5);
+    client.create_remittance_schedule(&owner_a, &100, &5000, &86400);
+    client.create_remittance_schedule(&owner_b, &200, &6000, &86400);
+    client.create_remittance_schedule(&owner_a, &300, &7000, &86400);
+
+    let snapshot = client.export_snapshot(&owner_a).unwrap();
+
+    // --- Import to a new contract ---
+    let env2 = Env::default();
+    env2.mock_all_auths();
+    set_time(&env2, 1000);
+    let cid2 = env2.register_contract(None, RemittanceSplit);
+    let c2 = RemittanceSplitClient::new(&env2, &cid2);
+    c2.initialize_split(&owner_a, &0, &token_id, &50, &30, &15, &5);
+    c2.import_snapshot(&owner_a, &1, &snapshot);
+
+    // 1. owner_a sees all her schedules via get_remittance_schedules
+    let sa = c2.get_remittance_schedules(&owner_a);
+    assert_eq!(sa.len(), 2);
+
+    // 2. owner_b sees her schedule
+    let sb = c2.get_remittance_schedules(&owner_b);
+    assert_eq!(sb.len(), 1);
+
+    // 3. Paginated reader returns the same results
+    let page_a = c2.get_schedules_paginated(&owner_a, &0, &10);
+    assert_eq!(page_a.count, 2);
+    let page_b = c2.get_schedules_paginated(&owner_b, &0, &10);
+    assert_eq!(page_b.count, 1);
+
+    // 4. NEXT_RSCH is advanced past 3 so a new schedule gets id 4
+    let new_id = c2.create_remittance_schedule(&owner_a, &50, &9000, &86400);
+    assert_eq!(new_id, 4);
+
+    // 5. execute_due runs and can see all schedules
+    set_time(&env2, 7000);
+    let executed = c2.execute_due_remittance_schedules();
+    // ids 1 (due=5000) and 2 (due=6000) and 3 (due=7000) are all due
+    assert_eq!(executed.len(), 3);
+}

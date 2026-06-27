@@ -422,8 +422,12 @@ impl SavingsGoalContract {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
-            None if caller != new_admin => panic!("Unauthorized"),
-            Some(admin) if admin != caller => panic!("Unauthorized"),
+            None => {
+                if caller != new_admin {
+                    panic!("Unauthorized");
+                }
+            }
+            Some(ref admin) if admin != &caller => panic!("Unauthorized"),
             _ => {}
         }
         env.storage()
