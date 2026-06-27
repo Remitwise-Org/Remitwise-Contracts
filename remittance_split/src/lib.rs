@@ -9,9 +9,9 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ToI128Checked,
-    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
-    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    clamp_limit, validate_return_bytes, BytesReturnError, EventCategory, EventPriority,
+    RemitwiseEvents, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -81,6 +81,11 @@ pub enum RemittanceSplitError {
     ScheduleIntervalTooShort = 23,
     /// The schedule lead time exceeds the maximum allowed value.
     ScheduleLeadTimeTooLong = 24,
+    /// A returned `Bytes` value exceeds `MAX_BYTES_RETURN`.
+    ///
+    /// Signals that the computed payload would exceed the safe XDR return size.
+    /// Downstream XDR consumers are protected from denial-of-service by this guard.
+    BytesReturnTooLarge = 26,
 }
 
 #[derive(Clone)]
@@ -1319,7 +1324,7 @@ impl RemittanceSplit {
         }
 
         // Verify request hash matches computed hash (binds all signed fields + domain_id)
-        let computed_hash = Self::get_request_hash(env.clone(), request.clone());
+        let computed_hash = Self::get_request_hash(env.clone(), request.clone())?;
         if computed_hash.ne(&request_hash) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::RequestHashMismatch);
@@ -1871,7 +1876,10 @@ impl RemittanceSplit {
     ///
     /// Mutating *any* field in `request` yields a different 32-byte hash,
     /// guaranteeing field-substitution resistance across all signed parameters.
-    pub fn get_request_hash(env: Env, request: DistributeUsdcRequest) -> Bytes {
+    pub fn get_request_hash(
+        env: Env,
+        request: DistributeUsdcRequest,
+    ) -> Result<Bytes, RemittanceSplitError> {
         let mut preimage = Bytes::new(&env);
 
         // 1. Domain separator
@@ -1914,7 +1922,16 @@ impl RemittanceSplit {
         // 11. deadline — 8 bytes LE
         preimage.extend_from_slice(&request.deadline.to_le_bytes());
 
-        env.crypto().sha256(&preimage).into()
+        let hash: Bytes = env.crypto().sha256(&preimage).into();
+
+        // XDR length guard: reject oversized return payloads to protect downstream
+        // consumers from denial-of-service via large XDR deserialization work.
+        // SHA-256 always produces 32 bytes so this check will never fire in practice,
+        // but it ensures the contract is safe even if the hash construction changes.
+        validate_return_bytes(&hash)
+            .map_err(|_: BytesReturnError| RemittanceSplitError::BytesReturnTooLarge)?;
+
+        Ok(hash)
     }
 
     /// Works in `no_std` — uses `Symbol::to_val()` to extract the raw

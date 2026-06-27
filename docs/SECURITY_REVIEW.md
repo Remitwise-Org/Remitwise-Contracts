@@ -112,6 +112,18 @@ above can skip this checklist at the reviewer's discretion.
 - [ ] Import handlers do not panic on malformed input; they return a
       descriptive error.
 
+### 9. XDR return payload size (Issue #894)
+
+- [ ] Every public contract function that returns a dynamic `Bytes` value calls
+      `validate_return_bytes(&result)` from `remitwise-common` before returning.
+- [ ] The returned error on oversized payloads is the typed `BytesReturnTooLarge`
+      error code — not a generic panic or string message.
+- [ ] The `MAX_BYTES_RETURN` constant (4096 bytes, defined in `remitwise-common`)
+      is used as the sole limit — no magic numbers inline.
+- [ ] The denial-of-service threat being mitigated: without this guard, a
+      contract could return an arbitrarily large `Bytes` value, causing excessive
+      XDR deserialization work for every downstream consumer of the response.
+
 ---
 
 ## Example review walkthrough

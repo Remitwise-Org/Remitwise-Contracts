@@ -4,7 +4,7 @@
 
 extern crate alloc;
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Bytes, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -114,6 +114,13 @@ pub const CONTRACT_VERSION: u32 = 1;
 
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
+
+/// Maximum allowed byte length for a `Bytes` value returned by a public contract function.
+///
+/// Protects XDR consumers from denial-of-service via oversized return payloads.
+/// Every contract function that returns a dynamic `Bytes` value must validate against
+/// this constant using [`validate_return_bytes`] before returning.
+pub const MAX_BYTES_RETURN: u32 = 4096;
 
 /// Rate limiting constants
 pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours
@@ -274,6 +281,28 @@ pub enum SignatureError {
     InvalidPublicKeyLength,
     /// Signature verification failed.
     VerificationFailed,
+}
+
+/// Validation failure returned by [`validate_return_bytes`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BytesReturnError {
+    /// The `Bytes` value exceeds [`MAX_BYTES_RETURN`].
+    TooLarge,
+}
+
+/// Validates that a `Bytes` value is within the permitted return size.
+///
+/// Call this immediately before returning any dynamic `Bytes` value from a public
+/// contract function. Oversized payloads can be abused by callers to impose
+/// excessive XDR deserialization cost on downstream consumers (denial-of-service).
+///
+/// # Errors
+/// Returns [`BytesReturnError::TooLarge`] if `bytes.len() > MAX_BYTES_RETURN`.
+pub fn validate_return_bytes(bytes: &Bytes) -> Result<(), BytesReturnError> {
+    if bytes.len() > MAX_BYTES_RETURN {
+        return Err(BytesReturnError::TooLarge);
+    }
+    Ok(())
 }
 
 /// Verify an Ed25519 signature with domain separation.

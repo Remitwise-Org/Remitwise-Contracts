@@ -17,7 +17,7 @@ extern crate std;
 
 use super::*;
 use proptest::prelude::*;
-use soroban_sdk::{Env, String, Vec};
+use soroban_sdk::{Bytes, Env, String, Vec};
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -570,4 +570,68 @@ fn test_verify_slash_signature_invalid() {
     // Verify the invalid slash signature
     let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
     assert_eq!(result, Err(SlashError::InvalidSignature));
+}
+
+// ---------------------------------------------------------------------------
+// Issue #894 — XDR length guard regression tests
+// ---------------------------------------------------------------------------
+
+/// Helper: build a `Bytes` value of exactly `n` bytes filled with zeros.
+fn make_bytes(env: &Env, n: u32) -> Bytes {
+    // `extern crate std` is declared at the top of this test module, so
+    // std::vec! is available here even though the main crate is no_std.
+    let v = std::vec![0u8; n as usize];
+    Bytes::from_slice(env, &v)
+}
+
+/// Empty `Bytes` (0 bytes) is always within the limit.
+#[test]
+fn test_validate_return_bytes_empty_passes() {
+    let env = Env::default();
+    let b = Bytes::new(&env);
+    assert_eq!(validate_return_bytes(&b), Ok(()));
+}
+
+/// A small payload (1 byte) is well within the limit.
+#[test]
+fn test_validate_return_bytes_small_passes() {
+    let env = Env::default();
+    let b = Bytes::from_slice(&env, &[0xAB]);
+    assert_eq!(validate_return_bytes(&b), Ok(()));
+}
+
+/// SHA-256 hash size (32 bytes) — the primary production use-case — passes.
+#[test]
+fn test_validate_return_bytes_sha256_size_passes() {
+    let env = Env::default();
+    let b = make_bytes(&env, 32);
+    assert_eq!(validate_return_bytes(&b), Ok(()));
+}
+
+/// A payload of exactly `MAX_BYTES_RETURN` bytes is at the boundary — must pass.
+#[test]
+fn test_validate_return_bytes_at_limit_passes() {
+    let env = Env::default();
+    let b = make_bytes(&env, MAX_BYTES_RETURN);
+    assert_eq!(validate_return_bytes(&b), Ok(()));
+}
+
+/// A payload one byte larger than `MAX_BYTES_RETURN` must be rejected.
+///
+/// This is the core regression for Issue #894: before the guard was added,
+/// this oversized payload would have been returned to the caller, allowing
+/// a denial-of-service via large XDR deserialization work.
+#[test]
+fn test_validate_return_bytes_one_over_limit_fails() {
+    let env = Env::default();
+    let b = make_bytes(&env, MAX_BYTES_RETURN + 1);
+    assert_eq!(validate_return_bytes(&b), Err(BytesReturnError::TooLarge));
+}
+
+/// A payload larger than the limit (double) must also be rejected.
+#[test]
+fn test_validate_return_bytes_double_limit_fails() {
+    let env = Env::default();
+    let b = make_bytes(&env, MAX_BYTES_RETURN * 2);
+    assert_eq!(validate_return_bytes(&b), Err(BytesReturnError::TooLarge));
 }
