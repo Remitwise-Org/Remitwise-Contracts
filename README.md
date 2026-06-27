@@ -339,6 +339,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
+- [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
 
 ## Contracts
