@@ -527,3 +527,47 @@ fn test_verify_signature_wrong_domain() {
 
     let _ = verify_signature(&env, domain2, message, &signature, &pk);
 }
+
+#[test]
+fn test_verify_slash_signature_valid() {
+    let env = Env::default();
+    let message = b"slash payload";
+
+    // Generate a keypair
+    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+
+    // Sign the prefixed message
+    let mut prefixed = std::vec::Vec::new();
+    prefixed.extend_from_slice(b"slash-auth");
+    prefixed.extend_from_slice(message);
+    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+
+    // Verify the slash signature
+    let result = verify_slash_signature(&env, message, Some(&signature), &pk);
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_slash_signature_optional_none() {
+    let env = Env::default();
+    let message = b"slash payload";
+    let pk = [0u8; 32];
+
+    // Verify when signature is None (should succeed as it's optional)
+    let result = verify_slash_signature(&env, message, None, &pk);
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_slash_signature_invalid() {
+    let env = Env::default();
+    let message = b"slash payload";
+
+    // Generate a keypair
+    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let invalid_signature = [0u8; 64]; // Invalid
+
+    // Verify the invalid slash signature
+    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+    assert_eq!(result, Err(SlashError::InvalidSignature));
+}
