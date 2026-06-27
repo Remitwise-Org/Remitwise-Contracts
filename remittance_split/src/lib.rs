@@ -81,6 +81,10 @@ pub enum RemittanceSplitError {
     ScheduleIntervalTooShort = 23,
     /// The schedule lead time exceeds the maximum allowed value.
     ScheduleLeadTimeTooLong = 24,
+    /// No pending treasury rotation has been proposed.
+    NoPendingTreasury = 26,
+    /// The caller of `accept_treasury` is not the proposed treasury address.
+    PendingTreasuryMismatch = 27,
 }
 
 #[derive(Clone)]
@@ -568,6 +572,117 @@ impl RemittanceSplit {
     /// - `None` if no pause admin has been configured (owner is default)
     pub fn get_pause_admin_public(env: Env) -> Option<Address> {
         Self::get_pause_admin(&env)
+    }
+
+    // ========== Treasury two-step handshake ==========
+
+    fn get_treasury(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&symbol_short!("TREASURY"))
+    }
+
+    fn get_pending_treasury(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&symbol_short!("TREAS_PEND"))
+    }
+
+    fn set_pending_treasury(env: &Env, treasury: &Address) {
+        env.storage().instance().set(&symbol_short!("TREAS_PEND"), treasury);
+    }
+
+    fn clear_pending_treasury(env: &Env) {
+        env.storage().instance().remove(&symbol_short!("TREAS_PEND"));
+    }
+
+    /// Step one of a two-step treasury rotation.
+    ///
+    /// The contract owner proposes a new protocol treasury address. The change
+    /// is NOT applied until the proposed address calls `accept_treasury`, so a
+    /// typo in `propose_treasury` never silently sends funds to a wrong
+    /// address — the owner keeps control until the new treasury actively
+    /// accepts. A pending proposal can be overwritten at any time.
+    ///
+    /// # Arguments
+    /// * `caller` - Contract owner (must authorize)
+    /// * `new_treasury` - Address proposed as the next treasury
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the split has not been initialized
+    /// - `Unauthorized` if `caller` is not the contract owner
+    ///
+    /// Emits `trsr_prop` event with `(owner, proposed_treasury)`.
+    pub fn propose_treasury(
+        env: Env,
+        caller: Address,
+        new_treasury: Address,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+        Self::require_not_paused(&env)?;
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        if config.owner != caller {
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        Self::set_pending_treasury(&env, &new_treasury);
+
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("trsr_prop")),
+            (caller.clone(), new_treasury.clone()),
+        );
+        Ok(())
+    }
+
+    /// Step two of a two-step treasury rotation.
+    ///
+    /// The proposed treasury address accepts the role, completing the
+    /// rotation. Only the address staged by `propose_treasury` may accept, so
+    /// a wrong proposal cannot take over the treasury.
+    ///
+    /// # Arguments
+    /// * `caller` - Address previously proposed via `propose_treasury` (must authorize)
+    ///
+    /// # Errors
+    /// - `NoPendingTreasury` if no proposal is staged
+    /// - `PendingTreasuryMismatch` if `caller` is not the proposed address
+    ///
+    /// Emits `trsr_xfr` event with `(old_treasury, new_treasury)`.
+    pub fn accept_treasury(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+
+        let pending = Self::get_pending_treasury(&env)
+            .ok_or(RemittanceSplitError::NoPendingTreasury)?;
+        if pending != caller {
+            return Err(RemittanceSplitError::PendingTreasuryMismatch);
+        }
+
+        let old_treasury = Self::get_treasury(&env);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("TREASURY"), &caller);
+        Self::clear_pending_treasury(&env);
+
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("trsr_xfr")),
+            (old_treasury.clone(), caller.clone()),
+        );
+        Ok(())
+    }
+
+    /// Get the active protocol treasury address, if one has been accepted.
+    pub fn get_treasury_public(env: Env) -> Option<Address> {
+        Self::get_treasury(&env)
+    }
+
+    /// Get the currently proposed (pending) treasury address, if any.
+    pub fn get_pending_treasury_public(env: Env) -> Option<Address> {
+        Self::get_pending_treasury(&env)
     }
 
     /// Update the contract version marker used for migrations and upgrade coordination.
