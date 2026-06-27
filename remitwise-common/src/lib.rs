@@ -377,8 +377,13 @@ impl RemitwiseEvents {
             priority.to_u32(),
             action,
         );
+<<<<<<< add-assert-test
+        
+        #[cfg(test)]
+=======
 
         #[cfg(any(test, feature = "testutils"))]
+>>>>>>> main
         {
             use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;

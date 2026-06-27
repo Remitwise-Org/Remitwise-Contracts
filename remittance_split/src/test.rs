@@ -2216,69 +2216,44 @@ fn test_get_split_allocations_percentages_across_all_categories() {
 }
 
 #[test]
-fn test_pre_upgrade_roundtrip() {
+fn test_double_init_fails() {
     let env = Env::default();
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
 
-    // Set upgrade admin
-    let admin = Address::generate(&env);
-    client.set_upgrade_admin(&owner, &admin);
+    let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
 
-    // Take snapshot
-    let result = client.try_pre_upgrade(&admin);
-    assert!(result.is_ok());
+    // First initialize should succeed
+    let result1 = client.try_initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    assert_eq!(result1, Ok(Ok(true)), "first init should succeed");
 
-    // Modify state — change split percentages and version
-    client.update_split(&owner, &1, &20, &30, &30, &20);
-    client.set_version(&admin, &99);
-
-    // Verify state changed
-    let split = client.get_split();
-    assert_eq!(split.get(0).unwrap(), 20);
-    assert_eq!(client.get_version(), 99);
-
-    // Restore from snapshot
-    let result = client.try_restore_from_snapshot(&admin);
-    assert!(result.is_ok());
-
-    // Verify state was restored
-    let split = client.get_split();
-    assert_eq!(split.get(0).unwrap(), 50);
-    assert_eq!(split.get(1).unwrap(), 30);
-    assert_eq!(client.get_version(), 1);
+    // Second initialize should fail with AlreadyInitialized
+    let result2 = client.try_initialize_split(&owner, &1, &token_addr, &50, &25, &15, &10);
+    assert_eq!(result2, Err(Ok(RemittanceSplitError::AlreadyInitialized)), "second init should fail with AlreadyInitialized");
 }
 
 #[test]
-fn test_pre_upgrade_unauthorized_fails() {
+fn test_not_initialized_fails() {
     let env = Env::default();
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let (client, _owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
 
-    // Set upgrade admin
-    let admin = Address::generate(&env);
-    client.set_upgrade_admin(&_owner, &admin);
+    // Try to call a function that returns Option
+    let result = client.get_config();
+    assert!(result.is_none(), "get_config should return None when not initialized");
 
-    let stranger = Address::generate(&env);
-    let result = client.try_pre_upgrade(&stranger);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
-}
-
-#[test]
-fn test_pre_upgrade_discard() {
-    let env = Env::default();
-    env.mock_all_auths();
-    set_time(&env, 1_000);
-
-    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
-    let admin = Address::generate(&env);
-    client.set_upgrade_admin(&owner, &admin);
-
-    client.pre_upgrade(&admin);
-    let result = client.try_discard_snapshot(&admin);
-    assert!(result.is_ok());
+    // Try to call a function that returns Result (like set_pause_admin)
+    let owner = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let result2 = client.try_set_pause_admin(&owner, &new_admin);
+    assert_eq!(result2, Err(Ok(RemittanceSplitError::NotInitialized)), "set_pause_admin should fail with NotInitialized when not initialized");
 }

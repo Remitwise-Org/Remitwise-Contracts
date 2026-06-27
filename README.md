@@ -6,12 +6,24 @@ Stellar Soroban smart contracts for the RemitWise remittance platform.
 
 This workspace contains the core smart contracts that power RemitWise's post-remittance financial planning features:
 
+<<<<<<< add-assert-test
+- **[remittance_split](remittance_split/README.md)**: Automatically splits remittances into spending, savings, bills, and insurance
+- **[savings_goals](savings_goals/README.md)**: Goal-based savings with target dates and locked funds
+- **[bill_payments](bill_payments/README.md)**: Automated bill payment tracking and scheduling
+- **[insurance](insurance/README.md)**: Micro-insurance policy management and premium payments
+- **[family_wallet](family_wallet/README.md)**: Family governance, multisig approvals, and emergency transfer controls
+- **[orchestrator](orchestrator/README.md)**: Cross-contract coordination and execution of end-to-end remittance flows
+- **[reporting](reporting/README.md)**: Financial reporting and insights
+- **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
+- **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
+=======
 - **remittance_split**: Automatically splits remittances into spending, savings, bills, and insurance
 - **savings_goals**: Goal-based savings with target dates and locked funds
 - **bill_payments**: Automated bill payment tracking and scheduling with recurring bill schedule lifecycle
 - **insurance**: Micro-insurance policy management and premium payments
 - **family_wallet**: Family governance, multisig approvals, and emergency transfer controls
 - **remitwise-common**: Shared types and utilities used across contracts
+>>>>>>> main
 
 ## Shared Components
 
