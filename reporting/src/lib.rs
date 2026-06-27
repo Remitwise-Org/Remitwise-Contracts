@@ -5,7 +5,7 @@ use soroban_sdk::{
     Env, IntoVal, Map, TryFromVal, Val, Vec,
 };
 
-pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT};
+pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -492,7 +492,7 @@ fn trend_from_amounts(current_amount: i128, previous_amount: i128) -> TrendData 
         },
     );
     let change_percentage = if previous_amount > 0 {
-        safe_percent(change_amount, previous_amount, 100).clamp(i32::MIN as i128, i32::MAX as i128)
+        safe_percent(change_amount, previous_amount, 100).clamp(i32::MIN.to_i128_checked().unwrap(), i32::MAX.to_i128_checked().unwrap())
             as i32
     } else if current_amount > 0 {
         100
@@ -1003,7 +1003,7 @@ impl ReportingContract {
                 }
 
                 // Formula used is (amount * percentage) / 100
-                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 100;
+                let amount = total_amount.checked_mul(p.to_i128_checked().unwrap()).unwrap_or(0) / 100;
                 split_amounts.push_back(amount);
             }
 
@@ -1162,7 +1162,7 @@ impl ReportingContract {
         let compliance_percentage = if total_bills == 0 {
             100
         } else {
-            safe_percent(paid_bills as i128, total_bills as i128, 100).clamp(0, 100) as u32
+            safe_percent(paid_bills.to_i128_checked().unwrap(), total_bills.to_i128_checked().unwrap(), 100).clamp(0, 100) as u32
         };
 
         Ok(BillComplianceReport {
@@ -1230,7 +1230,7 @@ impl ReportingContract {
 
         let annual_premium = monthly_premium.saturating_mul(12);
         let coverage_to_premium_ratio =
-            safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128) as u32;
+            safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX.to_i128_checked().unwrap()) as u32;
 
         Ok(InsuranceReport {
             active_policies,

@@ -9,9 +9,9 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD,
-    SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ToI128Checked,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
+    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -1029,15 +1029,15 @@ impl RemittanceSplit {
 
         let split = Self::get_split(&env);
         let s0 = match split.get(0) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s1 = match split.get(1) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s2 = match split.get(2) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
 
@@ -2046,15 +2046,15 @@ impl RemittanceSplit {
 
         let split = Self::get_split(env);
         let s0 = match split.get(0) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s1 = match split.get(1) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s2 = match split.get(2) {
-            Some(v) => v as i128,
+            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
 
