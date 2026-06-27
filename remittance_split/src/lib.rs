@@ -1048,18 +1048,9 @@ impl RemittanceSplit {
             None => return Err(RemittanceSplitError::Overflow),
         };
 
-        let spending = total_amount
-            .checked_mul(s0)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let savings = total_amount
-            .checked_mul(s1)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
-        let bills = total_amount
-            .checked_mul(s2)
-            .and_then(|n| n.checked_div(100))
-            .ok_or(RemittanceSplitError::Overflow)?;
+        let spending = Self::floor_percentage(total_amount, s0)?;
+        let savings = Self::floor_percentage(total_amount, s1)?;
+        let bills = Self::floor_percentage(total_amount, s2)?;
         // Insurance gets the remainder to handle rounding
         let insurance = total_amount
             .checked_sub(spending)
@@ -1093,6 +1084,26 @@ impl RemittanceSplit {
         );
 
         Ok(vec![&env, spending, savings, bills, insurance])
+    }
+
+    fn floor_percentage(amount: i128, percent: i128) -> Result<i128, RemittanceSplitError> {
+        if percent <= 0 {
+            return Ok(0);
+        }
+
+        let whole = amount.checked_div(100).ok_or(RemittanceSplitError::Overflow)?;
+        let remainder = amount.checked_rem(100).ok_or(RemittanceSplitError::Overflow)?;
+        let scaled_whole = whole
+            .checked_mul(percent)
+            .ok_or(RemittanceSplitError::Overflow)?;
+        let scaled_remainder = remainder
+            .checked_mul(percent)
+            .and_then(|n| n.checked_div(100))
+            .ok_or(RemittanceSplitError::Overflow)?;
+
+        scaled_whole
+            .checked_add(scaled_remainder)
+            .ok_or(RemittanceSplitError::Overflow)
     }
 
     /// Distribute USDC from `from` to the four split destination accounts according
