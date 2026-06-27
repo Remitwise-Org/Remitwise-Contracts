@@ -71,6 +71,17 @@ See [cli/README.md](cli/README.md) for usage instructions.
 - **orchestrator**: Cross-contract coordination
 - **reporting**: Financial reporting and insights
 
+### Entrypoint auth inventory
+
+Use the helper script below to print every public contract entrypoint alongside its detected auth model:
+
+```bash
+python3 scripts/entrypoint_auth_inventory.py
+python3 scripts/entrypoint_auth_inventory.py remittance_split
+```
+
+This is useful for reviewers who want a quick inventory of which entrypoints are authenticated, read-only, or otherwise permissionless.
+
 ## Prerequisites
 
 - Rust (latest stable version)

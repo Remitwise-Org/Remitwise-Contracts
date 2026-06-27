@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Ensure Cargo.lock exists before validation (CI may not have it checked in)
+if [ ! -f Cargo.lock ]; then
+  echo "Cargo.lock not found — generating one..."
+  cargo generate-lockfile
+fi
+
 echo "Validating Cargo.lock soroban-sdk version..."
 python3 scripts/validate_lockfile.py
 
