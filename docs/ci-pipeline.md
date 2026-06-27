@@ -23,6 +23,40 @@ The **Batch-B CI Gate** targets the following crates:
     - Contracts are compiled using `--target wasm32-unknown-unknown --release`.
     - The CLI is compiled natively.
 
+## WASM Size Diff (`wasm-size.yml`)
+
+Every pull request targeting `main` triggers the **WASM Size Diff** workflow (`.github/workflows/wasm-size.yml`). It builds each Soroban contract to `wasm32-unknown-unknown` twice — once on the PR HEAD and once on the merge base — then posts (or updates) a single PR comment showing the binary-size delta per entrypoint.
+
+### What it reports
+
+| Column | Meaning |
+| ------ | ------- |
+| **Before** | WASM byte size on the base branch |
+| **After** | WASM byte size on the PR HEAD |
+| **Δ bytes** | Signed difference (negative = shrink) |
+| **Δ %** | Relative change |
+
+Icon key: ✅ no significant change · ✨ shrank > 512 B · ⚠️ grew > 1 kB · 🆕 new contract · 🗑️ contract removed.
+
+### Local equivalent
+
+```bash
+# Build all WASM contracts, then collect sizes:
+for contract in remittance_split savings_goals bill_payments insurance \
+                family_wallet orchestrator data_migration emergency_killswitch reporting; do
+  cargo build --release --target wasm32-unknown-unknown --package "$contract"
+done
+./scripts/collect_wasm_sizes.sh
+```
+
+`scripts/collect_wasm_sizes.sh` prints a JSON object of `{ "contract_name": byte_size, … }` to stdout, or to a file path passed as its first argument.
+
+### Notes
+
+- Sizes are **pre-optimizer** release WASM. On-chain deployment uses the Soroban optimizer, so absolute numbers differ from deployed contract sizes — but the delta between two commits on the same toolchain is accurate.
+- A contract that fails to build is reported as size `0`. The workflow does not fail the PR on build errors in this job; use the main `ci.yml` build gate for that.
+- The comment is updated in-place on each push to the PR (identified by a hidden HTML marker), so the thread stays clean.
+
 ## Soroban SDK Updates
 
 This pipeline acts as a regression gate for SDK upgrades. When bumping the SDK version (e.g., to `21.7.7` and beyond), the CI must pass before merging.

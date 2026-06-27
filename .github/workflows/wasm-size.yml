@@ -1,0 +1,157 @@
+name: WASM Size Diff
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  wasm-size-diff:
+    name: WASM Size per Entrypoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout PR HEAD
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo (PR HEAD)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-wasm-size-pr-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-size-
+
+      - name: Build WASM contracts (PR HEAD)
+        run: |
+          for contract in remittance_split savings_goals bill_payments insurance family_wallet orchestrator data_migration emergency_killswitch reporting; do
+            echo "Building $contract..."
+            cargo build --release --target wasm32-unknown-unknown --package "$contract" || \
+              echo "warning: $contract failed to build (size will be reported as 0)"
+          done
+
+      - name: Collect WASM sizes (after)
+        run: ./scripts/collect_wasm_sizes.sh /tmp/wasm_sizes_after.json
+
+      # Stash the script to /tmp so it is available after the branch switch below.
+      - name: Stash size script for base build
+        run: cp scripts/collect_wasm_sizes.sh /tmp/collect_wasm_sizes.sh
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          # Preserve target/ so the base build can reuse incremental artifacts.
+          clean: false
+
+      - name: Cache Cargo (base branch)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-wasm-size-base-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-size-
+
+      - name: Build WASM contracts (base branch)
+        run: |
+          for contract in remittance_split savings_goals bill_payments insurance family_wallet orchestrator data_migration emergency_killswitch reporting; do
+            echo "Building $contract..."
+            cargo build --release --target wasm32-unknown-unknown --package "$contract" || \
+              echo "warning: $contract failed to build (size will be reported as 0)"
+          done
+
+      - name: Collect WASM sizes (before)
+        run: /tmp/collect_wasm_sizes.sh /tmp/wasm_sizes_before.json
+
+      - name: Post PR comment with WASM size diff
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            const before = JSON.parse(fs.readFileSync('/tmp/wasm_sizes_before.json', 'utf8'));
+            const after  = JSON.parse(fs.readFileSync('/tmp/wasm_sizes_after.json',  'utf8'));
+
+            const contracts = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+
+            const fmt  = n => n.toLocaleString('en-US');
+            const sign = n => (n > 0 ? `+${fmt(n)}` : `${fmt(n)}`);
+
+            let rows = '';
+            let anyChange = false;
+
+            for (const c of contracts) {
+              const b = before[c] ?? 0;
+              const a = after[c]  ?? 0;
+              if (b === 0 && a === 0) continue;
+
+              const delta = a - b;
+              if (delta !== 0) anyChange = true;
+
+              let icon;
+              if (b === 0)            icon = '🆕';  // new contract in this PR
+              else if (a === 0)       icon = '🗑️';  // contract removed in this PR
+              else if (delta >  1024) icon = '⚠️';  // grew more than 1 kB
+              else if (delta < -512)  icon = '✨';  // shrank more than 512 B
+              else                    icon = '✅';
+
+              const pct  = b > 0 && a > 0 ? ((delta / b) * 100).toFixed(2) + '%' : 'N/A';
+              const bStr = b > 0 ? `${fmt(b)} B` : '—';
+              const aStr = a > 0 ? `${fmt(a)} B` : '—';
+              const dStr = b > 0 && a > 0 ? `${sign(delta)} B` : '—';
+
+              rows += `| ${icon} \`${c}\` | ${bStr} | ${aStr} | ${dStr} | ${pct} |\n`;
+            }
+
+            const marker = '<!-- wasm-size-diff -->';
+            let body = `${marker}\n## 📦 WASM Size per Entrypoint\n\n`;
+            body += '| Contract | Before | After | Δ bytes | Δ % |\n';
+            body += '|----------|-------:|------:|--------:|----:|\n';
+            body += rows;
+            if (!anyChange) body += '\n_No WASM size changes detected._\n';
+            body += '\n> Sizes are release WASM binaries before the Soroban optimizer. Values are directly comparable across commits on the same toolchain.\n';
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
