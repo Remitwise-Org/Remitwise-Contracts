@@ -279,7 +279,7 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(env));
         let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+        if ids.get(len.saturating_sub(1)).map_or(true, |last| last < bill_id) {
             ids.push_back(bill_id);
             idx.set(owner.clone(), ids);
             env.storage().instance().set(&STORAGE_OWNER_INDEX, &idx);
@@ -455,7 +455,7 @@ impl BillPayments {
         let key = (owner.clone(), currency.clone());
         let mut ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+        if ids.get(len.saturating_sub(1)).map_or(true, |last| last < bill_id) {
             ids.push_back(bill_id);
             idx.set(key, ids);
             Self::save_currency_index(env, &idx);
@@ -1796,11 +1796,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-<<<<<<< add-assert-test
             Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
-=======
-            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
->>>>>>> main
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),

@@ -305,6 +305,45 @@ pub fn validate_return_bytes(bytes: &Bytes) -> Result<(), BytesReturnError> {
     Ok(())
 }
 
+/// Checked conversion of integer types to `i128`.
+///
+/// For types that always fit in `i128` (i32, u32, i64, u64) this is infallible.
+/// The `Result` wrapper preserves a uniform call-site for callers that propagate
+/// potential overflow errors via `map_err`.
+pub trait ToI128Checked {
+    fn to_i128_checked(self) -> Result<i128, ()>;
+}
+
+impl ToI128Checked for i32 {
+    fn to_i128_checked(self) -> Result<i128, ()> {
+        Ok(self as i128)
+    }
+}
+
+impl ToI128Checked for u32 {
+    fn to_i128_checked(self) -> Result<i128, ()> {
+        Ok(self as i128)
+    }
+}
+
+impl ToI128Checked for i64 {
+    fn to_i128_checked(self) -> Result<i128, ()> {
+        Ok(self as i128)
+    }
+}
+
+impl ToI128Checked for u64 {
+    fn to_i128_checked(self) -> Result<i128, ()> {
+        Ok(self as i128)
+    }
+}
+
+impl ToI128Checked for i128 {
+    fn to_i128_checked(self) -> Result<i128, ()> {
+        Ok(self)
+    }
+}
+
 /// Verify an Ed25519 signature with domain separation.
 ///
 /// # Arguments
@@ -533,7 +572,7 @@ impl RemitwiseEvents {
             action,
         );
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "testutils"))]
         {
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
