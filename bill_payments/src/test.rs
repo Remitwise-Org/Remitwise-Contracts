@@ -3200,4 +3200,101 @@ mod testsuit {
         let result = client.try_pre_upgrade(&stranger);
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
+
+    #[derive(Debug, Clone)]
+    enum Operation {
+        CreateBill {
+            amount: i128,
+            recurring: bool,
+            frequency_days: u32,
+        },
+        PayBill {
+            bill_id: u32,
+        },
+        CancelBill {
+            bill_id: u32,
+        },
+    }
+
+    proptest! {
+        #[test]
+        fn prop_unpaid_total_invariant(
+            operations in proptest::collection::vec(
+                proptest::prop_oneof![
+                    3 => any::<(i128, bool, u32)>().prop_map(|(amount, recurring, frequency_days)| {
+                        Operation::CreateBill {
+                            amount: amount.abs().max(1),
+                            recurring,
+                            frequency_days: if recurring { frequency_days.max(1) } else { 0 },
+                        }
+                    }),
+                    2 => any::<u32>().prop_map(|bill_id| Operation::PayBill { bill_id }),
+                    1 => any::<u32>().prop_map(|bill_id| Operation::CancelBill { bill_id }),
+                ],
+                0..20
+            )
+        ) {
+            let env = Env::default();
+            set_ledger_time(&env, 1, 1_000_000);
+            let contract_id = env.register_contract(None, BillPayments);
+            let client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let mut active_bill_ids = std::collections::VecDeque::new();
+            let mut next_bill_id = 1;
+            env.mock_all_auths();
+
+            for op in operations {
+                match op {
+                    Operation::CreateBill { amount, recurring, frequency_days } => {
+                        let due_date = 1_000_000 + active_bill_ids.len() as u64 * 1000;
+                        let result = client.try_create_bill(
+                            &owner,
+                            &String::from_str(&env, &format!("Bill {}", next_bill_id)),
+                            &amount,
+                            &due_date,
+                            &recurring,
+                            &frequency_days,
+                            &None,
+                            &String::from_str(&env, "XLM"),
+                            &None,
+                        );
+                        if let Ok(bill_id) = result {
+                            active_bill_ids.push_back(bill_id);
+                            next_bill_id += 1;
+                            // If it's a recurring bill, paying it will create another, so we might get more IDs
+                        }
+                    },
+                    Operation::PayBill { bill_id } => {
+                        if active_bill_ids.contains(&bill_id) {
+                            let _ = client.try_pay_bill(&owner, &bill_id);
+                            // When you pay a recurring bill, it might create a new bill, so let's check
+                            if let Some(next) = client.get_bill(&(next_bill_id)) {
+                                active_bill_ids.push_back(next_bill_id);
+                                next_bill_id +=1;
+                            }
+                        }
+                    },
+                    Operation::CancelBill { bill_id } => {
+                        if active_bill_ids.contains(&bill_id) {
+                            let _ = client.try_cancel_bill(&owner, &bill_id);
+                        }
+                    }
+                }
+            }
+
+            // Now verify the invariant
+            let cached_total = client.get_total_unpaid(&owner);
+
+            // Calculate actual total manually
+            let mut actual_total = 0i128;
+            let all_bills = client.get_all_bills_for_owner(&owner, &0, &100);
+            for bill in all_bills.items.iter() {
+                if !bill.paid {
+                    actual_total = actual_total.saturating_add(bill.amount);
+                }
+            }
+
+            assert_eq!(cached_total, actual_total, "Cached unpaid total must match actual sum of unpaid bills");
+        }
+    }
 }
