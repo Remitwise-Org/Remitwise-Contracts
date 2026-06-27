@@ -9,7 +9,7 @@
 //! A failure here means the change is **breaking for downstream indexers**.
 //! See [EVENTS.md](../../EVENTS.md) for the full schema contract.
 
-#![cfg(test)]
+// bill_payments events_schema_test
 
 use super::*;
 use crate::pause_functions::{

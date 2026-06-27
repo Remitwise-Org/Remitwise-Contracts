@@ -992,13 +992,13 @@ impl ReportingContract {
         let mut split_amounts = Vec::new(env);
         if availability == DataAvailability::Complete {
             let mut sum = 0u32;
-            // Percentages are whole-number percents that must sum to 100 (100 = 100%)
+            // Percentages are basis points that must sum to 10_000 (10000 = 100.00%)
             for i in 0..split_percentages.len() {
                 let p = split_percentages.get(i).unwrap_or(0);
                 sum = sum
                     .checked_add(p)
                     .ok_or(ReportingError::InvalidPercentageSplit)?;
-                if sum > 100 {
+                if sum > 10_000 {
                     return Err(ReportingError::InvalidPercentageSplit);
                 }
 
@@ -1007,7 +1007,7 @@ impl ReportingContract {
                 split_amounts.push_back(amount);
             }
 
-            if sum != 100 {
+            if sum != 10_000 {
                 return Err(ReportingError::InvalidPercentageSplit);
             }
         }

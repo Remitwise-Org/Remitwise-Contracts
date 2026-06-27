@@ -1,4 +1,4 @@
-#![cfg(test)]
+// remitwise-common tests
 
 /// Tests for [`canonicalize_tags`], [`canonicalize_tags_checked`], and [`clamp_limit`].
 ///

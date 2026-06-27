@@ -106,7 +106,7 @@ fn test_distribution_completed_event() {
 
     // 1. Initialize split
     // percentages: 40, 30, 20, 10
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
 
     // 2. Setup destination accounts
     let accounts = AccountGroup {
@@ -181,7 +181,7 @@ fn test_distribution_event_topic_correctness() {
     let token_addr = token_contract.address();
     let stellar_client = StellarAssetClient::new(&env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &50, &50, &0, &0);
+    client.initialize_split(&owner, &0, &token_addr, &5000, &5000, &0, &0);
 
     let accounts = AccountGroup {
         spending: Address::generate(&env),
@@ -408,7 +408,7 @@ fn test_distribute_usdc_deadline_expired() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline in the past (500 < 1000)
     let request = DistributeUsdcRequest {
@@ -448,7 +448,7 @@ fn test_distribute_usdc_deadline_too_far() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline > MAX_DEADLINE_WINDOW_SECS from now
     let request = DistributeUsdcRequest {
@@ -488,7 +488,7 @@ fn test_distribute_usdc_deadline_zero() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline = 0
     let request = DistributeUsdcRequest {
@@ -528,7 +528,7 @@ fn test_distribute_usdc_hash_mismatch() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create valid request
     let request = DistributeUsdcRequest {
@@ -571,7 +571,7 @@ fn test_distribute_usdc_deadline_at_boundary() {
     let insurance = Address::generate(&env);
 
     // Initialize contract
-    client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
     // Create request with deadline exactly at MAX_DEADLINE_WINDOW_SECS boundary
     let request = DistributeUsdcRequest {
@@ -873,7 +873,7 @@ fn setup_request_hash_distribution(
     let token_addr = token_contract.address();
     let stellar_client = StellarAssetClient::new(env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
 
     SplitTestHarness {
         env: env.clone(),
@@ -1696,7 +1696,7 @@ fn setup_signed_distribution(
     let token_addr = token_contract.address();
     let stellar_client = soroban_sdk::token::StellarAssetClient::new(env, &token_addr);
 
-    client.initialize_split(&owner, &0, &token_addr, &40, &30, &20, &10);
+    client.initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
     stellar_client.mint(&owner, &10_000i128);
 
     SplitTestHarness {
@@ -3033,4 +3033,56 @@ fn test_full_export_import_round_trip() {
     let executed = c2.execute_due_remittance_schedules();
     // ids 1 (due=5000) and 2 (due=6000) and 3 (due=7000) are all due
     assert_eq!(executed.len(), 3);
+}
+
+#[test]
+fn test_initialize_split_percentage_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Call try_initialize_split with spending_percent = 10_001
+    let result = client.try_initialize_split(
+        &owner,
+        &0,
+        &token_addr,
+        &10_001,
+        &0,
+        &0,
+        &0,
+    );
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
+}
+
+#[test]
+fn test_initialize_split_percentages_invalid_sum() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Call try_initialize_split with sum = 9_999
+    let result = client.try_initialize_split(
+        &owner,
+        &0,
+        &token_addr,
+        &4000,
+        &3000,
+        &2000,
+        &999,
+    );
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
 }

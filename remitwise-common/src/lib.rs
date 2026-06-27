@@ -289,7 +289,7 @@ pub enum SignatureError {
 /// * `Ok(())` if the signature is valid
 /// * `Err(SignatureError)` if verification fails
 pub fn verify_signature(
-    env: &soroban_sdk::Env,
+    _env: &soroban_sdk::Env,
     domain_separator: &[u8],
     message: &[u8],
     signature: &[u8],
