@@ -1747,7 +1747,7 @@ impl BillPayments {
         bill.paid_at = Some(current_time);
 
         if bill.recurring {
-            let owner_bill_count = Self::get_owner_bill_count(&env, bill.owner.clone());
+            let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
             if owner_bill_count >= MAX_BILLS_PER_OWNER {
                 return Err(BillPaymentsError::OwnerBillCapExceeded);
             }

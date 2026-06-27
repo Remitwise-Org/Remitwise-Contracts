@@ -2030,6 +2030,11 @@ impl ReportingContract {
 
     /// Get archived reports for a user — **DEPRECATED**.
     ///
+    /// EOL: This entrypoint is deprecated as of v0.2.0 and is planned for removal in a
+    /// future contract release after the migration window. Downstream callers should
+    /// migrate to [`ReportingContract::get_archived_reports_page`] and walk the archive
+    /// by advancing the returned `next_cursor` until it reaches `0`.
+    ///
     /// This entrypoint is **deprecated** as of v0.2.0 and is preserved only for
     /// backwards compatibility. It is now internally bounded to the first
     /// `DEFAULT_PAGE_LIMIT` (20) entries of the user's archive — it no longer

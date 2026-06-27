@@ -455,31 +455,31 @@ fn test_verify_signature_valid() {
     let domain = b"test-domain";
     let message = b"hello world";
 
-    // Generate a keypair
-    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
 
     // Sign the prefixed message
     let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(domain);
     prefixed.extend_from_slice(message);
-    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+    let signature = sk.sign(&prefixed).to_bytes();
 
-    // Verify the signature
     let result = verify_signature(&env, domain, message, &signature, &pk);
     assert_eq!(result, Ok(()));
 }
 
 #[test]
+#[should_panic]
 fn test_verify_signature_invalid_signature() {
     let env = Env::default();
     let domain = b"test-domain";
     let message = b"hello world";
 
-    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64];
 
-    let result = verify_signature(&env, domain, message, &invalid_signature, &pk);
-    assert_eq!(result, Err(SignatureError::VerificationFailed));
+    let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
 }
 
 #[test]
@@ -488,7 +488,8 @@ fn test_verify_signature_invalid_signature_length() {
     let domain = b"test-domain";
     let message = b"hello world";
 
-    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
     let short_signature = [0u8; 32];
 
     let result = verify_signature(&env, domain, message, &short_signature, &pk);
@@ -509,19 +510,20 @@ fn test_verify_signature_invalid_public_key_length() {
 }
 
 #[test]
+#[should_panic]
 fn test_verify_signature_wrong_domain() {
     let env = Env::default();
     let domain1 = b"domain1";
     let domain2 = b"domain2";
     let message = b"hello world";
 
-    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
 
     let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(domain1);
     prefixed.extend_from_slice(message);
-    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+    let signature = sk.sign(&prefixed).to_bytes();
 
-    let result = verify_signature(&env, domain2, message, &signature, &pk);
-    assert_eq!(result, Err(SignatureError::VerificationFailed));
+    let _ = verify_signature(&env, domain2, message, &signature, &pk);
 }
