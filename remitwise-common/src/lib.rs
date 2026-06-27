@@ -288,6 +288,8 @@ pub enum SignatureError {
 /// # Returns
 /// * `Ok(())` if the signature is valid
 /// * `Err(SignatureError)` if verification fails
+extern crate alloc;
+
 pub fn verify_signature(
     _env: &soroban_sdk::Env,
     domain_separator: &[u8],
@@ -295,12 +297,8 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
-    if signature.len() != 64 {
-        return Err(SignatureError::InvalidSignatureLength);
-    }
-    if public_key.len() != 32 {
-        return Err(SignatureError::InvalidPublicKeyLength);
-    }
+    let pk_arr: [u8; 32] = public_key.try_into().map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let sig_arr: [u8; 64] = signature.try_into().map_err(|_| SignatureError::InvalidSignatureLength)?;
 
     let mut prefixed_message = alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
     prefixed_message.extend_from_slice(domain_separator);
