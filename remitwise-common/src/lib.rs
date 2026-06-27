@@ -586,7 +586,7 @@ impl RemitwiseEvents {
             env.events().publish(topics, val);
         }
 
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "testutils")))]
         env.events().publish(topics, data);
     }
 
