@@ -336,6 +336,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone
+- [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
