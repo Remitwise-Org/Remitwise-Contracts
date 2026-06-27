@@ -3,6 +3,7 @@
 //! Pins the public event surface documented in [EVENTS.md](../../EVENTS.md) and
 //! [docs/orchestrator-events.md](../../docs/orchestrator-events.md).
 
+#![allow(clippy::duplicated_attributes)]
 #![cfg(test)]
 
 use remitwise_common::{EventCategory, EventPriority};
