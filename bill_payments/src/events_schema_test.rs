@@ -16,12 +16,10 @@ use crate::pause_functions::{
     ARCHIVE, CANCEL_BILL, CANCEL_BILL_SCHEDULE, CREATE_BILL, CREATE_BILL_SCHEDULE,
     EXECUTE_BILL_SCHEDULES, MODIFY_BILL_SCHEDULE, PAY_BILL, RESTORE,
 };
-use crate::pause_functions::{ARCHIVE, CANCEL_BILL, CREATE_BILL, PAY_BILL, RESTORE};
 use crate::BillPaymentsClient;
 use soroban_sdk::testutils::Address as AddressTrait;
 use soroban_sdk::testutils::Events;
 use soroban_sdk::{symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec};
-use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 
 // ---------------------------------------------------------------------------
 // Pause-function symbols

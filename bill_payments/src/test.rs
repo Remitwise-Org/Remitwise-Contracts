@@ -3239,7 +3239,7 @@ mod testsuit {
             let contract_id = env.register_contract(None, BillPayments);
             let client = BillPaymentsClient::new(&env, &contract_id);
             let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-            let mut active_bill_ids = std::collections::VecDeque::new();
+            let mut active_bill_ids: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
             let mut next_bill_id = 1;
             env.mock_all_auths();
 
@@ -3258,7 +3258,7 @@ mod testsuit {
                             &String::from_str(&env, "XLM"),
                             &None,
                         );
-                        if let Ok(bill_id) = result {
+                        if let Ok(Ok(bill_id)) = result {
                             active_bill_ids.push_back(bill_id);
                             next_bill_id += 1;
                             // If it's a recurring bill, paying it will create another, so we might get more IDs

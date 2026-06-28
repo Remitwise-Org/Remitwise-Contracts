@@ -348,7 +348,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     // the value is a valid future date.
     let expected_next = 1_700_000_000u64 + (30 * 86400);
     for &id in &policy_ids {
-        let policy = client.get_policy(&id);
+        let policy = client.get_policy(&id).expect("policy should exist");
         assert!(
             policy.active,
             "Policy {} must still be active after batch premium payment",

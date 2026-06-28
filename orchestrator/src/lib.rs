@@ -1661,6 +1661,10 @@ mod tests_nonce_eviction {
 }
 
 #[cfg(test)]
+#[macro_use]
+extern crate std;
+
+#[cfg(test)]
 #[path = "test.rs"]
 mod test;
 

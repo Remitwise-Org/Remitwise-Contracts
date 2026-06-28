@@ -5,7 +5,7 @@
   {"contract":"bill_payments","method":"get_all_bills_for_owner","scenario":"50_owner_bills_page","cpu":2494052,"mem":433299,"cpu_baseline":0,"mem_baseline":0,"cpu_threshold_percent":100,"mem_threshold_percent":100},
   {"contract":"bill_payments","method":"get_overdue_bills","scenario":"50_overdue_bills_page","cpu":4432530,"mem":423231,"cpu_baseline":0,"mem_baseline":0,"cpu_threshold_percent":100,"mem_threshold_percent":100},
   {"contract":"bill_payments","method":"get_unpaid_bills","scenario":"50_unpaid_bills_page","cpu":2494052,"mem":433442,"cpu_baseline":0,"mem_baseline":0,"cpu_threshold_percent":100,"mem_threshold_percent":100},
-  {"contract":"bill_payments","method":"restore_bill","scenario":"single_archived_owner_restore","cpu":190807,"mem":32935,"cpu_baseline":150000,"mem_baseline":26000,"cpu_threshold_percent":12,"mem_threshold_percent":10},
+  {"contract":"bill_payments","method":"restore_bill","scenario":"single_archived_owner_restore","cpu":229112,"mem":41632,"cpu_baseline":150000,"mem_baseline":26000,"cpu_threshold_percent":12,"mem_threshold_percent":10},
   {"contract":"bill_payments","method":"get_overdue_bills","scenario":"next_id_10_vs_90_fixed_10_result","cpu":603968,"mem":96881,"cpu_baseline":0,"mem_baseline":0,"cpu_threshold_percent":100,"mem_threshold_percent":100},
   {"contract":"savings_goals","method":"batch_add_to_goals","scenario":"1_items","cpu":139995,"mem":20604},
   {"contract":"savings_goals","method":"batch_add_to_goals","scenario":"10_items","cpu":806079,"mem":122080},
