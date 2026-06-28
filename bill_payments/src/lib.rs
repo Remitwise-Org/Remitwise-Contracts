@@ -953,7 +953,29 @@ impl BillPayments {
     /// @dev Equivalent to calling `pause` plus pausing all supported functions.
     /// @return Ok(()) on success, otherwise the underlying pause errors.
     pub fn emergency_pause_all(env: Env, caller: Address) -> Result<(), Error> {
-        Self::pause(env.clone(), caller.clone())?;
+        caller.require_auth();
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
+        if admin != caller {
+            return Err(BillPaymentsError::UnauthorizedPause);
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED"), &true);
+        env.storage().instance().remove(&symbol_short!("UNP_AT"));
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::System,
+            EventPriority::High,
+            symbol_short!("paused"),
+            (),
+        );
+
+        let mut paused_functions: Map<Symbol, bool> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PAUSED_FN"))
+            .unwrap_or_else(|| Map::new(&env));
         for func in [
             pause_functions::CREATE_BILL,
             pause_functions::PAY_BILL,
@@ -964,9 +986,15 @@ impl BillPayments {
             pause_functions::MODIFY_BILL_SCHEDULE,
             pause_functions::CANCEL_BILL_SCHEDULE,
             pause_functions::EXECUTE_BILL_SCHEDULES,
+            pause_functions::ADD_TAGS,
+            pause_functions::REM_TAGS,
+            pause_functions::SET_EXT_REF,
         ] {
-            let _ = Self::pause_function(env.clone(), caller.clone(), func);
+            paused_functions.set(func, true);
         }
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_FN"), &paused_functions);
         Ok(())
     }
 
@@ -2761,7 +2789,7 @@ impl BillPayments {
     /// - Action symbol: `"restored"` via [`RemitwiseEvents::emit`]
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
-        let _ = Self::require_not_paused(&env, pause_functions::RESTORE);
+        Self::require_not_paused(&env, pause_functions::RESTORE)?;
         Self::extend_instance_ttl(&env);
 
         let mut archived: Map<u32, ArchivedBill> = env
