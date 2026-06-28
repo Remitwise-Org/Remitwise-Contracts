@@ -26,6 +26,10 @@ echo "Checking format..."
 cargo fmt --all -- --check
 
 echo "Running audit..."
+if ! command -v cargo-audit &> /dev/null && ! [ -x "$HOME/.cargo/bin/cargo-audit" ]; then
+    echo "cargo-audit not found — installing..."
+    cargo install cargo-audit --locked
+fi
 cargo audit --deny warnings
 
 echo "Running dependency check (GPL & Yanked Crates)..."
@@ -35,8 +39,9 @@ if [ -x "$HOME/.cargo/bin/cargo-deny" ]; then
 elif command -v cargo-deny &> /dev/null; then
     DENY_BIN="cargo-deny"
 else
-    echo "❌ cargo-deny not found in ~/.cargo/bin or PATH. Please install cargo-deny."
-    exit 1
+    echo "cargo-deny not found — installing..."
+    cargo install cargo-deny --locked
+    DENY_BIN="$HOME/.cargo/bin/cargo-deny"
 fi
 $DENY_BIN check
 
