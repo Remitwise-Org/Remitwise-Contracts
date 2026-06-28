@@ -798,7 +798,8 @@ fn test_no_key_reused_with_different_type() {
     // cannot silently break.
     for (contract, key) in &historical {
         if let Some((current_type, current_tier)) = type_map.get(&(contract, key)) {
-            let original = get_snapshot_entries()
+            let entries = get_snapshot_entries();
+            let original = entries
                 .iter()
                 .find(|e| e.contract == *contract && e.key == *key)
                 .expect("historical key not found in current snapshot");

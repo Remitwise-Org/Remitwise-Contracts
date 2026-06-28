@@ -4,7 +4,8 @@
 use remitwise_common::{
     clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, check_and_increment_rate_limit, RateLimitError,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    check_and_increment_rate_limit, RateLimitError,
 };
 
 use soroban_sdk::{
@@ -165,6 +166,16 @@ pub enum BillPaymentsError {
     InvalidTagContent = 19,
     /// Rate limit exceeded for this operation
     RateLimitExceeded = 20,
+    /// Schedule interval is below the minimum allowed duration
+    ScheduleIntervalTooShort = 21,
+    /// Schedule lead time exceeds the maximum allowed duration
+    ScheduleLeadTimeTooLong = 22,
+    /// Owner has reached the maximum number of bill schedules
+    ScheduleCapExceeded = 23,
+    /// Bill schedule with the given ID does not exist
+    ScheduleNotFound = 24,
+    /// Bill schedule is not active
+    ScheduleNotActive = 25,
 }
 
 pub type Error = BillPaymentsError;
@@ -279,7 +290,11 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(env));
         let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+        let append_at_end = match ids.get(len.saturating_sub(1)) {
+            None => true,
+            Some(last) => last < bill_id,
+        };
+        if append_at_end {
             ids.push_back(bill_id);
             idx.set(owner.clone(), ids);
             env.storage().instance().set(&STORAGE_OWNER_INDEX, &idx);
@@ -455,7 +470,11 @@ impl BillPayments {
         let key = (owner.clone(), currency.clone());
         let mut ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if len == 0 || ids.get(len - 1).unwrap() < bill_id {
+        let append_at_end = match ids.get(len.saturating_sub(1)) {
+            None => true,
+            Some(last) => last < bill_id,
+        };
+        if append_at_end {
             ids.push_back(bill_id);
             idx.set(key, ids);
             Self::save_currency_index(env, &idx);
@@ -1796,11 +1815,7 @@ impl BillPayments {
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
             // Update unpaid total for the new recurring bill
-<<<<<<< add-assert-test
             Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
-=======
-            Self::adjust_unpaid_total(&env, &caller, next_bill.amount);
->>>>>>> main
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),

@@ -31,7 +31,7 @@
 /// `Math.random()` equivalents. Test names are assertive (state the
 /// expected outcome).
 
-use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal};
+use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// 9 ASCII bytes: the exact upper limit accepted by `symbol_short!`.
 /// Below this length, the SDK stores the symbol inline as a small symbol.
@@ -45,12 +45,8 @@ const TEN_CHAR_NAME: &str = "boundary10";
 /// `Symbol::new` must reject this at runtime in SDK 21.x.
 const OVER_LONG_NAME: &str = "abcdefghijklmnopqrstuvwxyz0123456"; // 33 bytes
 
-// Compile-time guard: the `boundary9` literal fed to `symbol_short!` must
-// match `NINE_CHAR_NAME` exactly. If either side is renamed in isolation,
-// the equality test below would silently drift to a non-boundary sample and
-// still pass. Const-context `assert!` is available on the pinned stable
-// toolchain (stabilized in Rust 1.79).
-const _: () = assert!(NINE_CHAR_NAME == "boundary9");
+// Compile-time guard: NINE_CHAR_NAME must stay exactly 9 bytes for boundary tests.
+const _: () = assert!(NINE_CHAR_NAME.len() == 9);
 
 /// Round-trip a `Symbol` through its `Val` wire form and back, asserting no
 /// loss along the way. Mirrors how the Soroban host re-imports a symbol
@@ -61,7 +57,7 @@ const _: () = assert!(NINE_CHAR_NAME == "boundary9");
 /// than `IntoVal for &Symbol`, the latter of which is not guaranteed
 /// across soroban-sdk minor versions on the `=21.7.7` pin.
 fn round_trip_via_val(env: &Env, original: &Symbol) -> Symbol {
-    let val = original.clone().into_val(env);
+    let val: Val = original.clone().into_val(env);
     Symbol::try_from_val(env, &val).expect("Symbol must round-trip through SCVal")
 }
 

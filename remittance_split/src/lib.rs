@@ -581,15 +581,15 @@ impl RemittanceSplit {
     }
 
     fn get_pending_treasury(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&symbol_short!("TREAS_PEND"))
+        env.storage().instance().get(&symbol_short!("TRSR_PEND"))
     }
 
     fn set_pending_treasury(env: &Env, treasury: &Address) {
-        env.storage().instance().set(&symbol_short!("TREAS_PEND"), treasury);
+        env.storage().instance().set(&symbol_short!("TRSR_PEND"), treasury);
     }
 
     fn clear_pending_treasury(env: &Env) {
-        env.storage().instance().remove(&symbol_short!("TREAS_PEND"));
+        env.storage().instance().remove(&symbol_short!("TRSR_PEND"));
     }
 
     /// Step one of a two-step treasury rotation.

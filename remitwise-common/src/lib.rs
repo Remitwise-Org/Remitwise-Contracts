@@ -2,9 +2,7 @@
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-extern crate alloc;
-
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -114,6 +112,12 @@ pub const CONTRACT_VERSION: u32 = 1;
 
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
+
+/// Pre-upgrade snapshot version
+pub const SNAPSHOT_VERSION: u32 = 1;
+
+/// Storage key for pre-upgrade snapshots
+pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
 
 /// Rate limiting constants
 pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours
@@ -325,12 +329,9 @@ pub fn verify_signature(
         .try_into()
         .map_err(|_| SignatureError::InvalidSignatureLength)?;
 
-    let mut prefixed_message =
-        alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
-    prefixed_message.extend_from_slice(domain_separator);
-    prefixed_message.extend_from_slice(message);
+    let mut msg_bytes = Bytes::from_slice(env, domain_separator);
+    msg_bytes.extend_from_slice(message);
 
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
     let sig_bytes = soroban_sdk::BytesN::from_array(env, &sig_arr);
     let pk_bytes = soroban_sdk::BytesN::from_array(env, &pk_arr);
 
