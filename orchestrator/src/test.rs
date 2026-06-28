@@ -3,12 +3,12 @@
 extern crate std;
 
 use super::*;
-use std::{fs, path::PathBuf, string::String};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
     Address, Env, FromVal, IntoVal, Symbol, Vec,
 };
+use std::{fs, path::PathBuf, string::String};
 
 #[contract]
 pub struct MockContract;
@@ -1538,8 +1538,7 @@ fn test_not_initialized_fails() {
 
     let stats = client.get_execution_stats();
     assert_eq!(
-        stats,
-        None,
+        stats, None,
         "get_execution_stats should return None when not initialized"
     );
 }

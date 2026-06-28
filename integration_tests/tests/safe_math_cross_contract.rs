@@ -42,9 +42,13 @@ fn make_env() -> Env {
     env
 }
 
-fn new_split_client(env: &Env, sp: u32, sg: u32, sb: u32, si: u32)
-    -> (RemittanceSplitClient<'_>, Address)
-{
+fn new_split_client(
+    env: &Env,
+    sp: u32,
+    sg: u32,
+    sb: u32,
+    si: u32,
+) -> (RemittanceSplitClient<'_>, Address) {
     let cid = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(env, &cid);
     let owner = Address::generate(env);
@@ -181,7 +185,10 @@ fn split_to_savings_flow_succeeds_within_safe_range() {
     assert_eq!(new_total, spending_alloc);
 
     let sum: i128 = amounts.iter().sum();
-    assert_eq!(sum, total, "split conservation must hold before passing values to savings");
+    assert_eq!(
+        sum, total,
+        "split conservation must hold before passing values to savings"
+    );
 }
 
 // ─── 5. Overflow in split does not corrupt savings state ──────────────────────
@@ -200,7 +207,10 @@ fn overflow_in_split_does_not_corrupt_savings_state() {
 
     // Trigger overflow in split (i128::MAX overflows 50% mul).
     let split_result = split_client.try_calculate_split(&i128::MAX);
-    assert!(split_result.is_err(), "split must return an error on overflow");
+    assert!(
+        split_result.is_err(),
+        "split must return an error on overflow"
+    );
 
     // Savings goal balance must be unaffected.
     let goal = savings_client.get_goal(&goal_id).unwrap();
@@ -220,7 +230,10 @@ fn split_succeeds_at_max_safe_split_total_boundary() {
 
     let amounts = client.calculate_split(&MAX_SAFE_SPLIT_TOTAL);
     let sum: i128 = amounts.iter().sum();
-    assert_eq!(sum, MAX_SAFE_SPLIT_TOTAL, "sum must equal total at boundary");
+    assert_eq!(
+        sum, MAX_SAFE_SPLIT_TOTAL,
+        "sum must equal total at boundary"
+    );
 }
 
 /// One step above MAX_SAFE_SPLIT_TOTAL must return Overflow.

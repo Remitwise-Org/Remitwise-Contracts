@@ -495,8 +495,8 @@ fn trend_from_amounts(current_amount: i128, previous_amount: i128) -> TrendData 
         },
     );
     let change_percentage = if previous_amount > 0 {
-        safe_percent(change_amount, previous_amount, 100)
-            .clamp(i32::MIN as i128, i32::MAX as i128) as i32
+        safe_percent(change_amount, previous_amount, 100).clamp(i32::MIN as i128, i32::MAX as i128)
+            as i32
     } else if current_amount > 0 {
         100
     } else {
@@ -1006,10 +1006,7 @@ impl ReportingContract {
                 }
 
                 // Percentages are basis points; divide by 10_000 (100.00%).
-                let amount = total_amount
-                    .checked_mul(p as i128)
-                    .unwrap_or(0)
-                    / 10_000;
+                let amount = total_amount.checked_mul(p as i128).unwrap_or(0) / 10_000;
                 split_amounts.push_back(amount);
             }
 

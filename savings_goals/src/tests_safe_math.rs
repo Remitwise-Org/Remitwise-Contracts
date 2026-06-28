@@ -47,8 +47,19 @@ fn setup() -> (Env, SavingsGoalContractClient<'static>, Address) {
     (env, client, owner)
 }
 
-fn make_goal(env: &Env, client: &SavingsGoalContractClient<'_>, owner: &Address, target: i128) -> u32 {
-    client.create_goal(owner, &String::from_str(env, "Test Goal"), &target, &2_000_000u64, &false)
+fn make_goal(
+    env: &Env,
+    client: &SavingsGoalContractClient<'_>,
+    owner: &Address,
+    target: i128,
+) -> u32 {
+    client.create_goal(
+        owner,
+        &String::from_str(env, "Test Goal"),
+        &target,
+        &2_000_000u64,
+        &false,
+    )
 }
 
 // ─── add_to_goal — happy path ─────────────────────────────────────────────────
@@ -231,7 +242,11 @@ fn checked_sub_conserves_balance_for_large_amounts() {
     let to_withdraw = large_amount / 4;
     let remaining = client.withdraw_from_goal(&owner, &goal_id, &to_withdraw);
 
-    assert_eq!(remaining + to_withdraw, large_amount, "conservation: remaining + withdrawn must equal initial");
+    assert_eq!(
+        remaining + to_withdraw,
+        large_amount,
+        "conservation: remaining + withdrawn must equal initial"
+    );
 }
 
 // ─── withdraw_from_goal — checked_sub underflow → error ──────────────────────
@@ -329,5 +344,8 @@ fn checked_add_is_deterministic_for_identical_sequences() {
     client2.add_to_goal(&owner2, &goal2, &2_000i128);
     let total2 = client2.add_to_goal(&owner2, &goal2, &3_000i128);
 
-    assert_eq!(total1, total2, "identical addition sequences must produce identical totals");
+    assert_eq!(
+        total1, total2,
+        "identical addition sequences must produce identical totals"
+    );
 }

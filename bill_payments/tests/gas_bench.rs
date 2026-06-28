@@ -1,5 +1,5 @@
-use bill_payments::{BillPayments, BillPaymentsClient, Error};
-use remitwise_common::MAX_BATCH_SIZE;
+use bill_payments::{BillPayments, BillPaymentsClient, Error, CANCEL_BILL_RATE_LIMIT};
+use remitwise_common::{MAX_BATCH_SIZE, RATE_LIMIT_WINDOW_SECONDS};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String, Vec};
 
@@ -142,6 +142,16 @@ fn set_time(env: &Env, timestamp: u64) {
         min_persistent_entry_ttl: 1,
         max_entry_ttl: 100_000,
     });
+}
+
+/// Cancel bills while respecting per-address cancel rate limits in tests.
+fn cancel_many_bills(client: &BillPaymentsClient, env: &Env, owner: &Address, bill_ids: &Vec<u32>) {
+    for (i, bill_id) in bill_ids.iter().enumerate() {
+        if i > 0 && (i as u32).is_multiple_of(CANCEL_BILL_RATE_LIMIT) {
+            set_time(env, env.ledger().timestamp() + RATE_LIMIT_WINDOW_SECONDS);
+        }
+        client.cancel_bill(owner, &bill_id);
+    }
 }
 
 fn measure<F, R>(env: &Env, f: F) -> (u64, u64, R)
@@ -629,9 +639,7 @@ fn scale_get_overdue_bills_independent_of_next_id() {
     let owner_b = <Address as AddressTrait>::generate(&env_b);
     create_many_overdue(&client_b, &env_b, &owner_b, "OverdueB", 10);
     let filler = create_many_unpaid(&client_b, &env_b, &owner_b, "Filler", 80);
-    for fid in filler.iter() {
-        client_b.cancel_bill(&owner_b, &fid);
-    }
+    cancel_many_bills(&client_b, &env_b, &owner_b, &filler);
     let (cpu_b, mem_b, page_b) = measure(&env_b, || client_b.get_overdue_bills(&0u32, &50u32));
     assert_eq!(
         page_b.count, 10,

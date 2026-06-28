@@ -859,9 +859,7 @@ fn test_request_hash_mismatch_nonce_reuse_new_deadline() {
     );
 }
 
-fn setup_request_hash_distribution(
-    env: &Env,
-) -> SplitTestHarness<'_> {
+fn setup_request_hash_distribution(env: &Env) -> SplitTestHarness<'_> {
     env.mock_all_auths();
     set_time(env, 1_000);
 
@@ -1681,9 +1679,7 @@ fn test_execute_mixed_due_not_due() {
 //
 // Security: expired/invalid deadlines must NOT advance the nonce.
 
-fn setup_signed_distribution(
-    env: &Env,
-) -> SplitTestHarness<'_> {
+fn setup_signed_distribution(env: &Env) -> SplitTestHarness<'_> {
     env.mock_all_auths();
     env.ledger().set_timestamp(10_000);
 
@@ -2370,7 +2366,11 @@ fn test_double_init_fails() {
 
     // Second initialize should fail with AlreadyInitialized
     let result2 = client.try_initialize_split(&owner, &1, &token_addr, &50, &25, &15, &10);
-    assert_eq!(result2, Err(Ok(RemittanceSplitError::AlreadyInitialized)), "second init should fail with AlreadyInitialized");
+    assert_eq!(
+        result2,
+        Err(Ok(RemittanceSplitError::AlreadyInitialized)),
+        "second init should fail with AlreadyInitialized"
+    );
 }
 
 #[test]
@@ -2384,15 +2384,21 @@ fn test_not_initialized_fails() {
 
     // Try to call a function that returns Option
     let result = client.get_config();
-    assert!(result.is_none(), "get_config should return None when not initialized");
+    assert!(
+        result.is_none(),
+        "get_config should return None when not initialized"
+    );
 
     // Try to call a function that returns Result (like set_pause_admin)
     let owner = Address::generate(&env);
     let new_admin = Address::generate(&env);
     let result2 = client.try_set_pause_admin(&owner, &new_admin);
-    assert_eq!(result2, Err(Ok(RemittanceSplitError::NotInitialized)), "set_pause_admin should fail with NotInitialized when not initialized");
+    assert_eq!(
+        result2,
+        Err(Ok(RemittanceSplitError::NotInitialized)),
+        "set_pause_admin should fail with NotInitialized when not initialized"
+    );
 }
-
 
 #[test]
 fn test_initialize_split_percentage_out_of_range() {
@@ -2407,15 +2413,7 @@ fn test_initialize_split_percentage_out_of_range() {
     let token_addr = Address::generate(&env);
 
     // Call try_initialize_split with spending_percent = 10_001
-    let result = client.try_initialize_split(
-        &owner,
-        &0,
-        &token_addr,
-        &10_001,
-        &0,
-        &0,
-        &0,
-    );
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
 
     assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
 }
@@ -2433,15 +2431,10 @@ fn test_initialize_split_percentages_invalid_sum() {
     let token_addr = Address::generate(&env);
 
     // Call try_initialize_split with sum = 9_999
-    let result = client.try_initialize_split(
-        &owner,
-        &0,
-        &token_addr,
-        &4000,
-        &3000,
-        &2000,
-        &999,
-    );
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
 
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }

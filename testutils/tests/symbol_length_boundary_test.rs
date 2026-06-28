@@ -30,7 +30,6 @@
 /// All inputs are deterministic `&str` literals. No `Date.now()` /
 /// `Math.random()` equivalents. Test names are assertive (state the
 /// expected outcome).
-
 use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// 9 ASCII bytes: the exact upper limit accepted by `symbol_short!`.

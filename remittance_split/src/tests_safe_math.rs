@@ -43,7 +43,15 @@ fn new_client(env: &Env) -> (RemittanceSplitClient<'_>, Address) {
     (client, owner)
 }
 
-fn init(client: &RemittanceSplitClient<'_>, env: &Env, owner: &Address, sp: u32, sg: u32, sb: u32, si: u32) {
+fn init(
+    client: &RemittanceSplitClient<'_>,
+    env: &Env,
+    owner: &Address,
+    sp: u32,
+    sg: u32,
+    sb: u32,
+    si: u32,
+) {
     let token = Address::generate(env);
     client.initialize_split(owner, &0, &token, &sp, &sg, &sb, &si);
 }

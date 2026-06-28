@@ -39,7 +39,10 @@ fn assert_no_double_init() {
     // First initialization should succeed
     assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
     // Second initialization should fail with AlreadyInitialized
-    assert_eq!(client.try_initialize(&admin), Err(Ok(Error::AlreadyInitialized)));
+    assert_eq!(
+        client.try_initialize(&admin),
+        Err(Ok(Error::AlreadyInitialized))
+    );
     // Non-initialized functions should fail with NotInitialized before init
     let env2 = Env::default();
     let (_, client2) = setup(&env2);

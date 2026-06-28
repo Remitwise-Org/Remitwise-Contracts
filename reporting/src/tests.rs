@@ -461,9 +461,7 @@ mod family_wallet_infinite {
             for _ in 0..25 {
                 addrs.push_back(Address::generate(&env));
             }
-            env.storage()
-                .instance()
-                .set(&symbol_short!("ADDR"), &addrs);
+            env.storage().instance().set(&symbol_short!("ADDR"), &addrs);
         }
     }
 
@@ -1361,7 +1359,8 @@ fn test_get_family_spending_report_addresses_not_configured() {
 
     client.init(&admin);
 
-    let result = client.try_get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
+    let result =
+        client.try_get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
     assert!(matches!(
         result,
         Err(Ok(ReportingError::AddressesNotConfigured))
@@ -1383,7 +1382,8 @@ fn test_get_family_spending_report_partial_when_member_pages_exceed_cap() {
     let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
     let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
     let insurance_id = env.register_contract(None, insurance::Insurance);
-    let family_wallet_id = env.register_contract(None, family_wallet_infinite::FamilyWalletInfinite);
+    let family_wallet_id =
+        env.register_contract(None, family_wallet_infinite::FamilyWalletInfinite);
     family_wallet_infinite::FamilyWalletInfiniteClient::new(&env, &family_wallet_id).seed();
 
     client.configure_addresses(
