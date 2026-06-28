@@ -125,17 +125,20 @@ fn is_nonce_used(env: &Env, address: &Address, nonce: u64) -> bool {
 ```rust
 let expected_hash = Self::compute_request_hash(
     symbol_short!("flow"),
-    executor.clone(),
     nonce,
     amount,
     deadline,
+    goal_id,   // from instance storage GOAL_ID
+    bill_id,   // from instance storage BILL_ID
+    policy_id, // from instance storage POL_ID
 );
 if request_hash != expected_hash {
     return Err(OrchestratorError::InvalidNonce);
 }
 ```
 
-**Purpose:** Prevents parameter-swap attacks (e.g., attacker changes amount while reusing same nonce).
+**Purpose:** Prevents parameter-swap attacks (e.g., attacker changes amount or
+redirects funds to a different goal/bill/policy while reusing the same nonce).
 
 ---
 
