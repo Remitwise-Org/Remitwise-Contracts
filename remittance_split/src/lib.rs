@@ -587,7 +587,9 @@ impl RemittanceSplit {
     }
 
     fn set_pending_treasury(env: &Env, treasury: &Address) {
-        env.storage().instance().set(&symbol_short!("TRES_PEND"), treasury);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("TRES_PEND"), treasury);
     }
 
     fn clear_pending_treasury(env: &Env) {
@@ -651,15 +653,12 @@ impl RemittanceSplit {
     /// - `PendingTreasuryMismatch` if `caller` is not the proposed address
     ///
     /// Emits `trsr_xfr` event with `(old_treasury, new_treasury)`.
-    pub fn accept_treasury(
-        env: Env,
-        caller: Address,
-    ) -> Result<(), RemittanceSplitError> {
+    pub fn accept_treasury(env: Env, caller: Address) -> Result<(), RemittanceSplitError> {
         caller.require_auth();
         Self::extend_instance_ttl(&env);
 
-        let pending = Self::get_pending_treasury(&env)
-            .ok_or(RemittanceSplitError::NoPendingTreasury)?;
+        let pending =
+            Self::get_pending_treasury(&env).ok_or(RemittanceSplitError::NoPendingTreasury)?;
         if pending != caller {
             return Err(RemittanceSplitError::PendingTreasuryMismatch);
         }
@@ -1150,15 +1149,21 @@ impl RemittanceSplit {
 
         let split = Self::get_split(&env);
         let s0 = match split.get(0) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s1 = match split.get(1) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s2 = match split.get(2) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
 
@@ -1205,8 +1210,12 @@ impl RemittanceSplit {
             return Ok(0);
         }
 
-        let whole = amount.checked_div(100).ok_or(RemittanceSplitError::Overflow)?;
-        let remainder = amount.checked_rem(100).ok_or(RemittanceSplitError::Overflow)?;
+        let whole = amount
+            .checked_div(100)
+            .ok_or(RemittanceSplitError::Overflow)?;
+        let remainder = amount
+            .checked_rem(100)
+            .ok_or(RemittanceSplitError::Overflow)?;
         let scaled_whole = whole
             .checked_mul(percent)
             .ok_or(RemittanceSplitError::Overflow)?;
@@ -2181,15 +2190,21 @@ impl RemittanceSplit {
 
         let split = Self::get_split(env);
         let s0 = match split.get(0) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s1 = match split.get(1) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
         let s2 = match split.get(2) {
-            Some(v) => v.to_i128_checked().map_err(|_| RemittanceSplitError::Overflow)?,
+            Some(v) => v
+                .to_i128_checked()
+                .map_err(|_| RemittanceSplitError::Overflow)?,
             None => return Err(RemittanceSplitError::Overflow),
         };
 

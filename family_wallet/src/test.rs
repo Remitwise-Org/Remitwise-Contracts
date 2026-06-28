@@ -207,7 +207,13 @@ fn test_withdraw_below_threshold_no_multisig() {
     client.init(&owner, &initial_members);
     let mut all_members = initial_members.clone();
     all_members.push_back(owner.clone());
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -259,7 +265,13 @@ fn test_withdraw_above_threshold_requires_multisig() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -327,7 +339,13 @@ fn test_multisig_threshold_validation() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -387,7 +405,13 @@ fn test_duplicate_signature_prevention() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -460,7 +484,7 @@ fn test_sign_transaction_duplicate_signature_rejected() {
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);
     client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
-    
+
     // Configure multisig with threshold 2
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
     client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
@@ -500,7 +524,13 @@ fn test_propose_split_config_change() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
     client.configure_multisig(
@@ -570,7 +600,13 @@ fn test_propose_role_change() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let signers = vec![&env, owner.clone(), member1.clone()];
     client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
@@ -995,7 +1031,13 @@ fn test_propose_emergency_transfer() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -1161,7 +1203,13 @@ fn test_propose_emergency_transfer_appends_access_audit() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -1785,7 +1833,13 @@ fn test_unauthorized_signer() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -1856,7 +1910,13 @@ fn test_cleanup_expired_pending() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let token_admin = Address::generate(&env);
     let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
@@ -3159,7 +3219,13 @@ fn test_threshold_one_with_multiple_signers() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     let signers = vec![
         &env,
@@ -3251,7 +3317,13 @@ fn test_pending_transactions_pagination_and_auth() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Create 5 pending proposals, alternating proposers
     env.mock_all_auths();
@@ -3605,8 +3677,14 @@ fn test_cumulative_spending_within_period_limit() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000, // 1000 XLM per day
@@ -3644,8 +3722,14 @@ fn test_spending_period_rollover_resets_limits() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000, // 1000 XLM per day
@@ -3696,8 +3780,14 @@ fn test_spending_tracker_persistence() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,
@@ -3744,7 +3834,13 @@ fn test_owner_admin_bypass_precision_limits() {
     let recipient = Address::generate(&env);
 
     client.init(&owner, &vec![&env]);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone()], &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone()],
+        &1000_0000000,
+    );
     client.add_member(&owner, &admin, &FamilyRole::Admin, &1000_0000000);
 
     // Owner should bypass all precision limits
@@ -3780,8 +3876,14 @@ fn test_legacy_spending_limit_fallback() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &500_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &500_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     // No precision limit set, should use legacy behavior
 
@@ -3808,8 +3910,14 @@ fn test_precision_validation_edge_cases() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     let precision_limit = PrecisionSpendingLimit {
         limit: 1000_0000000,
@@ -3895,8 +4003,14 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
 
     client.init(&owner, &vec![&env]);
-        client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone(), member.clone()], &1000_0000000);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
 
     let precision_limit = PrecisionSpendingLimit {
         limit: 500_0000000, // 500 XLM period limit
@@ -4973,7 +5087,13 @@ fn test_threshold_change_lower_allows_execution() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token and fund owner
     let token_admin = Address::generate(&env);
@@ -5081,7 +5201,13 @@ fn test_threshold_change_raise_blocks_execution() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token and fund owner
     let token_admin = Address::generate(&env);
@@ -5183,7 +5309,13 @@ fn test_threshold_change_raise_to_exact_signature_count() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5364,7 +5496,13 @@ fn test_threshold_change_quorum_unachievable_via_revalidate() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5440,7 +5578,13 @@ fn test_threshold_change_quorum_unachievable_via_member_removal() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5517,7 +5661,13 @@ fn test_threshold_change_proposal_invalidated_event_emission() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5599,7 +5749,13 @@ fn test_threshold_change_selective_proposal_invalidation() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5691,7 +5847,13 @@ fn test_threshold_change_with_signature_collection_in_progress() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -5772,7 +5934,13 @@ fn test_threshold_change_minimum_with_single_signer() {
 
     let owner = Address::generate(&env);
     client.init(&owner, &vec![&env]);
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &vec![&env, owner.clone()], &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone()],
+        &1000_0000000,
+    );
 
     // Setup token
     let token_admin = Address::generate(&env);
@@ -6834,7 +7002,13 @@ fn test_remove_member_clears_spending_tracker() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Set precision spending limit with rollover enabled
     let limit = PrecisionSpendingLimit {
@@ -6932,7 +7106,13 @@ fn test_remove_member_then_readd_has_clean_state() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Set precision spending limit with rollover
     let limit = PrecisionSpendingLimit {
@@ -6954,7 +7134,10 @@ fn test_remove_member_then_readd_has_clean_state() {
     let tracker_before = client.get_spending_tracker(&member);
     assert!(tracker_before.is_some());
     let tracked_spent = tracker_before.unwrap().current_spent;
-    assert_eq!(tracked_spent, 100_0000000, "Initial spent should be 100_0000000");
+    assert_eq!(
+        tracked_spent, 100_0000000,
+        "Initial spent should be 100_0000000"
+    );
 
     // Remove the member
     client.remove_family_member(&owner, &member);
@@ -7008,7 +7191,13 @@ fn test_batch_remove_clears_all_member_state() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Set precision limits for all members
     let limit1 = PrecisionSpendingLimit {
@@ -7040,9 +7229,24 @@ fn test_batch_remove_clears_all_member_state() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member1, &1000_0000000);
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member2, &1000_0000000);
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member3, &1000_0000000);
-    client.withdraw(&member1, &token_contract.address(), &recipient, &100_0000000);
-    client.withdraw(&member2, &token_contract.address(), &recipient, &100_0000000);
-    client.withdraw(&member3, &token_contract.address(), &recipient, &100_0000000);
+    client.withdraw(
+        &member1,
+        &token_contract.address(),
+        &recipient,
+        &100_0000000,
+    );
+    client.withdraw(
+        &member2,
+        &token_contract.address(),
+        &recipient,
+        &100_0000000,
+    );
+    client.withdraw(
+        &member3,
+        &token_contract.address(),
+        &recipient,
+        &100_0000000,
+    );
 
     // Verify all have spending trackers
     assert!(client.get_spending_tracker(&member1).is_some());
@@ -7095,7 +7299,13 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     if all_members.is_empty() {
         all_members.push_back(owner.clone());
     }
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &all_members, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
 
     // Set precision limit only on member1 and member3
     let limit = PrecisionSpendingLimit {
@@ -7114,8 +7324,18 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     let recipient = Address::generate(&env);
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member1, &1000_0000000);
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member3, &1000_0000000);
-    client.withdraw(&member1, &token_contract.address(), &recipient, &100_0000000);
-    client.withdraw(&member3, &token_contract.address(), &recipient, &100_0000000);
+    client.withdraw(
+        &member1,
+        &token_contract.address(),
+        &recipient,
+        &100_0000000,
+    );
+    client.withdraw(
+        &member3,
+        &token_contract.address(),
+        &recipient,
+        &100_0000000,
+    );
 
     // Verify state
     assert!(client.get_spending_tracker(&member1).is_some());
@@ -7372,7 +7592,10 @@ fn slashed_funds_do_not_reach_destination_when_amount_exceeds_cap() {
         &slash_dest,
         &over_cap,
     );
-    assert!(result.is_err(), "transfer exceeding max_amount must be rejected");
+    assert!(
+        result.is_err(),
+        "transfer exceeding max_amount must be rejected"
+    );
 
     // Destination receives nothing.
     assert_eq!(
@@ -7418,7 +7641,13 @@ fn slashed_funds_reach_destination_only_after_multisig_threshold_met() {
 
     let members = vec![&env, owner.clone(), member1.clone(), member2.clone()];
     // RegularWithdrawal config is required by propose_transaction internally.
-    client.configure_multisig(&owner, &TransactionType::RegularWithdrawal, &1, &members, &0);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &members,
+        &0,
+    );
 
     // All three are authorized signers for EmergencyTransfer; threshold = 3.
     client.configure_multisig(
@@ -7443,7 +7672,10 @@ fn slashed_funds_reach_destination_only_after_multisig_threshold_met() {
         &slash_dest,
         &slash_amount,
     );
-    assert!(tx_id > 0, "multisig proposal must be queued with a valid id");
+    assert!(
+        tx_id > 0,
+        "multisig proposal must be queued with a valid id"
+    );
 
     // 1 sig < threshold=3 → no funds moved yet.
     assert_eq!(

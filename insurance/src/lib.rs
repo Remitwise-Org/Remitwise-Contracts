@@ -459,7 +459,8 @@ impl Insurance {
             if policy.active && policy.owner == caller {
                 let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
-                policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
+                policy.next_payment_date =
+                    Self::advance_next_payment_date(policy.next_payment_date, now);
                 let next_payment_date = policy.next_payment_date;
                 env.storage().instance().set(&DataKey::Policy(id), &policy);
                 env.events().publish(

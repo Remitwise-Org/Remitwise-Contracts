@@ -859,9 +859,7 @@ fn test_request_hash_mismatch_nonce_reuse_new_deadline() {
     );
 }
 
-fn setup_request_hash_distribution(
-    env: &Env,
-) -> SplitTestHarness<'_> {
+fn setup_request_hash_distribution(env: &Env) -> SplitTestHarness<'_> {
     env.mock_all_auths();
     set_time(env, 1_000);
 
@@ -1681,9 +1679,7 @@ fn test_execute_mixed_due_not_due() {
 //
 // Security: expired/invalid deadlines must NOT advance the nonce.
 
-fn setup_signed_distribution(
-    env: &Env,
-) -> SplitTestHarness<'_> {
+fn setup_signed_distribution(env: &Env) -> SplitTestHarness<'_> {
     env.mock_all_auths();
     env.ledger().set_timestamp(10_000);
 
@@ -2370,7 +2366,11 @@ fn test_double_init_fails() {
 
     // Second initialize should fail with AlreadyInitialized
     let result2 = client.try_initialize_split(&owner, &1, &token_addr, &50, &25, &15, &10);
-    assert_eq!(result2, Err(Ok(RemittanceSplitError::AlreadyInitialized)), "second init should fail with AlreadyInitialized");
+    assert_eq!(
+        result2,
+        Err(Ok(RemittanceSplitError::AlreadyInitialized)),
+        "second init should fail with AlreadyInitialized"
+    );
 }
 
 #[test]
@@ -2384,13 +2384,20 @@ fn test_not_initialized_fails() {
 
     // Try to call a function that returns Option
     let result = client.get_config();
-    assert!(result.is_none(), "get_config should return None when not initialized");
+    assert!(
+        result.is_none(),
+        "get_config should return None when not initialized"
+    );
 
     // Try to call a function that returns Result (like set_pause_admin)
     let owner = Address::generate(&env);
     let new_admin = Address::generate(&env);
     let result2 = client.try_set_pause_admin(&owner, &new_admin);
-    assert_eq!(result2, Err(Ok(RemittanceSplitError::NotInitialized)), "set_pause_admin should fail with NotInitialized when not initialized");
+    assert_eq!(
+        result2,
+        Err(Ok(RemittanceSplitError::NotInitialized)),
+        "set_pause_admin should fail with NotInitialized when not initialized"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2506,8 +2513,12 @@ fn test_import_snapshot_rebuilds_owner_index() {
     let mut found_1 = false;
     let mut found_2 = false;
     for s in schedules.iter() {
-        if s.id == 1 { found_1 = true; }
-        if s.id == 2 { found_2 = true; }
+        if s.id == 1 {
+            found_1 = true;
+        }
+        if s.id == 2 {
+            found_2 = true;
+        }
     }
     assert!(found_1, "schedule id=1 must be visible after import");
     assert!(found_2, "schedule id=2 must be visible after import");
@@ -2551,10 +2562,16 @@ fn test_import_snapshot_multi_owner_index() {
 
     // Verify no cross-owner leakage
     for s in s1.iter() {
-        assert_eq!(s.owner, owner1, "owner1 index must not contain owner2 schedules");
+        assert_eq!(
+            s.owner, owner1,
+            "owner1 index must not contain owner2 schedules"
+        );
     }
     for s in s2.iter() {
-        assert_eq!(s.owner, owner2, "owner2 index must not contain owner1 schedules");
+        assert_eq!(
+            s.owner, owner2,
+            "owner2 index must not contain owner1 schedules"
+        );
     }
 }
 
@@ -2591,7 +2608,10 @@ fn test_import_snapshot_advances_next_rsch() {
 
     // A new schedule created after import must get id 3, not 1
     let new_id = c2.create_remittance_schedule(&owner, &100, &9000, &86400);
-    assert_eq!(new_id, 3, "NEXT_RSCH must have been advanced past max imported id");
+    assert_eq!(
+        new_id, 3,
+        "NEXT_RSCH must have been advanced past max imported id"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2617,7 +2637,10 @@ fn test_import_snapshot_preserves_last_executed_and_missed_count() {
     client.execute_due_remittance_schedules();
 
     let s = client.get_remittance_schedule(&1).unwrap();
-    assert!(s.last_executed.is_some(), "last_executed must be set after execution");
+    assert!(
+        s.last_executed.is_some(),
+        "last_executed must be set after execution"
+    );
     assert!(s.missed_count >= 1, "missed_count must be at least 1");
 
     let snapshot = client.export_snapshot(&owner).unwrap();
@@ -2631,8 +2654,14 @@ fn test_import_snapshot_preserves_last_executed_and_missed_count() {
     c2.import_snapshot(&owner, &1, &snapshot);
 
     let imported = c2.get_remittance_schedule(&1).unwrap();
-    assert_eq!(imported.last_executed, s.last_executed, "last_executed must be preserved");
-    assert_eq!(imported.missed_count, s.missed_count, "missed_count must be preserved");
+    assert_eq!(
+        imported.last_executed, s.last_executed,
+        "last_executed must be preserved"
+    );
+    assert_eq!(
+        imported.missed_count, s.missed_count,
+        "missed_count must be preserved"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2697,7 +2726,11 @@ fn test_import_snapshot_empty_schedules() {
     client.import_snapshot(&owner, &1, &snapshot);
 
     let schedules = client.get_remittance_schedules(&owner);
-    assert_eq!(schedules.len(), 0, "empty snapshot must result in empty schedule list");
+    assert_eq!(
+        schedules.len(),
+        0,
+        "empty snapshot must result in empty schedule list"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2835,7 +2868,10 @@ fn test_paginated_query_sees_imported_schedules() {
 
     // All 3 imported schedules must be visible through the paginated reader
     let page = c2.get_schedules_paginated(&owner, &0, &10);
-    assert_eq!(page.count, 3, "all imported schedules must be visible via pagination");
+    assert_eq!(
+        page.count, 3,
+        "all imported schedules must be visible via pagination"
+    );
     assert_eq!(page.next_cursor, 0, "single page must have no next cursor");
 }
 
@@ -2892,7 +2928,10 @@ fn test_execute_due_one_shot_becomes_inactive() {
     client.execute_due_remittance_schedules();
 
     let s = client.get_remittance_schedule(&1).unwrap();
-    assert!(!s.active, "one-shot schedule must become inactive after execution");
+    assert!(
+        !s.active,
+        "one-shot schedule must become inactive after execution"
+    );
 }
 
 #[test]
@@ -2938,7 +2977,10 @@ fn test_execute_due_missed_cycles_counted() {
 
     let s = client.get_remittance_schedule(&1).unwrap();
     assert_eq!(s.missed_count, 2, "two missed cycles must be counted");
-    assert_eq!(s.next_due, 5000, "next_due must be advanced past current time");
+    assert_eq!(
+        s.next_due, 5000,
+        "next_due must be advanced past current time"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2975,7 +3017,11 @@ fn test_imported_schedules_participate_in_due_sweep() {
     set_time(&env2, 2500);
     let executed = c2.execute_due_remittance_schedules();
     assert_eq!(executed.len(), 1, "exactly one schedule must be executed");
-    assert_eq!(executed.get(0).unwrap(), 1, "schedule id=1 must be executed");
+    assert_eq!(
+        executed.get(0).unwrap(),
+        1,
+        "schedule id=1 must be executed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -3048,15 +3094,7 @@ fn test_initialize_split_percentage_out_of_range() {
     let token_addr = Address::generate(&env);
 
     // Call try_initialize_split with spending_percent = 10_001
-    let result = client.try_initialize_split(
-        &owner,
-        &0,
-        &token_addr,
-        &10_001,
-        &0,
-        &0,
-        &0,
-    );
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
 
     assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
 }
@@ -3074,17 +3112,12 @@ fn test_initialize_split_percentages_invalid_sum() {
     let token_addr = Address::generate(&env);
 
     // Call try_initialize_split with sum = 9_999
-    let result = client.try_initialize_split(
-        &owner,
-        &0,
-        &token_addr,
-        &4000,
-        &3000,
-        &2000,
-        &999,
-    );
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
 
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -3142,6 +3175,9 @@ fn test_get_request_hash_direct_call_returns_ok() {
     };
 
     let result = RemittanceSplit::get_request_hash(env.clone(), request);
-    assert!(result.is_ok(), "get_request_hash must not return an error for valid input");
+    assert!(
+        result.is_ok(),
+        "get_request_hash must not return an error for valid input"
+    );
     assert_eq!(result.unwrap().len(), 32);
 }

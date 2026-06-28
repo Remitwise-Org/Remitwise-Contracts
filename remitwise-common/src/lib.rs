@@ -1,5 +1,4 @@
 #![no_std]
-
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 extern crate alloc;
@@ -149,13 +148,13 @@ pub enum RateLimitError {
 }
 
 /// Helper to check and increment rate limit
-/// 
+///
 /// # Arguments
 /// * `env` - Soroban environment
 /// * `caller` - Address of the caller
 /// * `operation` - Symbol identifying the operation to rate limit
 /// * `limit` - Maximum allowed operations per window
-/// 
+///
 /// # Returns
 /// * `Ok(())` if within limit
 /// * `Err(RateLimitError::RateLimitExceeded)` if limit exceeded
@@ -167,57 +166,57 @@ pub fn check_and_increment_rate_limit(
 ) -> Result<(), RateLimitError> {
     let now = env.ledger().timestamp();
     let window_id = (now / RATE_LIMIT_WINDOW_SECONDS) * RATE_LIMIT_WINDOW_SECONDS;
-    
+
     let key = (caller.clone(), operation, window_id);
-    
+
     let mut rate_limits: Map<(Address, Symbol, u64), RateLimitRecord> = env
         .storage()
         .instance()
         .get(&STORAGE_RATE_LIMIT)
         .unwrap_or_else(|| Map::new(env));
-    
-    let record = rate_limits.get(key.clone()).unwrap_or_else(|| RateLimitRecord {
-        count: 0,
-        window_id,
-    });
-    
+
+    let record = rate_limits
+        .get(key.clone())
+        .unwrap_or_else(|| RateLimitRecord {
+            count: 0,
+            window_id,
+        });
+
     if record.count >= limit {
         return Err(RateLimitError::RateLimitExceeded);
     }
-    
+
     let new_record = RateLimitRecord {
         count: record.count + 1,
         window_id,
     };
-    
+
     rate_limits.set(key, new_record);
-    env.storage().instance().set(&STORAGE_RATE_LIMIT, &rate_limits);
-    
+    env.storage()
+        .instance()
+        .set(&STORAGE_RATE_LIMIT, &rate_limits);
+
     Ok(())
 }
 
 /// Helper to get current rate limit status for an operation
-pub fn get_rate_limit_status(
-    env: &Env,
-    caller: &Address,
-    operation: Symbol,
-) -> (u32, u64) {
+pub fn get_rate_limit_status(env: &Env, caller: &Address, operation: Symbol) -> (u32, u64) {
     let now = env.ledger().timestamp();
     let window_id = (now / RATE_LIMIT_WINDOW_SECONDS) * RATE_LIMIT_WINDOW_SECONDS;
-    
+
     let key = (caller.clone(), operation, window_id);
-    
+
     let rate_limits: Map<(Address, Symbol, u64), RateLimitRecord> = env
         .storage()
         .instance()
         .get(&STORAGE_RATE_LIMIT)
         .unwrap_or_else(|| Map::new(env));
-    
+
     let record = rate_limits.get(key).unwrap_or_else(|| RateLimitRecord {
         count: 0,
         window_id,
     });
-    
+
     (record.count, window_id + RATE_LIMIT_WINDOW_SECONDS)
 }
 
@@ -388,7 +387,8 @@ pub fn verify_signature(
     let msg_bytes = Bytes::from_slice(env, &prefixed_message);
 
     // Panics on invalid signature (expected behavior; callers use #[should_panic] tests)
-    env.crypto().ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes);
+    env.crypto()
+        .ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes);
 
     Ok(())
 }
@@ -404,7 +404,7 @@ pub enum SlashError {
 /// Verify an optional second-party slash signature.
 ///
 /// This provides a defence-in-depth gate before executing destructive slash operations.
-/// 
+///
 /// # Arguments
 /// * `env` - Soroban environment
 /// * `message` - The payload being authorized (e.g. amount or slash payload)
@@ -593,7 +593,10 @@ impl RemitwiseEvents {
                 let xdr_bytes = sc_val.to_xdr(env);
                 let size = xdr_bytes.len();
                 if size > 256 {
-                    panic!("Event data size {} exceeds 256-byte budget. Emits must be compact.", size);
+                    panic!(
+                        "Event data size {} exceeds 256-byte budget. Emits must be compact.",
+                        size
+                    );
                 }
             }
             env.events().publish(topics, val);
@@ -646,9 +649,7 @@ impl RemitwiseEvents {
         use soroban_sdk::TryFromVal;
 
         let all = env.events().all();
-        let (_cid, topics, data) = all
-            .last()
-            .expect("expected at least one emitted event");
+        let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
 
         // Topic schema emitted by `EventEmitter::emit`:
         // (symbol_short!("Remitwise"), category_u32, priority_u32, action)

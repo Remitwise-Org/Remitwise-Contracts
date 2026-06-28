@@ -78,7 +78,13 @@ fn stress_200_policies_single_user() {
     let coverage_type = CoverageType::Health;
 
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     // Verify aggregate monthly premium
@@ -108,11 +114,18 @@ fn stress_200_policies_single_user() {
         cursor = page.next_cursor;
     }
 
-    assert_eq!(collected, 200, "Pagination must return all 200 active policies");
+    assert_eq!(
+        collected, 200,
+        "Pagination must return all 200 active policies"
+    );
     // get_active_policies sets next_cursor = last_returned_id; when a page is exactly
     // full the caller receives a non-zero cursor that produces a trailing empty page,
     // so the round-trip count is pages = ceil(200/50) + 1 trailing = 5.
-    assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
+    assert!(
+        pages >= 4 && pages <= 5,
+        "Expected 4-5 pages for 200 policies at limit 50, got {}",
+        pages
+    );
 }
 
 /// Create 200 policies and verify instance TTL remains valid after the instance
@@ -129,7 +142,13 @@ fn stress_instance_ttl_valid_after_200_policies() {
     let coverage_type = CoverageType::Life;
 
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &60_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &60_000_000i128,
+        );
     }
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -223,7 +242,13 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
 
     // Phase 1: 50 creates
     for _ in 0..50 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let ttl_batch1 = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -254,7 +279,13 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     );
 
     // Phase 3: create_policy fires extend_ttl → re-bumped
-    client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+    client.create_policy(
+        &owner,
+        &name,
+        &coverage_type,
+        &5_000_000i128,
+        &50_000_000i128,
+    );
 
     let ttl_rebumped = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
@@ -325,7 +356,13 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
 
     let mut policy_ids = std::vec![];
     for _ in 0..BATCH_SIZE {
-        let id = client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
         policy_ids.push(id);
     }
 
@@ -376,7 +413,13 @@ fn stress_deactivate_half_of_200_policies() {
     let coverage_type = CoverageType::Life;
 
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &1_000_000i128, &60_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &1_000_000i128,
+            &60_000_000i128,
+        );
     }
 
     // Deactivate even-numbered policies (IDs 2, 4, 6, …, 200)
@@ -427,7 +470,13 @@ fn bench_get_active_policies_first_page_of_200() {
     let coverage_type = CoverageType::Health;
 
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
@@ -452,7 +501,13 @@ fn bench_get_total_monthly_premium_200_policies() {
     let coverage_type = CoverageType::Health;
 
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let expected = 200i128 * 5_000_000;
@@ -479,7 +534,13 @@ fn bench_batch_pay_premiums_50_policies() {
 
     let mut policy_ids = std::vec![];
     for _ in 0..50 {
-        let id = client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
         policy_ids.push(id);
     }
 

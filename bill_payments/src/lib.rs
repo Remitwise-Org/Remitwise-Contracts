@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    clamp_limit, check_and_increment_rate_limit, EventCategory, EventPriority, RateLimitError,
+    check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RateLimitError,
     RemitwiseEvents, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY,
     SNAPSHOT_VERSION,
@@ -166,6 +166,16 @@ pub enum BillPaymentsError {
     InvalidTagContent = 19,
     /// Rate limit exceeded for this operation
     RateLimitExceeded = 20,
+    /// Bill schedule interval is below the minimum allowed value
+    ScheduleIntervalTooShort = 21,
+    /// Bill schedule lead time exceeds the maximum allowed window
+    ScheduleLeadTimeTooLong = 22,
+    /// Owner has reached the maximum number of allowed bill schedules
+    ScheduleCapExceeded = 23,
+    /// Bill schedule with the given ID does not exist
+    ScheduleNotFound = 24,
+    /// Bill schedule is not active and cannot be modified or executed
+    ScheduleNotActive = 25,
 }
 
 pub type Error = BillPaymentsError;
@@ -280,7 +290,10 @@ impl BillPayments {
             .unwrap_or_else(|| Map::new(env));
         let mut ids = idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if ids.get(len.saturating_sub(1)).map_or(true, |last| last < bill_id) {
+        if ids
+            .get(len.saturating_sub(1))
+            .map_or(true, |last| last < bill_id)
+        {
             ids.push_back(bill_id);
             idx.set(owner.clone(), ids);
             env.storage().instance().set(&STORAGE_OWNER_INDEX, &idx);
@@ -456,7 +469,10 @@ impl BillPayments {
         let key = (owner.clone(), currency.clone());
         let mut ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
         let len = ids.len();
-        if ids.get(len.saturating_sub(1)).map_or(true, |last| last < bill_id) {
+        if ids
+            .get(len.saturating_sub(1))
+            .map_or(true, |last| last < bill_id)
+        {
             ids.push_back(bill_id);
             idx.set(key, ids);
             Self::save_currency_index(env, &idx);
@@ -1589,14 +1605,15 @@ impl BillPayments {
     ) -> Result<u32, BillPaymentsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
-        
+
         // Check rate limit
         check_and_increment_rate_limit(
             &env,
             &owner,
             pause_functions::CREATE_BILL,
             CREATE_BILL_RATE_LIMIT,
-        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
+        )
+        .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
         let current_time = env.ledger().timestamp();
         if due_date == 0 || due_date < current_time {
@@ -1716,14 +1733,15 @@ impl BillPayments {
     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
-        
+
         // Check rate limit
         check_and_increment_rate_limit(
             &env,
             &caller,
             pause_functions::PAY_BILL,
             PAY_BILL_RATE_LIMIT,
-        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
+        )
+        .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
         Self::extend_instance_ttl(&env);
         let mut bills: Map<u32, Bill> = env
@@ -1853,7 +1871,8 @@ impl BillPayments {
     /// - Emits `(bill, tags_add)` with `(bill_id, caller, tags)`.
     pub fn add_tags_to_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::ADD_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        Self::require_not_paused(&env, pause_functions::ADD_TAGS)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -1904,7 +1923,8 @@ impl BillPayments {
     /// - Emits `(bill, tags_rem)` with `(bill_id, caller, tags)`.
     pub fn remove_tags_from_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
         caller.require_auth();
-        Self::require_not_paused(&env, pause_functions::REM_TAGS).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        Self::require_not_paused(&env, pause_functions::REM_TAGS)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
 
@@ -2561,14 +2581,15 @@ impl BillPayments {
     pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
-        
+
         // Check rate limit
         check_and_increment_rate_limit(
             &env,
             &caller,
             pause_functions::CANCEL_BILL,
             CANCEL_BILL_RATE_LIMIT,
-        ).map_err(|_| BillPaymentsError::RateLimitExceeded)?;
+        )
+        .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()

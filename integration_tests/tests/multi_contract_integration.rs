@@ -53,7 +53,9 @@ fn test_multi_contract_user_flow() {
 
     let nonce = 0u64;
     let mock_usdc = Address::generate(&env);
-    remittance_client.initialize_split(&user, &nonce, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32);
+    remittance_client.initialize_split(
+        &user, &nonce, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
+    );
 
     let goal_name = SorobanString::from_str(&env, "Education Fund");
     let target_amount = 10_000i128;
@@ -125,7 +127,9 @@ fn test_split_with_rounding() {
     let remittance_contract_id = env.register_contract(None, RemittanceSplit);
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
 
-    remittance_client.initialize_split(&user, &0u64, &mock_usdc, &3300u32, &3300u32, &1700u32, &1700u32);
+    remittance_client.initialize_split(
+        &user, &0u64, &mock_usdc, &3300u32, &3300u32, &1700u32, &1700u32,
+    );
 
     let total = 1_000i128;
     let amounts = remittance_client.calculate_split(&total);
@@ -319,7 +323,9 @@ fn test_reporting_data_availability_complete() {
 
     // Initialize remittance split
     let mock_usdc = Address::generate(&env);
-    remittance_client.initialize_split(&user, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32);
+    remittance_client.initialize_split(
+        &user, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
+    );
 
     let total_amount = 10_000i128;
     let period_start = env.ledger().timestamp();

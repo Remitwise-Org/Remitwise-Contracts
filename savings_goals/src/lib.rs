@@ -2846,6 +2846,6 @@ mod events_schema_test;
 #[cfg(test)]
 mod test;
 #[cfg(test)]
-mod tests_schedule_exec;
-#[cfg(test)]
 mod tests_safe_math;
+#[cfg(test)]
+mod tests_schedule_exec;

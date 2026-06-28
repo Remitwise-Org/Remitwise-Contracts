@@ -102,7 +102,10 @@ fn safe_percent_returns_positive_scale_on_overflow_with_positive_numerator() {
     // i128::MAX * 100 definitely overflows i128.
     let result = safe_percent(i128::MAX, 1, 100);
     // Contract: saturate to +scale (not a panic, not a wrap).
-    assert_eq!(result, 100, "overflow with positive numerator must saturate to +scale");
+    assert_eq!(
+        result, 100,
+        "overflow with positive numerator must saturate to +scale"
+    );
 }
 
 /// When `numerator * scale` overflows and numerator < 0, result must be `-scale`.
@@ -110,7 +113,10 @@ fn safe_percent_returns_positive_scale_on_overflow_with_positive_numerator() {
 fn safe_percent_returns_negative_scale_on_overflow_with_negative_numerator() {
     // i128::MIN * 100 overflows (most-negative × positive).
     let result = safe_percent(i128::MIN, 1, 100);
-    assert_eq!(result, -100, "overflow with negative numerator must saturate to -scale");
+    assert_eq!(
+        result, -100,
+        "overflow with negative numerator must saturate to -scale"
+    );
 }
 
 /// Large but non-overflowing numerator: (i128::MAX / 100) * 100 fits in i128.
@@ -129,5 +135,8 @@ fn safe_percent_handles_largest_non_overflowing_numerator_exactly() {
 fn safe_percent_saturates_one_step_past_non_overflow_boundary() {
     let n = i128::MAX / 100 + 1;
     let result = safe_percent(n, 1, 100);
-    assert_eq!(result, 100, "one step past safe range must saturate to scale");
+    assert_eq!(
+        result, 100,
+        "one step past safe range must saturate to scale"
+    );
 }

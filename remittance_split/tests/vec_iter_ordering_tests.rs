@@ -120,12 +120,7 @@ fn paginated_schedules_preserve_ascending_id_order_across_pages() {
 
     // Create six schedules so we get multiple non-trivial pages of two.
     for i in 1..=6u64 {
-        client.create_remittance_schedule(
-            &owner,
-            &(100 * i as i128),
-            &(2_000 + i * 1_000),
-            &0,
-        );
+        client.create_remittance_schedule(&owner, &(100 * i as i128), &(2_000 + i * 1_000), &0);
     }
 
     // Walk every page using the returned cursor and flatten the IDs. The

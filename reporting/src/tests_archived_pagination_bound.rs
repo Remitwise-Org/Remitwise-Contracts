@@ -34,9 +34,8 @@ use testutils::set_ledger_time;
 use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
 
 use crate::{
-    BillComplianceReport, DataAvailability, FinancialHealthReport, HealthScore,
-    InsuranceReport, RemittanceSummary, ReportingContract, ReportingContractClient,
-    SavingsReport,
+    BillComplianceReport, DataAvailability, FinancialHealthReport, HealthScore, InsuranceReport,
+    RemittanceSummary, ReportingContract, ReportingContractClient, SavingsReport,
 };
 
 // ============================================================================
