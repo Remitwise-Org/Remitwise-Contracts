@@ -18,7 +18,10 @@
 //!   DEFAULT_PAGE_LIMIT     = 20
 //!   MAX_BATCH_SIZE         = 50
 
-use bill_payments::{BillPayments, BillPaymentsClient, MAX_BILLS_PER_OWNER};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, CREATE_BILL_RATE_LIMIT, MAX_BILLS_PER_OWNER,
+};
+use remitwise_common::RATE_LIMIT_WINDOW_SECONDS;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -62,6 +65,61 @@ where
     (cpu, mem, result)
 }
 
+fn advance_ledger_time(env: &Env, timestamp: u64) {
+    env.ledger().set(LedgerInfo {
+        protocol_version: env.ledger().protocol_version(),
+        sequence_number: env.ledger().sequence() + 1,
+        timestamp,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
+}
+
+fn maybe_advance_for_create_rate_limit(env: &Env, create_index: u32) {
+    if create_index > 0 && create_index.is_multiple_of(CREATE_BILL_RATE_LIMIT) {
+        advance_ledger_time(env, env.ledger().timestamp() + RATE_LIMIT_WINDOW_SECONDS);
+    }
+}
+
+fn create_standard_bill(
+    env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+    name: &String,
+    amount: i128,
+    due_date: u64,
+    create_index: u32,
+) -> u32 {
+    maybe_advance_for_create_rate_limit(env, create_index);
+    client.create_bill(
+        owner,
+        name,
+        &amount,
+        &due_date,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(env, "XLM"),
+        &None,
+    )
+}
+
+fn fill_owner_to_cap(
+    env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+    name: &String,
+    amount: i128,
+    due_date: u64,
+) {
+    for i in 0..MAX_BILLS_PER_OWNER {
+        create_standard_bill(env, client, owner, name, amount, due_date, i);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Stress: many entities per user
 // ---------------------------------------------------------------------------
@@ -78,19 +136,7 @@ fn stress_max_bills_single_user() {
     let name = String::from_str(&env, "StressBill");
     let due_date = 2_000_000_000u64; // far future
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     // Verify aggregate total
     let total = client.get_total_unpaid(&owner);
@@ -142,25 +188,15 @@ fn stress_instance_ttl_valid_after_max_bills() {
     let name = String::from_str(&env, "TTLBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    let ledger_advances_for_rate_limit = MAX_BILLS_PER_OWNER / CREATE_BILL_RATE_LIMIT;
+    let min_ttl = 518_400u64.saturating_sub(ledger_advances_for_rate_limit as u64);
     assert!(
-        ttl >= 518_400,
-        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after owner-cap creates",
-        ttl
+        u64::from(ttl) >= min_ttl,
+        "Instance TTL ({}) must remain >= {} after owner-cap creates (accounting for {} rate-limit ledger advances)",
+        ttl, min_ttl, ledger_advances_for_rate_limit
     );
 }
 
@@ -521,19 +557,7 @@ fn bench_get_unpaid_bills_first_page_of_max() {
     let name = String::from_str(&env, "BenchBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
     assert_eq!(page.count, 50, "First page must return 50 bills");
@@ -555,19 +579,7 @@ fn bench_get_unpaid_bills_last_page_of_max() {
     let name = String::from_str(&env, "BenchBillLast");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     // Walk forward to the cursor that yields the final page. With
     // MAX_BILLS_PER_OWNER bills and a page size of 50, this advances through
@@ -644,19 +656,7 @@ fn bench_get_total_unpaid_max_bills() {
     let name = String::from_str(&env, "TotalBench");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let expected = MAX_BILLS_PER_OWNER as i128 * 100;
     let (cpu, mem, total) = measure(&env, || client.get_total_unpaid(&owner));
@@ -842,21 +842,10 @@ fn stress_owner_cap_enforced_at_boundary() {
     let name = String::from_str(&env, "CapBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &1i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 1i128, due_date);
 
     // The (cap + 1)-th create must return OwnerBillCapExceeded (error code 18).
+    maybe_advance_for_create_rate_limit(&env, MAX_BILLS_PER_OWNER);
     let result = client.try_create_bill(
         &owner,
         &name,
@@ -886,45 +875,23 @@ fn stress_cancel_frees_slot_at_cap() {
     let due_date = 2_000_000_000u64;
 
     // Fill to cap; record the first bill ID
-    let first_id = client.create_bill(
-        &owner,
-        &name,
-        &1i128,
-        &due_date,
-        &false,
-        &0u32,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
-    for _ in 1..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &1i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+    let first_id = create_standard_bill(&env, &client, &owner, &name, 1i128, due_date, 0);
+    for i in 1..MAX_BILLS_PER_OWNER {
+        create_standard_bill(&env, &client, &owner, &name, 1i128, due_date, i);
     }
 
     // Cancel the first bill to free a slot
     client.cancel_bill(&owner, &first_id);
 
-    // Now a new create must succeed
-    let new_id = client.create_bill(
+    // Now a new create must succeed (advance ledger if the create rate window is full).
+    let new_id = create_standard_bill(
+        &env,
+        &client,
         &owner,
         &name,
-        &1i128,
-        &due_date,
-        &false,
-        &0u32,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
+        1i128,
+        due_date,
+        MAX_BILLS_PER_OWNER,
     );
     assert!(new_id > 0, "New bill must be created after cancelling one");
 }
@@ -1276,19 +1243,7 @@ fn bench_get_all_bills_for_owner_at_cap() {
     let due_date = 2_000_000_000u64;
 
     // Fill to cap
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let (cpu, mem, page) = measure(&env, || {
         client.get_all_bills_for_owner(&owner, &0u32, &50u32)
@@ -1314,18 +1269,8 @@ fn bench_cancel_bill_at_max_owner_bills() {
 
     // Fill to cap; record the last bill ID
     let mut last_id = 0u32;
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        last_id = client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+    for i in 0..MAX_BILLS_PER_OWNER {
+        last_id = create_standard_bill(&env, &client, &owner, &name, 100i128, due_date, i);
     }
 
     let (cpu, mem, _) = measure(&env, || client.cancel_bill(&owner, &last_id));
