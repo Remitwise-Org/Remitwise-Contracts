@@ -4,6 +4,8 @@ use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
     Env, IntoVal, Map, TryFromVal, Val, Vec,
 };
+mod utils;
+use utils::{u64_to_u32, ConversionError};
 
 pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
 
@@ -252,6 +254,8 @@ pub enum ReportingError {
     InvalidPeriod = 7,
     /// Invalid percentage split summing to > 100 or != 100
     InvalidPercentageSplit = 8,
+    /// u64 to u32 overflow guard
+    Overflow = 9,
 }
 
 #[contracttype]
@@ -1023,6 +1027,7 @@ impl ReportingContract {
         for (i, &category) in categories.iter().enumerate() {
             let amount = split_amounts.get(i as u32).unwrap_or(0);
             let percentage = split_percentages.get(i as u32).unwrap_or(0);
+            // Safe conversion guards for any u64 -> u32 casts used elsewhere (none here)
             breakdown.push_back(CategoryBreakdown {
                 category,
                 amount,
@@ -1084,7 +1089,8 @@ impl ReportingContract {
             }
         }
 
-        let completion_percentage = safe_percent(total_saved, total_target, 100).min(100) as u32;
+        let completion_percentage = safe_percent(total_saved, total_target, 100).min(100);
+            let completion_percentage = u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
 
         Ok(SavingsReport {
             total_goals,
@@ -1162,7 +1168,8 @@ impl ReportingContract {
         let compliance_percentage = if total_bills == 0 {
             100
         } else {
-            safe_percent(paid_bills.to_i128_checked().unwrap(), total_bills.to_i128_checked().unwrap(), 100).clamp(0, 100) as u32
+            let val = safe_percent(paid_bills.to_i128_checked().unwrap(), total_bills.to_i128_checked().unwrap(), 100).clamp(0, 100);
+            let val = u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?;
         };
 
         Ok(BillComplianceReport {
@@ -1230,7 +1237,8 @@ impl ReportingContract {
 
         let annual_premium = monthly_premium.saturating_mul(12);
         let coverage_to_premium_ratio =
-            safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX.to_i128_checked().unwrap()) as u32;
+            let val = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX.to_i128_checked().unwrap());
+            let val = u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?;
 
         Ok(InsuranceReport {
             active_policies,
@@ -1473,7 +1481,8 @@ impl ReportingContract {
             // Safe division: multiply first, then divide to maintain precision
             // (saved * 100) / target, but avoid intermediate overflow
             let saved_scaled = total_saved.saturating_mul(100);
-            let progress = saved_scaled.checked_div(total_target).unwrap_or(0) as u32;
+            let progress = saved_scaled.checked_div(total_target).unwrap_or(0);
+            let progress = u64_to_u32(progress as u64).map_err(|_| ReportingError::Overflow)?;
             progress.min(100)
         };
 
@@ -2217,7 +2226,8 @@ impl ReportingContract {
                 // Update index
                 if let Some(mut user_idx) = arch_idx.get(user.clone()) {
                     if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        user_idx.remove(idx as u32);
+                        let idx_u32 = u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
+            user_idx.remove(idx_u32);
                         if user_idx.is_empty() {
                             arch_idx.remove(user);
                         } else {
