@@ -356,17 +356,19 @@ impl ToI128Checked for i128 {
 /// # Returns
 /// * `Ok(())` if the signature is valid
 /// * `Err(SignatureError)` if verification fails
-extern crate alloc;
-
 pub fn verify_signature(
-    _env: &soroban_sdk::Env,
+    env: &soroban_sdk::Env,
     domain_separator: &[u8],
     message: &[u8],
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
-    let pk_arr: [u8; 32] = public_key.try_into().map_err(|_| SignatureError::InvalidPublicKeyLength)?;
-    let sig_arr: [u8; 64] = signature.try_into().map_err(|_| SignatureError::InvalidSignatureLength)?;
+    if public_key.len() != 32 {
+        return Err(SignatureError::InvalidPublicKeyLength);
+    }
+    if signature.len() != 64 {
+        return Err(SignatureError::InvalidSignatureLength);
+    }
 
     let mut prefixed_message = alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
     prefixed_message.extend_from_slice(domain_separator);
@@ -374,6 +376,7 @@ pub fn verify_signature(
 
     let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
     let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
+    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
 
     env.crypto()
         .ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes)
