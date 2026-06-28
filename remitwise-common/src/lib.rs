@@ -4,7 +4,9 @@
 
 extern crate alloc;
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Bytes, BytesN, Symbol};
+use soroban_sdk::{
+    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
+};
 
 /// Financial categories for remittance allocation
 #[contracttype]
