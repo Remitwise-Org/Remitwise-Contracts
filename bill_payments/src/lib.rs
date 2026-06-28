@@ -2,9 +2,10 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, check_and_increment_rate_limit, RateLimitError,
+    clamp_limit, check_and_increment_rate_limit, EventCategory, EventPriority, RateLimitError,
+    RemitwiseEvents, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY,
+    SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{

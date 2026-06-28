@@ -4,7 +4,7 @@
 
 extern crate alloc;
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Bytes, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Bytes, BytesN, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -111,6 +111,12 @@ pub const SIGNATURE_EXPIRATION: u64 = 86400;
 
 /// Contract version
 pub const CONTRACT_VERSION: u32 = 1;
+
+/// Pre-upgrade snapshot schema version
+pub const SNAPSHOT_VERSION: u32 = 1;
+
+/// Storage key for pre-upgrade snapshot in persistent storage
+pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
 
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
@@ -363,24 +369,26 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
-    if public_key.len() != 32 {
-        return Err(SignatureError::InvalidPublicKeyLength);
-    }
-    if signature.len() != 64 {
-        return Err(SignatureError::InvalidSignatureLength);
-    }
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let sig_arr: [u8; 64] = signature
+        .try_into()
+        .map_err(|_| SignatureError::InvalidSignatureLength)?;
 
-    let mut prefixed_message = alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
+    let mut prefixed_message =
+        alloc::vec::Vec::with_capacity(domain_separator.len() + message.len());
     prefixed_message.extend_from_slice(domain_separator);
     prefixed_message.extend_from_slice(message);
 
-    let sig_bytes = soroban_sdk::Bytes::from_slice(env, signature);
-    let pk_bytes = soroban_sdk::Bytes::from_slice(env, public_key);
-    let msg_bytes = soroban_sdk::Bytes::from_slice(env, &prefixed_message);
+    let pk_bytes = BytesN::<32>::from_array(env, &pk_arr);
+    let sig_bytes = BytesN::<64>::from_array(env, &sig_arr);
+    let msg_bytes = Bytes::from_slice(env, &prefixed_message);
 
-    env.crypto()
-        .ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes)
-        .map_err(|_| SignatureError::VerificationFailed)
+    // Panics on invalid signature (expected behavior; callers use #[should_panic] tests)
+    env.crypto().ed25519_verify(&pk_bytes, &msg_bytes, &sig_bytes);
+
+    Ok(())
 }
 
 /// Typed error for slash signature verification.
