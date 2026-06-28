@@ -4,6 +4,14 @@ This document tracks changes, versions, and migration notes for each of the smar
 
 ## Remittance Split (`remittance_split`)
 
+### v0.2.2
+
+- **Summary**: Restored structured `DistributionCompletedEvent` emission on both `distribute_usdc` and `distribute_usdc_hashed` via a shared helper (#843).
+- **New Features**:
+  - `emit_distribution_completed`: shared helper publishing unstructured `dist_ok` (backward compat) plus structured `(split, DistributionCompleted)` with per-category amounts
+- **Breaking Changes**: None — the unstructured `dist_ok` event is retained alongside the structured event.
+- **Migration Notes**: Indexers keyed on `(split, DistributionCompleted)` now receive events from the hashed path as well as the legacy path.
+
 ### v0.2.1
 
 - **Summary**: Removed orphaned `RemittanceSchedulePage` contracttype that had no producer, shrinking the exported ABI.
