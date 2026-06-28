@@ -693,14 +693,14 @@ impl RemitwiseEvents {
 
 #[cfg(test)]
 mod assert_event_tests {
-    use super::{EventCategory, EventEmitter, EventPriority};
+    use super::{EventCategory, EventPriority, RemitwiseEvents};
 
     #[test]
     fn assert_last_event_matches_emitted_topic_and_data() {
         let env = soroban_sdk::Env::default();
         let action = soroban_sdk::Symbol::new(&env, "test_act");
 
-        EventEmitter::emit(
+        RemitwiseEvents::emit(
             &env,
             EventCategory::Access,
             EventPriority::High,
@@ -708,7 +708,7 @@ mod assert_event_tests {
             (1u32, 2u32),
         );
 
-        EventEmitter::assert_last_event::<(u32, u32), _>(
+        RemitwiseEvents::assert_last_event::<(u32, u32), _>(
             &env,
             EventCategory::Access,
             EventPriority::High,
@@ -721,14 +721,14 @@ mod assert_event_tests {
     #[should_panic(expected = "event action mismatch")]
     fn assert_last_event_panics_on_action_mismatch() {
         let env = soroban_sdk::Env::default();
-        EventEmitter::emit(
+        RemitwiseEvents::emit(
             &env,
             EventCategory::Access,
             EventPriority::High,
             soroban_sdk::Symbol::new(&env, "one"),
             1u32,
         );
-        EventEmitter::assert_last_event::<u32, _>(
+        RemitwiseEvents::assert_last_event::<u32, _>(
             &env,
             EventCategory::Access,
             EventPriority::High,
