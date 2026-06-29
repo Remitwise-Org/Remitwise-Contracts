@@ -1351,18 +1351,7 @@ impl RemittanceSplit {
 
         // 10. Advance nonce, record audit, emit events.
         Self::increment_nonce(&env, &from)?;
-
-        // Emit unstructured event for backward compatibility
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Transaction,
-            EventPriority::Medium,
-            symbol_short!("dist_ok"),
-            (from.clone(), total_amount),
-        );
-
-        // Structured distribution event removed to reduce transient memory allocations
-        // (keeps the lightweight unstructured event for backward compatibility).
+        Self::emit_distribution_completed(&env, &from, total_amount, &amounts);
 
         Ok(true)
     }
@@ -1371,6 +1360,9 @@ impl RemittanceSplit {
     ///
     /// This function provides secure USDC distribution with deterministic request hashing
     /// and deadline enforcement. Integrators sign the request hash before calling this function.
+    ///
+    /// On success emits the same structured [`DistributionCompletedEvent`] as
+    /// [`Self::distribute_usdc`] via [`Self::emit_distribution_completed`].
     ///
     /// # Arguments
     /// * `env` - Soroban environment
@@ -1500,6 +1492,12 @@ impl RemittanceSplit {
         // Increment nonce and record success
         Self::increment_nonce(&env, &request.from)?;
         Self::append_audit(&env, symbol_short!("distH"), &request.from, true);
+        Self::emit_distribution_completed(
+            &env,
+            &request.from,
+            request.total_amount,
+            &amounts,
+        );
         Ok(true)
     }
 
@@ -2107,6 +2105,45 @@ impl RemittanceSplit {
             .wrapping_add(i)
             .wrapping_add(sc_count)
             .wrapping_mul(31)
+    }
+
+    /// Emit distribution completion telemetry shared by `distribute_usdc` and
+    /// `distribute_usdc_hashed`.
+    ///
+    /// Publishes two events so indexers can choose either surface:
+    /// 1. Unstructured `dist_ok` via `RemitwiseEvents` (backward compatibility)
+    /// 2. Structured `(split, DistributionCompleted)` with per-category amounts
+    ///
+    /// Category amounts must be the post-transfer split vector returned by
+    /// [`Self::calculate_split_amounts`] so dust/remainder is reflected identically
+    /// on both entrypoints.
+    fn emit_distribution_completed(
+        env: &Env,
+        from: &Address,
+        total_amount: i128,
+        amounts: &[i128; 4],
+    ) {
+        RemitwiseEvents::emit(
+            env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("dist_ok"),
+            (from.clone(), total_amount),
+        );
+
+        let event = DistributionCompletedEvent {
+            from: from.clone(),
+            total_amount,
+            spending_amount: amounts[0],
+            savings_amount: amounts[1],
+            bills_amount: amounts[2],
+            insurance_amount: amounts[3],
+            timestamp: env.ledger().timestamp(),
+        };
+        env.events().publish(
+            (symbol_short!("split"), SplitEvent::DistributionCompleted),
+            event,
+        );
     }
 
     fn append_audit(env: &Env, operation: Symbol, caller: &Address, success: bool) {

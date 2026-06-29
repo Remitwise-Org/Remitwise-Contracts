@@ -595,6 +595,45 @@ pub struct SplitCalculatedEvent {
 }
 ```
 
+### Event: Distribution Completed
+
+**Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::Medium, "dist_ok")` (backward-compat unstructured)  
+**Secondary Topic:** `("split", SplitEvent::DistributionCompleted)` (structured per-category payload)
+
+**Emitted by:** `distribute_usdc`, `distribute_usdc_hashed`  
+**Trigger:** Emitted when all category transfers complete successfully
+
+Both entrypoints call the shared `emit_distribution_completed` helper so category-level
+amounts cannot drift between the legacy and request-hash-bound paths.
+
+**Data Structure:**
+```rust
+pub struct DistributionCompletedEvent {
+    pub from: Address,              // Payer address
+    pub total_amount: i128,         // Total distributed amount
+    pub spending_amount: i128,      // Amount sent to spending account
+    pub savings_amount: i128,       // Amount sent to savings account
+    pub bills_amount: i128,         // Amount sent to bills account
+    pub insurance_amount: i128,     // Amount sent to insurance account (includes dust/remainder)
+    pub timestamp: u64,             // Event timestamp
+}
+```
+
+**Constraint:** `spending_amount + savings_amount + bills_amount + insurance_amount == total_amount`
+
+**Example Event:**
+```json
+{
+  "from": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+  "total_amount": 10000,
+  "spending_amount": 5000,
+  "savings_amount": 3000,
+  "bills_amount": 1500,
+  "insurance_amount": 500,
+  "timestamp": 1234567900
+}
+```
+
 ### Event: Split Updated
 
 **Topic:** `("split", SplitEvent::Updated)`
