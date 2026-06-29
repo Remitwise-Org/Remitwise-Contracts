@@ -65,6 +65,11 @@ fn setup(env: &Env) -> (BillPaymentsClient<'_>, Address) {
     (client, owner)
 }
 
+fn advance_rate_limit_window(env: &Env) {
+    let current = env.ledger().timestamp();
+    env.ledger().set_timestamp(current.saturating_add(86_400));
+}
+
 /// Create one bill for `owner` with the given `currency` and return its ID.
 fn create_bill_currency(
     env: &Env,
@@ -72,6 +77,7 @@ fn create_bill_currency(
     owner: &Address,
     currency: &str,
 ) -> u32 {
+    advance_rate_limit_window(env);
     client.create_bill(
         owner,
         &String::from_str(env, "Bill"),
