@@ -183,6 +183,26 @@ pub struct ExecutionStats {
     pub evicted_entries: u32,
 }
 
+/// Per-step outcome of a fan-out execute call.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FanOutStepResult {
+    pub step: FlowStep,
+    pub succeeded: bool,
+    pub amount: i128,
+}
+
+/// Aggregate result of execute_flow_fanout — all steps attempted, successes and
+/// failures reported independently. The caller can decide how to handle partial success.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FanOutFlowResult {
+    pub savings: FanOutStepResult,
+    pub bills: FanOutStepResult,
+    pub insurance: FanOutStepResult,
+    pub all_succeeded: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct RemittanceFlowParams {
@@ -523,6 +543,90 @@ impl Orchestrator {
             }
             Err(e) => Self::record_flow_outcome(&env, &executor, amount, Err(e)).map(|_| true),
         }
+    }
+
+    /// Fan-out execute: attempt all three downstream cross-contract steps independently,
+    /// reporting per-step success/failure. Unlike execute_remittance_flow, no compensation
+    /// is applied — callers receive the full result and decide how to handle partial success.
+    ///
+    /// Useful for idempotent retries or best-effort distribution where partial progress
+    /// is preferable to full rollback.
+    pub fn execute_flow_fanout(
+        env: Env,
+        executor: Address,
+        amount: i128,
+    ) -> Result<FanOutFlowResult, OrchestratorError> {
+        Self::extend_instance_ttl(&env);
+        executor.require_auth();
+
+        if amount <= 0 {
+            return Err(OrchestratorError::InvalidAmount);
+        }
+
+        let sg_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SG_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let bp_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BP_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let ins_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("INS_ADDR"))
+            .ok_or(OrchestratorError::InvalidDependency)?;
+        let goal_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOAL_ID"))
+            .unwrap_or(1);
+        let bill_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILL_ID"))
+            .unwrap_or(1);
+        let policy_id: u32 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("POL_ID"))
+            .unwrap_or(1);
+
+        let split = amount / 3;
+        let remainder = amount - split * 3;
+
+        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
+            .add_to_goal(&executor, &goal_id, &(split + remainder));
+        let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
+            .pay_bill(&executor, &bill_id, &split);
+        let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
+            .pay_premium(&executor, &policy_id, &split);
+
+        let savings = FanOutStepResult {
+            step: FlowStep::SavingsGoal,
+            succeeded: s_ok,
+            amount: split + remainder,
+        };
+        let bills = FanOutStepResult {
+            step: FlowStep::BillPayment,
+            succeeded: b_ok,
+            amount: split,
+        };
+        let insurance = FanOutStepResult {
+            step: FlowStep::InsurancePremium,
+            succeeded: i_ok,
+            amount: split,
+        };
+        let all_succeeded = s_ok && b_ok && i_ok;
+
+        Ok(FanOutFlowResult {
+            savings,
+            bills,
+            insurance,
+            all_succeeded,
+        })
     }
 
     /// Get the current execution nonce for an address.
