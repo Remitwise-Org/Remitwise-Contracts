@@ -9,7 +9,7 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, EventCategory, EventPriority, RemitwiseEvents, ToI128Checked,
+    clamp_limit, guard_bytes_len, EventCategory, EventPriority, RemitwiseEvents, ToI128Checked,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -85,6 +85,9 @@ pub enum RemittanceSplitError {
     NoPendingTreasury = 26,
     /// The caller of `accept_treasury` is not the proposed treasury address.
     PendingTreasuryMismatch = 27,
+    /// The `Bytes` value about to be returned exceeds `MAX_BYTES_RETURN`.
+    /// Prevents consumers from being forced to deserialise an unbounded payload.
+    ReturnBytesTooLarge = 28,
 }
 
 #[derive(Clone)]
@@ -1435,7 +1438,7 @@ impl RemittanceSplit {
         }
 
         // Verify request hash matches computed hash (binds all signed fields + domain_id)
-        let computed_hash = Self::get_request_hash(env.clone(), request.clone());
+        let computed_hash = Self::get_request_hash(env.clone(), request.clone())?;
         if computed_hash.ne(&request_hash) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::RequestHashMismatch);
@@ -1993,7 +1996,10 @@ impl RemittanceSplit {
     ///
     /// Mutating *any* field in `request` yields a different 32-byte hash,
     /// guaranteeing field-substitution resistance across all signed parameters.
-    pub fn get_request_hash(env: Env, request: DistributeUsdcRequest) -> Bytes {
+    pub fn get_request_hash(
+        env: Env,
+        request: DistributeUsdcRequest,
+    ) -> Result<Bytes, RemittanceSplitError> {
         let mut preimage = Bytes::new(&env);
 
         // 1. Domain separator
@@ -2036,7 +2042,9 @@ impl RemittanceSplit {
         // 11. deadline — 8 bytes LE
         preimage.extend_from_slice(&request.deadline.to_le_bytes());
 
-        env.crypto().sha256(&preimage).into()
+        let hash: Bytes = env.crypto().sha256(&preimage).into();
+        guard_bytes_len(&hash).map_err(|_| RemittanceSplitError::ReturnBytesTooLarge)?;
+        Ok(hash)
     }
 
     /// Works in `no_std` — uses `Symbol::to_val()` to extract the raw

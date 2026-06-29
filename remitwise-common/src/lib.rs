@@ -112,6 +112,42 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
+/// Maximum byte length for `Bytes` values returned from public contract entry points.
+///
+/// XDR `ScBytes` carries no inherent host-enforced cap before deserialization.
+/// Without an explicit check, a misbehaving or compromised contract can force every
+/// downstream consumer (SDK, indexer, RPC node) to allocate memory proportional to
+/// the returned payload — a potential DoS vector.  Call [`guard_bytes_len`] before
+/// returning any variable-length `Bytes` value from a public entry point.
+pub const MAX_BYTES_RETURN: u32 = 8192;
+
+/// Error returned when a `Bytes` value about to leave a contract entry point
+/// exceeds [`MAX_BYTES_RETURN`].
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BytesReturnError {
+    /// The byte length exceeds [`MAX_BYTES_RETURN`].
+    ReturnTooLarge = 1,
+}
+
+/// Guards `bytes` against exceeding the XDR return-size budget.
+///
+/// Call this immediately before returning any variable-length `Bytes` value from a
+/// public contract entry point.  The check costs a single `u32` comparison and
+/// ensures that downstream consumers cannot be forced to deserialise an arbitrarily
+/// large buffer.
+///
+/// # Errors
+/// Returns [`BytesReturnError::ReturnTooLarge`] when `bytes.len() > MAX_BYTES_RETURN`.
+pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
+    if bytes.len() > MAX_BYTES_RETURN {
+        Err(BytesReturnError::ReturnTooLarge)
+    } else {
+        Ok(())
+    }
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 

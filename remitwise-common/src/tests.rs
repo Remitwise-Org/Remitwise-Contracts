@@ -17,7 +17,7 @@ extern crate std;
 
 use super::*;
 use proptest::prelude::*;
-use soroban_sdk::{Env, String, Vec};
+use soroban_sdk::{Bytes, Env, String, Vec};
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
