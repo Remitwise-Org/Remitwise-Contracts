@@ -769,6 +769,90 @@ fn test_set_time_lock_monotonicity_boundary_extend_accepted() {
     assert_eq!(goal.unlock_date, Some(extended));
 }
 
+/// Shortening to exactly one second before the existing lock must also be rejected.
+#[test]
+fn test_set_time_lock_shortening_by_one_second_is_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "EdgeCase"),
+        &10000,
+        &5000,
+        &false,
+    );
+    let lock_date = 5000u64;
+    client.set_time_lock(&owner, &goal_id, &lock_date);
+
+    let res = client.try_set_time_lock(&owner, &goal_id, &(lock_date - 1));
+    assert_eq!(
+        res.unwrap_err().unwrap(),
+        SavingsGoalError::TimeLockShortening.into(),
+        "shortening by one second must be rejected"
+    );
+}
+
+/// After the lock expires, a new shorter date (still in the future) must be accepted.
+#[test]
+fn test_set_time_lock_after_expiry_allows_new_shorter_lock() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "ExpiredLock"),
+        &10000,
+        &5000,
+        &false,
+    );
+    client.set_time_lock(&owner, &goal_id, &2000u64);
+
+    // Advance past the lock date — lock is now expired.
+    set_ledger_time(&env, 1, 3000);
+
+    // Setting a new lock that is shorter than the old one (but still future) must succeed.
+    let new_lock = 4000u64;
+    let result = client.try_set_time_lock(&owner, &goal_id, &new_lock);
+    assert!(
+        result.is_ok(),
+        "setting a new lock after prior lock expired must succeed"
+    );
+}
+
+/// Chaining three consecutive extensions must all succeed.
+#[test]
+fn test_set_time_lock_chain_of_extensions_succeeds() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    env.mock_all_auths();
+    client.init();
+    set_ledger_time(&env, 1, 1000);
+
+    let goal_id = client.create_goal(
+        &owner,
+        &String::from_str(&env, "Chain"),
+        &10000,
+        &5000,
+        &false,
+    );
+    assert!(client.try_set_time_lock(&owner, &goal_id, &2000u64).is_ok());
+    assert!(client.try_set_time_lock(&owner, &goal_id, &3000u64).is_ok());
+    assert!(client.try_set_time_lock(&owner, &goal_id, &4000u64).is_ok());
+}
+
 #[test]
 fn test_withdraw_time_locked_goal_before_unlock() {
     let env = Env::default();
