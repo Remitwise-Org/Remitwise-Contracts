@@ -571,3 +571,65 @@ fn test_verify_slash_signature_invalid() {
     let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
     assert_eq!(result, Err(SlashError::InvalidSignature));
 }
+
+// ============================================================================
+// canonicalize_tags_checked — untrusted caller tests (#1034)
+// ============================================================================
+
+#[test]
+fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
+    let env = Env::default();
+    let tags = soroban_sdk::vec![&env,
+        soroban_sdk::String::from_str(&env, "payments"),
+        soroban_sdk::String::from_str(&env, "SAVINGS"),
+    ];
+    let result = canonicalize_tags_checked(&env, &tags);
+    assert!(result.is_ok());
+    let out = result.unwrap();
+    assert_eq!(out.len(), 2);
+    assert_eq!(out.get(1).unwrap(), soroban_sdk::String::from_str(&env, "savings"));
+}
+
+#[test]
+fn test_canonicalize_tags_checked_returns_err_for_empty_batch() {
+    let env = Env::default();
+    let tags: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    let result = canonicalize_tags_checked(&env, &tags);
+    assert_eq!(result, Err(crate::TagError::Empty));
+}
+
+#[test]
+fn test_canonicalize_tags_checked_returns_err_for_empty_tag_string() {
+    let env = Env::default();
+    let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "")];
+    let result = canonicalize_tags_checked(&env, &tags);
+    assert_eq!(result, Err(crate::TagError::Empty));
+}
+
+#[test]
+fn test_canonicalize_tags_checked_returns_err_for_tag_too_long() {
+    let env = Env::default();
+    let long_tag = "a".repeat((crate::TAG_MAX_LEN + 1) as usize);
+    let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, &long_tag)];
+    let result = canonicalize_tags_checked(&env, &tags);
+    assert_eq!(result, Err(crate::TagError::TooLong));
+}
+
+#[test]
+fn test_canonicalize_tags_checked_returns_invalid_char_for_untrusted_input() {
+    let env = Env::default();
+    // Space is not in the allowed charset — should return InvalidChar, not panic.
+    let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "bad tag")];
+    let result = canonicalize_tags_checked(&env, &tags);
+    assert!(matches!(result, Err(crate::TagError::InvalidChar { .. })));
+}
+
+#[test]
+fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
+    let env = Env::default();
+    // Callers from untrusted sources (e.g., indexer input) must get Result not panic.
+    let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "=formula")];
+    let result = canonicalize_tags_checked(&env, &tags);
+    // '=' is not in [a-z0-9-_], so it must return InvalidChar.
+    assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
+}
