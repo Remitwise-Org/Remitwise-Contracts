@@ -1102,6 +1102,107 @@ mod testsuit {
         assert!(matches!(result, Err(Ok(Error::Unauthorized))));
     }
 
+    // ── get_all_bills_page admin-only authorization and isolation (#1040) ──
+
+    fn create_n_bills(client: &BillPaymentsClient, env: &Env, owner: &Address, n: u32) {
+        for i in 0..n {
+            let name = soroban_sdk::String::from_str(env, &format!("Bill{}", i));
+            client.create_bill(
+                owner,
+                &name,
+                &(100 + i as i128),
+                &1_000_000,
+                &false,
+                &0,
+                &None,
+                &String::from_str(env, "XLM"),
+                &None,
+            );
+        }
+    }
+
+    /// Admin pagination: first page of N=5 out of 12 bills returns exactly 5 items
+    /// with a non-zero next_cursor.
+    #[test]
+    fn test_get_all_bills_page_first_page_returns_limit_items() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        create_n_bills(&client, &env, &owner, 12);
+
+        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
+        assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
+    }
+
+    /// Admin can iterate through all bills across multiple pages and see the correct total.
+    #[test]
+    fn test_get_all_bills_page_full_iteration_covers_all_bills() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        create_n_bills(&client, &env, &owner, 7);
+
+        let mut cursor = 0u32;
+        let mut total_seen = 0u32;
+        for _ in 0..10 {
+            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            total_seen += page.items.len();
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        assert_eq!(total_seen, 7, "full pagination must cover all 7 bills");
+    }
+
+    /// Admin sees bills from ALL owners, not just their own.
+    #[test]
+    fn test_get_all_bills_page_includes_bills_from_all_owners() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let alice = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let bob = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        create_n_bills(&client, &env, &alice, 3);
+        create_n_bills(&client, &env, &bob, 3);
+
+        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        assert_eq!(
+            page.items.len(), 6,
+            "admin should see bills from all 6 owners combined"
+        );
+    }
+
+    /// Admin pagination on an empty contract returns an empty page with cursor 0.
+    #[test]
+    fn test_get_all_bills_page_empty_contract_returns_empty_page() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
+        assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
+    }
+
     // NOTE: The following schedule-related tests are commented out because the
     // BillPayments contract does not implement create_schedule, modify_schedule,
     // cancel_schedule, execute_due_schedules, get_schedule, or get_schedules methods.
