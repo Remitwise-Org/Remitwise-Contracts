@@ -1259,6 +1259,34 @@ impl RollbackMetadata {
         tracker.unmark_imported_by_identity(&self.attempted_checksum, self.attempted_version);
         Ok(())
     }
+
+    /// Returns true if a previous snapshot was captured (i.e. there was prior state
+    /// to restore to). When false, `restore` will set state to None (empty).
+    pub fn has_previous_state(&self) -> bool {
+        self.previous_snapshot.is_some()
+    }
+
+    /// Returns a human-readable audit description of this rollback event,
+    /// suitable for logging to an audit trail.
+    pub fn describe(&self) -> String {
+        if self.has_previous_state() {
+            format!(
+                "Rollback[ts={}]: reverted attempted v{} (checksum={}) to previous v{} (checksum={})",
+                self.timestamp_ms,
+                self.attempted_version,
+                &self.attempted_checksum[..self.attempted_checksum.len().min(8)],
+                self.previous_version,
+                &self.previous_checksum[..self.previous_checksum.len().min(8)],
+            )
+        } else {
+            format!(
+                "Rollback[ts={}]: reverted attempted v{} (checksum={}) — no previous state, cleared to empty",
+                self.timestamp_ms,
+                self.attempted_version,
+                &self.attempted_checksum[..self.attempted_checksum.len().min(8)],
+            )
+        }
+    }
 }
 
 /// Validate payload-type-specific semantic invariants at import time.
@@ -2128,6 +2156,48 @@ mod tests {
         rb.restore(&mut state, &mut tracker).unwrap();
         assert_snapshot_equal(&state, &Some(prev.clone()));
         assert!(!tracker.is_imported(&attempted));
+    }
+
+    #[test]
+    fn test_rollback_from_empty_state_clears_to_none() {
+        // No previous snapshot — capture from empty state.
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut state: Option<ExportSnapshot> = None;
+        let mut tracker = MigrationTracker::new();
+
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 9_000);
+
+        assert!(!rb.has_previous_state());
+        assert!(rb.describe().contains("cleared to empty"));
+
+        // Apply the attempted import.
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 9_001).unwrap();
+
+        // Rollback — state must return to None.
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert!(state.is_none());
+        assert!(!tracker.is_imported(&attempted));
+    }
+
+    #[test]
+    fn test_rollback_describe_includes_checksums_and_versions() {
+        let prev = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+
+        let rb = RollbackMetadata::capture(Some(&prev), &attempted, 12_345);
+
+        let description = rb.describe();
+        assert!(description.contains("12345"), "timestamp should appear: {description}");
+        assert!(
+            description.contains(&prev.header.version.to_string()),
+            "previous version should appear: {description}"
+        );
+        assert!(
+            description.contains(&attempted.header.version.to_string()),
+            "attempted version should appear: {description}"
+        );
+        assert!(rb.has_previous_state());
     }
 
     #[test]
