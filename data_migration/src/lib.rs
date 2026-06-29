@@ -1859,6 +1859,59 @@ mod tests {
     }
 
     #[test]
+    fn test_csv_import_rejects_malformed_row_missing_fields() {
+        // Row with fewer fields than the header — CSV deserializer must error.
+        let csv = "id,owner,name,target_amount,current_amount,target_date,locked\n\
+                   1,alice,Emergency\n";
+        let err = import_goals_from_csv(csv.as_bytes()).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::DeserializeError(_)),
+            "expected DeserializeError, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_csv_import_rejects_negative_amounts() {
+        let csv = "id,owner,name,target_amount,current_amount,target_date,locked\n\
+                   1,alice,Vacation,-500,0,9999999,false\n";
+        let err = import_goals_from_csv(csv.as_bytes()).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::ValidationFailed(_)),
+            "expected ValidationFailed for negative amount, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_csv_import_strips_formula_injection_prefix() {
+        // A name starting with '=CMD' must be sanitized — the importer must
+        // not reject it outright but must strip (or accept safely quoted) injection attempts.
+        // The sanitizer wraps '=...' in a leading ' prefix; an injected '=' after the
+        // prefix stripping is the sanitized value, not a formula.
+        let csv = "id,owner,name,target_amount,current_amount,target_date,locked\n\
+                   1,alice,'=CMD|' /C calc!A0,500,0,9999999,false\n";
+        let goals = import_goals_from_csv(csv.as_bytes()).unwrap();
+        assert_eq!(goals.len(), 1);
+        // After sanitization the leading ' must be stripped if it preceded a formula char.
+        // The name must not contain a leading quote that would survive as a formula marker.
+        let name = &goals[0].name;
+        assert!(
+            !name.starts_with('\''),
+            "sanitized name should not retain leading quote: {name}"
+        );
+    }
+
+    #[test]
+    fn test_csv_import_rejects_non_numeric_amount_field() {
+        let csv = "id,owner,name,target_amount,current_amount,target_date,locked\n\
+                   1,alice,Goal,notanumber,0,9999999,false\n";
+        let err = import_goals_from_csv(csv.as_bytes()).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::DeserializeError(_)),
+            "expected DeserializeError for non-numeric amount, got {err:?}"
+        );
+    }
+
+    #[test]
     fn test_encrypted_payload_roundtrip_at_size_limit_succeeds() {
         let plain = vec![42u8; MAX_MIGRATION_PAYLOAD_BYTES];
         let encoded = export_to_encrypted_payload(&plain).unwrap();
