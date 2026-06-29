@@ -209,15 +209,7 @@ fn compute_test_hash(
     amount: i128,
     deadline: u64,
 ) -> u64 {
-    let op_bits: u64 = operation.to_val().get_payload();
-    let amt_lo = amount as u64;
-    let amt_hi = (amount >> 64) as u64;
-    op_bits
-        .wrapping_add(nonce)
-        .wrapping_add(amt_lo)
-        .wrapping_add(amt_hi)
-        .wrapping_add(deadline)
-        .wrapping_mul(1_000_000_007)
+    Orchestrator::compute_request_hash(operation, nonce, amount, deadline, 1, 1, 1)
 }
 
 fn wasm_size_budgets() -> &'static [(&'static str, usize)] {

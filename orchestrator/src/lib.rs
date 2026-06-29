@@ -198,6 +198,79 @@ pub struct RemittanceFlowParams {
     pub policy_id: u32,
 }
 
+/// Resolved downstream targets for the remittance fan-out.
+#[derive(Clone)]
+struct FlowRouting {
+    family_wallet: Address,
+    remittance_split: Address,
+    savings: Address,
+    bills: Address,
+    insurance: Address,
+    goal_id: u32,
+    bill_id: u32,
+    policy_id: u32,
+}
+
+impl FlowRouting {
+    fn from_params(params: &RemittanceFlowParams) -> Self {
+        Self {
+            family_wallet: params.family_wallet.clone(),
+            remittance_split: params.remittance_split.clone(),
+            savings: params.savings.clone(),
+            bills: params.bills.clone(),
+            insurance: params.insurance.clone(),
+            goal_id: params.goal_id,
+            bill_id: params.bill_id,
+            policy_id: params.policy_id,
+        }
+    }
+
+    fn from_storage(env: &Env) -> Result<Self, OrchestratorError> {
+        Ok(Self {
+            family_wallet: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("FW_ADDR"))
+                .ok_or(OrchestratorError::InvalidDependency)?,
+            remittance_split: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("RS_ADDR"))
+                .ok_or(OrchestratorError::InvalidDependency)?,
+            savings: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("SG_ADDR"))
+                .ok_or(OrchestratorError::InvalidDependency)?,
+            bills: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BP_ADDR"))
+                .ok_or(OrchestratorError::InvalidDependency)?,
+            insurance: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("INS_ADDR"))
+                .ok_or(OrchestratorError::InvalidDependency)?,
+            goal_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("GOAL_ID"))
+                .unwrap_or(1),
+            bill_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("BILL_ID"))
+                .unwrap_or(1),
+            policy_id: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("POL_ID"))
+                .unwrap_or(1),
+        })
+    }
+}
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -282,54 +355,13 @@ impl Orchestrator {
         env: &Env,
         params: &RemittanceFlowParams,
     ) -> Result<(), OrchestratorError> {
-        // Use interfaces to call downstream contracts
-        // This is a simplified implementation of the flow logic
-        // 1. Check permission/spending limit
-        let fw_client = interface::FamilyWalletClient::new(env, &params.family_wallet);
-        if !fw_client.check_spending_limit(&params.caller, &params.total_amount) {
-            return Err(OrchestratorError::Unauthorized);
-        }
-
-        // 2. Calculate split
-        let rs_client = interface::RemittanceSplitClient::new(env, &params.remittance_split);
-        let allocations = rs_client.calculate_split(&params.total_amount);
-
-        // Bounds contract: calculate_split must return exactly 4 non-negative
-        // allocations [spending, savings, bills, insurance]. Checked indexing
-        // here ensures a short or hostile response produces a typed
-        // InvalidAmount rather than an out-of-bounds panic while the EXEC_LOCK
-        // is held.
-        let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
-        let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
-        let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
-
-        if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
-            return Err(OrchestratorError::InvalidAmount);
-        }
-
-        // 3. Downstream calls
-        if savings_amt > 0 {
-            let s_client = interface::SavingsGoalsClient::new(env, &params.savings);
-            if !s_client.add_to_goal(&params.caller, &params.goal_id, &savings_amt) {
-                return Err(OrchestratorError::CrossContractCallFailed);
-            }
-        }
-
-        if bills_amt > 0 {
-            let b_client = interface::BillPaymentsClient::new(env, &params.bills);
-            if !b_client.pay_bill(&params.caller, &params.bill_id, &bills_amt) {
-                return Err(OrchestratorError::CrossContractCallFailed);
-            }
-        }
-
-        if insurance_amt > 0 {
-            let i_client = interface::InsuranceClient::new(env, &params.insurance);
-            if !i_client.pay_premium(&params.caller, &params.policy_id, &insurance_amt) {
-                return Err(OrchestratorError::CrossContractCallFailed);
-            }
-        }
-
-        Ok(())
+        Self::run_remittance_fan_out(
+            env,
+            &params.caller,
+            params.total_amount,
+            &FlowRouting::from_params(params),
+            false,
+        )
     }
 
     /// Initialize the orchestrator with dependency contract addresses.
@@ -489,13 +521,19 @@ impl Orchestrator {
             return Err(OrchestratorError::ExecutionLocked);
         }
 
-        // 5. Hardened nonce validation with deadline + hash binding
+        // 5. Hardened nonce validation with deadline + hash binding.
+        // Execution parameter IDs are read from instance storage (defaults set
+        // at init) and folded into the hash so relayers cannot redirect funds
+        // to a different goal/bill/policy after signing.
+        let routing = FlowRouting::from_storage(&env)?;
         let expected_hash = Self::compute_request_hash(
             symbol_short!("flow"),
-            executor.clone(),
             nonce,
             amount,
             deadline,
+            routing.goal_id,
+            routing.bill_id,
+            routing.policy_id,
         );
         Self::require_nonce_hardened(
             &env,
@@ -1012,75 +1050,62 @@ impl Orchestrator {
         }
     }
 
+    /// Execute the signed remittance fan-out under `EXEC_LOCK`.
+    ///
+    /// Resolves downstream contract addresses and execution parameter IDs from
+    /// instance storage (written at `init`) and delegates to
+    /// [`Self::run_remittance_fan_out`] with compensation enabled.
+    ///
+    /// Call ordering and failure semantics are documented on
+    /// [`Self::run_remittance_fan_out`].
     fn execute_flow_internal(
         env: &Env,
         executor: &Address,
         amount: i128,
     ) -> Result<bool, OrchestratorError> {
-        // Read downstream contract addresses from storage (set during init).
-        let fw_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("FW_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let rs_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("RS_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let sg_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("SG_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let bp_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BP_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let ins_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("INS_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
+        let routing = FlowRouting::from_storage(env)?;
+        Self::run_remittance_fan_out(env, executor, amount, &routing, true)?;
+        Ok(true)
+    }
 
-        // Read execution parameter IDs from storage.
-        let goal_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("GOAL_ID"))
-            .unwrap_or(1);
-        let bill_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILL_ID"))
-            .unwrap_or(1);
-        let policy_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("POL_ID"))
-            .unwrap_or(1);
-
-        // ---------------------------------------------------------------
-        // Pre-validation phase — read-only checks before any write
-        // ---------------------------------------------------------------
-
-        // Pre-check spending limit (read-only call)
-        let fw_client = interface::FamilyWalletClient::new(env, &fw_addr);
-        if !fw_client.check_spending_limit(executor, &amount) {
+    /// Shared remittance fan-out for unsigned and signed entrypoints.
+    ///
+    /// Downstream call order (all under `EXEC_LOCK` when invoked from public
+    /// entrypoints):
+    /// 1. `check_spending_limit` on family wallet (read-only)
+    /// 2. `calculate_split` on remittance split (read-only)
+    /// 3. `add_to_goal` when savings allocation > 0
+    /// 4. `pay_bill` when bills allocation > 0
+    /// 5. `pay_premium` when insurance allocation > 0
+    ///
+    /// Failure semantics:
+    /// - Spending limit denial → [`OrchestratorError::Unauthorized`]
+    /// - Split vector shorter than 4 or negative allocation →
+    ///   [`OrchestratorError::InvalidAmount`]
+    /// - First write failure → [`OrchestratorError::CrossContractCallFailed`]
+    /// - Later write failure with `compensate_on_failure == true` → best-effort
+    ///   reverse calls then [`OrchestratorError::RemittanceFlowRolledBack`]
+    /// - Later write failure with `compensate_on_failure == false` →
+    ///   [`OrchestratorError::CrossContractCallFailed`]
+    fn run_remittance_fan_out(
+        env: &Env,
+        caller: &Address,
+        amount: i128,
+        routing: &FlowRouting,
+        compensate_on_failure: bool,
+    ) -> Result<(), OrchestratorError> {
+        let fw_client = interface::FamilyWalletClient::new(env, &routing.family_wallet);
+        if !fw_client.check_spending_limit(caller, &amount) {
             return Err(OrchestratorError::Unauthorized);
         }
 
-        // Allocations come from an external contract whose return vector we do not
-        // control. Validate each index explicitly: a short, reordered, or hostile
-        // response must return InvalidAmount rather than panic while EXEC_LOCK is held.
-        let rs_client = interface::RemittanceSplitClient::new(env, &rs_addr);
+        let rs_client = interface::RemittanceSplitClient::new(env, &routing.remittance_split);
         let allocations = rs_client.calculate_split(&amount);
-        // Bounds contract: calculate_split must return exactly 4 non-negative
-        // allocations [spending, savings, bills, insurance]. Checked indexing
-        // ensures a short or hostile downstream response yields a typed
-        // InvalidAmount error rather than an out-of-bounds panic while the
-        // EXEC_LOCK is held.
+
+        if allocations.len() < 4 {
+            return Err(OrchestratorError::InvalidAmount);
+        }
+
         let savings_amt = allocations.get(1).ok_or(OrchestratorError::InvalidAmount)?;
         let bills_amt = allocations.get(2).ok_or(OrchestratorError::InvalidAmount)?;
         let insurance_amt = allocations.get(3).ok_or(OrchestratorError::InvalidAmount)?;
@@ -1089,52 +1114,60 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        // ---------------------------------------------------------------
-        // Execution phase — writes with compensation tracking
-        // ---------------------------------------------------------------
-        //
-        // Pre-validation passed. Execute each write step sequentially.
-        // If a later step fails, compensate already-applied steps.
-        //
-        // Note on panic-safety: if a downstream contract call panics,
-        // Soroban atomically rolls back the entire transaction — including
-        // the EXEC_LOCK state change. The LockGuard RAII guard handles
-        // the non-panicking return path; panics are handled by the VM.
-
         let mut savings_done = false;
         let mut bills_done = false;
 
-        // Step 1 — Savings goal contribution
         if savings_amt > 0 {
-            let s_client = interface::SavingsGoalsClient::new(env, &sg_addr);
-            if !s_client.add_to_goal(executor, &goal_id, &savings_amt) {
-                // First write step failed — nothing to compensate.
+            let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
+            if !s_client.add_to_goal(caller, &routing.goal_id, &savings_amt) {
                 return Err(OrchestratorError::CrossContractCallFailed);
             }
             savings_done = true;
         }
 
-        // Step 2 — Bill payment
         if bills_amt > 0 {
-            let b_client = interface::BillPaymentsClient::new(env, &bp_addr);
-            if !b_client.pay_bill(executor, &bill_id, &bills_amt) {
-                Self::compensate_savings(env, executor, goal_id, savings_amt, savings_done);
-                return Err(OrchestratorError::RemittanceFlowRolledBack);
+            let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
+            if !b_client.pay_bill(caller, &routing.bill_id, &bills_amt) {
+                if compensate_on_failure {
+                    Self::compensate_savings(
+                        env,
+                        caller,
+                        routing.goal_id,
+                        savings_amt,
+                        savings_done,
+                    );
+                    return Err(OrchestratorError::RemittanceFlowRolledBack);
+                }
+                return Err(OrchestratorError::CrossContractCallFailed);
             }
             bills_done = true;
         }
 
-        // Step 3 — Insurance premium
         if insurance_amt > 0 {
-            let i_client = interface::InsuranceClient::new(env, &ins_addr);
-            if !i_client.pay_premium(executor, &policy_id, &insurance_amt) {
-                Self::compensate_savings(env, executor, goal_id, savings_amt, savings_done);
-                Self::compensate_bill(env, executor, bill_id, bills_amt, bills_done);
-                return Err(OrchestratorError::RemittanceFlowRolledBack);
+            let i_client = interface::InsuranceClient::new(env, &routing.insurance);
+            if !i_client.pay_premium(caller, &routing.policy_id, &insurance_amt) {
+                if compensate_on_failure {
+                    Self::compensate_savings(
+                        env,
+                        caller,
+                        routing.goal_id,
+                        savings_amt,
+                        savings_done,
+                    );
+                    Self::compensate_bill(
+                        env,
+                        caller,
+                        routing.bill_id,
+                        bills_amt,
+                        bills_done,
+                    );
+                    return Err(OrchestratorError::RemittanceFlowRolledBack);
+                }
+                return Err(OrchestratorError::CrossContractCallFailed);
             }
         }
 
-        Ok(true)
+        Ok(())
     }
 
     /// Compensate a savings-goal contribution if it was applied.
@@ -1329,12 +1362,19 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Deterministic request hash for signed remittance authorizations.
+    ///
+    /// Binds `operation`, `nonce`, `amount`, `deadline`, and the execution
+    /// parameter IDs (`goal_id`, `bill_id`, `policy_id`) read from instance
+    /// storage at validation time.
     fn compute_request_hash(
         operation: Symbol,
-        _caller: Address,
         nonce: u64,
         amount: i128,
         deadline: u64,
+        goal_id: u32,
+        bill_id: u32,
+        policy_id: u32,
     ) -> u64 {
         let op_bits: u64 = operation.to_val().get_payload();
         let amt_lo = amount as u64;
@@ -1345,6 +1385,9 @@ impl Orchestrator {
             .wrapping_add(amt_lo)
             .wrapping_add(amt_hi)
             .wrapping_add(deadline)
+            .wrapping_add(u64::from(goal_id))
+            .wrapping_add(u64::from(bill_id))
+            .wrapping_add(u64::from(policy_id))
             .wrapping_mul(1_000_000_007)
     }
 
@@ -1472,13 +1515,15 @@ mod tests_nonce_eviction {
         BASE_TIME + MAX_DEADLINE_WINDOW_SECS
     }
 
-    fn request_hash(executor: &Address, amount: i128, nonce: u64, deadline: u64) -> u64 {
+    fn request_hash(amount: i128, nonce: u64, deadline: u64) -> u64 {
         Orchestrator::compute_request_hash(
             symbol_short!("flow"),
-            executor.clone(),
             nonce,
             amount,
             deadline,
+            1,
+            1,
+            1,
         )
     }
 
@@ -1489,7 +1534,7 @@ mod tests_nonce_eviction {
         nonce: u64,
         deadline: u64,
     ) {
-        let hash = request_hash(executor, amount, nonce, deadline);
+        let hash = request_hash(amount, nonce, deadline);
         assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash));
     }
 
@@ -1500,7 +1545,7 @@ mod tests_nonce_eviction {
         let executor = Address::generate(&harness.env);
         let nonce = 0;
         let deadline = valid_deadline();
-        let hash = request_hash(&executor, FLOW_AMOUNT, nonce, deadline);
+        let hash = request_hash(FLOW_AMOUNT, nonce, deadline);
 
         let replay = harness.env.as_contract(&harness.contract_id, || {
             Orchestrator::mark_nonce_used(&harness.env, &executor, nonce);
@@ -1527,7 +1572,7 @@ mod tests_nonce_eviction {
         execute_signed_flow(&client, &executor, FLOW_AMOUNT, 0, deadline);
         assert_eq!(client.get_nonce(&executor), 1);
 
-        let replay_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let replay_hash = request_hash(FLOW_AMOUNT, 0, deadline);
         let replay = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1537,7 +1582,7 @@ mod tests_nonce_eviction {
         );
         assert_eq!(replay, Err(Ok(OrchestratorError::NonceAlreadyUsed)));
 
-        let skipped_hash = request_hash(&executor, FLOW_AMOUNT, 3, deadline);
+        let skipped_hash = request_hash(FLOW_AMOUNT, 3, deadline);
         let skipped = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1564,7 +1609,7 @@ mod tests_nonce_eviction {
         let cap_nonce = u64::from(MAX_USED_NONCES_PER_ADDR);
         assert_eq!(client.get_nonce(&executor), cap_nonce);
 
-        let oldest_before_eviction_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let oldest_before_eviction_hash = request_hash(FLOW_AMOUNT, 0, deadline);
         let oldest_before_eviction_replay = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1582,7 +1627,7 @@ mod tests_nonce_eviction {
         let next_nonce = u64::from(MAX_USED_NONCES_PER_ADDR) + 1;
         assert_eq!(client.get_nonce(&executor), next_nonce);
 
-        let evicted_nonce_hash = request_hash(&executor, FLOW_AMOUNT, 0, deadline);
+        let evicted_nonce_hash = request_hash(FLOW_AMOUNT, 0, deadline);
         let evicted_nonce_replay = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1607,7 +1652,7 @@ mod tests_nonce_eviction {
         let executor = Address::generate(&harness.env);
 
         let expired_deadline = BASE_TIME;
-        let expired_hash = request_hash(&executor, FLOW_AMOUNT, 0, expired_deadline);
+        let expired_hash = request_hash(FLOW_AMOUNT, 0, expired_deadline);
         let expired = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1619,7 +1664,7 @@ mod tests_nonce_eviction {
         assert_eq!(client.get_nonce(&executor), 0);
 
         let beyond_window_deadline = BASE_TIME + MAX_DEADLINE_WINDOW_SECS + 1;
-        let beyond_window_hash = request_hash(&executor, FLOW_AMOUNT, 0, beyond_window_deadline);
+        let beyond_window_hash = request_hash(FLOW_AMOUNT, 0, beyond_window_deadline);
         let beyond_window = client.try_execute_remittance_flow_signed(
             &executor,
             &FLOW_AMOUNT,
@@ -1641,7 +1686,7 @@ mod tests_nonce_eviction {
         let executor = Address::generate(&harness.env);
         let nonce = 0;
         let deadline = valid_deadline();
-        let original_hash = request_hash(&executor, FLOW_AMOUNT, nonce, deadline);
+        let original_hash = request_hash(FLOW_AMOUNT, nonce, deadline);
         let swapped_amount = FLOW_AMOUNT + 1;
 
         let swapped = client.try_execute_remittance_flow_signed(

@@ -848,6 +848,26 @@ state transition in the wallet.
 > audit or event emission. See
 > [docs/orchestrator-deadline-window.md](docs/orchestrator-deadline-window.md).
 
+#### Signed remittance request hash
+
+`execute_remittance_flow_signed` validates a caller-supplied `request_hash` against
+`compute_request_hash` before executing the fan-out. The hash binds:
+
+| Field | Description |
+|-------|-------------|
+| `operation` | Fixed symbol `flow` |
+| `nonce` | Per-executor sequential counter |
+| `amount` | Total remittance amount |
+| `deadline` | Ledger timestamp upper bound (see deadline window doc) |
+| `goal_id` | Savings goal ID from instance storage (`GOAL_ID`, default `1`) |
+| `bill_id` | Bill ID from instance storage (`BILL_ID`, default `1`) |
+| `policy_id` | Insurance policy ID from instance storage (`POL_ID`, default `1`) |
+
+Relayers must query the orchestrator for the current `goal_id` / `bill_id` /
+`policy_id` before signing. Tampering with any bound field after signing yields
+`InvalidNonce`. Both entrypoints share the same downstream fan-out via
+`run_remittance_fan_out` in `orchestrator/src/lib.rs`.
+
 ### Event: Flow Started
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")`  
