@@ -1679,6 +1679,98 @@ mod mock_split_negative {
 }
 
 /// Helper: build RemittanceFlowParams using the same contract for every role.
+/// Hostile downstream that returns `false` for all three payment steps.
+/// Used to verify that EXEC_LOCK is released even when downstream contracts
+/// are maximally adversarial (all steps fail without panicking).
+mod mock_hostile_all_fail {
+    use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
+    #[contract]
+    pub struct Contract;
+
+    #[contractimpl]
+    impl Contract {
+        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+            true
+        }
+        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+            soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
+        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            false
+        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            false
+        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            false
+        }
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+            false
+        }
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+            false
+        }
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+            false
+        }
+    }
+}
+
+/// Panic-safe EXEC_LOCK release: hostile downstream fails savings step → lock must be released.
+#[test]
+fn test_exec_lock_released_when_hostile_downstream_fails_savings() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_hostile_all_fail::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    // Hostile savings step → CrossContractCallFailed.
+    assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
+    // EXEC_LOCK must be unlocked — a subsequent call must not see ExecutionLocked.
+    assert!(!client.get_execution_state());
+}
+
+/// Panic-safe EXEC_LOCK release: hostile downstream fails bill step → lock must be released.
+#[test]
+fn test_exec_lock_released_when_hostile_downstream_fails_bill() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, mock_fail_bill::Contract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
+    assert!(!client.get_execution_state());
+}
+
+/// After a hostile downstream failure, a subsequent valid call must succeed —
+/// proving the lock was fully released and is not wedged.
+#[test]
+fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let hostile_id = env.register_contract(None, mock_hostile_all_fail::Contract);
+    let good_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    // First call — hostile downstream, must fail.
+    let _ = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &hostile_id));
+    assert!(!client.get_execution_state());
+
+    // Second call — well-behaved downstream, must succeed.
+    let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
+    assert_eq!(result, Ok(true));
+    assert!(!client.get_execution_state());
+}
+
 fn flow_params_single(_env: &Env, caller: &Address, mock_id: &Address) -> RemittanceFlowParams {
     RemittanceFlowParams {
         caller: caller.clone(),
