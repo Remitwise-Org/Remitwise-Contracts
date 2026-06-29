@@ -60,11 +60,17 @@ use std::collections::{BTreeMap, HashMap};
 /// Format: `enc:v1:<base64>`
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
+/// Format: `enc:v2:<base64>` — future version placeholder with stricter size cap.
+const ENCRYPTED_PAYLOAD_PREFIX_V2: &str = "enc:v2:";
+
 /// Current encrypted payload schema version.
 pub const ENCRYPTED_PAYLOAD_VERSION: u32 = 1;
 
 /// Minimum supported encrypted payload version for import.
 pub const MIN_SUPPORTED_ENCRYPTED_VERSION: u32 = 1;
+
+/// Maximum supported encrypted payload version for import.
+pub const MAX_SUPPORTED_ENCRYPTED_VERSION: u32 = 2;
 
 /// Current snapshot schema version for migration compatibility.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -873,10 +879,10 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     })?;
 
     // Check version compatibility
-    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > ENCRYPTED_PAYLOAD_VERSION {
+    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > MAX_SUPPORTED_ENCRYPTED_VERSION {
         return Err(MigrationError::UnsupportedEncryptedVersion {
             found: version,
-            max: ENCRYPTED_PAYLOAD_VERSION,
+            max: MAX_SUPPORTED_ENCRYPTED_VERSION,
         });
     }
 
@@ -892,14 +898,11 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     // Dispatch to version-specific handler
     match version {
         1 => import_from_encrypted_payload_v1(rest),
-        _ => {
-            // This should not be reached due to version check above,
-            // but keep as a safety fallback
-            Err(MigrationError::UnsupportedEncryptedVersion {
-                found: version,
-                max: ENCRYPTED_PAYLOAD_VERSION,
-            })
-        }
+        2 => import_from_encrypted_payload_v2(rest),
+        _ => Err(MigrationError::UnsupportedEncryptedVersion {
+            found: version,
+            max: MAX_SUPPORTED_ENCRYPTED_VERSION,
+        }),
     }
 }
 
@@ -913,6 +916,29 @@ fn import_from_encrypted_payload_v1(base64_payload: &str) -> Result<Vec<u8>, Mig
                 Err(MigrationError::PayloadTooLarge {
                     size: bytes.len(),
                     max: MAX_MIGRATION_PAYLOAD_BYTES,
+                })
+            } else {
+                Ok(bytes)
+            }
+        })
+}
+
+/// Handler for encrypted payload version 2.
+///
+/// enc:v2 uses the same base64-encoded wire format as v1 but applies a stricter
+/// payload size cap (half of v1's limit) to reduce attack surface for future
+/// cryptographic operations. Existing v1 payloads under the cap are accepted.
+fn import_from_encrypted_payload_v2(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
+    const V2_MAX_PAYLOAD: usize = MAX_MIGRATION_PAYLOAD_BYTES / 2;
+
+    base64::engine::general_purpose::STANDARD
+        .decode(base64_payload)
+        .map_err(|e| MigrationError::InvalidFormat(e.to_string()))
+        .and_then(|bytes| {
+            if bytes.len() > V2_MAX_PAYLOAD {
+                Err(MigrationError::PayloadTooLarge {
+                    size: bytes.len(),
+                    max: V2_MAX_PAYLOAD,
                 })
             } else {
                 Ok(bytes)
@@ -1821,15 +1847,54 @@ mod tests {
 
     #[test]
     fn test_encrypted_payload_unsupported_version_marker_fails() {
+        // v3 is beyond MAX_SUPPORTED_ENCRYPTED_VERSION.
         let encoded = format!(
-            "enc:v2:{}",
+            "enc:v3:{}",
             base64::engine::general_purpose::STANDARD.encode(b"abc")
         );
         let err = import_from_encrypted_payload(&encoded).unwrap_err();
         assert!(matches!(
             err,
-            MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 }
+            MigrationError::UnsupportedEncryptedVersion { found: 3, max: 2 }
         ));
+    }
+
+    #[test]
+    fn test_enc_v2_roundtrip_succeeds_for_small_payload() {
+        let plain = b"enc:v2 test payload";
+        let encoded = format!(
+            "{}{}",
+            ENCRYPTED_PAYLOAD_PREFIX_V2,
+            base64::engine::general_purpose::STANDARD.encode(plain)
+        );
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain);
+    }
+
+    #[test]
+    fn test_enc_v2_rejects_payload_exceeding_v2_size_cap() {
+        // v2 cap = MAX_MIGRATION_PAYLOAD_BYTES / 2; send one byte over.
+        let oversized = vec![0u8; MAX_MIGRATION_PAYLOAD_BYTES / 2 + 1];
+        let encoded = format!(
+            "{}{}",
+            ENCRYPTED_PAYLOAD_PREFIX_V2,
+            base64::engine::general_purpose::STANDARD.encode(&oversized)
+        );
+        let err = import_from_encrypted_payload(&encoded).unwrap_err();
+        assert!(matches!(err, MigrationError::PayloadTooLarge { .. }));
+    }
+
+    #[test]
+    fn test_enc_v1_accepted_under_v2_size_cap_does_not_use_v2_rules() {
+        // A small v1 payload must still be accepted (v2 size cap does not apply to v1).
+        let plain = b"small v1 payload";
+        let encoded = format!(
+            "{}{}",
+            ENCRYPTED_PAYLOAD_PREFIX_V1,
+            base64::engine::general_purpose::STANDARD.encode(plain)
+        );
+        let decoded = import_from_encrypted_payload(&encoded).unwrap();
+        assert_eq!(decoded, plain);
     }
 
     #[test]
