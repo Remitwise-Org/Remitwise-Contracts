@@ -34,13 +34,15 @@ Every `SnapshotHeader` carries a `hash_algorithm: ChecksumAlgorithm` field. New 
 
 > **The `export_to_encrypted_payload` / `import_from_encrypted_payload` functions do NOT perform encryption.**
 >
-> The `enc:v1:<base64>` format is an **encoding/marker only** and provides no
+> The `enc:v1:<base64>` and `enc:v2:<base64>` formats are **encoding/markers only** and provide no
 > confidentiality or integrity protection beyond the snapshot checksum.
 >
-> **Wire format:** ``enc:v1:` + base64(plain_bytes)``
+> **Wire format:** ``enc:vN:` + base64(plain_bytes)`` where `N` is a supported schema version.
 >
-> - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1 = "enc:v1:"` (`lib.rs:31`)
-> - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES` (`lib.rs:52–53`)
+> - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1 = "enc:v1:"`
+> - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V2 = "enc:v2:"`
+> - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES`
+> - Unknown versions fail closed with `MigrationError::IncompatibleVersion`.
 >
 > ### Why this matters
 >
@@ -54,7 +56,7 @@ Every `SnapshotHeader` carries a `hash_algorithm: ChecksumAlgorithm` field. New 
 > 1. Encrypt sensitive data off-chain (e.g. AES-256-GCM or
 >    age/chacha20poly1305) **before** calling this function.
 > 2. Decrypt off-chain **after** calling `import_from_encrypted_payload`.
-> 3. A future `enc:v2:` format may add on-chain cryptographic operations.
+> 3. A future encrypted-payload version may add on-chain cryptographic operations.
 >
 > ### Related security context
 >

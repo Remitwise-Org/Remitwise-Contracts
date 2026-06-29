@@ -60,8 +60,13 @@ use std::collections::{BTreeMap, HashMap};
 /// Format: `enc:v1:<base64>`
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
-/// Current encrypted payload schema version.
-pub const ENCRYPTED_PAYLOAD_VERSION: u32 = 1;
+/// Version-2 encrypted migration payload marker prefix.
+///
+/// Format: `enc:v2:<base64>`
+const ENCRYPTED_PAYLOAD_PREFIX_V2: &str = "enc:v2:";
+
+/// Maximum encrypted payload schema version accepted by import.
+pub const ENCRYPTED_PAYLOAD_VERSION: u32 = 2;
 
 /// Minimum supported encrypted payload version for import.
 pub const MIN_SUPPORTED_ENCRYPTED_VERSION: u32 = 1;
@@ -559,6 +564,37 @@ fn validate_encrypted_payload_size(encoded_len: usize) -> Result<(), MigrationEr
     Ok(())
 }
 
+/// Supported encrypted-payload wire schemas.
+///
+/// These versions are encoding markers only. They select the decoding contract
+/// for the prefixed bytes and do not add on-chain confidentiality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EncryptedPayloadVersion {
+    V1,
+    V2,
+}
+
+impl EncryptedPayloadVersion {
+    fn from_number(version: u32) -> Result<Self, MigrationError> {
+        match version {
+            1 => Ok(Self::V1),
+            2 => Ok(Self::V2),
+            found => Err(MigrationError::IncompatibleVersion {
+                found,
+                min: MIN_SUPPORTED_ENCRYPTED_VERSION,
+                max: ENCRYPTED_PAYLOAD_VERSION,
+            }),
+        }
+    }
+
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::V1 => ENCRYPTED_PAYLOAD_PREFIX_V1,
+            Self::V2 => ENCRYPTED_PAYLOAD_PREFIX_V2,
+        }
+    }
+}
+
 /// Migration/import errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
@@ -782,7 +818,7 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 /// # Security
 ///
 /// Sensitive data **MUST be encrypted off-chain** before being passed to this
-/// function. A future `enc:v2:` format may add on-chain cryptographic
+/// function. A future encrypted payload version may add on-chain cryptographic
 /// operations.
 ///
 /// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
@@ -793,7 +829,9 @@ pub fn export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationE
 /// This helper is provided for constructing encrypted payloads and testing
 /// version negotiation. The format is `enc:vN:` where N is the version number.
 pub fn encrypted_payload_prefix(version: u32) -> String {
-    format!("enc:v{}:", version)
+    EncryptedPayloadVersion::from_number(version)
+        .map(|version| version.prefix().to_string())
+        .unwrap_or_else(|_| format!("enc:v{}:", version))
 }
 
 pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, MigrationError> {
@@ -812,20 +850,20 @@ pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, Migrati
 
 /// ⚠️ WARNING: This function does NOT decrypt the payload.
 ///
-/// It only strips the `enc:v1:` marker and base64-decodes the remainder.
+/// It only negotiates the `enc:vN:` marker and base64-decodes the remainder.
 /// No cryptographic key, cipher, or on-chain crypto is involved.
 ///
-/// The `enc:v1:` format is an **encoding/marker only** and provides no
+/// The `enc:v1:` and `enc:v2:` formats are **encoding/markers only** and provide no
 /// confidentiality or integrity protection beyond the snapshot checksum.
 ///
 /// # Wire format
 ///
 /// ```text
 /// enc:v1:<base64>
+/// enc:v2:<base64>
 /// ```
 ///
-/// - Prefix constant: `ENCRYPTED_PAYLOAD_PREFIX_V1` = `"enc:v1:"` (line 31).
-/// - Max encoded size: `MAX_ENCRYPTED_PAYLOAD_BYTES` (lines 52–53).
+/// Unknown versions fail closed with [`MigrationError::IncompatibleVersion`].
 ///
 /// # Security
 ///
@@ -833,7 +871,7 @@ pub fn export_to_encrypted_payload(plain_bytes: &[u8]) -> Result<String, Migrati
 /// Sensitive data should have been encrypted off-chain before export; this
 /// function is the import-side counterpart to [`export_to_encrypted_payload`].
 ///
-/// A future `enc:v2:` format may add on-chain cryptographic verification.
+/// A future version may add on-chain cryptographic verification.
 ///
 /// See `THREAT_MODEL.md` §5.1 (Critical Gaps / Weak Checksum) and
 /// `SECURITY_REVIEW_SUMMARY.md` (Short-Term / SECURITY-004) for the security
@@ -844,23 +882,28 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     // The decoded payload's size is checked against MAX_MIGRATION_PAYLOAD_BYTES later.
     validate_encrypted_payload_size(encoded.len())?;
 
-    // Parse version from prefix: enc:vN:<base64>
-    // Format is: enc:vN: where N is the version number (1 or more digits)
+    let (version, rest) = parse_encrypted_payload_marker(encoded)?;
+    match version {
+        EncryptedPayloadVersion::V1 => import_from_encrypted_payload_v1(rest),
+        EncryptedPayloadVersion::V2 => import_from_encrypted_payload_v2(rest),
+    }
+}
+
+fn parse_encrypted_payload_marker(
+    encoded: &str,
+) -> Result<(EncryptedPayloadVersion, &str), MigrationError> {
     if !encoded.starts_with("enc:v") {
         return Err(MigrationError::InvalidFormat(
             "missing or invalid encrypted payload marker".into(),
         ));
     }
 
-    // Find the colon after the version number (second colon in the string)
-    // We start searching from position 5 (after "enc:v")
     let version_end = encoded[5..].find(':').map(|i| i + 5).ok_or_else(|| {
         MigrationError::InvalidFormat(
             "missing version separator in encrypted payload marker".into(),
         )
     })?;
 
-    // Ensure we have at least one digit for the version
     if version_end <= 5 {
         return Err(MigrationError::InvalidFormat(
             "missing or invalid encrypted payload marker".into(),
@@ -868,19 +911,10 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     }
 
     let version_str = &encoded[5..version_end];
-    let version: u32 = version_str.parse().map_err(|_| {
+    let version_number: u32 = version_str.parse().map_err(|_| {
         MigrationError::InvalidFormat("invalid encrypted payload version number".into())
     })?;
-
-    // Check version compatibility
-    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > ENCRYPTED_PAYLOAD_VERSION {
-        return Err(MigrationError::UnsupportedEncryptedVersion {
-            found: version,
-            max: ENCRYPTED_PAYLOAD_VERSION,
-        });
-    }
-
-    // The base64 payload starts after the version and its separator colon
+    let version = EncryptedPayloadVersion::from_number(version_number)?;
     let rest = &encoded[version_end + 1..];
 
     if rest.is_empty() {
@@ -889,22 +923,23 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
         ));
     }
 
-    // Dispatch to version-specific handler
-    match version {
-        1 => import_from_encrypted_payload_v1(rest),
-        _ => {
-            // This should not be reached due to version check above,
-            // but keep as a safety fallback
-            Err(MigrationError::UnsupportedEncryptedVersion {
-                found: version,
-                max: ENCRYPTED_PAYLOAD_VERSION,
-            })
-        }
-    }
+    Ok((version, rest))
 }
 
 /// Handler for encrypted payload version 1.
 fn import_from_encrypted_payload_v1(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
+    import_from_encrypted_payload_base64(base64_payload)
+}
+
+/// Handler for encrypted payload version 2.
+///
+/// Version 2 currently preserves the v1 encoding contract while giving importers
+/// an explicit dispatch point for future schema evolution.
+fn import_from_encrypted_payload_v2(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
+    import_from_encrypted_payload_base64(base64_payload)
+}
+
+fn import_from_encrypted_payload_base64(base64_payload: &str) -> Result<Vec<u8>, MigrationError> {
     base64::engine::general_purpose::STANDARD
         .decode(base64_payload)
         .map_err(|e| MigrationError::InvalidFormat(e.to_string()))
@@ -1820,16 +1855,12 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypted_payload_unsupported_version_marker_fails() {
+    fn test_encrypted_payload_v2_marker_decodes_with_version_dispatch() {
         let encoded = format!(
             "enc:v2:{}",
             base64::engine::general_purpose::STANDARD.encode(b"abc")
         );
-        let err = import_from_encrypted_payload(&encoded).unwrap_err();
-        assert!(matches!(
-            err,
-            MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 }
-        ));
+        assert_eq!(import_from_encrypted_payload(&encoded).unwrap(), b"abc");
     }
 
     #[test]
@@ -1972,14 +2003,28 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypted_payload_unsupported_future_version_rejected() {
+    fn test_encrypted_payload_v2_accepted() {
         let plain = b"test payload";
         let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
         let encoded = format!("enc:v2:{}", b64);
         let result = import_from_encrypted_payload(&encoded);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    #[test]
+    fn test_encrypted_payload_unsupported_future_version_rejected() {
+        let plain = b"test payload";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
+        let encoded = format!("enc:v3:{}", b64);
+        let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 })
+            Err(MigrationError::IncompatibleVersion {
+                found: 3,
+                min: 1,
+                max: 2
+            })
         ));
     }
 
@@ -1991,7 +2036,11 @@ mod tests {
         let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 999, max: 1 })
+            Err(MigrationError::IncompatibleVersion {
+                found: 999,
+                min: 1,
+                max: 2
+            })
         ));
     }
 
@@ -2003,7 +2052,11 @@ mod tests {
         let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 0, max: 1 })
+            Err(MigrationError::IncompatibleVersion {
+                found: 0,
+                min: 1,
+                max: 2
+            })
         ));
     }
 
