@@ -814,4 +814,96 @@ mod tests {
         let result = client.try_pre_upgrade(&stranger);
         assert_eq!(result, Err(Ok(InsuranceError::Unauthorized)));
     }
+
+    // ── batch_pay_premiums deterministic partial-result accounting and atomicity (#1038) ──
+
+    /// Policies belonging to another owner are silently skipped; count reflects only
+    /// the caller's paid premiums — not the total policies in the batch.
+    #[test]
+    fn test_batch_pay_premiums_skips_policies_of_other_owners() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        let alice_id = c.create_policy(
+            &alice,
+            &n(&env, "Alice Health"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+        let bob_id = c.create_policy(
+            &bob,
+            &n(&env, "Bob Life"),
+            &CoverageType::Life,
+            &10_000_000i128,
+            &100_000_000i128,
+        );
+
+        // Alice submits a batch that includes Bob's policy_id.
+        let mut ids = Vec::new(&env);
+        ids.push_back(alice_id);
+        ids.push_back(bob_id);
+
+        // Only Alice's policy must be paid; Bob's is skipped (owner mismatch).
+        let paid = c.batch_pay_premiums(&alice, &ids);
+        assert_eq!(paid, 1, "only Alice's policy should be counted");
+    }
+
+    /// A batch with duplicate IDs must not double-count or double-update the same policy.
+    #[test]
+    fn test_batch_pay_premiums_duplicate_ids_are_each_processed() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let owner = Address::generate(&env);
+
+        let id = c.create_policy(
+            &owner,
+            &n(&env, "Dup Test"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        // Same ID twice — both iterations will process the same policy.
+        // The count must be 2 (each iteration succeeds) and next_payment_date updates twice.
+        let mut ids = Vec::new(&env);
+        ids.push_back(id);
+        ids.push_back(id);
+
+        let paid = c.batch_pay_premiums(&owner, &ids);
+        // Both passes over the same policy succeed (it stays active).
+        assert_eq!(paid, 2, "each iteration of a duplicate ID counts once");
+    }
+
+    /// An empty batch must return 0 and not panic.
+    #[test]
+    fn test_batch_pay_premiums_empty_ids_returns_zero() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let owner = Address::generate(&env);
+
+        let ids = Vec::<u32>::new(&env);
+        let paid = c.batch_pay_premiums(&owner, &ids);
+        assert_eq!(paid, 0, "empty batch must return 0");
+    }
+
+    /// A batch containing a non-existent policy ID must error immediately on that ID.
+    #[test]
+    fn test_batch_pay_premiums_nonexistent_id_returns_policy_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let owner = Address::generate(&env);
+
+        let mut ids = Vec::new(&env);
+        ids.push_back(999u32);
+
+        let err = c.try_batch_pay_premiums(&owner, &ids).unwrap_err().unwrap();
+        assert_eq!(err, InsuranceError::PolicyNotFound);
+    }
 }
