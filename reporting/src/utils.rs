@@ -1,12 +1,12 @@
-#![no_std]
-
-use soroban_sdk::{IntoVal, ContractError, FromVal};
+use soroban_sdk::contracterror;
 
 /// Error type for overflow when converting u64 → u32.
-#[derive(Clone, Debug, PartialEq, Eq, IntoVal, FromVal, ContractError)]
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum ConversionError {
     /// Value does not fit into a u32.
-    Overflow,
+    Overflow = 1,
 }
 
 /// Safely convert a u64 to u32, returning an error on overflow.
