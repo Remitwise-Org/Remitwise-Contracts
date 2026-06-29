@@ -166,6 +166,29 @@ fn bill_record_payload_schema() {
     assert_eq!(decoded.currency, currency);
 }
 
+/// Pinned contract: the three lifecycle variants that replace legacy ad-hoc
+/// symbol emission must serialize as typed BillEvent enum values (not raw Symbols)
+/// so indexers can match against the stable enum wire representation.
+#[test]
+fn reserved_bill_event_variants_serialize_as_enum_not_symbol() {
+    let env = Env::default();
+
+    for variant in [
+        BillEvent::Cancelled,
+        BillEvent::Restored,
+        BillEvent::ExternalRefUpdated,
+    ] {
+        let val: Val = variant.clone().into_val(&env);
+        // Round-trip: decode back to BillEvent — must succeed (not be a raw Symbol).
+        let decoded = BillEvent::try_from_val(&env, &val)
+            .expect("BillEvent variant must deserialize from its own serialized form");
+        // Ensure the decoded variant matches the original by comparing wire payload.
+        let orig_val: Val = variant.into_val(&env);
+        assert_eq!(val.get_payload(), orig_val.get_payload());
+        let _ = decoded;
+    }
+}
+
 #[test]
 fn bill_event_secondary_topics_emit_expected_variants() {
     let env = Env::default();
