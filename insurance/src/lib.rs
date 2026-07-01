@@ -1,7 +1,7 @@
 #![no_std]
 use remitwise_common::{
     CoverageType, DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
-    MAX_PAGE_LIMIT, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    MAX_PAGE_LIMIT, SNAPSHOT_KEY, SNAPSHOT_VERSION, clamp_limit,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
@@ -35,12 +35,14 @@ pub enum InsuranceError {
     UnsupportedCombination = 9,
     InvalidExternalRef = 10,
     MaxPoliciesReached = 11,
+    /// Returned by `reactivate_policy` when the target policy is already active.
+    PolicyAlreadyActive = 12,
     /// Returned by `deactivate_policy` when the target policy is already inactive.
     /// Distinct from `PolicyInactive` (which signals a caller trying to act *on*
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 12,
+    PolicyAlreadyInactive = 13,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +173,14 @@ pub struct PolicyDeactivatedEvent {
 }
 
 #[contracttype]
+#[derive(Clone)]
+pub struct PolicyReactivatedEvent {
+    pub policy_id: u32,
+    pub name: String,
+    pub timestamp: u64,
+}
+
+#[contracttype]
 pub enum DataKey {
     Owner,
     PolicyCount,
@@ -244,6 +254,52 @@ impl Insurance {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    }
+
+    /// Add a policy ID to the active index.
+    ///
+    /// Ensures the active index does not exceed `MAX_POLICIES` and avoids
+    /// duplicating an ID that is already present. Returns `MaxPoliciesReached`
+    /// if the index is full.
+    fn add_active_policy(env: &Env, policy_id: u32) -> Result<(), InsuranceError> {
+        let mut active = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
+            .ok_or(InsuranceError::NotInitialized)?;
+        // If already present, do nothing (prevents duplication)
+        for id in active.iter() {
+            if id == policy_id {
+                return Ok(());
+            }
+        }
+        if active.len() >= MAX_POLICIES {
+            return Err(InsuranceError::MaxPoliciesReached);
+        }
+        active.push_back(policy_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivePolicies, &active);
+        Ok(())
+    }
+
+    /// Remove a policy ID from the active index.
+    fn remove_active_policy(env: &Env, policy_id: u32) -> Result<(), InsuranceError> {
+        let active = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
+            .ok_or(InsuranceError::NotInitialized)?;
+        let mut new_active = Vec::new(&env);
+        for id in active.iter() {
+            if id != policy_id {
+                new_active.push_back(id);
+            }
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivePolicies, &new_active);
+        Ok(())
     }
 
     fn get_owner(env: &Env) -> Result<Address, InsuranceError> {
@@ -331,6 +387,8 @@ impl Insurance {
             return Err(InsuranceError::UnsupportedCombination);
         }
 
+        // Reserve a slot in the active index and ensure we don't exceed capacity.
+        // `add_active_policy` also prevents duplication.
         let mut active = env
             .storage()
             .instance()
@@ -361,16 +419,10 @@ impl Insurance {
             next_payment_date: now + THIRTY_DAYS_SECS,
         };
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Policy(next_id), &policy);
-        env.storage()
-            .instance()
-            .set(&DataKey::PolicyCount, &next_id);
-        active.push_back(next_id);
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &active);
+        env.storage().instance().set(&DataKey::Policy(next_id), &policy);
+        env.storage().instance().set(&DataKey::PolicyCount, &next_id);
+        // Add to active index (helper enforces no-dup and capacity)
+        Self::add_active_policy(&env, next_id)?;
 
         let mut owner_ids = env
             .storage()
@@ -545,24 +597,9 @@ impl Insurance {
         }
 
         policy.active = false;
-        env.storage()
-            .instance()
-            .set(&DataKey::Policy(policy_id), &policy);
-
-        let active = env
-            .storage()
-            .instance()
-            .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
-            .ok_or(InsuranceError::NotInitialized)?;
-        let mut new_active = Vec::new(&env);
-        for id in active.iter() {
-            if id != policy_id {
-                new_active.push_back(id);
-            }
-        }
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivePolicies, &new_active);
+        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+        // Remove from active index (helper)
+        Self::remove_active_policy(&env, policy_id)?;
 
         env.events().publish(
             (symbol_short!("deactive"), symbol_short!("policy")),
@@ -570,6 +607,50 @@ impl Insurance {
                 policy_id,
                 name: policy.name,
                 timestamp: env.ledger().timestamp(),
+            },
+        );
+        Ok(true)
+    }
+
+    /// Reactivate a previously deactivated policy.
+    ///
+    /// Authorization: callable by the policy owner or contract owner.
+    /// Reactivation sets `active = true`, refreshes `next_payment_date` and
+    /// re-inserts the policy ID into the `ActivePolicies` index without
+    /// duplicating an existing entry. If the active index is full this
+    /// returns `MaxPoliciesReached`.
+    pub fn reactivate_policy(
+        env: Env,
+        caller: Address,
+        policy_id: u32,
+    ) -> Result<bool, InsuranceError> {
+        Self::require_initialized(&env)?;
+        caller.require_auth();
+
+        let mut policy = Self::load_policy(&env, policy_id)?;
+        let owner = Self::get_owner(&env)?;
+        if caller != policy.owner && caller != owner {
+            return Err(InsuranceError::Unauthorized);
+        }
+        if policy.active {
+            return Err(InsuranceError::PolicyAlreadyActive);
+        }
+
+        // Refresh payment cadence to the next logical due date relative to now.
+        let now = env.ledger().timestamp();
+        policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
+        policy.active = true;
+        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+
+        // Attempt to add to the active index; helper enforces capacity/dup.
+        Self::add_active_policy(&env, policy_id)?;
+
+        env.events().publish(
+            (symbol_short!("reactivated"), symbol_short!("policy")),
+            PolicyReactivatedEvent {
+                policy_id,
+                name: policy.name,
+                timestamp: now,
             },
         );
         Ok(true)
@@ -612,6 +693,57 @@ impl Insurance {
                     .get::<_, Policy>(&DataKey::Policy(id))
                 {
                     if p.active {
+                        if items.len() < lim {
+                            items.push_back(id);
+                        } else {
+                            next_cursor = id;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let count = items.len();
+        Ok(PolicyPage {
+            items,
+            next_cursor,
+            count,
+        })
+    }
+
+    /// Get a paginated list of deactivated policies for an owner.
+    ///
+    /// Mirrors the shape and semantics of `get_active_policies` but filters
+    /// for policies where `active == false`. `limit` is normalized via
+    /// `remitwise_common::clamp_limit`.
+    pub fn get_deactivated_policies(
+        env: Env,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<PolicyPage, InsuranceError> {
+        Self::require_initialized(&env)?;
+
+        let owner_ids = env
+            .storage()
+            .instance()
+            .get::<_, Vec<u32>>(&DataKey::OwnerPolicies(owner))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut items = Vec::new(&env);
+        let mut next_cursor = 0u32;
+
+        let lim = clamp_limit(limit);
+
+        for id in owner_ids.iter() {
+            if id > cursor {
+                if let Some(p) = env
+                    .storage()
+                    .instance()
+                    .get::<_, Policy>(&DataKey::Policy(id))
+                {
+                    if !p.active {
                         if items.len() < lim {
                             items.push_back(id);
                         } else {
