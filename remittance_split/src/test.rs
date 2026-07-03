@@ -1119,6 +1119,124 @@ fn test_request_hash_hashed_path_rejects_untrusted_token_contract() {
     );
 }
 
+/// Property-style sweep proving `distribute_usdc_hashed` preserves every unit
+/// across varied valid split configurations, including dust-heavy totals.
+#[test]
+fn test_distribute_usdc_hashed_conserves_total_across_generated_splits() {
+    let mut seed = 0x5eed_c0de_u64;
+    let totals = [1i128, 2, 3, 7, 10, 99, 101, 10_007, i128::MAX / 10_000];
+
+    for index in 0..32usize {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        let spending = (seed % 10_001) as u32;
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        let remaining_after_spending = 10_000 - spending;
+        let savings = (seed % (remaining_after_spending as u64 + 1)) as u32;
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        let remaining_after_savings = remaining_after_spending - savings;
+        let bills = (seed % (remaining_after_savings as u64 + 1)) as u32;
+        let insurance = remaining_after_savings - bills;
+        let total_amount = totals[index % totals.len()];
+
+        assert_hashed_distribution_conserves(spending, savings, bills, insurance, total_amount);
+    }
+}
+
+#[test]
+fn test_distribute_usdc_hashed_conservation_rejects_invalid_percentages() {
+    let invalid_configs = [
+        (10_001, 0, 0, 0),
+        (2_500, 2_500, 2_500, 2_499),
+        (10_000, 1, 0, 0),
+    ];
+
+    for (spending, savings, bills, insurance) in invalid_configs {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000);
+
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let token_addr = Address::generate(&env);
+
+        let result = client.try_initialize_split(
+            &owner,
+            &0,
+            &token_addr,
+            &spending,
+            &savings,
+            &bills,
+            &insurance,
+        );
+
+        assert!(
+            matches!(result, Err(Ok(_))),
+            "invalid split {spending}/{savings}/{bills}/{insurance} must be rejected"
+        );
+    }
+}
+
+fn assert_hashed_distribution_conserves(
+    spending: u32,
+    savings: u32,
+    bills: u32,
+    insurance: u32,
+    total_amount: i128,
+) {
+    let env = Env::default();
+    let harness = setup_split(&env, spending, savings, bills, insurance);
+    let client = &harness.client;
+    let owner = harness.owner.clone();
+    let token_addr = harness.token_addr.clone();
+    let stellar_client = &harness.stellar_client;
+    let accounts = sample_accounts(&env);
+    let token_client = soroban_sdk::token::TokenClient::new(&env, &token_addr);
+
+    stellar_client.mint(&owner, &total_amount);
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: token_addr,
+        from: owner.clone(),
+        nonce: 1,
+        accounts: accounts.clone(),
+        total_amount,
+        deadline: env.ledger().timestamp() + 1_800,
+    };
+    let hash = client.get_request_hash(&request);
+
+    assert_eq!(
+        client.try_distribute_usdc_hashed(&request, &hash),
+        Ok(Ok(true))
+    );
+
+    let actual = [
+        token_client.balance(&accounts.spending),
+        token_client.balance(&accounts.savings),
+        token_client.balance(&accounts.bills),
+        token_client.balance(&accounts.insurance),
+    ];
+    assert!(actual.iter().all(|amount| *amount >= 0));
+    assert_eq!(actual.iter().sum::<i128>(), total_amount);
+
+    let (_contract_id, topics, data) = env.events().all().last().expect("missing event");
+    let event_namespace: Symbol = topics.get(0).unwrap().into_val(&env);
+    let event_kind: SplitEvent = topics.get(1).unwrap().into_val(&env);
+    assert_eq!(event_namespace, symbol_short!("split"));
+    assert_eq!(event_kind, SplitEvent::DistributionCompleted);
+    let event: DistributionCompletedEvent = data.into_val(&env);
+    assert_eq!(event.from, owner);
+    assert_eq!(event.total_amount, total_amount);
+    assert_eq!(event.spending_amount, actual[0]);
+    assert_eq!(event.savings_amount, actual[1]);
+    assert_eq!(event.bills_amount, actual[2]);
+    assert_eq!(event.insurance_amount, actual[3]);
+    assert_eq!(
+        event.spending_amount + event.savings_amount + event.bills_amount + event.insurance_amount,
+        total_amount
+    );
+}
+
 // ============================================================================
 // Execute Due Remittance Schedules Tests
 // ============================================================================
