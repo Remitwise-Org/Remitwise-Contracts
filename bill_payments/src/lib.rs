@@ -2072,6 +2072,70 @@ impl BillPayments {
         Self::build_page(&env, staging, limit)
     }
 
+    /// Get a page of unpaid bills for `owner` whose due date is in `[start, end]`.
+    ///
+    /// # Arguments
+    /// * `owner`  - Whose bills to return (must authorize the call)
+    /// * `start`  - Inclusive lower bound for `Bill::due_date`
+    /// * `end`    - Inclusive upper bound for `Bill::due_date`
+    /// * `cursor` - Start after this bill ID (pass 0 for the first page)
+    /// * `limit`  - Max items per page (0 -> DEFAULT_PAGE_LIMIT, capped at MAX_PAGE_LIMIT)
+    ///
+    /// # Returns
+    /// `Ok(BillPage { items, next_cursor, count })`.
+    /// When `next_cursor == 0` there are no more pages.
+    ///
+    /// # Errors
+    /// * `InvalidDueDate` - If `start > end`.
+    ///
+    /// # Range and Cursor Semantics
+    /// The due-date range is inclusive on both ends. Results are filtered to unpaid active
+    /// bills and returned in bill ID ascending order, so `cursor` is an exclusive lower
+    /// bound on bill ID rather than on due date.
+    ///
+    /// # Gas Complexity
+    /// `O(owner_bills)` - walks only this owner's active `OWN_IDX` entry.
+    pub fn get_bills_due_between(
+        env: Env,
+        owner: Address,
+        start: u64,
+        end: u64,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<BillPage, BillPaymentsError> {
+        owner.require_auth();
+        if start > end {
+            return Err(BillPaymentsError::InvalidDueDate);
+        }
+
+        let limit = clamp_limit(limit);
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let owner_ids = Self::get_owner_bills(&env, &owner);
+
+        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+        for id in owner_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
+            let Some(bill) = bills.get(id) else {
+                continue;
+            };
+            if bill.paid || bill.due_date < start || bill.due_date > end {
+                continue;
+            }
+            staging.push_back((id, bill));
+            if staging.len() > limit {
+                break;
+            }
+        }
+
+        Ok(Self::build_page(&env, staging, limit))
+    }
+
     /// Get a page of ALL bills (paid + unpaid) for `owner`.
     ///
     /// Same cursor/limit semantics as `get_unpaid_bills`.

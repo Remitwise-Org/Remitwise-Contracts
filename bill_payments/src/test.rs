@@ -269,6 +269,190 @@ mod testsuit {
     }
 
     #[test]
+    fn test_get_bills_due_between_filters_unpaid_owner_and_inclusive_bounds() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other_owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        let before = client.create_bill(
+            &owner,
+            &String::from_str(&env, "before"),
+            &100,
+            &1_000_090,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let start_boundary = client.create_bill(
+            &owner,
+            &String::from_str(&env, "start"),
+            &200,
+            &1_000_100,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let paid_in_range = client.create_bill(
+            &owner,
+            &String::from_str(&env, "paid"),
+            &300,
+            &1_000_150,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let end_boundary = client.create_bill(
+            &owner,
+            &String::from_str(&env, "end"),
+            &400,
+            &1_000_200,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let after = client.create_bill(
+            &owner,
+            &String::from_str(&env, "after"),
+            &500,
+            &1_000_210,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.create_bill(
+            &other_owner,
+            &String::from_str(&env, "other"),
+            &600,
+            &1_000_150,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.pay_bill(&owner, &paid_in_range);
+
+        let page = client.get_bills_due_between(&owner, &1_000_100, &1_000_200, &0, &100);
+
+        assert_eq!(page.count, 2);
+        assert_eq!(page.next_cursor, 0);
+        assert_eq!(page.items.get(0).unwrap().id, start_boundary);
+        assert_eq!(page.items.get(1).unwrap().id, end_boundary);
+        assert_ne!(page.items.get(0).unwrap().id, before);
+        assert_ne!(page.items.get(1).unwrap().id, after);
+    }
+
+    #[test]
+    fn test_get_bills_due_between_paginates_by_exclusive_bill_id_cursor() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        for i in 0..5 {
+            client.create_bill(
+                &owner,
+                &String::from_str(&env, &format!("Bill {}", i)),
+                &(100 + i as i128),
+                &(1_000_100 + i as u64),
+                &false,
+                &0,
+                &None,
+                &String::from_str(&env, "XLM"),
+                &None,
+            );
+        }
+
+        let first = client.get_bills_due_between(&owner, &1_000_100, &1_000_200, &0, &2);
+        assert_eq!(first.count, 2);
+        assert_eq!(first.items.get(0).unwrap().id, 1);
+        assert_eq!(first.items.get(1).unwrap().id, 2);
+        assert_eq!(first.next_cursor, 2);
+
+        let second =
+            client.get_bills_due_between(&owner, &1_000_100, &1_000_200, &first.next_cursor, &2);
+        assert_eq!(second.count, 2);
+        assert_eq!(second.items.get(0).unwrap().id, 3);
+        assert_eq!(second.items.get(1).unwrap().id, 4);
+        assert_eq!(second.next_cursor, 4);
+
+        let third =
+            client.get_bills_due_between(&owner, &1_000_100, &1_000_200, &second.next_cursor, &2);
+        assert_eq!(third.count, 1);
+        assert_eq!(third.items.get(0).unwrap().id, 5);
+        assert_eq!(third.next_cursor, 0);
+    }
+
+    #[test]
+    fn test_get_bills_due_between_supports_exact_day_and_empty_windows() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        let exact = client.create_bill(
+            &owner,
+            &String::from_str(&env, "exact"),
+            &100,
+            &1_000_100,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "later"),
+            &200,
+            &1_000_200,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let exact_page = client.get_bills_due_between(&owner, &1_000_100, &1_000_100, &0, &100);
+        assert_eq!(exact_page.count, 1);
+        assert_eq!(exact_page.items.get(0).unwrap().id, exact);
+        assert_eq!(exact_page.next_cursor, 0);
+
+        let empty_page = client.get_bills_due_between(&owner, &1_000_101, &1_000_199, &0, &100);
+        assert_eq!(empty_page.count, 0);
+        assert_eq!(empty_page.items.len(), 0);
+        assert_eq!(empty_page.next_cursor, 0);
+    }
+
+    #[test]
+    fn test_get_bills_due_between_rejects_inverted_range() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        let result = client.try_get_bills_due_between(&owner, &1_000_200, &1_000_100, &0, &100);
+
+        assert!(matches!(result, Err(Ok(Error::InvalidDueDate))));
+    }
+
+    #[test]
     fn test_get_total_unpaid() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -1135,9 +1319,12 @@ mod testsuit {
 
         create_n_bills(&client, &env, &owner, 12);
 
-        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
-        assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
+        assert!(
+            page.next_cursor > 0,
+            "must have a non-zero next_cursor when more pages exist"
+        );
     }
 
     /// Admin can iterate through all bills across multiple pages and see the correct total.
@@ -1156,7 +1343,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            let page = client.get_all_bills_page(&admin, &cursor, &3);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1181,9 +1368,10 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &100);
         assert_eq!(
-            page.items.len(), 6,
+            page.items.len(),
+            6,
             "admin should see bills from all 6 owners combined"
         );
     }
@@ -1198,7 +1386,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &10);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
