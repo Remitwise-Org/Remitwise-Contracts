@@ -2951,10 +2951,14 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut preview_bills = bills.clone();
+        let mut preflight_paid_ids: Vec<u32> = Vec::new(&env);
         let mut unpaid_delta = 0i128;
         for bill_id in bill_ids.iter() {
-            let mut bill = match preview_bills.get(bill_id) {
+            if preflight_paid_ids.contains(bill_id) {
+                continue;
+            }
+
+            let bill = match bills.get(bill_id) {
                 Some(b) => b,
                 None => continue,
             };
@@ -2969,8 +2973,7 @@ impl BillPayments {
                     .ok_or(Error::InvalidAmount)?;
             }
 
-            bill.paid = true;
-            preview_bills.set(bill_id, bill);
+            preflight_paid_ids.push_back(bill_id);
         }
         let next_unpaid_total = if unpaid_delta != 0 {
             Some(Self::checked_unpaid_total_after(
