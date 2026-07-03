@@ -5,9 +5,9 @@ use soroban_sdk::{
     Env, IntoVal, Map, TryFromVal, Val, Vec,
 };
 mod utils;
-use utils::{u64_to_u32, ConversionError};
+use utils::u64_to_u32;
 
-pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT};
+pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -1169,10 +1169,14 @@ impl ReportingContract {
         }
 
         let compliance_percentage = if total_bills == 0 {
-            100
+            100u32
         } else {
-            let val = safe_percent(paid_bills.to_i128_checked().unwrap(), total_bills.to_i128_checked().unwrap(), 100).clamp(0, 100);
-            let val = u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?;
+            let val: i128 = safe_percent(
+                paid_bills as i128,
+                total_bills as i128,
+                100,
+            ).clamp(0, 100);
+            u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
         Ok(BillComplianceReport {
@@ -1239,9 +1243,10 @@ impl ReportingContract {
         }
 
         let annual_premium = monthly_premium.saturating_mul(12);
-        let coverage_to_premium_ratio =
-            let val = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX.to_i128_checked().unwrap());
-            let val = u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?;
+        let coverage_to_premium_ratio = {
+            let val: i128 = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
+            u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
+        };
 
         Ok(InsuranceReport {
             active_policies,
@@ -1504,8 +1509,7 @@ impl ReportingContract {
             // (saved * 100) / target, but avoid intermediate overflow
             let saved_scaled = total_saved.saturating_mul(100);
             let progress = saved_scaled.checked_div(total_target).unwrap_or(0);
-            let progress = u64_to_u32(progress as u64).map_err(|_| ReportingError::Overflow)?;
-            progress.min(100)
+            u64_to_u32(progress as u64).unwrap_or(0).min(100)
         };
 
         // Convert percentage to score: (progress * 40) / 100
