@@ -15,7 +15,7 @@ use remitwise_common::{
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 // Event topics
@@ -116,6 +116,32 @@ pub struct DistributeUsdcRequest {
     /// Total USDC amount to distribute
     pub total_amount: i128,
     /// Deadline timestamp (Unix seconds) - request is invalid after this time
+    pub deadline: u64,
+}
+
+/// Domain-separated payload for signed allocation quotes.
+///
+/// The payload binds the functional quote domain, network, contract instance,
+/// caller, requested total amount, and deadline. Off-chain integrators can call
+/// [`RemittanceSplit::get_split_allocations_hash`] to derive the exact hash,
+/// sign it with `caller`, and then pass it to
+/// [`RemittanceSplit::get_split_allocations_signed`] for an authenticated quote
+/// that is deadline-bound and parity-checked against the unsigned allocation
+/// read path.
+#[derive(Clone)]
+#[contracttype]
+pub struct SplitAllocationsQuotePayload {
+    /// Domain identifier for allocation quote separation.
+    pub domain_id: Symbol,
+    /// Network ID to prevent replay across Stellar networks.
+    pub network_id: BytesN<32>,
+    /// Contract address to prevent replay across contract instances.
+    pub contract_addr: Address,
+    /// Address authorizing the quote.
+    pub caller: Address,
+    /// Total amount being quoted.
+    pub total_amount: i128,
+    /// Ledger timestamp after which the quote is invalid.
     pub deadline: u64,
 }
 
@@ -1527,6 +1553,64 @@ impl RemittanceSplit {
         Ok(result)
     }
 
+    /// Compute the canonical SHA-256 binding hash for a signed allocation quote.
+    ///
+    /// Hash preimage layout (concatenated, in order):
+    /// 1. `DISTRIBUTE_USDC_DOMAIN` — shared signing domain separator
+    /// 2. `domain_id = symbol_short!("alloc")` — allocation-quote functional tag
+    /// 3. current network id
+    /// 4. current contract address as XDR bytes
+    /// 5. `caller` address as XDR bytes
+    /// 6. `total_amount` as 16 little-endian bytes
+    /// 7. `deadline` as 8 little-endian bytes
+    pub fn get_split_allocations_hash(
+        env: Env,
+        caller: Address,
+        total_amount: i128,
+        deadline: u64,
+    ) -> Result<Bytes, RemittanceSplitError> {
+        Self::compute_split_allocations_hash(&env, &caller, total_amount, deadline)
+    }
+
+    /// Return a signed, deadline-bound allocation quote.
+    ///
+    /// The caller must authorize the exact quote payload, and `request_hash`
+    /// must match [`Self::get_split_allocations_hash`] for the same caller,
+    /// total amount, deadline, network, and contract. The returned allocation
+    /// vector is delegated to [`Self::get_split_allocations`] so signed and
+    /// unsigned quote paths stay in lockstep.
+    pub fn get_split_allocations_signed(
+        env: Env,
+        caller: Address,
+        total_amount: i128,
+        deadline: u64,
+        request_hash: Bytes,
+    ) -> Result<Vec<Allocation>, RemittanceSplitError> {
+        if total_amount <= 0 {
+            return Err(RemittanceSplitError::InvalidAmount);
+        }
+
+        Self::validate_quote_deadline(&env, deadline)?;
+
+        let expected_hash =
+            Self::compute_split_allocations_hash(&env, &caller, total_amount, deadline)?;
+        if expected_hash.ne(&request_hash) {
+            return Err(RemittanceSplitError::RequestHashMismatch);
+        }
+
+        let payload = SplitAllocationsQuotePayload {
+            domain_id: symbol_short!("alloc"),
+            network_id: env.ledger().network_id(),
+            contract_addr: env.current_contract_address(),
+            caller: caller.clone(),
+            total_amount,
+            deadline,
+        };
+        caller.require_auth_for_args(vec![&env, payload.into_val(&env)]);
+
+        Self::get_split_allocations(&env, total_amount)
+    }
+
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         Self::get_nonce_value(&env, &address)
     }
@@ -2073,6 +2157,54 @@ impl RemittanceSplit {
             .wrapping_add(amt_hi)
             .wrapping_add(deadline)
             .wrapping_mul(1_000_000_007)
+    }
+
+    /// Validate quote deadlines with the same public semantics as
+    /// `distribute_usdc_hashed`: zero and too-far deadlines are
+    /// `InvalidDeadline`, while deadlines at or before the current ledger
+    /// timestamp are `DeadlineExpired`.
+    fn validate_quote_deadline(env: &Env, deadline: u64) -> Result<(), RemittanceSplitError> {
+        let now = env.ledger().timestamp();
+        if deadline == 0 {
+            return Err(RemittanceSplitError::InvalidDeadline);
+        }
+        if now >= deadline {
+            return Err(RemittanceSplitError::DeadlineExpired);
+        }
+        if deadline - now > MAX_DEADLINE_WINDOW_SECS {
+            return Err(RemittanceSplitError::InvalidDeadline);
+        }
+        Ok(())
+    }
+
+    fn compute_split_allocations_hash(
+        env: &Env,
+        caller: &Address,
+        total_amount: i128,
+        deadline: u64,
+    ) -> Result<Bytes, RemittanceSplitError> {
+        let mut preimage = Bytes::new(env);
+
+        preimage.extend_from_slice(DISTRIBUTE_USDC_DOMAIN);
+
+        let domain_bits: u64 = symbol_short!("alloc").to_val().get_payload();
+        preimage.extend_from_slice(&domain_bits.to_le_bytes());
+
+        let network_id = env.ledger().network_id();
+        preimage.append(network_id.as_ref());
+
+        let contract_xdr = env.current_contract_address().to_xdr(env);
+        preimage.append(&contract_xdr);
+
+        let caller_xdr = caller.clone().to_xdr(env);
+        preimage.append(&caller_xdr);
+
+        preimage.extend_from_slice(&total_amount.to_le_bytes());
+        preimage.extend_from_slice(&deadline.to_le_bytes());
+
+        let hash: Bytes = env.crypto().sha256(&preimage).into();
+        guard_bytes_len(&hash).map_err(|_| RemittanceSplitError::ReturnBytesTooLarge)?;
+        Ok(hash)
     }
 
     fn increment_nonce(env: &Env, address: &Address) -> Result<(), RemittanceSplitError> {

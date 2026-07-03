@@ -2044,6 +2044,43 @@ fn test_get_schedules_paginated_full_scale_cursor_monotonicity() {
 //   7. Max categories at 100    → percentages across all 4 slots summing to 100.
 // ============================================================================
 
+fn quote_hash(
+    env: &Env,
+    contract_id: &Address,
+    caller: &Address,
+    total_amount: i128,
+    deadline: u64,
+) -> soroban_sdk::Bytes {
+    env.as_contract(contract_id, || {
+        RemittanceSplit::get_split_allocations_hash(
+            env.clone(),
+            caller.clone(),
+            total_amount,
+            deadline,
+        )
+    })
+    .expect("quote hash must be computable")
+}
+
+fn signed_allocations(
+    env: &Env,
+    contract_id: &Address,
+    caller: &Address,
+    total_amount: i128,
+    deadline: u64,
+    request_hash: soroban_sdk::Bytes,
+) -> Result<soroban_sdk::Vec<Allocation>, RemittanceSplitError> {
+    env.as_contract(contract_id, || {
+        RemittanceSplit::get_split_allocations_signed(
+            env.clone(),
+            caller.clone(),
+            total_amount,
+            deadline,
+            request_hash,
+        )
+    })
+}
+
 /// Helper: assert the four returned category symbols are in canonical order.
 fn assert_canonical_order(_env: &Env, allocs: &soroban_sdk::Vec<Allocation>) {
     assert_eq!(allocs.len(), 4, "must return exactly 4 allocations");
@@ -2057,6 +2094,165 @@ fn assert_canonical_order(_env: &Env, allocs: &soroban_sdk::Vec<Allocation>) {
 fn assert_conservation(allocs: &soroban_sdk::Vec<Allocation>, total: i128) {
     let sum: i128 = allocs.iter().map(|a| a.amount).sum();
     assert_eq!(sum, total, "allocation amounts must sum to total_amount");
+}
+
+/// Signed quote path: valid caller/amount/deadline/hash returns the same
+/// canonical allocation vector as the unsigned read path.
+#[test]
+fn test_get_split_allocations_signed_matches_unsigned_quote() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let caller = Address::generate(&env);
+    let total: i128 = 1_234;
+    let deadline = env.ledger().timestamp() + 600;
+    let request_hash = quote_hash(&env, &harness.client.address, &caller, total, deadline);
+
+    let signed = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        request_hash,
+    )
+    .expect("valid signed quote must succeed");
+    let unsigned = env
+        .as_contract(&harness.client.address, || {
+            RemittanceSplit::get_split_allocations(&env, total)
+        })
+        .expect("unsigned quote must succeed");
+
+    assert_eq!(signed, unsigned);
+    assert_canonical_order(&env, &signed);
+    assert_conservation(&signed, total);
+}
+
+/// Signed quote deadline semantics: the upper boundary is inclusive at
+/// now + MAX_DEADLINE_WINDOW_SECS, matching the hashed distribution path.
+#[test]
+fn test_get_split_allocations_signed_accepts_deadline_window_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 2_500, 2_500, 2_500, 2_500);
+    let caller = Address::generate(&env);
+    let total: i128 = 99;
+    let deadline = env.ledger().timestamp() + MAX_DEADLINE_WINDOW_SECS;
+    let request_hash = quote_hash(&env, &harness.client.address, &caller, total, deadline);
+
+    let allocs = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        request_hash,
+    )
+    .expect("deadline exactly at max window must be accepted");
+
+    assert_canonical_order(&env, &allocs);
+    assert_conservation(&allocs, total);
+}
+
+#[test]
+fn test_get_split_allocations_signed_rejects_expired_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let caller = Address::generate(&env);
+    let total: i128 = 100;
+    let deadline = env.ledger().timestamp();
+    let request_hash = quote_hash(&env, &harness.client.address, &caller, total, deadline);
+
+    let result = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        request_hash,
+    );
+
+    assert_eq!(result, Err(RemittanceSplitError::DeadlineExpired));
+}
+
+#[test]
+fn test_get_split_allocations_signed_rejects_deadline_beyond_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let caller = Address::generate(&env);
+    let total: i128 = 100;
+    let deadline = env.ledger().timestamp() + MAX_DEADLINE_WINDOW_SECS + 1;
+    let request_hash = quote_hash(&env, &harness.client.address, &caller, total, deadline);
+
+    let result = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        request_hash,
+    );
+
+    assert_eq!(result, Err(RemittanceSplitError::InvalidDeadline));
+}
+
+#[test]
+fn test_get_split_allocations_signed_rejects_hash_mismatch() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let caller = Address::generate(&env);
+    let total: i128 = 500;
+    let deadline = env.ledger().timestamp() + 600;
+    let hash_for_different_amount =
+        quote_hash(&env, &harness.client.address, &caller, total + 1, deadline);
+
+    let result = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        hash_for_different_amount,
+    );
+
+    assert_eq!(result, Err(RemittanceSplitError::RequestHashMismatch));
+}
+
+#[test]
+fn test_get_split_allocations_signed_rejects_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 10_000);
+
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let caller = Address::generate(&env);
+    let total: i128 = 0;
+    let deadline = env.ledger().timestamp() + 600;
+    let request_hash = quote_hash(&env, &harness.client.address, &caller, total, deadline);
+
+    let result = signed_allocations(
+        &env,
+        &harness.client.address,
+        &caller,
+        total,
+        deadline,
+        request_hash,
+    );
+
+    assert_eq!(result, Err(RemittanceSplitError::InvalidAmount));
 }
 
 /// Shape invariant: uninitialized contract uses the default [50,30,15,5] split,
