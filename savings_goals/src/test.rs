@@ -3732,7 +3732,7 @@ fn test_add_tags_to_goal_unauthorized() {
     tags.push_back(String::from_str(&env, "urgent"));
 
     let res = client.try_add_tags_to_goal(&other, &goal_id, &tags);
-    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::Unauthorized);
 }
 
 #[test]
@@ -3757,7 +3757,7 @@ fn test_remove_tags_from_goal_unauthorized() {
     client.add_tags_to_goal(&user, &goal_id, &tags);
 
     let res = client.try_remove_tags_from_goal(&other, &goal_id, &tags);
-    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::Unauthorized);
 }
 
 #[test]
@@ -3920,8 +3920,7 @@ fn test_add_tags_to_goal_invalid_char_panics() {
 }
 
 #[test]
-#[should_panic(expected = "Goal not found")]
-fn test_add_tags_to_goal_nonexistent_goal_panics() {
+fn test_add_tags_to_goal_nonexistent_goal_returns_typed_error() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -3931,12 +3930,12 @@ fn test_add_tags_to_goal_nonexistent_goal_panics() {
     env.mock_all_auths();
     let mut tags = SorobanVec::new(&env);
     tags.push_back(String::from_str(&env, "urgent"));
-    client.add_tags_to_goal(&user, &999, &tags);
+    let res = client.try_add_tags_to_goal(&user, &999, &tags);
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::GoalNotFound);
 }
 
 #[test]
-#[should_panic(expected = "Goal not found")]
-fn test_remove_tags_from_goal_nonexistent_goal_panics() {
+fn test_remove_tags_from_goal_nonexistent_goal_returns_typed_error() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -3946,7 +3945,8 @@ fn test_remove_tags_from_goal_nonexistent_goal_panics() {
     env.mock_all_auths();
     let mut tags = SorobanVec::new(&env);
     tags.push_back(String::from_str(&env, "urgent"));
-    client.remove_tags_from_goal(&user, &999, &tags);
+    let res = client.try_remove_tags_from_goal(&user, &999, &tags);
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::GoalNotFound);
 }
 
 /// Owner-only authorization: a non-owner must not be able to remove tags.
@@ -6169,7 +6169,7 @@ fn test_remove_last_tag_leaves_empty_tags_and_cleans_index() {
 
 /// Owner-only authorization: non-owner must fail removal.
 #[test]
-fn test_remove_tags_from_goal_non_owner_auth_panics() {
+fn test_remove_tags_from_goal_non_owner_returns_typed_error() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(&env, &contract_id);
@@ -6202,8 +6202,8 @@ fn test_remove_tags_from_goal_non_owner_auth_panics() {
         },
     }]);
 
-    // Should panic due to auth mismatch before/at ownership check.
-    let _ = client.try_remove_tags_from_goal(&other, &goal_id, &tags);
+    let res = client.try_remove_tags_from_goal(&other, &goal_id, &tags);
+    assert_eq!(res.unwrap_err().unwrap(), SavingsGoalError::Unauthorized);
 }
 
 #[test]

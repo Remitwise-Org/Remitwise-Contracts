@@ -802,7 +802,17 @@ impl SavingsGoalContract {
     /// - Duplicate tags are preserved as provided.
     /// - Maintains canonicalized tag index; each (owner, tag) maps to goal IDs.
     /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
-    pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+    ///
+    /// # Errors
+    /// - `GoalNotFound` if `goal_id` does not exist.
+    /// - `Unauthorized` if `caller` is not the goal owner.
+    /// - `InvalidTagContent` if any tag contains unsupported characters.
+    pub fn add_tags_to_goal(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        tags: Vec<String>,
+    ) -> Result<(), SavingsGoalError> {
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -815,13 +825,13 @@ impl SavingsGoalContract {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
-                panic!("Goal not found");
+                return Err(SavingsGoalError::GoalNotFound);
             }
         };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("add_tags"), &caller, false);
-            panic!("Only the goal owner can add tags");
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         for tag in normalized_tags.iter() {
@@ -852,6 +862,7 @@ impl SavingsGoalContract {
         );
 
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
+        Ok(())
     }
 
     /// Removes tags from a goal's metadata and updates the tag index.
@@ -864,7 +875,17 @@ impl SavingsGoalContract {
     /// - Removing a tag that is not present is a no-op.
     /// - Removes goal ID from tag index for each removed tag.
     /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
-    pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+    ///
+    /// # Errors
+    /// - `GoalNotFound` if `goal_id` does not exist.
+    /// - `Unauthorized` if `caller` is not the goal owner.
+    /// - `InvalidTagContent` if any tag contains unsupported characters.
+    pub fn remove_tags_from_goal(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        tags: Vec<String>,
+    ) -> Result<(), SavingsGoalError> {
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -877,13 +898,13 @@ impl SavingsGoalContract {
             Some(g) => g,
             None => {
                 Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
-                panic!("Goal not found");
+                return Err(SavingsGoalError::GoalNotFound);
             }
         };
 
         if goal.owner != caller {
             Self::append_audit(&env, symbol_short!("rem_tags"), &caller, false);
-            panic!("Only the goal owner can remove tags");
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         let mut new_tags = Vec::new(&env);
@@ -925,6 +946,7 @@ impl SavingsGoalContract {
         );
 
         Self::append_audit(&env, symbol_short!("rem_tags"), &caller, true);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
