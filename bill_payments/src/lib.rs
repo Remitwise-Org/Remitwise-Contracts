@@ -1523,10 +1523,13 @@ impl BillPayments {
                         tags: Vec::new(&env),
                         currency: schedule.currency.clone(),
                     };
+                    if Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount).is_err()
+                    {
+                        continue;
+                    }
                     bills.set(next_id, child);
                     Self::index_add_active(&env, &schedule.owner, next_id);
                     Self::index_add_currency(&env, &schedule.owner, &schedule.currency, next_id);
-                    Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
 
                     env.events().publish(
                         (symbol_short!("bill"), BillEvent::RecurringBillCreated),
@@ -1682,6 +1685,7 @@ impl BillPayments {
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32)
             + 1;
+        let next_unpaid_total = Self::checked_unpaid_total_after(&env, &owner, amount)?;
 
         // Enforce uniqueness for external_ref if provided
         if let Some(ref r) = validated_ext_ref {
@@ -1720,7 +1724,7 @@ impl BillPayments {
         Self::index_add_active(&env, &bill_owner, next_id);
         // Update currency index
         Self::index_add_currency(&env, &bill_owner, &bill_currency, next_id);
-        Self::adjust_unpaid_total(&env, &bill_owner, amount);
+        Self::store_unpaid_total(&env, &bill_owner, next_unpaid_total);
 
         // Emit event for audit trail
         env.events().publish(
@@ -1790,6 +1794,15 @@ impl BillPayments {
         }
 
         let current_time = env.ledger().timestamp();
+        let next_unpaid_total = if bill.recurring {
+            None
+        } else {
+            Some(Self::checked_unpaid_total_after(
+                &env,
+                &caller,
+                -bill.amount,
+            )?)
+        };
         bill.paid = true;
         bill.paid_at = Some(current_time);
 
@@ -1834,7 +1847,6 @@ impl BillPayments {
                 tags: bill.tags.clone(),
                 currency: bill.currency.clone(),
             };
-            let next_bill_amount = next_bill.amount;
             bills.set(next_id, next_bill);
             env.storage()
                 .instance()
@@ -1843,8 +1855,6 @@ impl BillPayments {
             Self::index_add_active(&env, &caller, next_id);
             // Update currency index for the newly created recurring bill
             Self::index_add_currency(&env, &caller, &bill.currency, next_id);
-            // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, next_due_date),
@@ -1858,8 +1868,9 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
-        // Always adjust unpaid total when a bill is paid, even if it's recurring
-        Self::adjust_unpaid_total(&env, &caller, -paid_amount);
+        if let Some(next_total) = next_unpaid_total {
+            Self::store_unpaid_total(&env, &caller, next_total);
+        }
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller.clone(), bill_ext_ref),
@@ -2641,7 +2652,7 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
         if removed_unpaid_amount > 0 {
-            Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount);
+            Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount)?;
         }
         // Remove from owner index
         Self::index_remove_active(&env, &caller, bill_id);
@@ -2940,8 +2951,38 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut success_count = 0u32;
+        let mut preview_bills = bills.clone();
         let mut unpaid_delta = 0i128;
+        for bill_id in bill_ids.iter() {
+            let mut bill = match preview_bills.get(bill_id) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            if bill.owner != caller || bill.paid {
+                continue;
+            }
+
+            if !bill.recurring {
+                unpaid_delta = unpaid_delta
+                    .checked_sub(bill.amount)
+                    .ok_or(Error::InvalidAmount)?;
+            }
+
+            bill.paid = true;
+            preview_bills.set(bill_id, bill);
+        }
+        let next_unpaid_total = if unpaid_delta != 0 {
+            Some(Self::checked_unpaid_total_after(
+                &env,
+                &caller,
+                unpaid_delta,
+            )?)
+        } else {
+            None
+        };
+
+        let mut success_count = 0u32;
         let current_time = env.ledger().timestamp();
         let mut next_id = env
             .storage()
@@ -3002,8 +3043,6 @@ impl BillPayments {
                     (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                     (next_id, bill_id, next_due_date),
                 );
-            } else {
-                unpaid_delta = unpaid_delta.saturating_sub(amount);
             }
 
             let external_ref = bill.external_ref.clone();
@@ -3030,8 +3069,8 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
-        if unpaid_delta != 0 {
-            Self::adjust_unpaid_total(&env, &caller, unpaid_delta);
+        if let Some(next_total) = next_unpaid_total {
+            Self::store_unpaid_total(&env, &caller, next_total);
         }
 
         Self::update_storage_stats(&env);
@@ -3325,21 +3364,64 @@ impl BillPayments {
         idx.get(owner.clone()).unwrap_or_else(|| Vec::new(env))
     }
 
-    fn adjust_unpaid_total(env: &Env, owner: &Address, delta: i128) {
-        if delta == 0 {
-            return;
-        }
-        let mut totals: Map<Address, i128> = env
+    fn checked_unpaid_total_after(
+        env: &Env,
+        owner: &Address,
+        delta: i128,
+    ) -> Result<i128, BillPaymentsError> {
+        let totals: Map<Address, i128> = env
             .storage()
             .instance()
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.saturating_add(delta);
+        if current < 0 {
+            return Err(BillPaymentsError::InvalidAmount);
+        }
+
+        let next = if delta >= 0 {
+            current
+                .checked_add(delta)
+                .ok_or(BillPaymentsError::InvalidAmount)?
+        } else {
+            let decrement = delta
+                .checked_neg()
+                .ok_or(BillPaymentsError::InvalidAmount)?;
+            let next = current
+                .checked_sub(decrement)
+                .ok_or(BillPaymentsError::InvalidAmount)?;
+            if next < 0 {
+                return Err(BillPaymentsError::InvalidAmount);
+            }
+            next
+        };
+
+        Ok(next)
+    }
+
+    fn store_unpaid_total(env: &Env, owner: &Address, next: i128) {
+        let mut totals: Map<Address, i128> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_UNPAID_TOTALS)
+            .unwrap_or_else(|| Map::new(env));
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
             .set(&STORAGE_UNPAID_TOTALS, &totals);
+    }
+
+    fn adjust_unpaid_total(
+        env: &Env,
+        owner: &Address,
+        delta: i128,
+    ) -> Result<(), BillPaymentsError> {
+        if delta == 0 {
+            return Ok(());
+        }
+        let next = Self::checked_unpaid_total_after(env, owner, delta)?;
+        Self::store_unpaid_total(env, owner, next);
+        Ok(())
     }
 }
 

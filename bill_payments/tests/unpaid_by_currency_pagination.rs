@@ -58,6 +58,20 @@ fn make_env() -> Env {
     env
 }
 
+fn set_ledger_time(env: &Env, timestamp: u64) {
+    let proto = env.ledger().protocol_version();
+    env.ledger().set(LedgerInfo {
+        protocol_version: proto,
+        sequence_number: env.ledger().sequence() + 1,
+        timestamp,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
+}
+
 fn setup(env: &Env) -> (BillPaymentsClient<'_>, Address) {
     let id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(env, &id);
@@ -83,6 +97,12 @@ fn create_bill_currency(
         &String::from_str(env, currency),
         &None,
     )
+}
+
+fn advance_create_rate_limit_window(env: &Env, iteration: u32) {
+    if iteration > 0 && iteration.is_multiple_of(50) {
+        set_ledger_time(env, env.ledger().timestamp() + 86_401);
+    }
 }
 
 /// Exhaust `get_unpaid_bills_by_currency` via cursor pagination and return all
@@ -144,6 +164,8 @@ fn seed_mixed(
     let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
 
     for i in 0..n_target {
+        advance_create_rate_limit_window(env, i);
+
         // Unpaid USDC bill (target)
         let id = create_bill_currency(env, client, owner, "USDC");
         expected_ids.push(id);
@@ -242,6 +264,8 @@ fn union_equals_set_n1000() {
     // Use n_target = 500 with interleaving ratio trimmed to stay under cap.
     let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
     for i in 0u32..500 {
+        advance_create_rate_limit_window(&env, i);
+
         let id = create_bill_currency(&env, &client, &owner, "USDC");
         expected_ids.push(id);
         // Only add paid bill every 4th to stay under the 1000-bill cap

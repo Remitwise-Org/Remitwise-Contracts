@@ -182,10 +182,16 @@ fn reserved_bill_event_variants_serialize_as_enum_not_symbol() {
         // Round-trip: decode back to BillEvent — must succeed (not be a raw Symbol).
         let decoded = BillEvent::try_from_val(&env, &val)
             .expect("BillEvent variant must deserialize from its own serialized form");
-        // Ensure the decoded variant matches the original by comparing wire payload.
-        let orig_val: Val = variant.into_val(&env);
-        assert_eq!(val.get_payload(), orig_val.get_payload());
-        let _ = decoded;
+        let matches_original = matches!(
+            (&variant, &decoded),
+            (BillEvent::Cancelled, BillEvent::Cancelled)
+                | (BillEvent::Restored, BillEvent::Restored)
+                | (BillEvent::ExternalRefUpdated, BillEvent::ExternalRefUpdated)
+        );
+        assert!(
+            matches_original,
+            "BillEvent variant decoded to a different enum case"
+        );
     }
 }
 

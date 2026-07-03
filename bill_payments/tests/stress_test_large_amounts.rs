@@ -9,9 +9,9 @@
 //!
 //! ## Documented Limitations
 //! - Maximum safe bill amount: i128::MAX/2 (to allow for safe addition operations)
-//! - get_total_unpaid and unpaid-total cache updates use saturating arithmetic
+//! - unpaid-total cache updates reject overflow instead of saturating
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, Error};
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
 use soroban_sdk::{Env, String};
 
@@ -168,7 +168,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
 }
 
 #[test]
-fn test_get_total_unpaid_saturates_on_overflow() {
+fn test_get_total_unpaid_rejects_create_overflow() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -192,7 +192,7 @@ fn test_get_total_unpaid_saturates_on_overflow() {
     );
 
     env.mock_all_auths();
-    client.create_bill(
+    let result = client.try_create_bill(
         &owner,
         &String::from_str(&env, "Bill2"),
         &amount,
@@ -204,18 +204,18 @@ fn test_get_total_unpaid_saturates_on_overflow() {
         &None,
     );
 
-    // get_total_unpaid should saturate instead of panicking
-    // When overflow would occur, result should be i128::MAX
+    assert_eq!(result, Err(Ok(Error::InvalidAmount)));
     let total = client.get_total_unpaid(&owner);
     assert_eq!(
         total,
-        i128::MAX,
-        "get_total_unpaid should saturate to i128::MAX on overflow, not panic"
+        amount,
+        "overflow rejection must preserve the existing unpaid total"
     );
+    assert!(client.get_bill(&2).is_none());
 }
 
 #[test]
-fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
+fn test_get_total_unpaid_by_currency_rejects_create_overflow() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -239,7 +239,7 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
     );
 
     env.mock_all_auths();
-    client.create_bill(
+    let result = client.try_create_bill(
         &owner,
         &String::from_str(&env, "USDC Bill 2"),
         &amount,
@@ -251,12 +251,12 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
         &None,
     );
 
-    // get_total_unpaid_by_currency should saturate on overflow
+    assert_eq!(result, Err(Ok(Error::InvalidAmount)));
     let total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
     assert_eq!(
         total,
-        i128::MAX,
-        "get_total_unpaid_by_currency should saturate to i128::MAX on overflow"
+        amount,
+        "overflow rejection must preserve the existing USDC total"
     );
 
     // Create a XLM bill and verify it's not included in USDC total
@@ -273,9 +273,9 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
         &None,
     );
 
-    // USDC total should still be saturated
+    // USDC total should be unchanged by the rejected second USDC bill.
     let usdc_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
-    assert_eq!(usdc_total, i128::MAX);
+    assert_eq!(usdc_total, amount);
 
     // XLM total should only include XLM bills
     let xlm_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "XLM"));
@@ -564,7 +564,6 @@ fn test_recurring_bill_frequency_overflow_protection() {
     );
 
     // Should fail with InvalidFrequency
-    use bill_payments::Error;
     assert_eq!(result, Err(Ok(Error::InvalidFrequency)));
 }
 

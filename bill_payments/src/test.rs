@@ -1135,7 +1135,7 @@ mod testsuit {
 
         create_n_bills(&client, &env, &owner, 12);
 
-        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
         assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
     }
@@ -1156,7 +1156,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            let page = client.get_all_bills_page(&admin, &cursor, &3);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1181,7 +1181,7 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &100);
         assert_eq!(
             page.items.len(), 6,
             "admin should see bills from all 6 owners combined"
@@ -1198,7 +1198,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &10);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
@@ -2976,6 +2976,133 @@ mod testsuit {
         );
     }
 
+    fn seed_cached_unpaid_total(env: &Env, contract_id: &Address, owner: &Address, total: i128) {
+        env.as_contract(contract_id, || {
+            let mut totals: Map<Address, i128> = Map::new(env);
+            totals.set(owner.clone(), total);
+            env.storage()
+                .instance()
+                .set(&STORAGE_UNPAID_TOTALS, &totals);
+        });
+    }
+
+    fn seed_storage_stats(env: &Env, contract_id: &Address, total_unpaid_amount: i128) {
+        env.as_contract(contract_id, || {
+            env.storage().instance().set(
+                &symbol_short!("STOR_STAT"),
+                &StorageStats {
+                    active_bills: 7,
+                    archived_bills: 2,
+                    total_unpaid_amount,
+                    total_archived_amount: 11,
+                    last_updated: 42,
+                },
+            );
+        });
+    }
+
+    #[test]
+    fn test_create_bill_rejects_unpaid_total_overflow_without_state_change() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        seed_cached_unpaid_total(&env, &contract_id, &owner, i128::MAX);
+        seed_storage_stats(&env, &contract_id, i128::MAX);
+
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Overflow"),
+            &1,
+            &1_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidAmount)));
+        assert!(
+            client.get_bill(&1).is_none(),
+            "overflow rejection must not create a bill"
+        );
+        assert_eq!(client.get_total_unpaid(&owner), i128::MAX);
+        let stats = client.get_storage_stats();
+        assert_eq!(stats.total_unpaid_amount, i128::MAX);
+        assert_eq!(stats.active_bills, 7);
+    }
+
+    #[test]
+    fn test_pay_bill_rejects_unpaid_total_underflow_without_state_change() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Underflow"),
+            &100,
+            &1_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        seed_cached_unpaid_total(&env, &contract_id, &owner, 0);
+        seed_storage_stats(&env, &contract_id, 0);
+
+        let result = client.try_pay_bill(&owner, &bill_id);
+
+        assert_eq!(result, Err(Ok(Error::InvalidAmount)));
+        assert!(
+            !client.get_bill(&bill_id).unwrap().paid,
+            "underflow rejection must not mark the bill paid"
+        );
+        assert_eq!(client.get_total_unpaid(&owner), 0);
+        assert_eq!(client.get_storage_stats().total_unpaid_amount, 0);
+    }
+
+    #[test]
+    fn test_batch_pay_bills_rejects_unpaid_total_underflow_without_state_change() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Batch Underflow"),
+            &100,
+            &1_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let mut ids = Vec::new(&env);
+        ids.push_back(bill_id);
+        seed_cached_unpaid_total(&env, &contract_id, &owner, 0);
+        seed_storage_stats(&env, &contract_id, 0);
+
+        let result = client.try_batch_pay_bills(&owner, &ids);
+
+        assert_eq!(result, Err(Ok(Error::InvalidAmount)));
+        assert!(
+            !client.get_bill(&bill_id).unwrap().paid,
+            "batch underflow rejection must not mark the bill paid"
+        );
+        assert_eq!(client.get_total_unpaid(&owner), 0);
+        assert_eq!(client.get_storage_stats().total_unpaid_amount, 0);
+    }
+
     // --- Recurring bill creates a new unpaid bill: total includes the new one ---
 
     #[test]
@@ -3302,6 +3429,7 @@ mod testsuit {
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
+    #[allow(clippy::enum_variant_names)]
     #[derive(Debug, Clone)]
     enum Operation {
         CreateBill {
@@ -3369,7 +3497,7 @@ mod testsuit {
                         if active_bill_ids.contains(&bill_id) {
                             let _ = client.try_pay_bill(&owner, &bill_id);
                             // When you pay a recurring bill, it might create a new bill, so let's check
-                            if let Some(next) = client.get_bill(&(next_bill_id)) {
+                            if let Some(_next) = client.get_bill(&(next_bill_id)) {
                                 active_bill_ids.push_back(next_bill_id);
                                 next_bill_id +=1;
                             }
