@@ -1598,6 +1598,9 @@ impl SavingsGoalContract {
             .unwrap_or_else(|| Vec::new(&env));
 
         if ids.is_empty() {
+            if cursor != 0 {
+                panic!("Invalid cursor");
+            }
             return GoalPage {
                 items: Vec::new(&env),
                 next_cursor: 0,
@@ -1885,6 +1888,9 @@ impl SavingsGoalContract {
             .unwrap_or_else(|| Vec::new(&env));
 
         if ids.is_empty() {
+            if cursor != 0 {
+                panic!("Invalid cursor");
+            }
             return ArchivedGoalPage {
                 items: Vec::new(&env),
                 next_cursor: 0,

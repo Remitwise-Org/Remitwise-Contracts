@@ -1894,6 +1894,11 @@ fn page_archived_goal_ids(env: &Env, page: &ArchivedGoalPage) -> soroban_sdk::Ve
     ids
 }
 
+fn complete_and_archive_goal(client: &SavingsGoalContractClient, owner: &Address, goal_id: u32) {
+    client.add_to_goal(owner, &goal_id, &(1000i128 * goal_id as i128));
+    assert!(client.archive_goal(owner, &goal_id));
+}
+
 #[test]
 fn test_get_goals_empty() {
     let env = Env::default();
@@ -2029,6 +2034,143 @@ fn test_get_goals_rejects_cursor_from_another_owner() {
     let foreign_cursor = owner_b_first_page.items.get(0).unwrap().id;
     let res = client.try_get_goals(&owner_a, &foreign_cursor, &2);
     assert!(res.is_err(), "cursor must be bound to the requested owner");
+}
+
+/// Pins the empty-owner boundary: any non-zero cursor is rejected.
+#[test]
+fn test_get_goals_rejects_non_zero_cursor_when_owner_has_no_goals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    let res = client.try_get_goals(&owner, &1, &2);
+    assert!(
+        res.is_err(),
+        "non-zero cursor must be rejected when the owner index is empty"
+    );
+}
+
+/// Pins the empty archived-index boundary: any non-zero cursor is rejected.
+#[test]
+fn test_get_archived_goals_rejects_non_zero_cursor_when_owner_has_no_archived_goals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+
+    let res = client.try_get_archived_goals_page(&owner, &1, &2);
+    assert!(
+        res.is_err(),
+        "non-zero cursor must be rejected when the archived index is empty"
+    );
+}
+
+/// Pins active-goal cursor boundaries: 0 starts paging; past-highest and max reject.
+#[test]
+fn test_get_goals_validates_zero_past_highest_and_max_cursors() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+
+    let first_page = client
+        .try_get_goals(&owner, &0, &10)
+        .expect("zero cursor must not reject the invocation")
+        .expect("zero cursor must start the first page");
+    assert_eq!(first_page.count, 3);
+    assert_eq!(first_page.next_cursor, 0);
+
+    for stale_cursor in [4u32, u32::MAX] {
+        let res = client.try_get_goals(&owner, &stale_cursor, &2);
+        assert!(
+            res.is_err(),
+            "cursor {} must be rejected because it is not in the owner index",
+            stale_cursor
+        );
+    }
+}
+
+/// Pins stale active cursor behavior: archived goal IDs are invalid active cursors.
+#[test]
+fn test_get_goals_rejects_archived_goal_cursor_for_active_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+    complete_and_archive_goal(&client, &owner, 2);
+
+    let active_page = client.get_goals(&owner, &0, &10);
+    let active_ids = page_goal_ids(&env, &active_page);
+    assert_eq!(active_ids.get(0), Some(1));
+    assert_eq!(active_ids.get(1), Some(3));
+
+    let archived_page = client.get_archived_goals_page(&owner, &0, &10);
+    assert_eq!(page_archived_goal_ids(&env, &archived_page).get(0), Some(2));
+
+    let res = client.try_get_goals(&owner, &2, &10);
+    assert!(
+        res.is_err(),
+        "archived goal cursor must be rejected by active-goal pagination"
+    );
+}
+
+/// Pins valid traversal: each goal appears once, cursors increase, and paging terminates.
+#[test]
+fn test_get_goals_valid_traversal_returns_each_goal_once_with_monotonic_cursors() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 7);
+
+    let mut cursor = 0u32;
+    let mut seen = soroban_sdk::Vec::new(&env);
+
+    loop {
+        let page = client.get_goals(&owner, &cursor, &3);
+        for goal in page.items.iter() {
+            for seen_id in seen.iter() {
+                assert_ne!(seen_id, goal.id, "goal id {} returned twice", goal.id);
+            }
+            if cursor != 0 {
+                assert!(goal.id > cursor, "cursor must be exclusive");
+            }
+            seen.push_back(goal.id);
+        }
+
+        if page.next_cursor == 0 {
+            break;
+        }
+
+        assert!(
+            page.next_cursor > cursor,
+            "next cursor must increase monotonically"
+        );
+        cursor = page.next_cursor;
+    }
+
+    assert_eq!(seen.len(), 7);
+    for expected_id in 1u32..=7u32 {
+        assert_eq!(seen.get((expected_id - 1) as u32), Some(expected_id));
+    }
 }
 
 #[test]
@@ -2261,6 +2403,63 @@ fn test_get_archived_goals_rejects_cursor_from_another_owner() {
     let foreign_cursor = owner_b_first_page.items.get(0).unwrap().id;
     let res = client.try_get_archived_goals_page(&owner_a, &foreign_cursor, &2);
     assert!(res.is_err(), "cursor must be bound to the requested owner");
+}
+
+/// Pins archived-goal cursor boundaries: 0 starts paging; past-highest and max reject.
+#[test]
+fn test_get_archived_goals_validates_zero_past_highest_and_max_cursors() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+    for goal_id in 1u32..=3u32 {
+        complete_and_archive_goal(&client, &owner, goal_id);
+    }
+
+    let first_page = client
+        .try_get_archived_goals_page(&owner, &0, &10)
+        .expect("zero cursor must not reject the archived invocation")
+        .expect("zero cursor must start the first archived page");
+    assert_eq!(first_page.count, 3);
+    assert_eq!(first_page.next_cursor, 0);
+
+    for stale_cursor in [4u32, u32::MAX] {
+        let res = client.try_get_archived_goals_page(&owner, &stale_cursor, &2);
+        assert!(
+            res.is_err(),
+            "cursor {} must be rejected because it is not in the archived index",
+            stale_cursor
+        );
+    }
+}
+
+/// Pins stale archived cursor behavior: active goal IDs are invalid archived cursors.
+#[test]
+fn test_get_archived_goals_rejects_active_goal_cursor_for_archived_index() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 3);
+    complete_and_archive_goal(&client, &owner, 1);
+
+    let active_page = client.get_goals(&owner, &0, &10);
+    let active_ids = page_goal_ids(&env, &active_page);
+    assert_eq!(active_ids.get(0), Some(2));
+    assert_eq!(active_ids.get(1), Some(3));
+
+    let res = client.try_get_archived_goals_page(&owner, &2, &10);
+    assert!(
+        res.is_err(),
+        "active goal cursor must be rejected by archived-goal pagination"
+    );
 }
 
 #[test]
