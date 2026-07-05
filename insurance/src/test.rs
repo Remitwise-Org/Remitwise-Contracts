@@ -324,6 +324,105 @@ mod tests {
         );
     }
 
+    /// create_policy with an empty name returns InvalidName.
+    #[test]
+    fn test_create_policy_empty_name() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let caller = Address::generate(&env);
+        assert_eq!(
+            c.try_create_policy(
+                &caller,
+                &String::from_str(&env, ""),
+                &CoverageType::Health,
+                &5_000_000i128,
+                &50_000_000i128,
+            )
+            .unwrap_err()
+            .unwrap(),
+            InsuranceError::InvalidName,
+        );
+    }
+
+    /// create_policy with a name longer than MAX_NAME_LEN (64) returns InvalidName.
+    #[test]
+    fn test_create_policy_name_too_long() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let caller = Address::generate(&env);
+        // 65 characters (MAX_NAME_LEN is 64)
+        let long_name = String::from_str(
+            &env,
+            "12345678901234567890123456789012345678901234567890123456789012345",
+        );
+        assert_eq!(
+            c.try_create_policy(
+                &caller,
+                &long_name,
+                &CoverageType::Health,
+                &5_000_000i128,
+                &50_000_000i128,
+            )
+            .unwrap_err()
+            .unwrap(),
+            InsuranceError::InvalidName,
+        );
+    }
+
+    /// pay_premium on an inactive policy returns PolicyInactive.
+    #[test]
+    fn test_pay_premium_inactive_policy() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let policy_owner = Address::generate(&env);
+        let pid = c.create_policy(
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        // Deactivate the policy
+        c.deactivate_policy(&policy_owner, &pid);
+
+        // Attempt to pay premium on inactive policy
+        assert_eq!(
+            c.try_pay_premium(&policy_owner, &pid)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::PolicyInactive,
+        );
+    }
+
+    /// pay_premium by a non-owner returns Unauthorized.
+    #[test]
+    fn test_pay_premium_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let c = setup(&env);
+        let policy_owner = Address::generate(&env);
+        let other_user = Address::generate(&env);
+        let pid = c.create_policy(
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        // Attempt to pay premium by a different user
+        assert_eq!(
+            c.try_pay_premium(&other_user, &pid)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::Unauthorized,
+        );
+    }
+
     // ── Helper: initialise contract with a known owner ────────────────────────
 
     fn setup_with_owner(env: &Env) -> (InsuranceClient<'_>, Address) {
