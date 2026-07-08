@@ -483,6 +483,114 @@ mod tests {
         );
     }
 
+    // ── reactivate_policy tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_reactivate_policy_by_owner_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        // Deactivate then reactivate
+        c.deactivate_policy(&owner, &pid);
+        let p = c.get_policy(&pid).unwrap();
+        let old_next = p.next_payment_date;
+
+        assert!(c.reactivate_policy(&owner, &pid));
+
+        let p2 = c.get_policy(&pid).unwrap();
+        assert!(p2.active, "policy should be active after reactivation");
+        // Next payment date should have been refreshed forward
+        assert!(p2.next_payment_date > old_next);
+
+        let page = c.get_active_policies(&owner, &0, &10);
+        assert_eq!(page.count, 1);
+        assert_eq!(page.items.len(), 1);
+    }
+
+    #[test]
+    fn test_reactivate_policy_already_active() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        assert_eq!(
+            c.try_reactivate_policy(&owner, &pid)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::PolicyAlreadyActive
+        );
+    }
+
+    #[test]
+    fn test_reactivate_policy_max_reached() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        // Deactivate so we can attempt to reactivate
+        c.deactivate_policy(&owner, &pid);
+
+        // Fill the active index to MAX_POLICIES
+        let mut full = Vec::new(&env);
+        for i in 1..=MAX_POLICIES {
+            full.push_back(i);
+        }
+        env.storage().instance().set(&DataKey::ActivePolicies, &full);
+
+        assert_eq!(
+            c.try_reactivate_policy(&owner, &pid)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::MaxPoliciesReached
+        );
+    }
+
+    #[test]
+    fn test_get_deactivated_policies_pagination() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+
+        let p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let p2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let p4 = c.create_policy(&owner, &n(&env, "P4"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+
+        // Deactivate a subset
+        c.deactivate_policy(&owner, &p2);
+        c.deactivate_policy(&owner, &p4);
+
+        let page = c.get_deactivated_policies(&owner, &0, &10);
+        assert_eq!(page.count, 2);
+        assert_eq!(page.items.len(), 2);
+    }
+
     // ── set_external_ref ──────────────────────────────────────────────────────
 
     /// Success path: contract owner can attach a valid external reference.
