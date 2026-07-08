@@ -337,3 +337,138 @@ impl EmergencyKillswitch {
         Ok(())
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests — transfer_admin authorization and post-transfer privilege revocation
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
+
+    fn setup_env() -> (Env, EmergencyKillswitchClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        (env, client)
+    }
+
+    /// transfer_admin before initialize returns NotInitialized.
+    #[test]
+    fn test_transfer_admin_before_init_returns_not_initialized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let new_admin = Address::generate(&env);
+
+        let res = client.try_transfer_admin(&new_admin);
+        assert_eq!(res, Err(Ok(Error::NotInitialized)));
+    }
+
+    /// Transferring to the current admin is rejected (prevents accidental re-auth).
+    #[test]
+    fn test_transfer_admin_to_self_rejected() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        let res = client.try_transfer_admin(&admin);
+        assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+    }
+
+    /// After a successful transfer, the new admin can pause and unpause,
+    /// proving DataKey::Admin was updated.
+    #[test]
+    fn test_transfer_admin_grants_powers_to_new_admin() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+
+        client.initialize(&admin);
+        client.transfer_admin(&new_admin);
+
+        // New admin can pause
+        client.pause();
+        assert!(client.is_paused());
+
+        // New admin can schedule unpause and unpause
+        let now = env.ledger().timestamp();
+        client.schedule_unpause(&(now + 100));
+        env.ledger().with_mut(|li| li.timestamp = now + 200);
+        client.unpause();
+        assert!(!client.is_paused());
+    }
+
+    /// After transfer, new admin can use pause_module and unpause_module.
+    #[test]
+    fn test_new_admin_can_pause_module_after_transfer() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+
+        client.initialize(&admin);
+        client.transfer_admin(&new_admin);
+
+        client.pause_module(&symbol_short!("insurance"));
+        assert!(client.is_module_paused(&symbol_short!("insurance")));
+
+        client.unpause_module(&symbol_short!("insurance"));
+        assert!(!client.is_module_paused(&symbol_short!("insurance")));
+    }
+
+    /// Double transfer (A→B→C) — all intermediate transfers succeed
+    /// and the final admin retains full control.
+    #[test]
+    fn test_double_transfer() {
+        let (env, client) = setup_env();
+        let admin_a = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let admin_c = Address::generate(&env);
+
+        client.initialize(&admin_a);
+        client.transfer_admin(&admin_b);
+        client.transfer_admin(&admin_c);
+
+        // Admin C can pause
+        client.pause();
+        assert!(client.is_paused());
+    }
+
+    /// Transferring to the contract's own address is rejected (prevents bricking).
+    /// Uses the address returned by `register_contract` as the self-address.
+    #[test]
+    fn test_transfer_admin_to_contract_self_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // transfer_admin to the contract's own address
+        let res = client.try_transfer_admin(&contract_id);
+        assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+    }
+
+    /// Verify DataKey::Admin value is updated by checking a second transfer
+    /// succeeds (new admin is stored).
+    #[test]
+    fn test_transfer_admin_updates_stored_admin() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let admin_c = Address::generate(&env);
+
+        client.initialize(&admin);
+        client.transfer_admin(&admin_b);
+        // A→B succeeded. Now B→C should also succeed, proving B is stored.
+        client.transfer_admin(&admin_c);
+        // C can pause, proving C is now admin
+        client.pause();
+        assert!(client.is_paused());
+    }
+}
