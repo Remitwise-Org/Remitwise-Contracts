@@ -65,7 +65,7 @@ mod tests {
         let page = c.get_active_policies(&owner, &0, &5);
         assert_eq!(page.items.len(), 5);
         assert_eq!(page.count, 5);
-        assert_eq!(page.next_cursor, 6);
+        assert_eq!(page.next_cursor, 5);
     }
 
     #[test]
@@ -557,10 +557,10 @@ mod tests {
 
         // Fill the active index to MAX_POLICIES
         let mut full = Vec::new(&env);
-        for i in 1..=MAX_POLICIES {
+        for i in (pid + 1)..=(pid + MAX_POLICIES) {
             full.push_back(i);
         }
-        env.storage().instance().set(&DataKey::ActivePolicies, &full);
+        env.as_contract(&c.address, || env.storage().instance().set(&DataKey::ActivePolicies, &full));
 
         assert_eq!(
             c.try_reactivate_policy(&owner, &pid)
@@ -577,9 +577,9 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let owner = Address::generate(&env);
 
-        let p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let _p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         let p2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
-        let p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let _p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         let p4 = c.create_policy(&owner, &n(&env, "P4"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
 
         // Deactivate a subset

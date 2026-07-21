@@ -379,11 +379,12 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     );
 
     // Verify each policy still has an active status and its next_payment_date is
-    // set to current_time + 30 days. Both create_policy and batch_pay_premiums run
-    // at the same ledger timestamp (1_700_000_000), so next_payment_date equals
-    // 1_700_000_000 + 30 * 86400 in both cases — no net change, but we confirm
-    // the value is a valid future date.
-    let expected_next = 1_700_000_000u64 + (30 * 86400);
+    // set to current_time + 60 days. Since we are paying early (when the existing
+    // due date is in the future), the next payment date is advanced by 30 days
+    // beyond the existing due date. Both create_policy (which sets next_payment_date to
+    // now + 30 days) and batch_pay_premiums run at the same ledger timestamp (1_700_000_000),
+    // so next_payment_date is advanced to 1_700_000_000 + 60 * 86400.
+    let expected_next = 1_700_000_000u64 + (60 * 86400);
     for &id in &policy_ids {
         let policy = client.get_policy(&id).expect("policy should exist");
         assert!(
@@ -393,7 +394,7 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
         );
         assert_eq!(
             policy.next_payment_date, expected_next,
-            "Policy {} next_payment_date must equal current_time + 30 days after batch pay",
+            "Policy {} next_payment_date must equal current_time + 60 days after batch pay",
             id
         );
     }

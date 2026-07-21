@@ -5,7 +5,7 @@ use remitwise_common::{
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ pub enum InsuranceError {
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 12,
+    PolicyAlreadyInactive = 17,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -438,7 +438,7 @@ impl Insurance {
 
         // Reserve a slot in the active index and ensure we don't exceed capacity.
         // `add_active_policy` also prevents duplication.
-        let mut active = env
+        let active = env
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
@@ -695,7 +695,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactivated"), symbol_short!("policy")),
+            (Symbol::new(&env, "reactivated"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
@@ -734,6 +734,7 @@ impl Insurance {
             limit
         };
 
+        let mut last_active_id = 0u32;
         for id in owner_ids.iter() {
             if id > cursor {
                 if let Some(p) = env
@@ -744,8 +745,9 @@ impl Insurance {
                     if p.active {
                         if items.len() < lim {
                             items.push_back(id);
+                            last_active_id = id;
                         } else {
-                            next_cursor = id;
+                            next_cursor = last_active_id;
                             break;
                         }
                     }
@@ -783,8 +785,9 @@ impl Insurance {
         let mut items = Vec::new(&env);
         let mut next_cursor = 0u32;
 
-        let lim = clamp_limit(limit);
+        let lim = remitwise_common::clamp_limit(limit);
 
+        let mut last_inactive_id = 0u32;
         for id in owner_ids.iter() {
             if id > cursor {
                 if let Some(p) = env
@@ -795,8 +798,9 @@ impl Insurance {
                     if !p.active {
                         if items.len() < lim {
                             items.push_back(id);
+                            last_inactive_id = id;
                         } else {
-                            next_cursor = id;
+                            next_cursor = last_inactive_id;
                             break;
                         }
                     }
@@ -1412,3 +1416,5 @@ impl Insurance {
 mod test;
 #[cfg(test)]
 mod next_payment_scheduling_tests;
+#[cfg(test)]
+mod events_schema_test;
