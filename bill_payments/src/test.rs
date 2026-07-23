@@ -3318,6 +3318,67 @@ mod testsuit {
     }
 
     #[test]
+    fn test_pause_and_unpause_emit_ordered_audit_events() {
+        use soroban_sdk::testutils::Events as _;
+        use soroban_sdk::{symbol_short, Symbol};
+
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        client.pause(&admin);
+        client.unpause(&admin);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 2);
+
+        let mut emitted_actions = std::vec::Vec::<Symbol>::new();
+        for event in events.iter() {
+            let topics = event.1;
+            let action: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
+            emitted_actions.push(action);
+        }
+
+        assert_eq!(
+            emitted_actions,
+            vec![symbol_short!("paused"), symbol_short!("unpaused")]
+        );
+    }
+
+    #[test]
+    fn test_unpause_before_schedule_does_not_emit_unpause_event() {
+        use soroban_sdk::symbol_short;
+        use soroban_sdk::testutils::Events as _;
+
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+        client.pause(&admin);
+
+        let future = env.ledger().timestamp() + 3600;
+        client.schedule_unpause(&admin, &future);
+
+        env.ledger().set_timestamp(future - 1);
+        let result = client.try_unpause(&admin);
+        assert_eq!(result, Err(Ok(Error::ContractPaused)));
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 1);
+        let topics = events.last().unwrap().1;
+        let action: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
+        assert_eq!(action, symbol_short!("paused"));
+    }
+
+    #[test]
     fn test_pause_cancels_schedule() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
