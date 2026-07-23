@@ -322,7 +322,6 @@ To run an example, use `cargo run --example <example_name>`:
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
-- [Verifier Registry](docs/VERIFIER_REGISTRY.md) - How authorized verifier keys are added, rotated, and revoked
 - [Dust Policy](docs/DUST_POLICY.md) - Rationale, overrides, and minimum transfer updates for dust prevention
 - [Reversibility Matrix](docs/REVERSIBILITY_MATRIX.md) - Summary of irreversible operations and how to undo reversible ones
 - [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
