@@ -323,7 +323,6 @@ To run an example, use `cargo run --example <example_name>`:
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Dust Policy](docs/DUST_POLICY.md) - Rationale, overrides, and minimum transfer updates for dust prevention
-- [Reversibility Matrix](docs/REVERSIBILITY_MATRIX.md) - Summary of irreversible operations and how to undo reversible ones
 - [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
