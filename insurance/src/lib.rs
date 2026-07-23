@@ -5,8 +5,8 @@ use remitwise_common::{
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, String, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +64,10 @@ pub enum InsuranceError {
     ScheduleIntervalTooShort = 15,
     /// The schedule lead time exceeds the maximum allowed value (1 year).
     ScheduleLeadTimeTooLong = 16,
+    /// No pre-upgrade snapshot exists for restore.
+    SnapshotNotFound = 17,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 18,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -959,6 +963,9 @@ impl Insurance {
             version: Self::get_version(env.clone()),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("insurance"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -993,12 +1000,20 @@ impl Insurance {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .ok_or(InsuranceError::NotInitialized)?;
+            .ok_or(InsuranceError::SnapshotNotFound)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(InsuranceError::Unauthorized);
         }
         if snapshot.owner != owner {
             return Err(InsuranceError::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(InsuranceError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
 

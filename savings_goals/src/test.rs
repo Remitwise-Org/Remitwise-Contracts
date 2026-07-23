@@ -7123,6 +7123,26 @@ fn test_pre_upgrade_roundtrip() {
 }
 
 #[test]
+fn test_pre_upgrade_restore_rejects_stale_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    env.ledger().set_timestamp(env.ledger().timestamp() + 31 * 24 * 60 * 60 + 1);
+
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_pre_upgrade_unauthorized_fails() {
     let env = Env::default();
     env.mock_all_auths();

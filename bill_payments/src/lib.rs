@@ -179,8 +179,10 @@ pub enum BillPaymentsError {
     ScheduleNotFound = 24,
     /// Bill schedule is not active
     ScheduleNotActive = 25,
-    /// Admin grant has expired; the pause admin must re-grant via set_pause_admin or refresh_admin_grant
-    AdminGrantExpired = 26,
+    /// No pre-upgrade snapshot was persisted for restore.
+    SnapshotNotFound = 26,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 27,
 }
 
 pub type Error = BillPaymentsError;
@@ -1187,6 +1189,9 @@ impl BillPayments {
             pause_admin: Self::get_pause_admin(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1222,9 +1227,17 @@ impl BillPayments {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .ok_or(BillPaymentsError::Unauthorized)?;
+            .ok_or(BillPaymentsError::SnapshotNotFound)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(BillPaymentsError::InvalidLimit);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(BillPaymentsError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
         env.storage()

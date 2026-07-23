@@ -291,6 +291,8 @@ pub enum SavingsGoalError {
     /// Time-locks are monotonic while active: they may be extended forward,
     /// but never shortened backward.
     TimeLockShortening = 15,
+    SnapshotNotFound = 16,
+    SnapshotTooOld = 17,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -642,6 +644,9 @@ impl SavingsGoalContract {
             pause_admin: Self::get_pause_admin(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -674,9 +679,17 @@ impl SavingsGoalContract {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+            .unwrap_or_else(|| panic_with_error!(&env, SavingsGoalError::SnapshotNotFound));
         if snapshot.schema_version != SNAPSHOT_VERSION {
-            panic!("Unsupported snapshot version");
+            panic_with_error!(&env, SavingsGoalError::UnsupportedVersion);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, SavingsGoalError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
         env.storage()

@@ -247,8 +247,29 @@ mod settlement_amount_tests {
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
+/// Maximum age of a pre-upgrade snapshot before restore is rejected.
+pub const SNAPSHOT_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+
 /// Storage key for pre-upgrade snapshots
 pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
+
+/// Typed error returned when a pre-upgrade snapshot is older than the freshness window.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SnapshotError {
+    SnapshotTooOld = 1,
+}
+
+/// Ensure a pre-upgrade snapshot is still fresh enough to restore.
+pub fn require_recent_snapshot(env: &Env, snapshot_taken_at: u64) -> Result<(), SnapshotError> {
+    let age = env.ledger().timestamp().saturating_sub(snapshot_taken_at);
+    if age > SNAPSHOT_MAX_AGE_SECS {
+        Err(SnapshotError::SnapshotTooOld)
+    } else {
+        Ok(())
+    }
+}
 
 /// Rate limiting constants
 pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours

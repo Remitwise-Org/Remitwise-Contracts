@@ -3,8 +3,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, Symbol, Vec,
 };
 
 #[allow(dead_code)]
@@ -330,9 +330,8 @@ pub enum OrchestratorError {
     ReentrancyDetected = 12,
     /// The caller has no pending rewards to claim.
     NoPendingRewards = 13,
-    /// The provided actor epoch does not match the current epoch.
-    /// This prevents replay of stale actor tokens after epoch bumps.
-    EpochMismatch = 14,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 14,
 }
 
 #[contract]
@@ -1041,6 +1040,9 @@ impl Orchestrator {
             actor_epoch: Self::get_actor_epoch(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -1081,6 +1083,14 @@ impl Orchestrator {
             .ok_or(OrchestratorError::InvalidDependency)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(OrchestratorError::InvalidDependency);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(OrchestratorError::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             return Err(OrchestratorError::Unauthorized);
