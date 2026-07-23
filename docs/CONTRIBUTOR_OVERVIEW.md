@@ -1,62 +1,125 @@
 # Contributor Overview
 
-Welcome to **RemitWise Contracts**! This guide helps you get productive on day one.
+Welcome to **RemitWise Contracts**! This guide is written for new **contributors** to get up to speed and productive on day one without needing to parse past commits or tribal knowledge.
 
-## Getting Started
+---
 
-1. Install Rust stable and the Soroban SDK:
-```bash
-rustup toolchain install stable
-cargo install --locked soroban-cli
-```
+## Workspace Structure
 
-2. Build the contracts for WASM:
-```bash
-cargo build --release --target wasm32-unknown-unknown
-```
+The workspace contains high-performance Soroban smart contracts built for the Stellar ecosystem:
 
-3. Run unit tests:
-```bash
-cargo test
-```
+* **`remitwise-common`**: Shared enums (`Category`, `FamilyRole`, `CoverageType`), error types, constants, and standard event emission tools (`RemitwiseEvents`).
+* **`remittance_split`**: Automated allocation of incoming remittance funds across categories (spending, savings, bills, insurance).
+* **`savings_goals`**: Goal-based savings lockups with target dates and state management.
+* **`bill_payments`**: Automated bill tracking, recurring payment schedules, and execution.
+* **`insurance`**: Micro-insurance policy registry, premium payments, and status tracking.
+* **`family_wallet`**: Governance, multi-signature controls, daily spending limits, and emergency transfer fallbacks.
+* **`orchestrator`**: Cross-contract routing and atomic execution across ecosystem modules.
+* **`reporting`**: Aggregate financial health scores and summary metrics with graceful degradation.
+* **`emergency_killswitch`**: Emergency pause controls and administrative overrides.
 
-## Example: Adding a New Entry Point
+---
 
-To add a new contract function:
+## Environment Setup
+
+### Prerequisites
+
+1. **Rust Toolchain**: Install stable Rust with the WASM target:
+   ```bash
+   rustup toolchain install stable
+   rustup target add wasm32-unknown-unknown
+   ```
+2. **Soroban CLI**:
+   ```bash
+   cargo install --locked --version 21.0.0 soroban-cli
+   ```
+
+---
+
+## Core Development Standards
+
+### 1. `#![no_std]` Discipline
+Contracts compiled for WASM must remain strictly `#![no_std]`.
+* Do **not** use `std::vec::Vec`, `std::collections::HashMap`, or standard memory primitives in contract code.
+* Use `soroban_sdk` types (`soroban_sdk::Vec`, `soroban_sdk::Map`, `soroban_sdk::Bytes`, `soroban_sdk::Symbol`, `soroban_sdk::Address`).
+* Unit tests (annotated with `#[cfg(test)]`) may use `std` or dev-dependencies like `ed25519-dalek`.
+
+### 2. Authorization & Security
+* Every state-changing function modifying user assets or settings **must** verify authority using `address.require_auth()`.
+* Access control relies on `FamilyRole` and administrative keys stored in contract instance storage.
+
+### 3. State & Storage TTL
+* Use `env.storage().instance()` for contract-wide configuration.
+* Use `env.storage().persistent()` for persistent user state (e.g. goals, bills, policies).
+* Extend storage TTL using standard thresholds (`INSTANCE_LIFETIME_THRESHOLD`, `INSTANCE_BUMP_AMOUNT`) defined in `remitwise-common`.
+
+---
+
+## Concrete Contract Example
+
+Here is a minimal, complete entrypoint pattern following codebase conventions:
+
 ```rust
-#[contractimpl]
-pub struct MyContract;
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Symbol, Address, Env};
+
+#[contract]
+pub struct ContributorExampleContract;
 
 #[contractimpl]
-impl MyContract {
-    pub fn hello(env: Env, name: Symbol) -> Symbol {
-        let greeting = Symbol::new(&env, "Hello");
-        env.log().debug(&greeting);
-        greeting.concat(&name)
+impl ContributorExampleContract {
+    /// Increments a user interaction counter and verifies caller signature.
+    pub fn record_action(env: Env, caller: Address) -> u32 {
+        caller.require_auth();
+
+        let count_key = Symbol::new(&env, "counter");
+        let mut count: u32 = env.storage().instance().get(&count_key).unwrap_or(0);
+        count += 1;
+        
+        env.storage().instance().set(&count_key, &count);
+        count
     }
 }
 ```
 
-Build and test the function locally:
-```bash
-cargo test -p my_contract -- --nocapture
-```
+---
 
-## Contributing Workflow
+## Verification & Testing Workflow
 
-- Fork the repository.
-- Create a feature branch: `git checkout -b feat/your-feature`.
-- Make changes, ensure `cargo fmt`, `cargo clippy -- -D warnings`, and tests pass.
-- Open a PR targeting `main` with a clear description. The PR template includes a checklist.
+Before opening a pull request, run the following verification steps locally:
 
-## Useful Commands
+1. **Verify WASM Build**:
+   ```bash
+   cargo build --release --target wasm32-unknown-unknown
+   ```
 
-- `cargo fmt` – format code.
-- `cargo clippy -- -D warnings` – lint.
-- `cargo test` – run all tests.
-- `cargo test -p <crate>` – run tests for a specific crate.
+2. **Run Workspace Tests**:
+   ```bash
+   cargo test --workspace
+   ```
 
-## Links
+3. **Run Package-Specific Tests**:
+   ```bash
+   cargo test -p remitwise-common
+   cargo test -p family_wallet
+   ```
 
-- Repository: https://github.com/your-org/remitwise-contracts
-- CI: https://github.com/your-org/remitwise-contracts/actions
+4. **Lint and Static Analysis**:
+   ```bash
+   cargo clippy --workspace --all-targets -- -D warnings
+   ```
+
+5. **Format Check**:
+   ```bash
+   cargo fmt --all -- --check
+   ```
+
+---
+
+## Related Documentation
+
+* [Architecture Overview](../ARCHITECTURE.md)
+* [Storage Layout Reference](../STORAGE_LAYOUT.md)
+* [Authorization Matrix](AUTHORIZATION_MATRIX.md)
+* [Threat Model](../THREAT_MODEL.md)
+
