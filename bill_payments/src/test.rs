@@ -582,6 +582,119 @@ mod testsuit {
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
+    /// Tests the complete external reference index lifecycle:
+    /// Register -> Verify uniqueness -> Revoke -> Re-verify/Re-register.
+    #[test]
+    fn test_external_ref_register_verify_revoke_reverify() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+
+        let ref_1 = Some(String::from_str(&env, "REF-001"));
+        let ref_2 = Some(String::from_str(&env, "REF-002"));
+
+        // 1. REGISTER: Create bill 1 with ref_1 and bill 2 with ref_2
+        let bill1_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electric"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill2_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &50,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // 2. VERIFY: Duplicate external_ref registration is rejected
+        let dup_res = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Gas"),
+            &75,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Attempting to set bill 1's ref to ref_2 must fail with DuplicateExternalRef
+        let set_dup_res = client.try_set_external_ref(&owner, &bill1_id, &ref_2);
+        assert_eq!(set_dup_res, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify index integrity after failed update: ref_1 must NOT have been prematurely released!
+        let dup_res_after_failed_update = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Solar"),
+            &80,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        assert_eq!(
+            dup_res_after_failed_update,
+            Err(Ok(Error::DuplicateExternalRef)),
+            "Failed set_external_ref must not prematurely release original reference"
+        );
+
+        // 3. REVOKE: Revoke ref_1 from bill 1 by setting external_ref to None
+        client.set_external_ref(&owner, &bill1_id, &None);
+        let bill1 = client.get_bill(&bill1_id).unwrap();
+        assert_eq!(bill1.external_ref, None);
+
+        // 4. RE-VERIFY / RE-REGISTER: ref_1 can now be registered to a new bill
+        let bill3_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet"),
+            &120,
+            &1000000,
+            &false,
+            &0,
+            &ref_1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill3 = client.get_bill(&bill3_id).unwrap();
+        assert_eq!(bill3.external_ref, ref_1);
+
+        // Revoke ref_2 via cancel_bill
+        client.cancel_bill(&owner, &bill2_id).unwrap();
+
+        // Re-verify ref_2 can now be registered to another bill
+        let bill4_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Trash"),
+            &30,
+            &1000000,
+            &false,
+            &0,
+            &ref_2,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill4 = client.get_bill(&bill4_id).unwrap();
+        assert_eq!(bill4.external_ref, ref_2);
+    }
+
     #[test]
     fn test_multiple_recurring_payments() {
         let env = Env::default();
