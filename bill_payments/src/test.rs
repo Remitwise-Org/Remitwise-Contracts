@@ -1135,7 +1135,7 @@ mod testsuit {
 
         create_n_bills(&client, &env, &owner, 12);
 
-        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
         assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
     }
@@ -1156,7 +1156,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            let page = client.get_all_bills_page(&admin, &cursor, &3);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1181,7 +1181,7 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &100);
         assert_eq!(
             page.items.len(), 6,
             "admin should see bills from all 6 owners combined"
@@ -1198,7 +1198,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &10);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
@@ -3261,6 +3261,35 @@ mod testsuit {
     }
 
     #[test]
+    fn test_admin_grant_expiry_blocks_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Set up pause admin (grant timestamp starts now)
+        client.set_pause_admin(&admin, &admin);
+
+        // Jump ledger timestamp past the grant TTL
+        let now = env.ledger().timestamp();
+        let grant_ttl: u64 = 30 * 24 * 60 * 60;
+        let expired = now + grant_ttl + 1;
+        set_ledger_time(&env, 1, expired);
+
+        // Pause should now fail with AdminGrantExpired
+        let result = client.try_pause(&admin);
+        assert_eq!(result, Err(Ok(Error::AdminGrantExpired)));
+
+        // Call refresh_admin_grant to extend the grant
+        client.refresh_admin_grant(&admin);
+
+        // Now pause should succeed
+        client.pause(&admin);
+        assert!(client.is_paused());
+    }
+
+    #[test]
     fn test_pre_upgrade_roundtrip() {
         let env = Env::default();
         env.mock_all_auths();
@@ -3369,7 +3398,7 @@ mod testsuit {
                         if active_bill_ids.contains(&bill_id) {
                             let _ = client.try_pay_bill(&owner, &bill_id);
                             // When you pay a recurring bill, it might create a new bill, so let's check
-                            if let Some(next) = client.get_bill(&(next_bill_id)) {
+                            if let Some(_next) = client.get_bill(&(next_bill_id)) {
                                 active_bill_ids.push_back(next_bill_id);
                                 next_bill_id +=1;
                             }
