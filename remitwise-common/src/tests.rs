@@ -20,8 +20,22 @@ use ed25519_dalek::Signer;
 use super::*;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::{Env, String, Vec};
-use ed25519_dalek::Signer;
+use soroban_sdk::testutils::LedgerInfo;
+use soroban_sdk::{Bytes, Env, String, Vec};
+
+fn set_ledger(env: &Env, sequence_number: u32) {
+    let proto = env.ledger().protocol_version();
+    env.ledger().set(LedgerInfo {
+        protocol_version: proto,
+        sequence_number,
+        timestamp: 1_700_000_000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 3_000_000,
+    });
+}
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -845,102 +859,49 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
 }
 
-// ============================================================================
-// guard_bytes_len tests — env-matching guard (#1150)
-// ============================================================================
+// ─── require_matching_ledger ───────────────────────────────────────────────────
 
-/// Empty Bytes (zero length) is well within MAX_BYTES_RETURN.
-/// The guard must accept it without error.
+/// Calling with the current ledger sequence returns Ok(()).
 #[test]
-fn guard_bytes_len_empty_bytes_passes() {
+fn test_require_matching_ledger_same_ledger() {
     let env = Env::default();
-    let bytes = Bytes::from_slice(&env, &[]);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 42);
+    assert_eq!(result, Ok(()));
 }
 
-/// A small payload (100 bytes) is well within the 8 192-byte budget.
+/// Calling with one less than the current ledger returns Err(LedgerMismatch).
 #[test]
-fn guard_bytes_len_small_payload_passes() {
+fn test_require_matching_ledger_one_before() {
     let env = Env::default();
-    let data = std::vec![0u8; 100];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 41);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
 }
 
-/// SHA-256 output (32 bytes) is the most common Bytes result size
-/// (e.g. `get_request_hash`). The guard must never fire for it.
+/// Calling with one more than the current ledger returns Err(LedgerMismatch).
 #[test]
-fn guard_bytes_len_sha256_sized_passes() {
+fn test_require_matching_ledger_one_after() {
     let env = Env::default();
-    let data = std::vec![0u8; 32];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 43);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
 }
 
-/// Exactly MAX_BYTES_RETURN (8 192 bytes) must pass — the inclusive
-/// upper bound of the accept range.
+/// Calling with a far-earlier ledger also returns Err(LedgerMismatch).
 #[test]
-fn guard_bytes_len_at_limit_passes() {
+fn test_require_matching_ledger_far_before() {
     let env = Env::default();
-    let data = std::vec![0u8; MAX_BYTES_RETURN as usize];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    set_ledger(&env, 100);
+    let result = require_matching_ledger(&env, 1);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
 }
 
-/// One byte above MAX_BYTES_RETURN must be rejected with ReturnTooLarge.
+/// Calling with a far-later ledger also returns Err(LedgerMismatch).
 #[test]
-fn guard_bytes_len_one_over_limit_fails() {
+fn test_require_matching_ledger_far_after() {
     let env = Env::default();
-    let data = std::vec![0u8; (MAX_BYTES_RETURN + 1) as usize];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(
-        guard_bytes_len(&bytes),
-        Err(BytesReturnError::ReturnTooLarge)
-    );
-}
-
-/// A significantly oversized payload (10 000 bytes) must be rejected.
-#[test]
-fn guard_bytes_len_far_above_limit_fails() {
-    let env = Env::default();
-    let data = std::vec![0u8; 10_000];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(
-        guard_bytes_len(&bytes),
-        Err(BytesReturnError::ReturnTooLarge)
-    );
-}
-
-/// Bytes carries its own host-environment reference internally.
-/// Creating a second `Env` and calling `guard_bytes_len` on a `Bytes`
-/// from the first `Env` must not panic — the call resolves entirely
-/// within the Bytes's own host without cross-env contamination.
-#[test]
-fn guard_bytes_len_different_env_no_cross_contamination() {
-    let env1 = Env::default();
-    let bytes_in_env1 = Bytes::from_slice(&env1, &[0u8; 64]);
-
-    // A separate Env instance simulates a different execution context.
-    let _env2 = Env::default();
-
-    // guard_bytes_len only accesses `bytes.len()`, which queries the
-    // Bytes's own host (env1). The existence of env2 is irrelevant.
-    assert_eq!(guard_bytes_len(&bytes_in_env1), Ok(()));
-}
-
-/// Freshly created Bytes has a valid env binding — the "missing env
-/// label" edge case is structurally impossible in the Soroban SDK
-/// because `Bytes` cannot be instantiated without an `Env` reference.
-/// This test locks in that invariant by explicitly verifying the Bytes
-/// is usable (len == 0, is_empty) before calling the guard.
-#[test]
-fn guard_bytes_len_fresh_bytes_has_valid_env_binding() {
-    let env = Env::default();
-    // Bytes::new creates a zero-length Bytes tied to the given env.
-    let bytes = Bytes::new(&env);
-    // Verify the env binding is valid before exercising the guard.
-    assert_eq!(bytes.len(), 0);
-    assert!(bytes.is_empty());
-    // Must succeed — the env binding is valid and 0 <= MAX_BYTES_RETURN.
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    set_ledger(&env, 1);
+    let result = require_matching_ledger(&env, 100);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
 }
