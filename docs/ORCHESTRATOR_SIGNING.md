@@ -11,7 +11,16 @@ The `execute_remittance_flow_signed` entrypoint accepts a caller-supplied hash a
 The request hash is a 64-bit value computed by the orchestrator in `compute_request_hash`:
 
 ```
-hash = (op_bits + nonce + amount_lo + amount_hi + deadline) × 1_000_000_007 (mod 2^64)
+hash = (
+    op_bits
+    + nonce
+    + amount_lo
+    + amount_hi
+    + deadline
+    + goal_id
+    + bill_id
+    + policy_id
+) × 1_000_000_007 (mod 2^64)
 ```
 
 Where:
@@ -20,6 +29,7 @@ Where:
 - `amount_lo` — lower 64 bits of the signed `i128` amount.
 - `amount_hi` — upper 64 bits of the signed `i128` amount.
 - `deadline` — the caller-supplied Unix timestamp (seconds since epoch) by which the request must be processed.
+- `goal_id`, `bill_id`, and `policy_id` — routing IDs read from orchestrator instance storage at validation time.
 
 All fields are mixed with wrapping addition. The final multiply by the prime `1_000_000_007` acts as a cheap avalanche step that distributes bit-flips across the full 64-bit word.
 
@@ -27,10 +37,11 @@ All fields are mixed with wrapping addition. The final multiply by the prime `1_
 
 | Property | Mechanism |
 |---|---|
-| Cross-operation binding | `op_bits` encodes the operation symbol |
+| Cross-operation binding | `op_bits` encodes the fixed `"flow"` operation symbol |
 | Per-caller uniqueness | `nonce` is per-address, incremented atomically on use |
 | Amount binding | Both halves of `i128` included — no truncation |
 | Expiry binding | `deadline` included in hash — changing deadline invalidates hash |
+| Routing binding | Stored goal, bill, and policy IDs included in the hash |
 | Replay prevention | Nonces are recorded in a bounded ring-buffer and rejected on re-use |
 
 > **Note**: This is not a cryptographic MAC. It provides collision resistance sufficient to prevent accidental reuse, not adversarial forgery. For a production signing model, callers should use an off-chain Ed25519 signature over the same fields and the orchestrator should verify it with `remitwise_common::verify_signature`.
@@ -66,16 +77,21 @@ A new request hash must be computed whenever any of these change:
 - The caller's current nonce (e.g. after a previous signed call consumed it)
 - The `amount` parameter
 - The `deadline` (even by one second, since it is included in the hash)
+- Any stored routing ID (`goal_id`, `bill_id`, or `policy_id`)
 
 ## Example (Off-Chain Signing Flow)
 
 ```
 1. Fetch current nonce: get_nonce(caller_address)
 2. Choose deadline:      now + 600  (10 minutes)
-3. Compute hash:         compute_request_hash("exec_flow", nonce, amount, deadline)
-4. Submit tx:            execute_remittance_flow_signed(caller, amount, nonce, deadline, hash, params)
-5. On success:           nonce is incremented on-chain — repeat from step 1 for next call
+3. Read routing IDs:     goal_id, bill_id, policy_id
+4. Compute hash:         compute_request_hash("flow", nonce, amount, deadline, goal_id, bill_id, policy_id)
+5. Submit tx:            execute_remittance_flow_signed(caller, amount, nonce, deadline, hash, actor_epoch)
+6. On success:           nonce is incremented on-chain — repeat from step 1 for next call
 ```
+
+For a comparison with the remittance-split request hashes and their exact
+verification boundaries, see [Committed Hashes for Downstream Integrators](COMMITTED_HASHES.md).
 
 ## Error Reference
 
