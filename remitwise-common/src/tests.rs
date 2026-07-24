@@ -642,6 +642,32 @@ fn test_clamp_limit_u32_max_contract_regression() {
     assert_eq!(clamp_limit(clamped), clamped);
 }
 
+// ─── Timestamp::seconds_until ────────────────────────────────────────────────
+
+/// A future target returns the exact distance in seconds.
+#[test]
+fn test_timestamp_seconds_until_future_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_300), 300);
+}
+
+/// A target equal to now has no remaining distance.
+#[test]
+fn test_timestamp_seconds_until_equal_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_000), 0);
+}
+
+/// A past target saturates at zero instead of underflowing.
+#[test]
+fn test_timestamp_seconds_until_past_target_saturates() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_300, 1_700_000_000), 0);
+}
+
+/// The helper remains overflow-safe at the upper `u64` boundary.
+#[test]
+fn test_timestamp_seconds_until_u64_max_boundary() {
+    assert_eq!(Timestamp::seconds_until(u64::MAX - 1, u64::MAX), 1);
+}
+
 // ─── verify_signature tests ──────────────────────────────────────────────────
 
 #[test]
@@ -959,8 +985,11 @@ fn test_require_active_pause_channel_active() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
     map.set(soroban_sdk::Symbol::short("PAYMENTS"), false);
-    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
-    
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
+    );
+
     // Channel is active (false), should not panic
     crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
@@ -971,8 +1000,11 @@ fn test_require_active_pause_channel_paused() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
     map.set(soroban_sdk::Symbol::short("PAYMENTS"), true);
-    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
-    
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
+    );
+
     // Channel is paused (true), should panic
     crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }

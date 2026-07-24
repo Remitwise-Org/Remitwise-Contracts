@@ -1,7 +1,9 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
+use soroban_sdk::{
+    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
+};
 
 pub mod tokens;
 pub use tokens::{
@@ -415,9 +417,9 @@ pub enum DustError {
 /// Guards that a transfer amount meets the minimum threshold to prevent dust spam.
 ///
 /// # Threat model
-/// Without a minimum transfer bound, an attacker could repeatedly trigger token 
-/// transfers of 1 minor unit (e.g., 1 stroop). This could be used to grief the 
-/// network (wasting block space or gas) and the application (generating many 
+/// Without a minimum transfer bound, an attacker could repeatedly trigger token
+/// transfers of 1 minor unit (e.g., 1 stroop). This could be used to grief the
+/// network (wasting block space or gas) and the application (generating many
 /// events or consuming rate limits) while moving virtually no economic value.
 ///
 /// # Cost
@@ -795,6 +797,22 @@ pub enum TimeError {
     InvalidPeriod = 7,
 }
 
+/// Namespace for shared timestamp helpers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Timestamp;
+
+impl Timestamp {
+    /// Returns the number of whole seconds from `now` until `target`.
+    ///
+    /// The result saturates at `0` when `target <= now`, so callers can measure
+    /// future distance without risking underflow or writing their own
+    /// `saturating_sub`/guard pattern.
+    #[inline(always)]
+    pub fn seconds_until(now: u64, target: u64) -> u64 {
+        target.saturating_sub(now)
+    }
+}
+
 /// Validates that a requested period is logically ordered.
 ///
 /// # Errors
@@ -893,10 +911,7 @@ pub fn register_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureEr
 
 /// Requires the supplied verifier public key to be registered before an external
 /// attestation can be consumed.
-pub fn require_registered_verifier(
-    env: &Env,
-    public_key: &[u8],
-) -> Result<(), SignatureError> {
+pub fn require_registered_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureError> {
     let pk_arr: [u8; 32] = public_key
         .try_into()
         .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
