@@ -49,25 +49,12 @@ pub enum InsuranceError {
     UnsupportedCombination = 9,
     InvalidExternalRef = 10,
     MaxPoliciesReached = 11,
-    /// Returned by `reactivate_policy` when the target policy is already active.
     PolicyAlreadyActive = 12,
-    /// Returned by `deactivate_policy` when the target policy is already inactive.
-    /// Distinct from `PolicyInactive` (which signals a caller trying to act *on*
-    /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
-    /// itself* is a no-op because the policy was never active (or was already
-    /// deactivated by a prior call).
-    PolicyAlreadyInactive = 17,
-    /// The requested schedule was not found.
-    ScheduleNotFound = 13,
-    /// The schedule is inactive (cancelled or deactivated).
-    InactiveSchedule = 14,
-    /// The schedule interval is below the minimum allowed value (1 hour).
-    ScheduleIntervalTooShort = 15,
-    /// The schedule lead time exceeds the maximum allowed value (1 year).
-    ScheduleLeadTimeTooLong = 16,
-    /// Returned by `reactivate_policy` when the deactivation tenure period
-    /// (`MAX_TENURE_SECS`) has not yet elapsed since deactivation.
-    PolicyDeactivationTooSoon = 18,
+    PolicyAlreadyInactive = 13,
+    ScheduleNotFound = 14,
+    InactiveSchedule = 15,
+    ScheduleIntervalTooShort = 16,
+    ScheduleLeadTimeTooLong = 17,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -715,7 +702,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactiv"), symbol_short!("policy")),
+            (symbol_short!("reactivat"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
