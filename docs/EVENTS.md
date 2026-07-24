@@ -5,6 +5,7 @@ This document defines the complete event schema for all Remitwise smart contract
 **Version:** 1.0  
 **Last Updated:** 2026-02-25  
 **Compatibility:** Soroban SDK v21+
+**Versioning:** See [Event Versioning ADR](events-versioning.md)
 
 ---
 
