@@ -339,6 +339,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
 - [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
+- [Event Versioning Discipline](docs/EVENT_VERSIONING.md) - Backward-compatibility rules, migration steps, and indexer guidelines for event schema changes
 
 ## Contracts
 
