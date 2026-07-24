@@ -2466,3 +2466,114 @@ fn test_initialize_split_percentages_invalid_sum() {
         Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
     );
 }
+
+// ── clamp_limit pagination tests for get_audit_log ───────────────────────────
+//
+// Three cases lock the pagination-limit normalisation contract used by
+// `get_audit_log` via `remitwise_common::clamp_limit`:
+//   1. `limit == 0`  → treated as DEFAULT_PAGE_LIMIT (20)
+//   2. `limit > MAX_PAGE_LIMIT` → clamped to MAX_PAGE_LIMIT (50)
+//   3. `1 <= limit <= MAX_PAGE_LIMIT` → passes through unchanged
+//
+// Each call to `initialize_split` writes one audit entry, so re-initialising
+// via separate contract instances gives us the exact count we need.
+
+/// A zero limit must be normalised to DEFAULT_PAGE_LIMIT (20).
+///
+/// Seed 25 audit entries (> DEFAULT_PAGE_LIMIT) so the page is visibly
+/// bounded by the default rather than by the record count.
+#[test]
+fn get_audit_log_zero_limit_returns_default_page_limit() {
+    use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
+
+    let env = Env::default();
+    // Seed 25 entries: each call to setup_split / initialize_split appends one
+    // audit entry.  We create a fresh contract per call so entries accumulate.
+    let total: u32 = DEFAULT_PAGE_LIMIT + 5;
+    // Use a single contract instance and reinitialise via update_split_config,
+    // which also appends an audit entry each time.
+    let harness = setup_split(&env, 50, 30, 15, 5);
+    let client = &harness.client;
+    let owner = &harness.owner;
+
+    // update_split_config appends an audit entry on every call.
+    for _ in 1..total {
+        client.update_split_config(owner, &50, &30, &15, &5);
+    }
+
+    let page = client.get_audit_log(&0, &0);
+    assert_eq!(
+        page.items.len(),
+        DEFAULT_PAGE_LIMIT,
+        "limit=0 must be normalised to DEFAULT_PAGE_LIMIT={DEFAULT_PAGE_LIMIT}, \
+         not return all {total} records"
+    );
+    assert_eq!(page.count, DEFAULT_PAGE_LIMIT);
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be non-zero when more pages remain"
+    );
+    let _ = MAX_PAGE_LIMIT; // keep import used
+}
+
+/// An oversized limit must be clamped to MAX_PAGE_LIMIT (50).
+///
+/// Seed 55 audit entries (> MAX_PAGE_LIMIT) so the page is visibly bounded
+/// by the maximum rather than by the record count.
+#[test]
+fn get_audit_log_oversized_limit_clamped_to_max_page_limit() {
+    use remitwise_common::MAX_PAGE_LIMIT;
+
+    let env = Env::default();
+    let total: u32 = MAX_PAGE_LIMIT + 5;
+    let harness = setup_split(&env, 50, 30, 15, 5);
+    let client = &harness.client;
+    let owner = &harness.owner;
+
+    for _ in 1..total {
+        client.update_split_config(owner, &50, &30, &15, &5);
+    }
+
+    let page = client.get_audit_log(&0, &u32::MAX);
+    assert_eq!(
+        page.items.len(),
+        MAX_PAGE_LIMIT,
+        "limit=u32::MAX must be clamped to MAX_PAGE_LIMIT={MAX_PAGE_LIMIT}"
+    );
+    assert_eq!(page.count, MAX_PAGE_LIMIT);
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be non-zero when more pages remain"
+    );
+}
+
+/// A limit within [1, MAX_PAGE_LIMIT] must pass through unchanged.
+#[test]
+fn get_audit_log_in_range_limit_passes_through_unchanged() {
+    use remitwise_common::MAX_PAGE_LIMIT;
+
+    let env = Env::default();
+    let requested_limit: u32 = 7;
+    assert!(requested_limit >= 1 && requested_limit <= MAX_PAGE_LIMIT);
+
+    let total: u32 = requested_limit + 3;
+    let harness = setup_split(&env, 50, 30, 15, 5);
+    let client = &harness.client;
+    let owner = &harness.owner;
+
+    for _ in 1..total {
+        client.update_split_config(owner, &50, &30, &15, &5);
+    }
+
+    let page = client.get_audit_log(&0, &requested_limit);
+    assert_eq!(
+        page.items.len(),
+        requested_limit,
+        "in-range limit={requested_limit} must be returned unmodified"
+    );
+    assert_eq!(page.count, requested_limit);
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be non-zero when more pages remain"
+    );
+}

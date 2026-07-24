@@ -1014,4 +1014,134 @@ mod tests {
         let err = c.try_batch_pay_premiums(&owner, &ids).unwrap_err().unwrap();
         assert_eq!(err, InsuranceError::PolicyNotFound);
     }
+
+    // ── clamp_limit pagination tests for get_deactivated_policies ─────────────
+    //
+    // Three cases lock the pagination-limit normalisation contract used by
+    // `get_deactivated_policies`:
+    //   1. `limit == 0`  → treated as DEFAULT_PAGE_LIMIT (20)
+    //   2. `limit > MAX_PAGE_LIMIT` → clamped to MAX_PAGE_LIMIT (50)
+    //   3. `1 <= limit <= MAX_PAGE_LIMIT` → passes through unchanged
+
+    /// A zero limit must be normalised to DEFAULT_PAGE_LIMIT (20).
+    ///
+    /// Seed 25 deactivated policies so the page is visibly bounded by the
+    /// default rather than by the actual record count.
+    #[test]
+    fn get_deactivated_policies_zero_limit_returns_default_page_limit() {
+        use remitwise_common::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+
+        // Create and deactivate 25 policies (> DEFAULT_PAGE_LIMIT=20).
+        let total: u32 = DEFAULT_PAGE_LIMIT + 5;
+        for i in 0..total {
+            let name = String::from_str(&env, &format!("P{}", i));
+            let id = c.create_policy(
+                &owner,
+                &name,
+                &CoverageType::Health,
+                &5_000_000i128,
+                &50_000_000i128,
+            );
+            c.deactivate_policy(&owner, &id);
+        }
+
+        let page = c.get_deactivated_policies(&owner, &0, &0);
+        assert_eq!(
+            page.items.len(),
+            DEFAULT_PAGE_LIMIT,
+            "limit=0 must be normalised to DEFAULT_PAGE_LIMIT={DEFAULT_PAGE_LIMIT}, \
+             not return all {total} records"
+        );
+        assert_eq!(page.count, DEFAULT_PAGE_LIMIT);
+        // More pages exist because total > DEFAULT_PAGE_LIMIT.
+        assert!(
+            page.next_cursor > 0,
+            "next_cursor must be non-zero when more pages remain"
+        );
+        let _ = MAX_PAGE_LIMIT; // keep import used
+    }
+
+    /// An oversized limit must be clamped to MAX_PAGE_LIMIT (50).
+    ///
+    /// Seed 55 deactivated policies so the page is visibly bounded by the
+    /// maximum rather than by the actual record count.
+    #[test]
+    fn get_deactivated_policies_oversized_limit_clamped_to_max_page_limit() {
+        use remitwise_common::MAX_PAGE_LIMIT;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+
+        let total: u32 = MAX_PAGE_LIMIT + 5;
+        for i in 0..total {
+            let name = String::from_str(&env, &format!("P{}", i));
+            let id = c.create_policy(
+                &owner,
+                &name,
+                &CoverageType::Health,
+                &5_000_000i128,
+                &50_000_000i128,
+            );
+            c.deactivate_policy(&owner, &id);
+        }
+
+        let page = c.get_deactivated_policies(&owner, &0, &u32::MAX);
+        assert_eq!(
+            page.items.len(),
+            MAX_PAGE_LIMIT,
+            "limit=u32::MAX must be clamped to MAX_PAGE_LIMIT={MAX_PAGE_LIMIT}"
+        );
+        assert_eq!(page.count, MAX_PAGE_LIMIT);
+        assert!(
+            page.next_cursor > 0,
+            "next_cursor must be non-zero when more pages remain"
+        );
+    }
+
+    /// A limit within [1, MAX_PAGE_LIMIT] must pass through unchanged.
+    #[test]
+    fn get_deactivated_policies_in_range_limit_passes_through_unchanged() {
+        use remitwise_common::MAX_PAGE_LIMIT;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+
+        let requested_limit: u32 = 7;
+        assert!(requested_limit >= 1 && requested_limit <= MAX_PAGE_LIMIT);
+
+        // Seed more records than the requested limit.
+        let total: u32 = requested_limit + 3;
+        for i in 0..total {
+            let name = String::from_str(&env, &format!("P{}", i));
+            let id = c.create_policy(
+                &owner,
+                &name,
+                &CoverageType::Health,
+                &5_000_000i128,
+                &50_000_000i128,
+            );
+            c.deactivate_policy(&owner, &id);
+        }
+
+        let page = c.get_deactivated_policies(&owner, &0, &requested_limit);
+        assert_eq!(
+            page.items.len(),
+            requested_limit,
+            "in-range limit={requested_limit} must be returned unmodified"
+        );
+        assert_eq!(page.count, requested_limit);
+        assert!(
+            page.next_cursor > 0,
+            "next_cursor must be non-zero when more pages remain"
+        );
+    }
 }
