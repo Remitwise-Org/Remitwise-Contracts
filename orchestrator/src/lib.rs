@@ -36,26 +36,6 @@ mod interface {
         fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
     }
 
-    /// Compensation / reverse interfaces for rollback support.
-    /// These are expected to be implemented by the respective downstream contracts.
-    /// If a contract does not implement compensation, the orchestrator records
-    /// the partial state and surfaces `RemittanceFlowRolledBack` without attempting
-    /// the reverse call.
-    #[contractclient(name = "SavingsGoalsCompClient")]
-    pub trait SavingsGoalsCompInterface {
-        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
-    }
-
-    #[contractclient(name = "BillPaymentsCompClient")]
-    pub trait BillPaymentsCompInterface {
-        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
-    }
-
-    #[contractclient(name = "InsuranceCompClient")]
-    pub trait InsuranceCompInterface {
-        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
-    }
-
     /// External token contract interface used by `claim_rewards_summary_external`.
     ///
     /// Follows the standard Stellar Asset Contract / SEP-41 surface: only the
@@ -91,6 +71,7 @@ pub enum FlowStep {
 }
 
 use remitwise_common::{
+    reversible_op::{BillPaymentsReversibleClient, SavingsGoalsReversibleClient},
     EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -1365,8 +1346,8 @@ impl Orchestrator {
             Some(a) => a,
             None => return,
         };
-        let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
-        client.remove_from_goal(executor, &goal_id, &amount);
+        let client = SavingsGoalsReversibleClient::new(env, &sg_addr);
+        let _ = client.remove_from_goal(executor, &goal_id, &amount);
     }
 
     /// Compensate a bill payment if it was applied.
@@ -1378,8 +1359,8 @@ impl Orchestrator {
             Some(a) => a,
             None => return,
         };
-        let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
-        client.reverse_payment(executor, &bill_id, &amount);
+        let client = BillPaymentsReversibleClient::new(env, &bp_addr);
+        let _ = client.reverse_payment(executor, &bill_id, &amount);
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {

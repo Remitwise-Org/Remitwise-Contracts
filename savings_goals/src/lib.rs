@@ -1,6 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
+    reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
@@ -258,6 +259,7 @@ pub mod pause_functions {
     pub const UNLOCK: Symbol = symbol_short!("unlock");
     pub const ARCHIVE: Symbol = symbol_short!("archive");
     pub const RESTORE: Symbol = symbol_short!("restore");
+    pub const REMOVE_FROM: Symbol = symbol_short!("rem_goal");
 }
 
 #[contracttype]
@@ -2849,6 +2851,80 @@ impl SavingsGoalContract {
             .unwrap_or_else(|| Vec::new(env));
         ids.push_back(schedule_id);
         env.storage().persistent().set(&key, &ids);
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl SavingsGoalsReversible for SavingsGoalContract {
+    /// Remove `amount` from the specified goal (compensation for `add_to_goal`).
+    ///
+    /// Skips lock/time-lock checks so that compensation can proceed even when
+    /// a goal is locked. Returns `Ok(false)` when the goal's current_amount is
+    /// already zero (idempotent no-op).
+    fn remove_from_goal(
+        env: Env,
+        user: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Self::require_not_paused(&env, pause_functions::REMOVE_FROM);
+        Self::extend_instance_ttl(&env);
+
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
+            Some(g) => g,
+            None => return Err(ReversibleOpError::NotFound),
+        };
+
+        if goal.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if goal.current_amount == 0 {
+            return Ok(false);
+        }
+
+        let effective = if amount > goal.current_amount {
+            goal.current_amount
+        } else {
+            amount
+        };
+
+        goal.current_amount = goal
+            .current_amount
+            .checked_sub(effective)
+            .ok_or(ReversibleOpError::InvalidState)?;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("funds_rem"),
+            FundsWithdrawnEvent {
+                goal_id,
+                owner: user.clone(),
+                amount: effective,
+                new_total: goal.current_amount,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(true)
     }
 }
 
