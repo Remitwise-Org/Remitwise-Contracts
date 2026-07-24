@@ -319,6 +319,7 @@ To run an example, use `cargo run --example <example_name>`:
 ## Documentation
 
 - [Contributor Overview](docs/CONTRIBUTOR_OVERVIEW.md) - Onboarding guide for new contributors
+- [ADR: Ban unwrap in Release Builds](docs/adr-ban-unwrap-in-release.md) - Why unwrap and panic are forbidden in production contract code
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
