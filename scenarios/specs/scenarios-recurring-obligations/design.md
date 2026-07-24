@@ -165,13 +165,13 @@ _A property is a characteristic or behavior that should hold true across all val
 
 ### Property 1: Split allocation invariant
 
-_For any_ positive total remittance amount and any valid split configuration (four percentages each in [0,100] summing to 100), the sum of all values returned by `calculate_split` must equal the total remittance amount.
+_For any_ positive total remittance amount and any valid split configuration (four percentages each in [0,10_000] summing to 10_000), the sum of all values returned by `calculate_split` must equal the total remittance amount.
 
 **Validates: Requirements 2.4, 2.5**
 
 ### Property 2: Invalid percentages rejected
 
-_For any_ combination of four percentages that do not sum to exactly 100 (or where any individual value exceeds 100), `initialize_split` must return `RemittanceSplitError::InvalidPercentages`.
+_For any_ combination of four percentages that do not sum to exactly 10_000 (or where any individual value exceeds 10_000), `initialize_split` must return `RemittanceSplitError::PercentageOutOfRange` (if any field > 10_000) or `RemittanceSplitError::PercentagesDoNotSumTo100` (if fields are in range but don't sum to 10_000).
 
 **Validates: Requirements 2.3**
 
@@ -253,7 +253,7 @@ _For any_ valid scenario state, `FinancialHealthReport.health_score.score` must 
 
 | Scenario                                                | Expected Behavior                                                         |
 | ------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `initialize_split` with percentages not summing to 100  | Returns `RemittanceSplitError::InvalidPercentages`; test must not proceed |
+| `initialize_split` with percentages not summing to 10_000  | Returns `RemittanceSplitError::PercentagesDoNotSumTo100`; test must not proceed |
 | `create_bill` with `due_date < current_ledger_time`     | Returns `BillPaymentsError::InvalidDueDate`; test must not proceed        |
 | `pay_premium` on non-existent policy ID                 | Returns `false`; test asserts this outcome (Requirement 4.5)              |
 | `reporting.init` or `configure_addresses` returns error | Test panics with descriptive message                                      |

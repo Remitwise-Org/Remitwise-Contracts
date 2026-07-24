@@ -2440,7 +2440,7 @@ fn test_initialize_split_percentage_out_of_range() {
     let owner = Address::generate(&env);
     let token_addr = Address::generate(&env);
 
-    // Call try_initialize_split with spending_percent = 10_001
+    // Call try_initialize_split with spending_percent = 10_001 (> 10_000)
     let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
 
     assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
@@ -2458,11 +2458,53 @@ fn test_initialize_split_percentages_invalid_sum() {
     let owner = Address::generate(&env);
     let token_addr = Address::generate(&env);
 
-    // Call try_initialize_split with sum = 9_999
-    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
+    // Call try_initialize_split with sum = 9_999 (!= 10_000)
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &999);
 
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
     );
+}
+
+#[test]
+fn test_update_split_percentage_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Initialize with valid percentages first (sum = 10_000)
+    client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
+
+    // Try to update with spending_percent > 10_000
+    let result = client.try_update_split(&owner, &1, &10_001, &0, &0, &0);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
+}
+
+#[test]
+fn test_update_split_percentages_invalid_sum() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Initialize with valid percentages first (sum = 10_000)
+    client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
+
+    // Try to update with percentages that don't sum to 10_000 (sum = 9_999)
+    let result = client.try_update_split(&owner, &1, &4_000, &3_000, &2_000, &999);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
 }
