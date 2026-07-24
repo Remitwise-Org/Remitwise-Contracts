@@ -3445,6 +3445,7 @@ mod testsuit {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(clippy::enum_variant_names)]
     enum Operation {
         CreateBill {
             amount: i128,
@@ -3497,8 +3498,8 @@ mod testsuit {
             });
 
             for i in 1..idx_ids.len() {
-                let prev = idx_ids.get((i - 1) as u32).unwrap();
-                let curr = idx_ids.get(i as u32).unwrap();
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
                 assert!(
                     prev < curr,
                     "Currency index must be maintained in strictly ascending order: prev={} curr={}",
@@ -3535,8 +3536,8 @@ mod testsuit {
             });
 
             for i in 1..idx_ids.len() {
-                let prev = idx_ids.get((i - 1) as u32).unwrap();
-                let curr = idx_ids.get(i as u32).unwrap();
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
                 assert!(prev < curr, "Index must be strictly ascending after add-only operations");
             }
         }
