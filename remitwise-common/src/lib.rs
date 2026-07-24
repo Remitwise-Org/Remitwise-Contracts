@@ -148,6 +148,65 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Symbol length validation
+// ---------------------------------------------------------------------------
+
+/// Maximum byte length for a `symbol_short!` storage key (Soroban SDK constraint).
+///
+/// The `symbol_short!` compile-time macro accepts at most 9 ASCII bytes. Every
+/// documented storage key in this workspace is kept at or below this limit so
+/// keys can be constructed at compile time without heap allocation. Values in
+/// the range `1..=SYMBOL_SHORT_MAX_LEN` are valid for `symbol_short!`; values
+/// above this cap require the heap-allocating `Symbol::new(&env, ...)` runtime
+/// constructor and therefore cannot be used as constant storage keys.
+pub const SYMBOL_SHORT_MAX_LEN: u32 = 9;
+
+/// Error returned when a candidate symbol name fails the length check enforced
+/// by [`require_valid_symbol_length`].
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SymbolLengthError {
+    /// The symbol name is empty (zero bytes).
+    Empty = 1,
+    /// The symbol name exceeds [`SYMBOL_SHORT_MAX_LEN`] bytes.
+    TooLong = 2,
+}
+
+/// Validates that a candidate symbol name is within the bounds accepted by the
+/// `symbol_short!` compile-time macro (1–9 bytes inclusive).
+///
+/// All documented storage keys in this workspace use `symbol_short!` so they
+/// are embedded as immediate values in contract bytecode rather than heap
+/// allocations. This function is the runtime guard that enforces the same
+/// constraint for dynamically constructed key names.
+///
+/// # Arguments
+/// * `name` — the raw byte slice to validate.
+///
+/// # Returns
+/// * `Ok(())` when `1 <= name.len() <= SYMBOL_SHORT_MAX_LEN`.
+/// * `Err(SymbolLengthError::Empty)` when `name.len() == 0`.
+/// * `Err(SymbolLengthError::TooLong)` when `name.len() > SYMBOL_SHORT_MAX_LEN`.
+///
+/// # Example
+/// ```ignore
+/// use remitwise_common::{require_valid_symbol_length, SymbolLengthError};
+/// assert_eq!(require_valid_symbol_length(b"CONFIG"), Ok(()));
+/// assert_eq!(require_valid_symbol_length(b""), Err(SymbolLengthError::Empty));
+/// assert_eq!(require_valid_symbol_length(b"TOOLONGKEY"), Err(SymbolLengthError::TooLong));
+/// ```
+pub fn require_valid_symbol_length(name: &[u8]) -> Result<(), SymbolLengthError> {
+    if name.is_empty() {
+        return Err(SymbolLengthError::Empty);
+    }
+    if name.len() as u32 > SYMBOL_SHORT_MAX_LEN {
+        return Err(SymbolLengthError::TooLong);
+    }
+    Ok(())
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 

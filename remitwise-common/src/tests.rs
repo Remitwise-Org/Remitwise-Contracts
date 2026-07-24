@@ -633,3 +633,74 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
     assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
 }
+
+// ─── require_valid_symbol_length ─────────────────────────────────────────────
+//
+// These tests lock in the boundary contract for [`require_valid_symbol_length`]:
+//
+// - Empty input (0 bytes)  → Err(SymbolLengthError::Empty)
+// - 1-byte input           → Ok(())   (lower inclusive boundary)
+// - 9-byte input           → Ok(())   (upper inclusive boundary for symbol_short!)
+// - 10-byte input          → Err(SymbolLengthError::TooLong)  (one past the cap)
+//
+// The 9-byte cap matches the Soroban SDK `symbol_short!` macro constraint that
+// is enforced across all storage keys in this workspace (see STORAGE_LAYOUT.md
+// and `testutils/tests/storage_key_naming_test.rs`).  These tests are purely
+// concerned with the project-level validation function, not with the SDK macro
+// itself (which has its own coverage in symbol_length_boundary_test.rs).
+
+/// Empty byte slice is rejected with Empty.
+#[test]
+fn require_valid_symbol_length_empty_input_returns_empty_error() {
+    assert_eq!(
+        require_valid_symbol_length(b""),
+        Err(SymbolLengthError::Empty),
+        "empty name must be rejected with SymbolLengthError::Empty"
+    );
+}
+
+/// A single-byte name is the smallest valid symbol and must be accepted.
+#[test]
+fn require_valid_symbol_length_one_char_returns_ok() {
+    assert_eq!(
+        require_valid_symbol_length(b"A"),
+        Ok(()),
+        "1-byte name is the lower boundary and must be accepted"
+    );
+}
+
+/// A 9-byte name is the upper boundary accepted by `symbol_short!` and must pass.
+#[test]
+fn require_valid_symbol_length_nine_chars_returns_ok() {
+    // Exactly SYMBOL_SHORT_MAX_LEN bytes.
+    const NAME: &[u8] = b"NINE_BYTE"; // 9 bytes
+    const _: () = assert!(NAME.len() == 9);
+    assert_eq!(
+        require_valid_symbol_length(NAME),
+        Ok(()),
+        "9-byte name is exactly at the symbol_short! cap and must be accepted"
+    );
+}
+
+/// A 10-byte name is one past the `symbol_short!` cap and must be rejected.
+#[test]
+fn require_valid_symbol_length_ten_chars_returns_too_long_error() {
+    const NAME: &[u8] = b"TEN_BYTES_"; // 10 bytes
+    const _: () = assert!(NAME.len() == 10);
+    assert_eq!(
+        require_valid_symbol_length(NAME),
+        Err(SymbolLengthError::TooLong),
+        "10-byte name exceeds the symbol_short! cap and must be rejected with SymbolLengthError::TooLong"
+    );
+}
+
+/// Additional boundary: names much longer than the cap are also rejected.
+#[test]
+fn require_valid_symbol_length_very_long_input_returns_too_long_error() {
+    let name = b"TOOLONGKEYNAME"; // 14 bytes
+    assert_eq!(
+        require_valid_symbol_length(name),
+        Err(SymbolLengthError::TooLong),
+        "names well above the cap must also be rejected with SymbolLengthError::TooLong"
+    );
+}
