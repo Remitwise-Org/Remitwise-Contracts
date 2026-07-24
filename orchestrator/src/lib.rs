@@ -9,7 +9,7 @@ use soroban_sdk::{
 
 #[allow(dead_code)]
 mod interface {
-    use soroban_sdk::{contractclient, Address, Env, Vec};
+    use soroban_sdk::{contractclient, Address, ConversionError, Env, Vec};
 
     #[contractclient(name = "FamilyWalletClient")]
     pub trait FamilyWalletInterface {
@@ -23,17 +23,37 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> bool;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> Result<(), ConversionError>;
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> bool;
+        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> Result<(), ConversionError>;
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> Result<(), ConversionError>;
+    }
+
+    /// Compensation / reverse interfaces for rollback support.
+    /// These are expected to be implemented by the respective downstream contracts.
+    /// If a contract does not implement compensation, the orchestrator records
+    /// the partial state and surfaces `RemittanceFlowRolledBack` without attempting
+    /// the reverse call.
+    #[contractclient(name = "SavingsGoalsCompClient")]
+    pub trait SavingsGoalsCompInterface {
+        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> Result<(), ConversionError>;
+    }
+
+    #[contractclient(name = "BillPaymentsCompClient")]
+    pub trait BillPaymentsCompInterface {
+        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128) -> Result<(), ConversionError>;
+    }
+
+    #[contractclient(name = "InsuranceCompClient")]
+    pub trait InsuranceCompInterface {
+        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> Result<(), ConversionError>;
     }
 
     /// External token contract interface used by `claim_rewards_summary_external`.
@@ -636,15 +656,12 @@ impl Orchestrator {
         let split = amount / 3;
         let remainder = amount - split * 3;
 
-        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr).add_to_goal(
-            &executor,
-            &goal_id,
-            &(split + remainder),
-        );
+        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
+            .add_to_goal(&executor, &goal_id, &(split + remainder)).is_ok();
         let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
-            .pay_bill(&executor, &bill_id, &split);
+            .pay_bill(&executor, &bill_id, &split).is_ok();
         let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
-            .pay_premium(&executor, &policy_id, &split);
+            .pay_premium(&executor, &policy_id, &split).is_ok();
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -1286,7 +1303,7 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            if !s_client.add_to_goal(caller, &routing.goal_id, &savings_amt) {
+        if s_client.add_to_goal(caller, &routing.goal_id, &savings_amt).is_err() {
                 return Err(OrchestratorError::CrossContractCallFailed);
             }
             savings_done = true;
@@ -1294,7 +1311,7 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            if !b_client.pay_bill(caller, &routing.bill_id, &bills_amt) {
+        if b_client.pay_bill(caller, &routing.bill_id, &bills_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1312,7 +1329,7 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            if !i_client.pay_premium(caller, &routing.policy_id, &insurance_amt) {
+        if i_client.pay_premium(caller, &routing.policy_id, &insurance_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1346,7 +1363,7 @@ impl Orchestrator {
             Some(a) => a,
             None => return,
         };
-        let client = SavingsGoalsReversibleClient::new(env, &sg_addr);
+        let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
         let _ = client.remove_from_goal(executor, &goal_id, &amount);
     }
 
@@ -1359,7 +1376,7 @@ impl Orchestrator {
             Some(a) => a,
             None => return,
         };
-        let client = BillPaymentsReversibleClient::new(env, &bp_addr);
+        let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
         let _ = client.reverse_payment(executor, &bill_id, &amount);
     }
 
@@ -1646,22 +1663,22 @@ mod tests_nonce_eviction {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> Result<(), ConversionError> {
             true
         }
     }
