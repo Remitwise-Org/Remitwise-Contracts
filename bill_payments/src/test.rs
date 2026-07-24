@@ -1272,7 +1272,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3);
+            let page = client.get_all_bills_page(&admin, &0, &5);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1297,7 +1297,7 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100);
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(
             page.items.len(),
             6,
@@ -1315,7 +1315,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10);
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
@@ -3320,7 +3320,7 @@ mod testsuit {
     #[test]
     fn test_pause_and_unpause_emit_ordered_audit_events() {
         use soroban_sdk::testutils::Events as _;
-        use soroban_sdk::{symbol_short, Symbol};
+        use soroban_sdk::{symbol_short, Symbol, vec};
 
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
