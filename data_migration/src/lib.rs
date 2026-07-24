@@ -61,6 +61,7 @@ use std::collections::{BTreeMap, HashMap};
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
 /// Format: `enc:v2:<base64>` — future version placeholder with stricter size cap.
+#[cfg(test)]
 const ENCRYPTED_PAYLOAD_PREFIX_V2: &str = "enc:v2:";
 
 /// Current encrypted payload schema version.
@@ -879,7 +880,7 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     })?;
 
     // Check version compatibility
-    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > MAX_SUPPORTED_ENCRYPTED_VERSION {
+    if !(MIN_SUPPORTED_ENCRYPTED_VERSION..=MAX_SUPPORTED_ENCRYPTED_VERSION).contains(&version) {
         return Err(MigrationError::UnsupportedEncryptedVersion {
             found: version,
             max: MAX_SUPPORTED_ENCRYPTED_VERSION,

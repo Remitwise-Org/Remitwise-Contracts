@@ -1,5 +1,3 @@
-#![no_std]
-
 /// Error type for overflow when converting u64 → u32.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConversionError {

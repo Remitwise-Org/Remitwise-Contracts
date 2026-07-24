@@ -526,6 +526,69 @@ where
     }
 }
 
+/// Canonicalizes a single label string into a `Symbol`.
+///
+/// Rules:
+/// - Leading and trailing ASCII whitespace is stripped.
+/// - ASCII uppercase letters are folded to lowercase.
+/// - The result must satisfy `Symbol`'s charset (`[a-zA-Z0-9_]` after folding)
+///   and length (`1..=32` bytes after trimming), otherwise this panics.
+///
+/// # Idempotency guarantee
+///
+/// Applying this function twice to any input yields the same `Symbol`:
+/// `canonicalise_symbol(env, &canonicalise_symbol(env, &x).to_string()) == canonicalise_symbol(env, &x)`.
+///
+/// # Whitespace round-trip
+///
+/// Inputs that differ only in leading/trailing whitespace produce identical
+/// canonical `Symbol` values: `"hello"`, `" hello"`, and `"hello "` all map
+/// to `Symbol("hello")`.
+///
+/// # Panics
+///
+/// - On empty or whitespace-only input (after trimming length is 0).
+/// - On input over 32 bytes (after trimming).
+/// - When the trimmed, lowercased content contains bytes outside `[a-z0-9_]`.
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    let len = input.len();
+    if len == 0 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+    let mut buf = [0u8; 256];
+    if len as usize > buf.len() {
+        panic!("symbol input is too long");
+    }
+    input.copy_into_slice(&mut buf[..len as usize]);
+
+    let s = core::str::from_utf8(&buf[..len as usize])
+        .unwrap_or_else(|_| panic!("symbol input is not valid UTF-8"));
+
+    let trimmed = s.trim();
+    let trimmed_len = trimmed.len();
+    if trimmed_len == 0 {
+        panic!("symbol input must contain at least one non-whitespace character");
+    }
+    if trimmed_len > 32 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+
+    let trimmed_bytes = trimmed.as_bytes();
+    let mut canonical = [0u8; 32];
+    for (i, &byte) in trimmed_bytes.iter().enumerate() {
+        canonical[i] = if byte.is_ascii_uppercase() {
+            byte.to_ascii_lowercase()
+        } else {
+            byte
+        };
+    }
+
+    let canonical_str = core::str::from_utf8(&canonical[..trimmed_len])
+        .unwrap_or_else(|_| panic!("canonicalised symbol is not valid UTF-8"));
+
+    Symbol::new(env, canonical_str)
+}
+
 /// Event emission helper
 pub struct RemitwiseEvents;
 
@@ -567,6 +630,7 @@ impl RemitwiseEvents {
 
         #[cfg(test)]
         {
+            use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
@@ -626,7 +690,8 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::testutils::Events;
+        use soroban_sdk::FromVal;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -639,23 +704,23 @@ impl RemitwiseEvents {
             "expected a 4-element Remitwise event topic tuple"
         );
         assert_eq!(
-            topics.get(0).unwrap(),
-            symbol_short!("Remitwise").into_val(env),
+            topics.get(0).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &symbol_short!("Remitwise")).get_payload(),
             "first topic must be the Remitwise marker"
         );
         assert_eq!(
-            topics.get(1).unwrap(),
-            expected_category.to_u32().into_val(env),
+            topics.get(1).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_category.to_u32()).get_payload(),
             "event category mismatch"
         );
         assert_eq!(
-            topics.get(2).unwrap(),
-            expected_priority.to_u32().into_val(env),
+            topics.get(2).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_priority.to_u32()).get_payload(),
             "event priority mismatch"
         );
         assert_eq!(
-            topics.get(3).unwrap(),
-            expected_action.into_val(env),
+            topics.get(3).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_action).get_payload(),
             "event action mismatch"
         );
 
@@ -685,7 +750,7 @@ mod assert_event_tests {
             &env,
             EventCategory::Access,
             EventPriority::High,
-            action,
+            action.clone(),
             (1u32, 2u32),
         );
 
@@ -922,9 +987,7 @@ mod encoding_stability_tests {
             }
         }
 
-        for v in [PolicyMode::Strict] {
-            cover_all_variants(v);
-        }
+        cover_all_variants(PolicyMode::Strict);
 
         let vec = Vec::from_array(&env, [PolicyMode::Strict]);
         let mut out = Vec::<PolicyMode>::new(&env);
