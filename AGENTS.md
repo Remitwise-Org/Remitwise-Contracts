@@ -17,21 +17,36 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `remitwise-common/src/tests.rs`: rewrote `ed25519::generate` / `ed25519::sign` helpers with `ed25519-dalek::SigningKey` / `Signer` (dev-dependency only)
 - `remitwise-common/src/tests.rs`: updated `verify_signature` tests — invalid signature tests changed from `assert_eq!(..., Err(SignatureError::VerificationFailed))` to `#[should_panic]`
 - `bill_payments/src/lib.rs`: fixed `&env` → `env` type mismatch (line 1722), fixed `next_bill` use-after-move (line 1772)
+- **This session (Issue #1148):** `remitwise-common/src/lib.rs`: added `canonicalise_symbol` function (takes `&soroban_sdk::String`, returns `Symbol`; strips leading/trailing whitespace, lowercases ASCII). 15 unit tests + 1 proptest added in `remitwise-common/src/tests.rs`.
+- `remitwise-common/Cargo.toml`: moved `ed25519-dalek` from dev-deps to regular deps (version `"2"`) to prevent CI resolving to v3.0.0 (incompatible with `soroban-env-host-21.2.1`).
+- `insurance/src/lib.rs`: fixed `symbol_short!("reactivated")` (too long, 11 > 9) → `Symbol::new(&env, "reactivated")`; fixed `PolicyAlreadyInactive` duplicate discriminant `12` → `52`; added `clamp_limit` to import; removed `mut` from `let mut active` (no mutation needed); fixed `Vec::new(&env)` → `Vec::new(env)` in `remove_active_policy`.
+- `data_migration/src/lib.rs`: fixed `manual_range_contains` clippy lint (`version < MIN || version > MAX` → `!range.contains`); gated `ENCRYPTED_PAYLOAD_PREFIX_V2` with `#[cfg(test)]` (only used in tests).
+- `reporting/src/utils.rs`: removed invalid `#![no_std]` (not at crate root).
+- `remittance_split/src/lib.rs`: added `#[allow(dead_code)]` to unused `STORAGE_OWNER_SCHED_IDS`.
+
+### Verified
+- `cargo check --workspace` — clean, no warnings.
+- `cargo clippy --workspace --lib -- -D warnings` — clean.
+- `cargo build --release --target wasm32-unknown-unknown` — clean (WASM release build).
+- `cargo test -p remitwise-common -- tests::` — all 14 `canonicalise_symbol` tests pass + proptest. 6 pre-existing emit_tests failures (unrelated).
 
 ### Remaining / Untested
-- `cargo build --release --target wasm32-unknown-unknown --workspace` not yet run locally
-- `cargo test -p remitwise-common` not yet run locally
-- CI (macOS runner) fails with stale cached errors — needs a clean checkout or `cargo clean` before build
-- `bill_payments/src/lib.rs` line 1763 may need `next_bill` variable reintroduction
+- CI (`check_ci.sh`) not yet run on CI runner — needs push and PR re-trigger.
+- 6 pre-existing `emit_tests` / `assert_event_tests` failures in `remitwise-common` — not introduced by this PR.
 
 ## Key Decisions
 - `verify_signature` uses `env.crypto().ed25519_verify(...)` which panics on verification failure (standard Soroban behavior); the `SignatureError::VerificationFailed` variant becomes unreachable
 - Invalid signature tests use `#[should_panic]` instead of asserting `Err(VerificationFailed)`
 - Pre-checks (signature length == 64, public key length == 32) still return `Err` variants
-- `ed25519-dalek` used as dev-dependency only (safe for test target); not added to lib dependencies (avoid WASM `std` conflicts)
+- `ed25519-dalek = "2"` added as regular dep (not dev-dep) to `remitwise-common` to constrain transitive resolution. Resolved safely for WASM because `soroban-env-host` already depends on it and compiles for `wasm32-unknown-unknown`.
+- Pre-existing warnings in `insurance`, `data_migration`, `reporting`, `remittance_split` fixed prophylactically to avoid CI clippy failures with `-D warnings`.
 
 ## File Changes
-- `/remitwise-common/src/lib.rs`: `verify_signature` function (lines 195–226)
-- `/remitwise-common/src/tests.rs`: `verify_signature` tests (lines 450–527)
-- `/remitwise-common/Cargo.toml`: added `ed25519-dalek`, `rand` as dev-dependencies
+- `/remitwise-common/src/lib.rs`: `canonicalise_symbol` function, `verify_signature` (lines 195–226)
+- `/remitwise-common/src/tests.rs`: 15 `canonicalise_symbol` tests + 1 proptest, `verify_signature` tests (lines 450–527)
+- `/remitwise-common/Cargo.toml`: `ed25519-dalek = "2"` added as regular dep, removed from dev-deps
 - `/bill_payments/src/lib.rs`: `&env` → `env` at line 1722, `next_bill` fix at line 1772
+- `/insurance/src/lib.rs`: `symbol_short!` → `Symbol::new`, discriminant fix, `clamp_limit` import, `mut` removed, `&env` → `env`
+- `/data_migration/src/lib.rs`: range contains fix, `#[cfg(test)]` gate on V2 prefix
+- `/reporting/src/utils.rs`: removed `#![no_std]`
+- `/remittance_split/src/lib.rs`: `#[allow(dead_code)]` on `STORAGE_OWNER_SCHED_IDS`
