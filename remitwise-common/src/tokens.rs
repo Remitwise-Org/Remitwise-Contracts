@@ -110,10 +110,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decimals_match_spec() {
-        assert_eq!(SupportedToken::XLM.decimals(), 7);
-        assert_eq!(SupportedToken::USDC.decimals(), 6);
-        assert_eq!(SupportedToken::EURC.decimals(), 7);
+    fn decimals_match_expected_values_for_every_supported_token() {
+        let expected = [
+            (SupportedToken::XLM, XLM_DECIMALS),
+            (SupportedToken::USDC, USDC_DECIMALS),
+            (SupportedToken::EURC, EURC_DECIMALS),
+        ];
+
+        for (token, decimals) in expected {
+            assert_eq!(token.decimals(), decimals, "{} decimals", token.currency_code());
+        }
     }
 
     #[test]
