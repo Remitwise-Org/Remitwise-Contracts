@@ -203,19 +203,19 @@ jobs:
           cargo audit --deny warnings
         continue-on-error: true
 
-      - name: Install cargo-geiger
-        run: |
-          if ! command -v cargo-geiger &> /dev/null; then
-            cargo install cargo-geiger --locked
-          fi
+  workspace-invariants:
+    name: Workspace Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
 
-      - name: Check for unsafe code
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check workspace invariants
         run: |
-          if command -v python3 >/dev/null 2>&1; then
-            python3 scripts/check_unsafe.py
-          else
-            python scripts/check_unsafe.py
-          fi
+          python3 scripts/check_workspace_invariants.py
+        continue-on-error: false
 
   storage-key-validation:
     name: Storage Key Naming Convention Validation
