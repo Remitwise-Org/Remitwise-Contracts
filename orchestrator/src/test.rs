@@ -656,6 +656,7 @@ fn test_execute_flow_signed_invalid_amount_zero() {
     let result = client.try_execute_remittance_flow_signed(
         &executor, &0,
         &0, &deadline, &hash,
+        &0u64,
     );
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
@@ -675,6 +676,7 @@ fn test_execute_flow_signed_invalid_amount_negative() {
     let result = client.try_execute_remittance_flow_signed(
         &executor, &(-100i128),
         &0, &deadline, &hash,
+        &0u64,
     );
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
@@ -694,6 +696,7 @@ fn test_execute_flow_signed_invalid_amount_i128_min() {
     let result = client.try_execute_remittance_flow_signed(
         &executor, &(i128::MIN),
         &0, &deadline, &hash,
+        &0u64,
     );
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
@@ -713,6 +716,7 @@ fn test_execute_flow_signed_valid_amount_minimum_positive() {
     let result = client.try_execute_remittance_flow_signed(
         &executor, &1,
         &0, &deadline, &hash,
+        &0u64,
     );
 
     assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
@@ -730,7 +734,7 @@ fn test_execute_flow_deadline_expired() {
     let deadline = env.ledger().timestamp(); // not strictly in the future
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
 
     assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
 }
@@ -746,7 +750,7 @@ fn test_execute_flow_deadline_too_far() {
 
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
 
     assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
 }
@@ -763,7 +767,7 @@ fn test_execute_flow_invalid_hash() {
     let bad_hash = 12345u64;
 
     let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &bad_hash);
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &bad_hash, &0u64);
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidNonce)));
 }
@@ -780,7 +784,7 @@ fn test_out_of_order_nonce_fails() {
 
     // Attempt to execute with nonce 5 when current nonce is 0
     let hash = compute_test_hash(&env, symbol_short!("flow"), 5, 1000, deadline);
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &5, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &5, &deadline, &hash, &0u64);
 
     assert_eq!(
         result,
@@ -808,7 +812,7 @@ fn test_multiple_addresses_independent_nonces() {
     // Execute for executor1 with nonce 0
     let hash1 = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
     let result1 =
-        client.try_execute_remittance_flow_signed(&executor1, &1000, &0, &deadline, &hash1);
+        client.try_execute_remittance_flow_signed(&executor1, &1000, &0, &deadline, &hash1, &0u64);
     assert!(result1.is_ok());
 
     // Executor1 nonce should be 1
@@ -820,7 +824,7 @@ fn test_multiple_addresses_independent_nonces() {
     // Executor2 can execute with nonce 0
     let hash2 = compute_test_hash(&env, symbol_short!("flow"), 0, 500, deadline);
     let result2 =
-        client.try_execute_remittance_flow_signed(&executor2, &500, &0, &deadline, &hash2);
+        client.try_execute_remittance_flow_signed(&executor2, &500, &0, &deadline, &hash2, &0u64);
     assert!(result2.is_ok(), "Executor2 should execute with nonce 0");
 }
 
@@ -839,7 +843,7 @@ fn test_request_hash_binding_prevents_parameter_swap() {
 
     // Try to execute with different amount but using hash from 1000
     let result =
-        client.try_execute_remittance_flow_signed(&executor, &5000, &0, &deadline, &hash_1000);
+        client.try_execute_remittance_flow_signed(&executor, &5000, &0, &deadline, &hash_1000, &0u64);
 
     assert_eq!(
         result,
@@ -862,7 +866,7 @@ fn test_deadline_window_prevents_old_requests() {
 
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, far_deadline);
     let result =
-        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &far_deadline, &hash);
+        client.try_execute_remittance_flow_signed(&executor, &1000, &0, &far_deadline, &hash, &0u64);
 
     assert_eq!(
         result,
@@ -908,7 +912,7 @@ fn test_signed_deadline_at_window_edge_accepted() {
     let deadline = now + MAX_DEADLINE_WINDOW_SECS; // exactly at the edge
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
 
     assert_eq!(
         result,
@@ -934,7 +938,7 @@ fn test_signed_deadline_one_past_window_rejected() {
     let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1; // one second too far
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
 
     assert_eq!(
         result,
@@ -959,7 +963,7 @@ fn test_signed_deadline_in_past_rejected() {
     let deadline = now - 1; // strictly in the past
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
 
     assert_eq!(
         result,
@@ -988,14 +992,14 @@ fn test_signed_in_window_replay_with_used_nonce_rejected() {
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
     // First call succeeds and consumes nonce 0.
-    let first = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let first = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
     assert_eq!(first, Ok(Ok(true)));
     assert_eq!(client.get_nonce(&executor), 1);
 
     // Replay the identical request while the deadline is still in-window. The
     // deadline and hash checks pass, but the used-nonce check fires before the
     // sequential counter check and rejects the stale nonce.
-    let replay = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let replay = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
     assert_eq!(
         replay,
         Err(Ok(OrchestratorError::NonceAlreadyUsed)),
@@ -1054,7 +1058,7 @@ fn test_rollback_savings_step_returns_cross_contract_error() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
     // First write step (savings) fails — nothing to compensate.
     assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
     // Lock must be released.
@@ -1079,7 +1083,7 @@ fn test_rollback_bill_step_triggers_compensation() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
     // Bill step failed after savings succeeded → rollback.
     assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
     // Lock must be released.
@@ -1104,7 +1108,7 @@ fn test_rollback_insurance_step_triggers_compensation() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
     // Insurance step failed after savings + bills → rollback.
     assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
     // Lock must be released.
@@ -1129,7 +1133,7 @@ fn test_rollback_lock_released_and_stats_updated_on_failure() {
     let deadline = signed_flow_deadline(&env);
 
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
-    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
 
     // Verify the error is the expected orchestration error.
     // Note: Soroban's try_call path rolls back ALL storage on error return,
@@ -1169,7 +1173,7 @@ fn test_rollback_spending_check_rejection() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
     // Spending limit check is pre-validation (read-only), fails before any writes.
     assert_eq!(result, Err(Ok(OrchestratorError::Unauthorized)));
     // Lock must be released (lock was never acquired — error before lock scope).
@@ -1192,7 +1196,7 @@ fn test_rollback_audit_records_failure_with_step_context() {
     let deadline = signed_flow_deadline(&env);
     let hash = signed_flow_hash(&env, &executor, 10000, 0, deadline);
 
-    let _ = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash);
+    let _ = client.try_execute_remittance_flow_signed(&executor, &10000, &0, &deadline, &hash, &0u64);
 
     // Note: try_call rolls back the audit storage on error, so we verify
     // the failure path exists via the other tests that check error values.
@@ -1218,7 +1222,7 @@ fn test_signed_deadline_rejected_does_not_mutate_stats() {
     let now = env.ledger().timestamp();
     let deadline = now + MAX_DEADLINE_WINDOW_SECS + 1;
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
-    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+    let result = client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash, &0u64);
     assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
 
     let after = client.get_execution_stats().unwrap();
@@ -1454,7 +1458,7 @@ fn test_unsigned_and_signed_flow_stats_parity() {
 
     let deadline = env.ledger().timestamp() + 1000;
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
-    assert!(client.execute_remittance_flow_signed(&signed_executor, &1000, &0, &deadline, &hash));
+    assert!(client.execute_remittance_flow_signed(&signed_executor, &1000, &0, &deadline, &hash, &0u64));
 
     let after_signed = client.get_execution_stats().unwrap();
     assert_eq!(after_signed.total_executions, 2);
@@ -2030,7 +2034,7 @@ fn test_epoch_mismatch_rejects_stale_token() {
     assert_eq!(current_epoch, 0);
 
     // Bump epoch to 1
-    let new_epoch = client.bump_actor_epoch(&owner).unwrap();
+    let new_epoch = client.bump_actor_epoch(&owner);
     assert_eq!(new_epoch, 1);
 
     // Try to execute with stale epoch (0) - should fail with EpochMismatch
