@@ -2,9 +2,11 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    check_and_increment_rate_limit, clamp_limit,
+    reversible_op::{BillPaymentsReversible, ReversibleOpError},
+    EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
+    CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{
@@ -106,6 +108,7 @@ pub mod pause_functions {
     pub const ADD_TAGS: soroban_sdk::Symbol = symbol_short!("add_tags");
     pub const REM_TAGS: soroban_sdk::Symbol = symbol_short!("rem_tags");
     pub const SET_EXT_REF: soroban_sdk::Symbol = symbol_short!("ext_ref");
+    pub const REVERSE_PAYMENT: soroban_sdk::Symbol = symbol_short!("rev_pay");
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
@@ -3400,6 +3403,64 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&STORAGE_UNPAID_TOTALS, &totals);
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl BillPaymentsReversible for BillPayments {
+    /// Reverse a previous `pay_bill` call for the given bill.
+    ///
+    /// Marks the bill as unpaid and restores the unpaid-total tracker.
+    /// Returns `Ok(false)` when the bill was already unpaid (idempotent).
+    fn reverse_payment(
+        env: Env,
+        user: Address,
+        bill_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
+            .map_err(|_| ReversibleOpError::InvalidState)?;
+        Self::extend_instance_ttl(&env);
+
+        let mut bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut bill = bills.get(bill_id).ok_or(ReversibleOpError::NotFound)?;
+
+        if bill.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if !bill.paid {
+            return Ok(false);
+        }
+
+        bill.paid = false;
+        bill.paid_at = None;
+
+        let reversed_amount = bill.amount;
+        bills.set(bill_id, bill);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILLS"), &bills);
+
+        Self::adjust_unpaid_total(&env, &user, reversed_amount);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("reverse"),
+            (bill_id, user, reversed_amount),
+        );
+
+        Ok(true)
     }
 }
 

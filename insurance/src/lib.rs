@@ -1,6 +1,7 @@
 #![no_std]
 use remitwise_common::{
-    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
+    reversible_op::{InsuranceReversible, ReversibleOpError},
+    CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -1421,6 +1422,54 @@ impl Insurance {
         }
 
         executed
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl InsuranceReversible for Insurance {
+    /// Reverse a premium payment for the given policy (compensation for `pay_premium`).
+    ///
+    /// Validates the policy exists, is active, and is owned by `user`, then
+    /// resets `last_payment_at` to zero. Returns `Ok(false)` if the policy
+    /// was already in its default state.
+    fn reverse_premium(
+        env: Env,
+        user: Address,
+        policy_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Self::require_initialized(&env).map_err(|_| ReversibleOpError::InvalidState)?;
+
+        let mut policy = Self::load_policy(&env, policy_id)
+            .map_err(|_| ReversibleOpError::NotFound)?;
+
+        if !policy.active {
+            return Err(ReversibleOpError::InvalidState);
+        }
+        if user != policy.owner {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if policy.last_payment_at == 0 {
+            return Ok(false);
+        }
+
+        policy.last_payment_at = 0;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
+        Self::extend_instance_ttl(&env);
+
+        env.events().publish(
+            (symbol_short!("reverse"), symbol_short!("premium")),
+            (policy_id, user),
+        );
+
+        Ok(true)
     }
 }
 

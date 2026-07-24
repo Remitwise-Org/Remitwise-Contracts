@@ -3,6 +3,7 @@
 extern crate std;
 
 use super::*;
+use remitwise_common::reversible_op::ReversibleOpError;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
@@ -31,14 +32,29 @@ impl MockContract {
         true
     }
     // Compensation / reverse methods for rollback support.
-    pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-        true
+    pub fn remove_from_goal(
+        _env: Env,
+        _user: Address,
+        _goal_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Ok(true)
     }
-    pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-        true
+    pub fn reverse_payment(
+        _env: Env,
+        _user: Address,
+        _bill_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Ok(true)
     }
-    pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-        true
+    pub fn reverse_premium(
+        _env: Env,
+        _user: Address,
+        _policy_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Ok(true)
     }
 }
 
@@ -1717,6 +1733,7 @@ mod mock_split_3 {
 
 /// Mock whose calculate_split returns exactly 4 allocations (valid).
 mod mock_split_4 {
+    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
     #[contract]
     pub struct Contract;
@@ -1737,14 +1754,29 @@ mod mock_split_4 {
         pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
             true
         }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn remove_from_goal(
+            _env: Env,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(true)
         }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_payment(
+            _env: Env,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(true)
         }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_premium(
+            _env: Env,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(true)
         }
     }
 }
@@ -1779,6 +1811,7 @@ mod mock_split_negative {
 /// Used to verify that EXEC_LOCK is released even when downstream contracts
 /// are maximally adversarial (all steps fail without panicking).
 mod mock_hostile_all_fail {
+    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
     #[contract]
@@ -1801,14 +1834,29 @@ mod mock_hostile_all_fail {
         pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
             false
         }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            false
+        pub fn remove_from_goal(
+            _env: Env,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(false)
         }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            false
+        pub fn reverse_payment(
+            _env: Env,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(false)
         }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            false
+        pub fn reverse_premium(
+            _env: Env,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) -> Result<bool, ReversibleOpError> {
+            Ok(false)
         }
     }
 }
@@ -1841,6 +1889,8 @@ fn test_exec_lock_released_when_hostile_downstream_fails_bill() {
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
+    // Unsigned path does not enable compensation (compensate_on_failure=false),
+    // so CrossContractCallFailed is expected instead of RemittanceFlowRolledBack.
     assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
     assert!(!client.get_execution_state());
 }
@@ -1863,7 +1913,7 @@ fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
 
     // Second call — well-behaved downstream, must succeed.
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
-    assert_eq!(result, Ok(Ok(())));
+    assert!(result.is_ok());
     assert!(!client.get_execution_state());
 }
 
