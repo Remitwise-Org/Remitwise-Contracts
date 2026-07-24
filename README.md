@@ -323,6 +323,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
+- [Committed Hashes](docs/COMMITTED_HASHES.md) - Request-hash coverage and verification guidance for downstream integrators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables

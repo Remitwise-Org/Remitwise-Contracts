@@ -63,3 +63,7 @@ let hash = client.get_request_hash(&request);
 // On-chain: submit with hash — contract recomputes and verifies
 client.distribute_usdc_hashed(&request, &hash);
 ```
+
+For the recommended consumer verification sequence and a comparison with the
+legacy `u64` request fingerprints, see
+[Committed Hashes for Downstream Integrators](COMMITTED_HASHES.md).
