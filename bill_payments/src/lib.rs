@@ -2403,13 +2403,13 @@ impl BillPayments {
 
         // Handle index updates
         if bill.external_ref != validated_ext_ref {
-            // Release old ref if it existed
-            if let Some(ref old_ref) = bill.external_ref {
-                Self::release_external_ref(&env, &caller, old_ref);
-            }
-            // Claim new ref if provided
+            // Claim new ref first if provided
             if let Some(ref new_ref) = validated_ext_ref {
                 Self::claim_external_ref(&env, &caller, new_ref, bill_id)?;
+            }
+            // Release old ref only after new ref is successfully claimed
+            if let Some(ref old_ref) = bill.external_ref {
+                Self::release_external_ref(&env, &caller, old_ref);
             }
         }
 
