@@ -291,6 +291,115 @@ mod settlement_amount_tests {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Settlement currency validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a settlement's currency is not accepted by the invoice.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SettlementCurrencyError {
+    /// `sym` is not present in the invoice's whitelist of accepted
+    /// settlement currencies.
+    CurrencyNotWhitelisted = 1,
+}
+
+/// Guards that a settlement's currency (`sym`) is one of the currencies the
+/// invoice (`inv`) is willing to accept.
+///
+/// This is a defence-in-depth check meant to be called at the top of any
+/// entry point that settles an invoice-like obligation (a bill, premium,
+/// remittance leg, etc.) in a caller- or off-chain-supplied currency, in
+/// addition to — not instead of — each contract's own existing validation.
+///
+/// # Threat model
+/// If a settlement entry point accepts a currency argument without checking
+/// it against the payee's whitelist, an attacker (or a compromised
+/// off-chain settlement relayer) can discharge the full face amount of an
+/// obligation while paying in a currency the payee never agreed to hold —
+/// an illiquid, depegged, or otherwise low-value asset — while the
+/// contract's ledger still records the obligation as "settled in full".
+/// That both cheats the payee out of the value they were owed and corrupts
+/// downstream accounting/reporting that assumes settlement currency equals
+/// invoice currency. An empty whitelist is treated as accepting nothing,
+/// never as a wildcard, so a mis-provisioned invoice fails closed instead
+/// of silently accepting any currency.
+///
+/// # Cost
+/// A linear scan of `inv`, bounded by the invoice's whitelist size (expected
+/// to be a handful of accepted currencies at most); negligible relative to
+/// any settlement entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`SettlementCurrencyError::CurrencyNotWhitelisted`] if `sym` is
+/// not present in `inv`.
+pub fn require_matching_settlement_currency(
+    inv: &soroban_sdk::Vec<Symbol>,
+    sym: &Symbol,
+) -> Result<(), SettlementCurrencyError> {
+    for accepted in inv.iter() {
+        if &accepted == sym {
+            return Ok(());
+        }
+    }
+    Err(SettlementCurrencyError::CurrencyNotWhitelisted)
+}
+
+#[cfg(test)]
+mod settlement_currency_tests {
+    use super::*;
+    use soroban_sdk::{symbol_short, Env};
+
+    #[test]
+    fn rejects_currency_not_in_whitelist() {
+        let env = Env::default();
+        let whitelist =
+            soroban_sdk::Vec::from_array(&env, [symbol_short!("USDC"), symbol_short!("EURC")]);
+        let settlement_currency = symbol_short!("XLM");
+        assert_eq!(
+            require_matching_settlement_currency(&whitelist, &settlement_currency),
+            Err(SettlementCurrencyError::CurrencyNotWhitelisted)
+        );
+    }
+
+    #[test]
+    fn rejects_against_empty_whitelist() {
+        let env = Env::default();
+        let whitelist = soroban_sdk::Vec::<Symbol>::new(&env);
+        let settlement_currency = symbol_short!("XLM");
+        assert_eq!(
+            require_matching_settlement_currency(&whitelist, &settlement_currency),
+            Err(SettlementCurrencyError::CurrencyNotWhitelisted)
+        );
+    }
+
+    #[test]
+    fn accepts_currency_present_in_whitelist() {
+        let env = Env::default();
+        let whitelist =
+            soroban_sdk::Vec::from_array(&env, [symbol_short!("USDC"), symbol_short!("EURC")]);
+        assert_eq!(
+            require_matching_settlement_currency(&whitelist, &symbol_short!("USDC")),
+            Ok(())
+        );
+        assert_eq!(
+            require_matching_settlement_currency(&whitelist, &symbol_short!("EURC")),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn accepts_sole_whitelisted_currency() {
+        let env = Env::default();
+        let whitelist = soroban_sdk::Vec::from_array(&env, [symbol_short!("XLM")]);
+        assert_eq!(
+            require_matching_settlement_currency(&whitelist, &symbol_short!("XLM")),
+            Ok(())
+        );
+    }
+}
+
 /// Minimum transfer amount to prevent gas grief.
 pub const MIN_TRANSFER: i128 = 100;
 
