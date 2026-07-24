@@ -3343,10 +3343,7 @@ mod testsuit {
             emitted_actions.push(action);
         }
 
-        assert_eq!(
-    emitted_actions,
-    soroban_sdk::vec![&env, symbol_short!("paused"), symbol_short!("unpaused")]
-);
+        assert_eq!(emitted_actions, [symbol_short!("paused"), symbol_short!("unpaused")]);
     }
 
     #[test]
