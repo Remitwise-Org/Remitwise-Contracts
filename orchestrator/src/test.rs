@@ -1859,9 +1859,9 @@ mod mock_hostile_all_fail {
             Ok(false)
         }
     }
-        pub extern "C" fn add_to_goal(...) -> bool { panic!("hostile") }
-        pub extern "C" fn pay_bill(...) -> bool { panic!("hostile") }
-        pub extern "C" fn pay_premium(...) -> bool { panic!("hostile") }
+        pub unsafe extern "C" fn add_to_goal(_: ...) -> bool { panic!("hostile") }
+        pub unsafe extern "C" fn pay_bill(_: ...) -> bool { panic!("hostile") }
+        pub unsafe extern "C" fn pay_premium(_: ...) -> bool { panic!("hostile") }
 }
 
 /// Panic-safe EXEC_LOCK release: hostile downstream fails savings step → lock must be released.
