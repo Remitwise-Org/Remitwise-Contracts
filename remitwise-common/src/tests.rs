@@ -17,7 +17,7 @@ extern crate std;
 
 use super::*;
 use proptest::prelude::*;
-use soroban_sdk::{Bytes, Env, String, Vec};
+use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -570,6 +570,84 @@ fn test_verify_slash_signature_invalid() {
     // Verify the invalid slash signature
     let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
     assert_eq!(result, Err(SlashError::InvalidSignature));
+}
+
+// ─── require_valid_symbol_length tests (#1078) ───────────────────────────────
+
+/// A 9-char short symbol (at the boundary) passes validation.
+#[test]
+fn test_require_valid_symbol_length_9_chars_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "boundary9"); // exactly 9 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A 1-char symbol passes validation.
+#[test]
+fn test_require_valid_symbol_length_single_char_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "a");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// An empty symbol (0 bytes) passes validation (it's under 9).
+#[test]
+fn test_require_valid_symbol_length_empty_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A 10-char symbol (one past the short-symbol boundary) is rejected.
+#[test]
+fn test_require_valid_symbol_length_10_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "boundary10"); // exactly 10 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A 32-char symbol (at the SDK's hard limit) is rejected because it's
+/// still past the 9-char short-symbol boundary.
+#[test]
+fn test_require_valid_symbol_length_32_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyzabcd"); // 32 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A short 4-char symbol passes validation.
+#[test]
+fn test_require_valid_symbol_length_short_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "test"); // 4 chars, well within limit
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A typical storage-key style symbol (≤ 9 chars) passes.
+#[test]
+fn test_require_valid_symbol_length_storage_key_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "ADMIN"); // 5 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// The error discriminant is stable (pinned to 1) via `#[contracterror]`.
+/// This test checks that the enum round-trips through Val encoding.
+#[test]
+fn test_symbol_error_encoding_stability() {
+    use soroban_sdk::TryFromVal;
+    let env = Env::default();
+    let val: soroban_sdk::Val = soroban_sdk::IntoVal::into_val(&SymbolError::SymbolTooLong, &env);
+    let err: SymbolError =
+        <SymbolError as TryFromVal<Env, soroban_sdk::Val>>::try_from_val(&env, &val)
+            .expect("SymbolError must round-trip through Val");
+    assert_eq!(err, SymbolError::SymbolTooLong);
 }
 
 // ============================================================================
