@@ -5,8 +5,7 @@ use remitwise_common::{
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +54,7 @@ pub enum InsuranceError {
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 17,
+    PolicyAlreadyInactive = 19,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -68,6 +67,8 @@ pub enum InsuranceError {
     SnapshotNotFound = 17,
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 18,
+    /// Policy deactivation attempted too soon after creation.
+    PolicyDeactivationTooSoon = 20,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -575,7 +576,7 @@ impl Insurance {
         for id in ids.iter() {
             let mut policy = Self::load_policy(&env, id)?;
             if policy.active && policy.owner == caller {
-                let now = env.ledger().timestamp();
+        let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
                 policy.next_payment_date =
                     Self::advance_next_payment_date(policy.next_payment_date, now);
@@ -662,7 +663,7 @@ impl Insurance {
             return Err(InsuranceError::PolicyAlreadyInactive);
         }
 
-        let now = env.ledger().timestamp();
+        let _now = env.ledger().timestamp();
         policy.active = false;
         env.storage()
             .instance()

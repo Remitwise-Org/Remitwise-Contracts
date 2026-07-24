@@ -397,6 +397,7 @@ pub enum Error {
     /// (defence-in-depth; u32 makes this impossible) or the four split
     /// percentages do not sum to exactly 100.
     InvalidSplitConfig = 25,
+    SnapshotTooOld = 26,
 }
 
 #[contractimpl]

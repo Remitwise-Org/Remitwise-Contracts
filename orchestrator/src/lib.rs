@@ -3,8 +3,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol,
+    Vec,
 };
 
 #[allow(dead_code)]
@@ -91,7 +91,6 @@ pub enum FlowStep {
 }
 
 use remitwise_common::{
-    reversible_op::{BillPaymentsReversibleClient, SavingsGoalsReversibleClient},
     EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -332,6 +331,8 @@ pub enum OrchestratorError {
     NoPendingRewards = 13,
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 14,
+    /// The actor epoch does not match the contract's current epoch.
+    EpochMismatch = 15,
 }
 
 #[contract]
