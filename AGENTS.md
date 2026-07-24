@@ -38,7 +38,8 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `verify_signature` uses `env.crypto().ed25519_verify(...)` which panics on verification failure (standard Soroban behavior); the `SignatureError::VerificationFailed` variant becomes unreachable
 - Invalid signature tests use `#[should_panic]` instead of asserting `Err(VerificationFailed)`
 - Pre-checks (signature length == 64, public key length == 32) still return `Err` variants
-- `ed25519-dalek = "2"` added as regular dep (not dev-dep) to `remitwise-common` to constrain transitive resolution. Resolved safely for WASM because `soroban-env-host` already depends on it and compiles for `wasm32-unknown-unknown`.
+- `ed25519-dalek = "2"` added as regular dep (not dev-dep) to `remitwise-common` to constrain transitive resolution.
+- `Cargo.lock` **committed** (force-added, bypassing `.gitignore`). CI regenerates a fresh lockfile each run, but `cargo generate-lockfile` without `--workspace` constraints doesn't consider all workspace members' dep specs, allowing `ed25519-dalek` v3.0.0 to be picked for targets outside the root package graph (e.g., `--package testutils`). Committed lockfile ensures every CI job uses v2.2.0 regardless of which target or feature set is built.
 - Pre-existing warnings in `insurance`, `data_migration`, `reporting`, `remittance_split` fixed prophylactically to avoid CI clippy failures with `-D warnings`.
 
 ## File Changes
