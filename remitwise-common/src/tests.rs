@@ -20,8 +20,8 @@ use ed25519_dalek::Signer;
 use super::*;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::{Env, String, Symbol, Vec};
-use std::string::ToString;
+use soroban_sdk::{Env, String, Vec};
+use ed25519_dalek::Signer;
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -748,6 +748,7 @@ fn test_verify_slash_signature_invalid() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
+    // Verify the invalid slash signature (ed25519_verify panics on failure)
     let _ = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
 }
 

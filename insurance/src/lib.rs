@@ -1,8 +1,8 @@
 #![no_std]
 use remitwise_common::{
-    CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
-    clamp_limit, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT,
-    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
+    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
@@ -16,7 +16,12 @@ use soroban_sdk::{
 const THIRTY_DAYS_SECS: u64 = 30 * 24 * 60 * 60;
 const MAX_NAME_LEN: u32 = 64;
 const MAX_EXT_REF_LEN: u32 = 128;
+/// Maximum number of policies allowed per contract.
 const MAX_POLICIES: u32 = 1_000;
+
+/// Minimum tenure (in seconds) a deactivated policy must remain inactive
+/// before it can be reactivated. Set to 24 hours.
+const MAX_TENURE_SECS: u64 = 86_400;
 
 /// Minimum allowed recurrence interval for repeating premium schedules (1 hour).
 const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
@@ -51,7 +56,7 @@ pub enum InsuranceError {
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 52,
+    PolicyAlreadyInactive = 17,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -60,6 +65,9 @@ pub enum InsuranceError {
     ScheduleIntervalTooShort = 15,
     /// The schedule lead time exceeds the maximum allowed value (1 year).
     ScheduleLeadTimeTooLong = 16,
+    /// Returned by `reactivate_policy` when the deactivation tenure period
+    /// (`MAX_TENURE_SECS`) has not yet elapsed since deactivation.
+    PolicyDeactivationTooSoon = 18,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,6 +158,7 @@ pub struct Policy {
     pub created_at: u64,
     pub last_payment_at: u64,
     pub next_payment_date: u64,
+    pub deactivated_at: u64,
 }
 
 #[contracttype]
@@ -467,6 +476,7 @@ impl Insurance {
             created_at: now,
             last_payment_at: 0,
             next_payment_date: now + THIRTY_DAYS_SECS,
+            deactivated_at: 0,
         };
 
         env.storage().instance().set(&DataKey::Policy(next_id), &policy);
@@ -646,7 +656,9 @@ impl Insurance {
             return Err(InsuranceError::PolicyAlreadyInactive);
         }
 
+        let now = env.ledger().timestamp();
         policy.active = false;
+        policy.deactivated_at = now;
         env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
         // Remove from active index (helper)
         Self::remove_active_policy(&env, policy_id)?;
@@ -686,8 +698,15 @@ impl Insurance {
             return Err(InsuranceError::PolicyAlreadyActive);
         }
 
-        // Refresh payment cadence to the next logical due date relative to now.
+        // Enforce minimum deactivation tenure.
+        // `deactivated_at == 0` means the policy was deactivated before the
+        // tenure feature was introduced — skip the check for backward compat.
         let now = env.ledger().timestamp();
+        if policy.deactivated_at != 0 && now < policy.deactivated_at + MAX_TENURE_SECS {
+            return Err(InsuranceError::PolicyDeactivationTooSoon);
+        }
+
+        // Refresh payment cadence to the next logical due date relative to now.
         policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
         policy.active = true;
         env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
@@ -696,7 +715,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (Symbol::new(&env, "reactivated"), symbol_short!("policy")),
+            (symbol_short!("reactiv"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,

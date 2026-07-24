@@ -3,7 +3,7 @@
 mod tests {
     use crate::*;
     use remitwise_common::CoverageType;
-    use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String, Vec};
 
     fn setup(env: &Env) -> InsuranceClient<'_> {
         let id = env.register_contract(None, Insurance);
@@ -555,12 +555,15 @@ mod tests {
         // Deactivate so we can attempt to reactivate
         c.deactivate_policy(&owner, &pid);
 
-        // Fill the active index to MAX_POLICIES
+        // Fill the active index to MAX_POLICIES with IDs that don't include pid
         let mut full = Vec::new(&env);
-        for i in 1..=MAX_POLICIES {
+        // Start from MAX_POLICIES+1 so we don't collide with pid (which is 1)
+        for i in MAX_POLICIES + 1..=MAX_POLICIES * 2 {
             full.push_back(i);
         }
-        env.storage().instance().set(&DataKey::ActivePolicies, &full);
+        env.as_contract(&c.address, || {
+            env.storage().instance().set(&DataKey::ActivePolicies, &full);
+        });
 
         assert_eq!(
             c.try_reactivate_policy(&owner, &pid)
@@ -577,9 +580,9 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let owner = Address::generate(&env);
 
-        let p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let _p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         let p2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
-        let p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let _p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
         let p4 = c.create_policy(&owner, &n(&env, "P4"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
 
         // Deactivate a subset
@@ -589,6 +592,98 @@ mod tests {
         let page = c.get_deactivated_policies(&owner, &0, &10);
         assert_eq!(page.count, 2);
         assert_eq!(page.items.len(), 2);
+    }
+
+    // ── MAX_TENURE_SECS expiry boundary tests ─────────────────────────────
+
+    /// Reactivation at exactly MAX_TENURE_SECS after deactivation must succeed.
+    #[test]
+    fn test_reactivate_exactly_at_tenure_boundary_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let base_time = 1_000_000u64;
+        env.ledger().set_timestamp(base_time);
+
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        c.deactivate_policy(&owner, &pid);
+
+        // Advance to exactly MAX_TENURE_SECS after deactivation
+        env.ledger().set_timestamp(base_time + MAX_TENURE_SECS);
+
+        assert!(
+            c.reactivate_policy(&owner, &pid),
+            "reactivation exactly at tenure boundary must succeed"
+        );
+    }
+
+    /// Reactivation one second before MAX_TENURE_SECS elapses must fail.
+    #[test]
+    fn test_reactivate_one_second_before_tenure_boundary_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let base_time = 1_000_000u64;
+        env.ledger().set_timestamp(base_time);
+
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        c.deactivate_policy(&owner, &pid);
+
+        // Advance to one second before tenure expires
+        env.ledger().set_timestamp(base_time + MAX_TENURE_SECS - 1);
+
+        assert_eq!(
+            c.try_reactivate_policy(&owner, &pid)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::PolicyDeactivationTooSoon,
+            "reactivation one second before tenure must fail"
+        );
+    }
+
+    /// Reactivation one second past MAX_TENURE_SECS must succeed.
+    #[test]
+    fn test_reactivate_one_second_past_tenure_boundary_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, _contract_owner) = setup_with_owner(&env);
+        let owner = Address::generate(&env);
+        let base_time = 1_000_000u64;
+        env.ledger().set_timestamp(base_time);
+
+        let pid = c.create_policy(
+            &owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+
+        c.deactivate_policy(&owner, &pid);
+
+        // Advance to one second past tenure expiry
+        env.ledger().set_timestamp(base_time + MAX_TENURE_SECS + 1);
+
+        assert!(
+            c.reactivate_policy(&owner, &pid),
+            "reactivation one second past tenure must succeed"
+        );
     }
 
     // ── set_external_ref ──────────────────────────────────────────────────────
