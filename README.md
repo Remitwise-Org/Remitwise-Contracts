@@ -320,6 +320,7 @@ To run an example, use `cargo run --example <example_name>`:
 
 - [Contributor Overview](docs/CONTRIBUTOR_OVERVIEW.md) - Onboarding guide for new contributors
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
+- [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Amount Invariants](docs/AMOUNT_INVARIANTS.md) - Which entrypoints reject a zero amount, which accept it, and which normalize it away (for downstream integrators)
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
