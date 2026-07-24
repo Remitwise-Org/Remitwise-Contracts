@@ -1,5 +1,5 @@
 use crate::{EventCategory, EventPriority, RemitwiseEvents};
-use soroban_sdk::{symbol_short, testutils::Events as _, Env, FromVal, Vec};
+use soroban_sdk::{symbol_short, testutils::Events as _, Env, Vec};
 
 #[test]
 fn test_compact_event_passes() {
@@ -109,6 +109,8 @@ fn test_emit_all_categories_are_distinct() {
     assert_ne!(EventCategory::Transaction.to_u32(), EventCategory::Alert.to_u32());
     assert_ne!(EventCategory::Alert.to_u32(), EventCategory::System.to_u32());
     assert_ne!(EventCategory::Transaction.to_u32(), EventCategory::System.to_u32());
+    assert_ne!(EventCategory::System.to_u32(), EventCategory::Access.to_u32());
+    assert_ne!(EventCategory::Transaction.to_u32(), EventCategory::Access.to_u32());
 }
 
 #[test]
