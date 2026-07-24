@@ -66,4 +66,5 @@ lto = true
 inherits = "release"
 debug-assertions = true
 
-
+[patch.crates-io]
+ed25519-dalek = { path = "vendor/ed25519-dalek-2.2.0" }
