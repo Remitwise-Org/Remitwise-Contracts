@@ -1,7 +1,6 @@
 #![no_std]
 use remitwise_common::{
-    reversible_op::{InsuranceReversible, ReversibleOpError},
-    CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
+    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -51,11 +50,20 @@ pub enum InsuranceError {
     InvalidExternalRef = 10,
     MaxPoliciesReached = 11,
     PolicyAlreadyActive = 12,
-    PolicyAlreadyInactive = 13,
-    ScheduleNotFound = 14,
-    InactiveSchedule = 15,
-    ScheduleIntervalTooShort = 16,
-    ScheduleLeadTimeTooLong = 17,
+    /// Returned by `deactivate_policy` when the target policy is already inactive.
+    /// Distinct from `PolicyInactive` (which signals a caller trying to act *on*
+    /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
+    /// itself* is a no-op because the policy was never active (or was already
+    /// deactivated by a prior call).
+    PolicyAlreadyInactive = 17,
+    /// The requested schedule was not found.
+    ScheduleNotFound = 13,
+    /// The schedule is inactive (cancelled or deactivated).
+    InactiveSchedule = 14,
+    /// The schedule interval is below the minimum allowed value (1 hour).
+    ScheduleIntervalTooShort = 15,
+    /// The schedule lead time exceeds the maximum allowed value (1 year).
+    ScheduleLeadTimeTooLong = 16,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +71,8 @@ pub enum InsuranceError {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Per-type premium and coverage constraints (all values in stroops).
+///
+/// See `remitwise_common::STROOPS_PER_XLM` for the canonical stroop multiplier.
 struct TypeConstraints {
     min_premium: i128,
     max_premium: i128,
@@ -73,7 +83,7 @@ struct TypeConstraints {
 impl TypeConstraints {
     /// Return the allowed premium and coverage bounds for a given [`CoverageType`].
     ///
-    /// All values are in **stroops** (1 XLM = 10 000 000 stroops).
+    /// All values are in **stroops** (`remitwise_common::STROOPS_PER_XLM`).
     /// `create_policy` uses these bounds to gate [`InsuranceError::InvalidPremium`],
     /// [`InsuranceError::InvalidCoverageAmount`], and [`InsuranceError::UnsupportedCombination`].
     ///
@@ -710,7 +720,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactivat"), symbol_short!("policy")),
+            (symbol_short!("reactvt"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
@@ -1422,54 +1432,6 @@ impl Insurance {
         }
 
         executed
-    }
-}
-
-// -----------------------------------------------------------------------
-// ReversibleOp (compensation) trait implementation
-// -----------------------------------------------------------------------
-#[contractimpl]
-impl InsuranceReversible for Insurance {
-    /// Reverse a premium payment for the given policy (compensation for `pay_premium`).
-    ///
-    /// Validates the policy exists, is active, and is owned by `user`, then
-    /// resets `last_payment_at` to zero. Returns `Ok(false)` if the policy
-    /// was already in its default state.
-    fn reverse_premium(
-        env: Env,
-        user: Address,
-        policy_id: u32,
-        _amount: i128,
-    ) -> Result<bool, ReversibleOpError> {
-        Self::require_initialized(&env).map_err(|_| ReversibleOpError::InvalidState)?;
-
-        let mut policy = Self::load_policy(&env, policy_id)
-            .map_err(|_| ReversibleOpError::NotFound)?;
-
-        if !policy.active {
-            return Err(ReversibleOpError::InvalidState);
-        }
-        if user != policy.owner {
-            return Err(ReversibleOpError::Unauthorized);
-        }
-
-        if policy.last_payment_at == 0 {
-            return Ok(false);
-        }
-
-        policy.last_payment_at = 0;
-
-        env.storage()
-            .instance()
-            .set(&DataKey::Policy(policy_id), &policy);
-        Self::extend_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("reverse"), symbol_short!("premium")),
-            (policy_id, user),
-        );
-
-        Ok(true)
     }
 }
 

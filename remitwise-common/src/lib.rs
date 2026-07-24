@@ -3,6 +3,12 @@
 
 use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
 
+pub mod tokens;
+pub use tokens::{
+    SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
+    MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
+};
+
 /// Financial categories for remittance allocation
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

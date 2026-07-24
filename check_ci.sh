@@ -7,6 +7,14 @@ if [ ! -f Cargo.lock ]; then
   cargo generate-lockfile
 fi
 
+# Pin ed25519-dalek to v2.x — soroban-env-host v21.2.1 specifies
+# ">=2.0.0" which resolves to v3.0.0 on fresh lockfiles, breaking
+# its testutils code that uses rand_chacha v0.3 / rand_core v0.6.
+if cargo tree -i "ed25519-dalek@3.0.0" &>/dev/null; then
+  echo "Pinning ed25519-dalek to v2.2.0 (v3.0.0 incompatible with soroban-env-host)..."
+  cargo update -p "ed25519-dalek@3.0.0" --precise 2.2.0
+fi
+
 echo "Validating Cargo.lock soroban-sdk version..."
 python3 scripts/validate_lockfile.py
 

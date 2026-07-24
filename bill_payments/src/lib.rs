@@ -2,10 +2,9 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit,
-    reversible_op::{BillPaymentsReversible, ReversibleOpError},
-    EventCategory, EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
-    CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
     SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -20,7 +19,6 @@ fn is_valid_currency_chars(s: &[u8]) -> bool {
 
 const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
-const MAX_CURRENCY_LEN: u32 = 10;
 pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
 
 /// Rate limits for bill payments operations
@@ -634,9 +632,9 @@ impl BillPayments {
     ) -> Result<String, BillPaymentsError> {
         let len = currency.len();
 
-        // Empty string defaults to "XLM"
+        // Empty string defaults to the platform default currency
         if len == 0 {
-            return Ok(String::from_str(env, "XLM"));
+            return Ok(String::from_str(env, DEFAULT_CURRENCY));
         }
 
         // Check length constraint
@@ -658,8 +656,8 @@ impl BillPayments {
             .unwrap_or(0);
 
         if start >= end {
-            // Only whitespace - default to XLM
-            return Ok(String::from_str(env, "XLM"));
+            // Only whitespace - default to platform default currency
+            return Ok(String::from_str(env, DEFAULT_CURRENCY));
         }
 
         let trimmed = &s[start..end];
@@ -675,7 +673,7 @@ impl BillPayments {
             upper[i] = b.to_ascii_uppercase();
         }
 
-        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or(DEFAULT_CURRENCY);
         Ok(String::from_str(env, upper_str))
     }
 
@@ -686,7 +684,7 @@ impl BillPayments {
         // For backward compatibility, try validation first, fall back on error
         match Self::validate_and_normalize_currency(env, currency) {
             Ok(normalized) => normalized,
-            Err(_) => String::from_str(env, "XLM"),
+            Err(_) => String::from_str(env, DEFAULT_CURRENCY),
         }
     }
 
