@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -498,14 +498,66 @@ pub enum TagError {
 }
 
 /// Signature verification failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum SignatureError {
     /// Invalid signature length (must be 64 bytes for Ed25519).
-    InvalidSignatureLength,
+    InvalidSignatureLength = 1,
     /// Invalid public key length (must be 32 bytes for Ed25519).
-    InvalidPublicKeyLength,
+    InvalidPublicKeyLength = 2,
     /// Signature verification failed.
-    VerificationFailed,
+    VerificationFailed = 3,
+    /// The verifier public key has not been registered for attestation verification.
+    UnregisteredVerifier = 4,
+}
+
+/// Storage key for the set of registered verifier public keys.
+const REGISTERED_VERIFIERS_KEY: Symbol = symbol_short!("REGVER");
+
+/// Registers a verifier public key so its attestations may be consumed.
+pub fn register_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let mut registered_verifiers: Map<BytesN<32>, bool> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    registered_verifiers.set(key, true);
+    env.storage()
+        .instance()
+        .set(&REGISTERED_VERIFIERS_KEY, &registered_verifiers);
+
+    Ok(())
+}
+
+/// Requires the supplied verifier public key to be registered before an external
+/// attestation can be consumed.
+pub fn require_registered_verifier(
+    env: &Env,
+    public_key: &[u8],
+) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let registered_verifiers: Map<BytesN<32>, bool> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    if registered_verifiers.get(key).unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(SignatureError::UnregisteredVerifier)
+    }
 }
 
 /// Verify an Ed25519 signature with domain separation.
@@ -527,6 +579,8 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
+    require_registered_verifier(env, public_key)?;
+
     let pk_arr: [u8; 32] = public_key
         .try_into()
         .map_err(|_| SignatureError::InvalidPublicKeyLength)?;

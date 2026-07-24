@@ -646,8 +646,27 @@ fn test_verify_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let result = verify_signature(&env, domain, message, &signature, &pk);
     assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_signature_rejects_unregistered_verifier() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+    let mut prefixed = std::vec::Vec::new();
+    prefixed.extend_from_slice(domain);
+    prefixed.extend_from_slice(message);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    let result = verify_signature(&env, domain, message, &signature, &pk);
+    assert_eq!(result, Err(SignatureError::UnregisteredVerifier));
 }
 
 #[test]
@@ -661,6 +680,8 @@ fn test_verify_signature_invalid_signature() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64];
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
 }
 
@@ -673,6 +694,8 @@ fn test_verify_signature_invalid_signature_length() {
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
     let short_signature = [0u8; 32];
+
+    register_verifier(&env, &pk).unwrap();
 
     let result = verify_signature(&env, domain, message, &short_signature, &pk);
     assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
@@ -707,6 +730,8 @@ fn test_verify_signature_wrong_domain() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain2, message, &signature, &pk);
 }
 
@@ -723,6 +748,9 @@ fn test_verify_slash_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
+    // Verify the slash signature
     let result = verify_slash_signature(&env, message, Some(&signature), &pk);
     assert_eq!(result, Ok(()));
 }
@@ -748,8 +776,11 @@ fn test_verify_slash_signature_invalid() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
-    // Verify the invalid slash signature (ed25519_verify panics on failure)
-    let _ = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+    register_verifier(&env, &pk).unwrap();
+
+    // Verify the invalid slash signature
+    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+    assert_eq!(result, Err(SlashError::InvalidSignature));
 }
 
 // ============================================================================
