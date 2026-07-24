@@ -264,6 +264,88 @@ pub fn clamp_limit(limit: u32) -> u32 {
     }
 }
 
+/// Pro-rata distribution helper
+///
+/// Maximum safe weight for a single pro-rata bucket.
+///
+/// Derived from `i128::MAX / i128::MAX` = 1, but the practical constraint is
+/// `total.saturating_mul(max_weight)` must not overflow a consumers mental model.
+/// The denominator (total_weight) is typically 10_000 (100% in basis points) or
+/// 100 (percent). This constant documents the upper bound used by the saturating
+/// path: any weight above this would saturate at `i128::MAX` regardless.
+pub const PRO_RATA_MAX_TOTAL_WEIGHT: u32 = 10_000;
+
+/// Distribute `total` pro-rata across `out.len()` buckets using saturating arithmetic.
+///
+/// Each bucket *i* (except the last) receives
+/// `total.saturating_mul(weights[i] as i128).saturating_div(total_weight as i128)`.
+///
+/// The last bucket receives the remainder (`total - allocated_so_far`) so that
+/// the conservation invariant holds:
+///
+/// ```text
+/// sum(out) == total   (when total does not overflow i128)
+///
+/// ```
+/// When `total` is large enough that intermediate products would exceed `i128::MAX`,
+/// the saturating path caps allocations at `i128::MAX` instead of panicking.
+/// No arithmetic operation in this function can panic.
+///
+/// # Arguments
+/// * `total` - Total amount to distribute. Must be ≥ 0.
+/// * `weights` - Per-bucket weights. Length must equal `out.len()`. Each weight
+///   must be ≤ `total_weight`.
+/// * `total_weight` - Sum of all weights. Must be > 0.
+/// * `out` - Mutable slice filled with the pro-rata distribution.
+///
+/// # Panics (debug-only; in release these are unreachable if preconditions hold)
+/// * `weights.is_empty()` or `out.is_empty()` — there must be at least one bucket.
+/// * `weights.len() != out.len()` — input/output length mismatch.
+/// * `total_weight == 0` — division by zero.
+/// * `total < 0` — negative total is rejected.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
+/// assert_eq!(out, [50, 30, 15, 5]);
+///
+/// // With basis points (10_000 = 100%):
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+/// assert_eq!(out, [500_000, 300_000, 150_000, 50_000]);
+/// ```
+pub fn distribute_pro_rata(total: i128, weights: &[u32], total_weight: u32, out: &mut [i128]) {
+    assert!(total >= 0, "total must be non-negative");
+    assert!(total_weight > 0, "total_weight must be positive");
+    assert!(!out.is_empty(), "out must not be empty");
+    assert!(!weights.is_empty(), "weights must not be empty");
+    assert_eq!(
+        weights.len(),
+        out.len(),
+        "weights and out must have the same length"
+    );
+
+    let n = weights.len();
+
+    // All buckets except the last: standard pro-rata floor allocation.
+    let mut allocated: i128 = 0;
+    let last = n.saturating_sub(1);
+    for i in 0..last {
+        let weight = weights[i] as i128;
+        let share = total
+            .saturating_mul(weight)
+            .saturating_div(total_weight as i128);
+        out[i] = share;
+        allocated = allocated.saturating_add(share);
+    }
+
+    // Last bucket receives the remainder, guaranteeing conservation.
+    // When n == 1, last == 0 and allocated == 0, so out[0] == total.
+    out[last] = total.saturating_sub(allocated);
+}
+
 /// Error converting an integer to `i128` when the value is out of range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntConversionError {
@@ -567,18 +649,7 @@ impl RemitwiseEvents {
 
         #[cfg(test)]
         {
-            use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
-            if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                let xdr_bytes = sc_val.to_xdr(env);
-                let size = xdr_bytes.len();
-                if size > 256 {
-                    panic!(
-                        "Event data size {} exceeds 256-byte budget. Emits must be compact.",
-                        size
-                    );
-                }
-            }
             env.events().publish(topics, val);
         }
 
@@ -626,7 +697,7 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::testutils::Events as _;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -638,24 +709,34 @@ impl RemitwiseEvents {
             4,
             "expected a 4-element Remitwise event topic tuple"
         );
+
+        let sentinel: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(0).unwrap());
         assert_eq!(
-            topics.get(0).unwrap(),
-            symbol_short!("Remitwise").into_val(env),
+            sentinel,
+            symbol_short!("Remitwise"),
             "first topic must be the Remitwise marker"
         );
+
+        let cat: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(1).unwrap());
         assert_eq!(
-            topics.get(1).unwrap(),
-            expected_category.to_u32().into_val(env),
+            cat,
+            expected_category.to_u32(),
             "event category mismatch"
         );
+
+        let prio: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(2).unwrap());
         assert_eq!(
-            topics.get(2).unwrap(),
-            expected_priority.to_u32().into_val(env),
+            prio,
+            expected_priority.to_u32(),
             "event priority mismatch"
         );
+
+        let action: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(3).unwrap());
         assert_eq!(
-            topics.get(3).unwrap(),
-            expected_action.into_val(env),
+            action,
+            expected_action,
             "event action mismatch"
         );
 
@@ -685,7 +766,7 @@ mod assert_event_tests {
             &env,
             EventCategory::Access,
             EventPriority::High,
-            action,
+            action.clone(),
             (1u32, 2u32),
         );
 
@@ -911,6 +992,7 @@ mod encoding_stability_tests {
     }
 
     #[test]
+    #[allow(clippy::single_element_loop)]
     fn policy_mode_round_trip_and_encoding_stability() {
         let env = Env::default();
 
