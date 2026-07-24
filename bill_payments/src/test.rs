@@ -111,6 +111,64 @@ mod testsuit {
     }
 
     #[test]
+    fn test_create_bill_empty_name_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, ""),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidName)));
+    }
+
+    #[test]
+    fn test_create_bill_name_too_long_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        // Build a string longer than MAX_NAME_LEN (64)
+        let long_name = String::from_str(&env, &"x".repeat(65));
+        let result = client.try_create_bill(
+            &owner,
+            &long_name,
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidName)));
+    }
+
+    #[test]
+    fn test_create_bill_name_at_max_length_succeeds() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        // A name exactly MAX_NAME_LEN (64) bytes should be accepted
+        let valid_name = String::from_str(&env, &"x".repeat(64));
+        let bill_id = client.create_bill(
+            &owner,
+            &valid_name,
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(bill_id, 1);
+    }
+
+    #[test]
     fn test_create_recurring_bill_invalid_frequency() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);

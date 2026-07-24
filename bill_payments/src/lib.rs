@@ -20,6 +20,9 @@ fn is_valid_currency_chars(s: &[u8]) -> bool {
 const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
 pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
+/// Maximum length for bill names in bytes (defence-in-depth: prevents
+/// unbounded storage bloat via excessively long names).
+const MAX_NAME_LEN: u32 = 64;
 
 /// Rate limits for bill payments operations
 pub const CREATE_BILL_RATE_LIMIT: u32 = 100; // per address per 24h
@@ -183,6 +186,11 @@ pub enum BillPaymentsError {
     SnapshotNotFound = 26,
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 27,
+    /// Bill name is empty or exceeds the maximum allowed length.
+    ///
+    /// Triggered when `name.len() == 0` or `name.len() > MAX_NAME_LEN` (64).
+    /// This prevents unbounded storage bloat from excessively long names.
+    InvalidName = 28,
 }
 
 pub type Error = BillPaymentsError;
@@ -1328,6 +1336,11 @@ impl BillPayments {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
 
+        // Validate schedule name length
+        if name.is_empty() || name.len() > MAX_NAME_LEN {
+            return Err(BillPaymentsError::InvalidName);
+        }
+
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(BillPaymentsError::InvalidDueDate);
@@ -1708,6 +1721,12 @@ impl BillPayments {
     ) -> Result<u32, BillPaymentsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
+
+        // Validate bill name length (defence-in-depth: matches insurance and
+        // savings_goals which both validate their name parameters).
+        if name.is_empty() || name.len() > MAX_NAME_LEN {
+            return Err(BillPaymentsError::InvalidName);
+        }
 
         // Check rate limit
         check_and_increment_rate_limit(
