@@ -7,7 +7,7 @@ use soroban_sdk::{
 
 use remitwise_common::{
     EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY,
-    SNAPSHOT_VERSION,
+    SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -38,6 +38,13 @@ const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
 const MAX_MEMBER_PAGE_LIMIT: u32 = 100;
 const DEFAULT_MEMBER_PAGE_LIMIT: u32 = 20;
+
+/// Default multisig spending limit: 1 000 XLM in stroops.
+const DEFAULT_MULTISIG_SPENDING_LIMIT: i128 = 1_000 * STROOPS_PER_XLM;
+/// Default emergency-config maximum single-transfer amount: 10 000 XLM in stroops.
+const DEFAULT_EMERGENCY_MAX_AMOUNT: i128 = 10_000 * STROOPS_PER_XLM;
+/// Default emergency-config daily limit: 100 000 XLM in stroops.
+const DEFAULT_EMERGENCY_DAILY_LIMIT: i128 = 100_000 * STROOPS_PER_XLM;
 
 /// Hard cap on the number of entries retained in `ARCH_TX`.
 /// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
@@ -440,7 +447,7 @@ impl FamilyWallet {
         let default_config = MultiSigConfig {
             threshold: 2,
             signers: Vec::new(&env),
-            spending_limit: 1000_0000000,
+            spending_limit: DEFAULT_MULTISIG_SPENDING_LIMIT,
         };
 
         for tx_type in [
@@ -469,10 +476,10 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("NEXT_TX"), &1u64);
         let em_config = EmergencyConfig {
-            max_amount: 10000_0000000,
+            max_amount: DEFAULT_EMERGENCY_MAX_AMOUNT,
             cooldown: 3600,
             min_balance: 0,
-            daily_limit: 100000_0000000,
+            daily_limit: DEFAULT_EMERGENCY_DAILY_LIMIT,
         };
         env.storage()
             .instance()

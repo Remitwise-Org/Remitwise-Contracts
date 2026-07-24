@@ -63,6 +63,8 @@ pub enum InsuranceError {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Per-type premium and coverage constraints (all values in stroops).
+///
+/// See `remitwise_common::STROOPS_PER_XLM` for the canonical stroop multiplier.
 struct TypeConstraints {
     min_premium: i128,
     max_premium: i128,
@@ -73,7 +75,7 @@ struct TypeConstraints {
 impl TypeConstraints {
     /// Return the allowed premium and coverage bounds for a given [`CoverageType`].
     ///
-    /// All values are in **stroops** (1 XLM = 10 000 000 stroops).
+    /// All values are in **stroops** (`remitwise_common::STROOPS_PER_XLM`).
     /// `create_policy` uses these bounds to gate [`InsuranceError::InvalidPremium`],
     /// [`InsuranceError::InvalidCoverageAmount`], and [`InsuranceError::UnsupportedCombination`].
     ///
