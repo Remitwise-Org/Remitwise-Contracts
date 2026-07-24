@@ -117,6 +117,9 @@ pub const SIGNATURE_EXPIRATION: u64 = 86400;
 /// Contract version
 pub const CONTRACT_VERSION: u32 = 1;
 
+/// Storage key for the pause channels map
+pub const STORAGE_PAUSE_CHANNELS: &str = "PAUSE_CH";
+
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
 
@@ -993,6 +996,21 @@ impl RemitwiseEvents {
             "event data predicate failed for action {:?}",
             expected_action
         );
+    }
+}
+
+/// Asserts that a specific pause channel is active (not paused).
+/// Panics if the channel is paused.
+pub fn require_active_pause_channel(env: &Env, channel: Symbol) {
+    let paused = env
+        .storage()
+        .instance()
+        .get::<_, Map<Symbol, bool>>(&Symbol::new(env, STORAGE_PAUSE_CHANNELS))
+        .unwrap_or_else(|| Map::new(env))
+        .get(channel)
+        .unwrap_or(false);
+    if paused {
+        panic!("Pause channel is inactive");
     }
 }
 
