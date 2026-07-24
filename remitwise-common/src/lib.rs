@@ -139,6 +139,50 @@ pub enum BytesReturnError {
     ReturnTooLarge = 1,
 }
 
+/// Maximum allowed byte length for a short (inline) Symbol.
+///
+/// The Soroban SDK stores symbols ≤ 9 bytes inline as short symbols;
+/// longer symbols use a separate XDR encoding.  This constant mirrors
+/// the implicit boundary in [`symbol_short!`] and in `Symbol::new`.
+pub const SHORT_SYMBOL_MAX_LEN: u32 = 9;
+
+/// Error returned when a Symbol exceeds the short-symbol length limit.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SymbolError {
+    /// The symbol's byte length exceeds [`SHORT_SYMBOL_MAX_LEN`].
+    SymbolTooLong = 1,
+}
+
+/// Validates that a [`Symbol`] does not exceed the short-symbol limit (9 bytes).
+///
+/// This is a defence-in-depth check.  Symbols longer than 9 bytes use the
+/// large-symbol XDR encoding (`SymbolObject` tag) instead of the inline
+/// short-symbol encoding (`SymbolSmall` tag).  Without this gate, a caller
+/// could supply a long symbol where the contract expects a short one,
+/// potentially leading to storage-key confusion or indexer mismatches
+/// downstream.
+///
+/// The check uses the [`Val`] bit pattern: short symbols are stored inline
+/// (not objects), long symbols are stored as host object references.  This
+/// works on all targets (WASM and non-WASM) without requiring string
+/// conversion.
+///
+/// Call this on any `Symbol` value derived from untrusted input before using
+/// it as a storage key, event action, or comparand against `symbol_short!`
+/// constants.
+///
+/// # Errors
+/// Returns [`SymbolError::SymbolTooLong`] when the symbol exceeds 9 bytes.
+pub fn require_valid_symbol_length(_env: &Env, sym: &Symbol) -> Result<(), SymbolError> {
+    if sym.to_val().is_object() {
+        Err(SymbolError::SymbolTooLong)
+    } else {
+        Ok(())
+    }
+}
+
 /// Guards `bytes` against exceeding the XDR return-size budget.
 ///
 /// Call this immediately before returning any variable-length `Bytes` value from a
