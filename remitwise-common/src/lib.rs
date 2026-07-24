@@ -479,6 +479,33 @@ pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
     }
 }
 
+/// Error returned when the current ledger sequence does not match the expected value.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum LedgerError {
+    LedgerMismatch = 1,
+}
+
+/// Asserts that `expected` matches the current ledger sequence number.
+///
+/// This is a replay-prevention helper: if an operation was authorized for a
+/// specific ledger (e.g. via a signed nonce bound to a ledger), executing it in
+/// a different ledger would let an attacker replay the same authorization in a
+/// later ledger.  Call this function at the start of the operation to tie it
+/// to the current ledger.
+///
+/// # Errors
+/// Returns [`LedgerError::LedgerMismatch`] when `expected != env.ledger().sequence()`.
+pub fn require_matching_ledger(env: &Env, expected: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current != expected {
+        Err(LedgerError::LedgerMismatch)
+    } else {
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tag canonicalization
 // ---------------------------------------------------------------------------
