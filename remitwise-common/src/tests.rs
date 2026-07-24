@@ -865,3 +865,37 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
         Err(crate::TagError::InvalidChar { position: 0 })
     ));
 }
+
+// ============================================================================
+// require_active_pause_channel tests
+// ============================================================================
+
+#[test]
+fn test_require_active_pause_channel_uninitialized() {
+    let env = Env::default();
+    // Map doesn't exist yet, should not panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+}
+
+#[test]
+fn test_require_active_pause_channel_active() {
+    let env = Env::default();
+    let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
+    map.set(soroban_sdk::Symbol::short("PAYMENTS"), false);
+    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
+    
+    // Channel is active (false), should not panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+}
+
+#[test]
+#[should_panic(expected = "Pause channel is inactive")]
+fn test_require_active_pause_channel_paused() {
+    let env = Env::default();
+    let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
+    map.set(soroban_sdk::Symbol::short("PAYMENTS"), true);
+    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
+    
+    // Channel is paused (true), should panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+}
