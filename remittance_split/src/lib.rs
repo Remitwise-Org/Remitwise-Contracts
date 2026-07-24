@@ -345,11 +345,6 @@ pub struct RemittanceSplit;
 
 #[contractimpl]
 impl RemittanceSplit {
-    #[allow(dead_code)]
-    /// Storage key for the per-owner schedule-id index:
-    /// `Map<Address, Vec<u32>>` mapping each owner to the list of their schedule ids.
-    const STORAGE_OWNER_SCHED_IDS: Symbol = symbol_short!("OWN_SCH");
-
     fn get_pause_admin(env: &Env) -> Option<Address> {
         Self::extend_instance_ttl(env);
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
