@@ -1826,13 +1826,13 @@ mod mock_hostile_all_fail {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
         pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            false
+            panic!("savings step failed")
         }
         pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            false
+            panic!("bill step failed")
         }
         pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            false
+            panic!("insurance step failed")
         }
         pub fn remove_from_goal(
             _env: Env,
@@ -1859,6 +1859,9 @@ mod mock_hostile_all_fail {
             Ok(false)
         }
     }
+        pub fn add_to_goal(...) -> bool { panic!("hostile") }
+        pub fn pay_bill(...) -> bool { panic!("hostile") }
+        pub fn pay_premium(...) -> bool { panic!("hostile") }
 }
 
 /// Panic-safe EXEC_LOCK release: hostile downstream fails savings step → lock must be released.
