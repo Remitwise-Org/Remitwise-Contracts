@@ -633,3 +633,103 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
     assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
 }
+
+// ============================================================================
+// guard_bytes_len tests — env-matching guard (#1150)
+// ============================================================================
+
+/// Empty Bytes (zero length) is well within MAX_BYTES_RETURN.
+/// The guard must accept it without error.
+#[test]
+fn guard_bytes_len_empty_bytes_passes() {
+    let env = Env::default();
+    let bytes = Bytes::from_slice(&env, &[]);
+    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+}
+
+/// A small payload (100 bytes) is well within the 8 192-byte budget.
+#[test]
+fn guard_bytes_len_small_payload_passes() {
+    let env = Env::default();
+    let data = std::vec![0u8; 100];
+    let bytes = Bytes::from_slice(&env, &data);
+    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+}
+
+/// SHA-256 output (32 bytes) is the most common Bytes result size
+/// (e.g. `get_request_hash`). The guard must never fire for it.
+#[test]
+fn guard_bytes_len_sha256_sized_passes() {
+    let env = Env::default();
+    let data = std::vec![0u8; 32];
+    let bytes = Bytes::from_slice(&env, &data);
+    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+}
+
+/// Exactly MAX_BYTES_RETURN (8 192 bytes) must pass — the inclusive
+/// upper bound of the accept range.
+#[test]
+fn guard_bytes_len_at_limit_passes() {
+    let env = Env::default();
+    let data = std::vec![0u8; MAX_BYTES_RETURN as usize];
+    let bytes = Bytes::from_slice(&env, &data);
+    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+}
+
+/// One byte above MAX_BYTES_RETURN must be rejected with ReturnTooLarge.
+#[test]
+fn guard_bytes_len_one_over_limit_fails() {
+    let env = Env::default();
+    let data = std::vec![0u8; (MAX_BYTES_RETURN + 1) as usize];
+    let bytes = Bytes::from_slice(&env, &data);
+    assert_eq!(
+        guard_bytes_len(&bytes),
+        Err(BytesReturnError::ReturnTooLarge)
+    );
+}
+
+/// A significantly oversized payload (10 000 bytes) must be rejected.
+#[test]
+fn guard_bytes_len_far_above_limit_fails() {
+    let env = Env::default();
+    let data = std::vec![0u8; 10_000];
+    let bytes = Bytes::from_slice(&env, &data);
+    assert_eq!(
+        guard_bytes_len(&bytes),
+        Err(BytesReturnError::ReturnTooLarge)
+    );
+}
+
+/// Bytes carries its own host-environment reference internally.
+/// Creating a second `Env` and calling `guard_bytes_len` on a `Bytes`
+/// from the first `Env` must not panic — the call resolves entirely
+/// within the Bytes's own host without cross-env contamination.
+#[test]
+fn guard_bytes_len_different_env_no_cross_contamination() {
+    let env1 = Env::default();
+    let bytes_in_env1 = Bytes::from_slice(&env1, &[0u8; 64]);
+
+    // A separate Env instance simulates a different execution context.
+    let _env2 = Env::default();
+
+    // guard_bytes_len only accesses `bytes.len()`, which queries the
+    // Bytes's own host (env1). The existence of env2 is irrelevant.
+    assert_eq!(guard_bytes_len(&bytes_in_env1), Ok(()));
+}
+
+/// Freshly created Bytes has a valid env binding — the "missing env
+/// label" edge case is structurally impossible in the Soroban SDK
+/// because `Bytes` cannot be instantiated without an `Env` reference.
+/// This test locks in that invariant by explicitly verifying the Bytes
+/// is usable (len == 0, is_empty) before calling the guard.
+#[test]
+fn guard_bytes_len_fresh_bytes_has_valid_env_binding() {
+    let env = Env::default();
+    // Bytes::new creates a zero-length Bytes tied to the given env.
+    let bytes = Bytes::new(&env);
+    // Verify the env binding is valid before exercising the guard.
+    assert_eq!(bytes.len(), 0);
+    assert!(bytes.is_empty());
+    // Must succeed — the env binding is valid and 0 <= MAX_BYTES_RETURN.
+    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+}
