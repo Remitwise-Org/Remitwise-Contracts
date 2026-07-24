@@ -329,6 +329,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
+- [String and Bytes Canonicalisation](docs/CANONICALISATION.md) - Tag casefold, currency trim/uppercase, external-ref charset, and migration checksum byte-order
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
 - [Contract Specs & Migrations](docs/MIGRATIONS.md) - How to bump a contract spec without breaking existing storage
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
