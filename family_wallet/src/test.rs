@@ -544,7 +544,7 @@ fn test_propose_split_config_change() {
     let (spending, savings, bills, insurance) = (40u32, 30u32, 20u32, 10u32);
     let _proposed = TransactionData::SplitConfigChange(spending, savings, bills, insurance);
 
-    let tx_id = client.propose_split_config_change(&owner, &spending, &savings, &bills, &insurance);
+    let tx_id = client.propose_split_config_change(&owner, &spending, &savings, &bills, &insurance).unwrap();
     assert!(tx_id > 0);
 
     // Payload round-trip fidelity: what we propose is exactly what sits in PendingTransaction.data.
@@ -578,6 +578,90 @@ fn test_propose_split_config_change() {
     // Split values are applied in execute_transaction_internal where (SplitConfigChange(..)) is
     // matched, so successful execution implies correct decoding into the intended state.
     // TODO: add a direct split-config getter assertion once exposed by the test client.
+}
+
+#[test]
+fn test_propose_split_config_change_invalid_sum_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Percentages sum to 101 instead of 100 — must be rejected with typed error, not panic.
+    let result = client.try_propose_split_config_change(&owner, &50, &30, &20, &1);
+    assert_eq!(result, Err(Ok(Error::InvalidSplitConfig)));
+}
+
+#[test]
+fn test_propose_split_config_change_individual_out_of_range_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Individual percentage exceeds 100 — must be rejected with typed error, not panic.
+    let result = client.propose_split_config_change(&owner, &101, &0, &0, &0);
+    assert_eq!(result, Err(Error::InvalidSplitConfig));
 }
 
 #[test]
@@ -3327,15 +3411,15 @@ fn test_pending_transactions_pagination_and_auth() {
 
     // Create 5 pending proposals, alternating proposers
     env.mock_all_auths();
-    client.propose_split_config_change(&member1, &10, &40, &30, &20);
+    client.propose_split_config_change(&member1, &10, &40, &30, &20).unwrap();
     env.mock_all_auths();
-    client.propose_split_config_change(&member2, &11, &39, &30, &20);
+    client.propose_split_config_change(&member2, &11, &39, &30, &20).unwrap();
     env.mock_all_auths();
-    client.propose_split_config_change(&member1, &12, &38, &30, &20);
+    client.propose_split_config_change(&member1, &12, &38, &30, &20).unwrap();
     env.mock_all_auths();
-    client.propose_split_config_change(&member2, &13, &37, &30, &20);
+    client.propose_split_config_change(&member2, &13, &37, &30, &20).unwrap();
     env.mock_all_auths();
-    client.propose_split_config_change(&member1, &14, &36, &30, &20);
+    client.propose_split_config_change(&member1, &14, &36, &30, &20).unwrap();
 
     // Owner (admin) can list all pending txs paginated
     env.mock_all_auths();
