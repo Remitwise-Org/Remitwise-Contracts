@@ -442,8 +442,16 @@ impl SavingsGoalContract {
             panic!("Unauthorized");
         }
         env.storage().instance().set(&DataKey::Paused, &true);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("paused")), ());
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn unpause(env: Env, caller: Address) {
@@ -460,8 +468,16 @@ impl SavingsGoalContract {
             env.storage().instance().remove(&DataKey::UnpauseAt);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
