@@ -14,8 +14,8 @@ use remitwise_common::{
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, vec, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 // Event topics
@@ -85,6 +85,10 @@ pub enum RemittanceSplitError {
     /// The `Bytes` value about to be returned exceeds `MAX_BYTES_RETURN`.
     /// Prevents consumers from being forced to deserialise an unbounded payload.
     ReturnBytesTooLarge = 28,
+    /// No pre-upgrade snapshot exists for restore.
+    SnapshotNotFound = 29,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 30,
 }
 
 #[derive(Clone)]
@@ -342,10 +346,6 @@ pub struct RemittanceSplit;
 
 #[contractimpl]
 impl RemittanceSplit {
-    /// Storage key for the per-owner schedule-id index:
-    /// `Map<Address, Vec<u32>>` mapping each owner to the list of their schedule ids.
-    const STORAGE_OWNER_SCHED_IDS: Symbol = symbol_short!("OWN_SCH");
-
     fn get_pause_admin(env: &Env) -> Option<Address> {
         Self::extend_instance_ttl(env);
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
@@ -434,8 +434,11 @@ impl RemittanceSplit {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("paused"),
-            (),
+            soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
         );
         Ok(())
     }
@@ -469,8 +472,11 @@ impl RemittanceSplit {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("unpaused"),
-            (),
+            soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
         );
         Ok(())
     }
@@ -767,6 +773,9 @@ impl RemittanceSplit {
         };
 
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
 
         env.events().publish(
             (symbol_short!("split"), symbol_short!("snap_pre")),
@@ -818,6 +827,15 @@ impl RemittanceSplit {
 
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(RemittanceSplitError::UnsupportedVersion);
+        }
+
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(RemittanceSplitError::SnapshotTooOld);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1493,12 +1511,7 @@ impl RemittanceSplit {
         // Increment nonce and record success
         Self::increment_nonce(&env, &request.from)?;
         Self::append_audit(&env, symbol_short!("distH"), &request.from, true);
-        Self::emit_distribution_completed(
-            &env,
-            &request.from,
-            request.total_amount,
-            &amounts,
-        );
+        Self::emit_distribution_completed(&env, &request.from, request.total_amount, &amounts);
         Ok(true)
     }
 

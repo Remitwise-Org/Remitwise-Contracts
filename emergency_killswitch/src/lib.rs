@@ -1,4 +1,4 @@
-﻿#![no_std]
+#![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
 };
@@ -101,8 +101,14 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::GlobalPaused, &true);
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("paused")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -125,8 +131,14 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::GlobalPaused, &false);
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("unpaused")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -159,8 +171,14 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::GlobalPaused, &false);
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("cleared")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -246,8 +264,16 @@ impl EmergencyKillswitch {
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
             env.events().publish(
-                (symbol_short!("emergency"), symbol_short!("f_paused")),
-                (module_id, func, env.ledger().timestamp()),
+                (
+                    symbol_short!("emergency"),
+                    soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_F_PAUSED_V2),
+                ),
+                remitwise_common::events::FunctionPauseEvent {
+                    module_id: module_id.clone(),
+                    func: func.clone(),
+                    paused_at: env.ledger().timestamp(),
+                    paused_by: admin.clone(),
+                },
             );
         }
         Ok(())
@@ -271,8 +297,16 @@ impl EmergencyKillswitch {
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
             env.events().publish(
-                (symbol_short!("emergency"), symbol_short!("f_unpause")),
-                (module_id, func, env.ledger().timestamp()),
+                (
+                    symbol_short!("emergency"),
+                    soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_F_UNPAUSED_V2),
+                ),
+                remitwise_common::events::FunctionUnpauseEvent {
+                    module_id: module_id.clone(),
+                    func: func.clone(),
+                    unpaused_at: env.ledger().timestamp(),
+                    unpaused_by: admin.clone(),
+                },
             );
         }
         Ok(())
@@ -314,8 +348,15 @@ impl EmergencyKillswitch {
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &true);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("m_paused")),
-            (module_id, env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_M_PAUSED_V2),
+            ),
+            remitwise_common::events::ModulePauseEvent {
+                module_id: module_id.clone(),
+                paused_at: env.ledger().timestamp(),
+                paused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -331,8 +372,15 @@ impl EmergencyKillswitch {
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &false);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("m_unpause")),
-            (module_id, env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_M_UNPAUSED_V2),
+            ),
+            remitwise_common::events::ModuleUnpauseEvent {
+                module_id: module_id.clone(),
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }

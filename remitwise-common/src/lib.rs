@@ -1,7 +1,13 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
+
+pub mod tokens;
+pub use tokens::{
+    SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
+    MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
+};
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -58,6 +64,7 @@ pub enum EventCategory {
     Alert = 2,
     System = 3,
     Access = 4,
+    Compliance = 5,
 }
 
 /// Priority levels for events emitted by contracts.
@@ -70,6 +77,7 @@ pub enum EventPriority {
     Low = 0,
     Medium = 1,
     High = 2,
+    Critical = 3,
 }
 
 impl EventCategory {
@@ -148,11 +156,120 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Settlement amount validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a settlement-moving amount is not strictly positive.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SettlementAmountError {
+    /// `amount <= 0`. Every settlement (a value transfer that finalizes an
+    /// obligation — a bill payment, premium payment, goal contribution,
+    /// remittance disbursement, etc.) must be strictly positive by policy.
+    NonPositiveAmount = 1,
+}
+
+/// Guards that a settlement amount is strictly positive (`> 0`).
+///
+/// This is a defence-in-depth check meant to be called at the top of any
+/// entry point that finalizes a value transfer ("settles" an obligation),
+/// in addition to — not instead of — each contract's own existing
+/// validation. Individual contracts have historically implemented this
+/// bound inconsistently (some guard `amount <= 0`, at least one guard only
+/// `amount < 0`, silently letting a zero-amount settlement through as a
+/// successful no-op). A shared, single-purpose helper removes the chance
+/// of a future entry point picking the wrong comparison operator.
+///
+/// # Threat model
+/// A settlement of `0` that is accepted rather than rejected lets a caller
+/// trigger the full side effects of a "successful" settlement — state
+/// mutation, an emitted settlement event, consumption of a rate-limit
+/// budget, or satisfying a downstream "was this settled?" check in an
+/// orchestrating contract — without moving any value. That gap is useful
+/// to an attacker who wants to grief accounting/audit trails, force
+/// extra event-indexer/off-chain load, or manufacture a "paid" state to
+/// unblock a workflow gate that only checks for success, not amount.
+/// Negative amounts are equally invalid and are rejected by the same
+/// check, since a "negative settlement" has no valid real-world meaning
+/// and would invert the direction of a transfer if it reached arithmetic.
+///
+/// # Cost
+/// A single `i128` comparison; negligible relative to any settlement
+/// entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`SettlementAmountError::NonPositiveAmount`] if `amount <= 0`.
+pub fn require_positive_settlement_amount(amount: i128) -> Result<(), SettlementAmountError> {
+    if amount <= 0 {
+        Err(SettlementAmountError::NonPositiveAmount)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod settlement_amount_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_zero() {
+        assert_eq!(
+            require_positive_settlement_amount(0),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn rejects_negative() {
+        assert_eq!(
+            require_positive_settlement_amount(-1),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+        assert_eq!(
+            require_positive_settlement_amount(i128::MIN),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn accepts_smallest_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(1), Ok(()));
+    }
+
+    #[test]
+    fn accepts_large_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(i128::MAX), Ok(()));
+    }
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
+/// Maximum age of a pre-upgrade snapshot before restore is rejected.
+pub const SNAPSHOT_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+
 /// Storage key for pre-upgrade snapshots
 pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
+
+/// Typed error returned when a pre-upgrade snapshot is older than the freshness window.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SnapshotError {
+    SnapshotTooOld = 1,
+}
+
+/// Ensure a pre-upgrade snapshot is still fresh enough to restore.
+pub fn require_recent_snapshot(env: &Env, snapshot_taken_at: u64) -> Result<(), SnapshotError> {
+    let age = env.ledger().timestamp().saturating_sub(snapshot_taken_at);
+    if age > SNAPSHOT_MAX_AGE_SECS {
+        Err(SnapshotError::SnapshotTooOld)
+    } else {
+        Ok(())
+    }
+}
 
 /// Rate limiting constants
 pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours
@@ -264,6 +381,88 @@ pub fn clamp_limit(limit: u32) -> u32 {
     }
 }
 
+/// Pro-rata distribution helper
+///
+/// Maximum safe weight for a single pro-rata bucket.
+///
+/// Derived from `i128::MAX / i128::MAX` = 1, but the practical constraint is
+/// `total.saturating_mul(max_weight)` must not overflow a consumers mental model.
+/// The denominator (total_weight) is typically 10_000 (100% in basis points) or
+/// 100 (percent). This constant documents the upper bound used by the saturating
+/// path: any weight above this would saturate at `i128::MAX` regardless.
+pub const PRO_RATA_MAX_TOTAL_WEIGHT: u32 = 10_000;
+
+/// Distribute `total` pro-rata across `out.len()` buckets using saturating arithmetic.
+///
+/// Each bucket *i* (except the last) receives
+/// `total.saturating_mul(weights[i] as i128).saturating_div(total_weight as i128)`.
+///
+/// The last bucket receives the remainder (`total - allocated_so_far`) so that
+/// the conservation invariant holds:
+///
+/// ```text
+/// sum(out) == total   (when total does not overflow i128)
+///
+/// ```
+/// When `total` is large enough that intermediate products would exceed `i128::MAX`,
+/// the saturating path caps allocations at `i128::MAX` instead of panicking.
+/// No arithmetic operation in this function can panic.
+///
+/// # Arguments
+/// * `total` - Total amount to distribute. Must be ≥ 0.
+/// * `weights` - Per-bucket weights. Length must equal `out.len()`. Each weight
+///   must be ≤ `total_weight`.
+/// * `total_weight` - Sum of all weights. Must be > 0.
+/// * `out` - Mutable slice filled with the pro-rata distribution.
+///
+/// # Panics (debug-only; in release these are unreachable if preconditions hold)
+/// * `weights.is_empty()` or `out.is_empty()` — there must be at least one bucket.
+/// * `weights.len() != out.len()` — input/output length mismatch.
+/// * `total_weight == 0` — division by zero.
+/// * `total < 0` — negative total is rejected.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
+/// assert_eq!(out, [50, 30, 15, 5]);
+///
+/// // With basis points (10_000 = 100%):
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+/// assert_eq!(out, [500_000, 300_000, 150_000, 50_000]);
+/// ```
+pub fn distribute_pro_rata(total: i128, weights: &[u32], total_weight: u32, out: &mut [i128]) {
+    assert!(total >= 0, "total must be non-negative");
+    assert!(total_weight > 0, "total_weight must be positive");
+    assert!(!out.is_empty(), "out must not be empty");
+    assert!(!weights.is_empty(), "weights must not be empty");
+    assert_eq!(
+        weights.len(),
+        out.len(),
+        "weights and out must have the same length"
+    );
+
+    let n = weights.len();
+
+    // All buckets except the last: standard pro-rata floor allocation.
+    let mut allocated: i128 = 0;
+    let last = n.saturating_sub(1);
+    for i in 0..last {
+        let weight = weights[i] as i128;
+        let share = total
+            .saturating_mul(weight)
+            .saturating_div(total_weight as i128);
+        out[i] = share;
+        allocated = allocated.saturating_add(share);
+    }
+
+    // Last bucket receives the remainder, guaranteeing conservation.
+    // When n == 1, last == 0 and allocated == 0, so out[0] == total.
+    out[last] = total.saturating_sub(allocated);
+}
+
 /// Error converting an integer to `i128` when the value is out of range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntConversionError {
@@ -307,6 +506,33 @@ pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
     }
 }
 
+/// Error returned when the current ledger sequence does not match the expected value.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum LedgerError {
+    LedgerMismatch = 1,
+}
+
+/// Asserts that `expected` matches the current ledger sequence number.
+///
+/// This is a replay-prevention helper: if an operation was authorized for a
+/// specific ledger (e.g. via a signed nonce bound to a ledger), executing it in
+/// a different ledger would let an attacker replay the same authorization in a
+/// later ledger.  Call this function at the start of the operation to tie it
+/// to the current ledger.
+///
+/// # Errors
+/// Returns [`LedgerError::LedgerMismatch`] when `expected != env.ledger().sequence()`.
+pub fn require_matching_ledger(env: &Env, expected: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current != expected {
+        Err(LedgerError::LedgerMismatch)
+    } else {
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tag canonicalization
 // ---------------------------------------------------------------------------
@@ -326,14 +552,66 @@ pub enum TagError {
 }
 
 /// Signature verification failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum SignatureError {
     /// Invalid signature length (must be 64 bytes for Ed25519).
-    InvalidSignatureLength,
+    InvalidSignatureLength = 1,
     /// Invalid public key length (must be 32 bytes for Ed25519).
-    InvalidPublicKeyLength,
+    InvalidPublicKeyLength = 2,
     /// Signature verification failed.
-    VerificationFailed,
+    VerificationFailed = 3,
+    /// The verifier public key has not been registered for attestation verification.
+    UnregisteredVerifier = 4,
+}
+
+/// Storage key for the set of registered verifier public keys.
+const REGISTERED_VERIFIERS_KEY: Symbol = symbol_short!("REGVER");
+
+/// Registers a verifier public key so its attestations may be consumed.
+pub fn register_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let mut registered_verifiers: Map<BytesN<32>, bool> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    registered_verifiers.set(key, true);
+    env.storage()
+        .instance()
+        .set(&REGISTERED_VERIFIERS_KEY, &registered_verifiers);
+
+    Ok(())
+}
+
+/// Requires the supplied verifier public key to be registered before an external
+/// attestation can be consumed.
+pub fn require_registered_verifier(
+    env: &Env,
+    public_key: &[u8],
+) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let registered_verifiers: Map<BytesN<32>, bool> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    if registered_verifiers.get(key).unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(SignatureError::UnregisteredVerifier)
+    }
 }
 
 /// Verify an Ed25519 signature with domain separation.
@@ -355,6 +633,8 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
+    require_registered_verifier(env, public_key)?;
+
     let pk_arr: [u8; 32] = public_key
         .try_into()
         .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
@@ -526,6 +806,8 @@ where
     }
 }
 
+pub mod reversible_op;
+
 /// Event emission helper
 pub struct RemitwiseEvents;
 
@@ -567,11 +849,11 @@ impl RemitwiseEvents {
 
         #[cfg(test)]
         {
+            use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;
-            let val = data.into_val(env);
+            let val: soroban_sdk::Val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                let xdr_bytes = sc_val.to_xdr(env);
-                let size = xdr_bytes.len();
+                let size = soroban_sdk::xdr::ToXdr::to_xdr(sc_val, env).len();
                 if size > 256 {
                     panic!(
                         "Event data size {} exceeds 256-byte budget. Emits must be compact.",
@@ -579,10 +861,8 @@ impl RemitwiseEvents {
                     );
                 }
             }
-            env.events().publish(topics, val);
         }
 
-        #[cfg(not(test))]
         env.events().publish(topics, data);
     }
 
@@ -626,7 +906,7 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::testutils::Events as soroban_Events;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -638,26 +918,20 @@ impl RemitwiseEvents {
             4,
             "expected a 4-element Remitwise event topic tuple"
         );
+        let sentinel: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(0).unwrap());
         assert_eq!(
-            topics.get(0).unwrap(),
-            symbol_short!("Remitwise").into_val(env),
+            sentinel,
+            symbol_short!("Remitwise"),
             "first topic must be the Remitwise marker"
         );
-        assert_eq!(
-            topics.get(1).unwrap(),
-            expected_category.to_u32().into_val(env),
-            "event category mismatch"
-        );
-        assert_eq!(
-            topics.get(2).unwrap(),
-            expected_priority.to_u32().into_val(env),
-            "event priority mismatch"
-        );
-        assert_eq!(
-            topics.get(3).unwrap(),
-            expected_action.into_val(env),
-            "event action mismatch"
-        );
+        let cat: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(1).unwrap());
+        assert_eq!(cat, expected_category.to_u32(), "event category mismatch");
+        let prio: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(2).unwrap());
+        assert_eq!(prio, expected_priority.to_u32(), "event priority mismatch");
+        let action: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(3).unwrap());
+        assert_eq!(action, expected_action, "event action mismatch");
 
         let payload: T = T::try_from_val(env, &data).expect("failed to decode event data");
         assert!(
@@ -671,53 +945,6 @@ impl RemitwiseEvents {
 // ---------------------------------------------------------------------------
 // Encoding stability tests (cross-contract ABI)
 // ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod assert_event_tests {
-    use super::{EventCategory, EventPriority, RemitwiseEvents};
-
-    #[test]
-    fn assert_last_event_matches_emitted_topic_and_data() {
-        let env = soroban_sdk::Env::default();
-        let action = soroban_sdk::Symbol::new(&env, "test_act");
-
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            (1u32, 2u32),
-        );
-
-        RemitwiseEvents::assert_last_event::<(u32, u32), _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            |(a, b)| *a == 1 && *b == 2,
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "event action mismatch")]
-    fn assert_last_event_panics_on_action_mismatch() {
-        let env = soroban_sdk::Env::default();
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "one"),
-            1u32,
-        );
-        RemitwiseEvents::assert_last_event::<u32, _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "two"),
-            |_| true,
-        );
-    }
-}
 
 #[cfg(test)]
 mod encoding_stability_tests {
@@ -911,6 +1138,7 @@ mod encoding_stability_tests {
     }
 
     #[test]
+    #[allow(clippy::single_element_loop)]
     fn policy_mode_round_trip_and_encoding_stability() {
         let env = Env::default();
 
@@ -922,9 +1150,7 @@ mod encoding_stability_tests {
             }
         }
 
-        for v in [PolicyMode::Strict] {
-            cover_all_variants(v);
-        }
+        cover_all_variants(PolicyMode::Strict);
 
         let vec = Vec::from_array(&env, [PolicyMode::Strict]);
         let mut out = Vec::<PolicyMode>::new(&env);

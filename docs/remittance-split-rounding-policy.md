@@ -114,6 +114,27 @@ Overflow can occur when `total_amount × pct` exceeds `i128::MAX` (~1.7 × 10³�
 For reference, `i128::MAX × 2` already overflows, so amounts above
 `i128::MAX / max_pct` trigger this guard.
 
+### Pro-rata helper (`remitwise_common::distribute_pro_rata`)
+
+A generalised `distribute_pro_rata` helper is available in `remitwise-common`
+for callers that need **saturating** (non-panicking) pro-rata distribution across
+an arbitrary number of buckets.
+
+```rust
+use remitwise_common::distribute_pro_rata;
+
+let mut out = [0i128; 4];
+distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+// out == [500_000, 300_000, 150_000, 50_000]
+```
+
+Key properties:
+- Uses `saturating_mul` / `saturating_div` / `saturating_sub` — **no panics** on overflow.
+- Last bucket receives the remainder (dust), guaranteeing conservation.
+- Works with any number of buckets (not just four).
+- Validates preconditions in debug mode (non-negative total, positive total_weight,
+  matching slice lengths).
+
 ## Test Coverage Table
 
 | Test         | Amount              | Percentages (sp/sv/bl/ins) | What it proves                                       |

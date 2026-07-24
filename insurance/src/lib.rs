@@ -1,11 +1,12 @@
 #![no_std]
 use remitwise_common::{
-    CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
+    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, String, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +16,12 @@ use soroban_sdk::{
 const THIRTY_DAYS_SECS: u64 = 30 * 24 * 60 * 60;
 const MAX_NAME_LEN: u32 = 64;
 const MAX_EXT_REF_LEN: u32 = 128;
+/// Maximum number of policies allowed per contract.
 const MAX_POLICIES: u32 = 1_000;
+
+/// Minimum tenure (in seconds) a deactivated policy must remain inactive
+/// before it can be reactivated. Set to 24 hours.
+const MAX_TENURE_SECS: u64 = 86_400;
 
 /// Minimum allowed recurrence interval for repeating premium schedules (1 hour).
 const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
@@ -43,14 +49,13 @@ pub enum InsuranceError {
     UnsupportedCombination = 9,
     InvalidExternalRef = 10,
     MaxPoliciesReached = 11,
-    /// Returned by `reactivate_policy` when the target policy is already active.
     PolicyAlreadyActive = 12,
     /// Returned by `deactivate_policy` when the target policy is already inactive.
     /// Distinct from `PolicyInactive` (which signals a caller trying to act *on*
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 12,
+    PolicyAlreadyInactive = 17,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -59,6 +64,10 @@ pub enum InsuranceError {
     ScheduleIntervalTooShort = 15,
     /// The schedule lead time exceeds the maximum allowed value (1 year).
     ScheduleLeadTimeTooLong = 16,
+    /// No pre-upgrade snapshot exists for restore.
+    SnapshotNotFound = 17,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 18,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +75,8 @@ pub enum InsuranceError {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Per-type premium and coverage constraints (all values in stroops).
+///
+/// See `remitwise_common::STROOPS_PER_XLM` for the canonical stroop multiplier.
 struct TypeConstraints {
     min_premium: i128,
     max_premium: i128,
@@ -76,7 +87,7 @@ struct TypeConstraints {
 impl TypeConstraints {
     /// Return the allowed premium and coverage bounds for a given [`CoverageType`].
     ///
-    /// All values are in **stroops** (1 XLM = 10 000 000 stroops).
+    /// All values are in **stroops** (`remitwise_common::STROOPS_PER_XLM`).
     /// `create_policy` uses these bounds to gate [`InsuranceError::InvalidPremium`],
     /// [`InsuranceError::InvalidCoverageAmount`], and [`InsuranceError::UnsupportedCombination`].
     ///
@@ -149,6 +160,7 @@ pub struct Policy {
     pub created_at: u64,
     pub last_payment_at: u64,
     pub next_payment_date: u64,
+    pub deactivated_at: u64,
 }
 
 #[contracttype]
@@ -339,7 +351,7 @@ impl Insurance {
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
             .ok_or(InsuranceError::NotInitialized)?;
-        let mut new_active = Vec::new(&env);
+        let mut new_active = Vec::new(env);
         for id in active.iter() {
             if id != policy_id {
                 new_active.push_back(id);
@@ -438,7 +450,7 @@ impl Insurance {
 
         // Reserve a slot in the active index and ensure we don't exceed capacity.
         // `add_active_policy` also prevents duplication.
-        let mut active = env
+        let active = env
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
@@ -466,10 +478,15 @@ impl Insurance {
             created_at: now,
             last_payment_at: 0,
             next_payment_date: now + THIRTY_DAYS_SECS,
+            deactivated_at: 0,
         };
 
-        env.storage().instance().set(&DataKey::Policy(next_id), &policy);
-        env.storage().instance().set(&DataKey::PolicyCount, &next_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(next_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::PolicyCount, &next_id);
         // Add to active index (helper enforces no-dup and capacity)
         Self::add_active_policy(&env, next_id)?;
 
@@ -645,8 +662,11 @@ impl Insurance {
             return Err(InsuranceError::PolicyAlreadyInactive);
         }
 
+        let now = env.ledger().timestamp();
         policy.active = false;
-        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
         // Remove from active index (helper)
         Self::remove_active_policy(&env, policy_id)?;
 
@@ -685,17 +705,26 @@ impl Insurance {
             return Err(InsuranceError::PolicyAlreadyActive);
         }
 
-        // Refresh payment cadence to the next logical due date relative to now.
+        // Enforce minimum deactivation tenure.
+        // `deactivated_at == 0` means the policy was deactivated before the
+        // tenure feature was introduced — skip the check for backward compat.
         let now = env.ledger().timestamp();
+        if policy.deactivated_at != 0 && now < policy.deactivated_at + MAX_TENURE_SECS {
+            return Err(InsuranceError::PolicyDeactivationTooSoon);
+        }
+
+        // Refresh payment cadence to the next logical due date relative to now.
         policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
         policy.active = true;
-        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
 
         // Attempt to add to the active index; helper enforces capacity/dup.
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactivated"), symbol_short!("policy")),
+            (symbol_short!("react"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
@@ -934,6 +963,9 @@ impl Insurance {
             version: Self::get_version(env.clone()),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("insurance"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -968,12 +1000,20 @@ impl Insurance {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .ok_or(InsuranceError::NotInitialized)?;
+            .ok_or(InsuranceError::SnapshotNotFound)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(InsuranceError::Unauthorized);
         }
         if snapshot.owner != owner {
             return Err(InsuranceError::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(InsuranceError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
 
@@ -1031,9 +1071,11 @@ impl Insurance {
     // ── Scheduler ──────────────────────────────────────────────────────────
 
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-        env.storage()
-            .persistent()
-            .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     /// Create a recurring premium schedule for a policy.
@@ -1409,6 +1451,6 @@ impl Insurance {
 }
 
 #[cfg(test)]
-mod test;
-#[cfg(test)]
 mod next_payment_scheduling_tests;
+#[cfg(test)]
+mod test;

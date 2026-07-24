@@ -15,9 +15,27 @@
 ///   that need uniqueness must deduplicate the result themselves.
 extern crate std;
 
+use ed25519_dalek::Signer;
+
 use super::*;
+use ed25519_dalek::Signer;
 use proptest::prelude::*;
+use soroban_sdk::testutils::LedgerInfo;
 use soroban_sdk::{Bytes, Env, String, Vec};
+
+fn set_ledger(env: &Env, sequence_number: u32) {
+    let proto = env.ledger().protocol_version();
+    env.ledger().set(LedgerInfo {
+        protocol_version: proto,
+        sequence_number,
+        timestamp: 1_700_000_000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 3_000_000,
+    });
+}
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -375,6 +393,184 @@ fn test_checked_empty_batch_before_length_check() {
     assert_eq!(err, TagError::Empty);
 }
 
+// ─── canonicalise_symbol ──────────────────────────────────────────────────────
+
+/// A deterministic helper: get string content from a Symbol for assertions.
+/// Available only in non-WASM (test) builds via `ToString`.
+fn symbol_str(sym: &Symbol) -> std::string::String {
+    sym.to_string()
+}
+
+/// Lowercase-only input passes through unchanged.
+#[test]
+fn test_canonicalise_symbol_lowercase_passthrough() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Uppercase letters are folded to lowercase.
+#[test]
+fn test_canonicalise_symbol_uppercase_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HELLO");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Mixed case is fully lowercased.
+#[test]
+fn test_canonicalise_symbol_mixed_case() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HelloWorld");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "helloworld");
+}
+
+/// Leading whitespace is stripped.
+#[test]
+fn test_canonicalise_symbol_leading_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Trailing whitespace is stripped.
+#[test]
+fn test_canonicalise_symbol_trailing_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello  ");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Whitespace on both sides is stripped.
+#[test]
+fn test_canonicalise_symbol_surrounding_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello_World  ");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello_world");
+}
+
+/// Underscore is a valid Symbol character.
+#[test]
+fn test_canonicalise_symbol_underscore_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "my_symbol");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "my_symbol");
+}
+
+/// Digits are valid Symbol characters.
+#[test]
+fn test_canonicalise_symbol_digits_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "goal2025");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "goal2025");
+}
+
+/// Function is idempotent: applying twice yields the same Symbol.
+#[test]
+fn test_canonicalise_symbol_idempotent() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  HeLLo_WORLD  ");
+    let once = canonicalise_symbol(&env, &input);
+    let once_str = symbol_str(&once);
+    let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+    let twice = canonicalise_symbol(&env, &twice_input);
+    assert_eq!(symbol_str(&once), symbol_str(&twice));
+}
+
+/// Space-only input panics.
+#[test]
+#[should_panic(expected = "non-whitespace character")]
+fn test_canonicalise_symbol_whitespace_only_panics() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "   ");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Empty input panics.
+#[test]
+#[should_panic(expected = "symbol input must contain between 1 and 32 characters")]
+fn test_canonicalise_symbol_empty_panics() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Input with invalid Symbol character (hyphen) panics.
+#[test]
+#[should_panic]
+fn test_canonicalise_symbol_hyphen_invalid() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello-world");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Input with invalid Symbol character (space inside) panics.
+#[test]
+#[should_panic]
+fn test_canonicalise_symbol_internal_space_invalid() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello world");
+    canonicalise_symbol(&env, &input);
+}
+
+proptest! {
+    /// Property test for `canonicalise_symbol`.
+    ///
+    /// Pins the canonicalization contract:
+    /// 1. **Idempotence** — applying the function twice yields the same Symbol.
+    /// 2. **Whitespace stripping** — leading/trailing whitespace is removed.
+    /// 3. **Case folding** — ASCII uppercase letters are lowered.
+    /// 4. **Length discipline** — input must be 1..=32 bytes after trimming.
+    #[test]
+    fn proptest_canonicalise_symbol_contract(
+        s in proptest::string::string_regex(" *[a-zA-Z0-9_]+ *").unwrap(),
+    ) {
+        let trimmed = s.trim();
+        let trimmed_len = trimmed.len();
+        // Skip strings longer than 32 bytes after trimming (Symbol max length).
+        if trimmed_len > 32 {
+            return Ok(());
+        }
+
+        let env = Env::default();
+        let input = soroban_sdk::String::from_str(&env, &s);
+        let once = canonicalise_symbol(&env, &input);
+        let once_str = symbol_str(&once);
+
+        // Property 1: idempotence — second application yields the same Symbol.
+        let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+        let twice = canonicalise_symbol(&env, &twice_input);
+        prop_assert_eq!(once.clone(), twice);
+
+        // Property 2: whitespace was stripped — output equals
+        // canonicalising the trimmed form directly.
+        let trimmed_input = soroban_sdk::String::from_str(&env, trimmed);
+        let from_trimmed = canonicalise_symbol(&env, &trimmed_input);
+        prop_assert_eq!(once, from_trimmed);
+
+        // Property 3: output contains only lowercase ASCII letters, digits, underscores.
+        prop_assert!(
+            once_str.len() == trimmed_len,
+            "output length must equal trimmed input length (no chars added/removed)"
+        );
+        for b in once_str.bytes() {
+            prop_assert!(
+                b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_',
+                "canonical output char {:?} is not in [a-z0-9_]",
+                b as char
+            );
+        }
+    }
+}
+
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
 
 /// 0 is treated as "use default" and returns DEFAULT_PAGE_LIMIT.
@@ -464,8 +660,27 @@ fn test_verify_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let result = verify_signature(&env, domain, message, &signature, &pk);
     assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_signature_rejects_unregistered_verifier() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+    let mut prefixed = std::vec::Vec::new();
+    prefixed.extend_from_slice(domain);
+    prefixed.extend_from_slice(message);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    let result = verify_signature(&env, domain, message, &signature, &pk);
+    assert_eq!(result, Err(SignatureError::UnregisteredVerifier));
 }
 
 #[test]
@@ -479,6 +694,8 @@ fn test_verify_signature_invalid_signature() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64];
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
 }
 
@@ -491,6 +708,8 @@ fn test_verify_signature_invalid_signature_length() {
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
     let short_signature = [0u8; 32];
+
+    register_verifier(&env, &pk).unwrap();
 
     let result = verify_signature(&env, domain, message, &short_signature, &pk);
     assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
@@ -525,6 +744,8 @@ fn test_verify_signature_wrong_domain() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain2, message, &signature, &pk);
 }
 
@@ -533,14 +754,15 @@ fn test_verify_slash_signature_valid() {
     let env = Env::default();
     let message = b"slash payload";
 
-    // Generate a keypair
-    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
 
-    // Sign the prefixed message
     let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(b"slash-auth");
     prefixed.extend_from_slice(message);
-    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    register_verifier(&env, &pk).unwrap();
 
     // Verify the slash signature
     let result = verify_slash_signature(&env, message, Some(&signature), &pk);
@@ -559,13 +781,16 @@ fn test_verify_slash_signature_optional_none() {
 }
 
 #[test]
+#[should_panic]
 fn test_verify_slash_signature_invalid() {
     let env = Env::default();
     let message = b"slash payload";
 
-    // Generate a keypair
-    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
+
+    register_verifier(&env, &pk).unwrap();
 
     // Verify the invalid slash signature
     let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
@@ -579,7 +804,8 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     let env = Env::default();
-    let tags = soroban_sdk::vec![&env,
+    let tags = soroban_sdk::vec![
+        &env,
         soroban_sdk::String::from_str(&env, "payments"),
         soroban_sdk::String::from_str(&env, "SAVINGS"),
     ];
@@ -587,7 +813,10 @@ fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     assert!(result.is_ok());
     let out = result.unwrap();
     assert_eq!(out.len(), 2);
-    assert_eq!(out.get(1).unwrap(), soroban_sdk::String::from_str(&env, "savings"));
+    assert_eq!(
+        out.get(1).unwrap(),
+        soroban_sdk::String::from_str(&env, "savings")
+    );
 }
 
 #[test]
@@ -631,5 +860,8 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "=formula")];
     let result = canonicalize_tags_checked(&env, &tags);
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
-    assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
+    assert!(matches!(
+        result,
+        Err(crate::TagError::InvalidChar { position: 0 })
+    ));
 }

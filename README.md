@@ -318,8 +318,11 @@ To run an example, use `cargo run --example <example_name>`:
 
 ## Documentation
 
+- [Contributor Overview](docs/CONTRIBUTOR_OVERVIEW.md) - Onboarding guide for new contributors
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
+- [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
+- [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
@@ -334,6 +337,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
+- [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
 
 ## Contracts
 
