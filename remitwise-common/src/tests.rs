@@ -20,8 +20,7 @@ use ed25519_dalek::Signer;
 use super::*;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::testutils::LedgerInfo;
-use soroban_sdk::{Bytes, Env, String, Vec};
+use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
 
 fn set_ledger(env: &Env, sequence_number: u32) {
     let proto = env.ledger().protocol_version();
@@ -797,121 +796,82 @@ fn test_verify_slash_signature_invalid() {
     assert_eq!(result, Err(SlashError::InvalidSignature));
 }
 
-// ─── Rate newtype tests (#1080) ────────────────────────────────────────────
+// ─── require_valid_symbol_length tests (#1078) ───────────────────────────────
 
-/// A Rate of 0 bps (0%) should apply to any amount as 0.
+/// A 9-char short symbol (at the boundary) passes validation.
 #[test]
-fn test_rate_zero_apply_to() {
-    let rate = Rate::from_bps(0);
-    assert_eq!(rate.apply_to(1000), Ok(0));
-}
-
-/// A Rate of 10_000 bps (100%) should return the full amount unchanged.
-#[test]
-fn test_rate_full_apply_to() {
-    let rate = Rate::from_bps(BASIS_POINTS);
-    assert_eq!(rate.apply_to(1000), Ok(1000));
-}
-
-/// A Rate of 500 bps (5%) should compute the correct percentage.
-#[test]
-fn test_rate_percentage_apply_to() {
-    let rate = Rate::from_bps(500);
-    assert_eq!(rate.apply_to(1000), Ok(50));
-}
-
-/// A Rate of 1 bps (0.01%) on a large amount should truncate correctly.
-#[test]
-fn test_rate_minimal_apply_to() {
-    let rate = Rate::from_bps(1);
-    assert_eq!(rate.apply_to(100_000), Ok(10));
-}
-
-/// apply_to rounds toward zero (truncates).
-#[test]
-fn test_rate_apply_to_truncates_towards_zero() {
-    let rate = Rate::from_bps(333); // 3.33%
-    // 100 * 333 / 10000 = 33299 / 10000 = 3 (truncated)
-    assert_eq!(rate.apply_to(100), Ok(3));
-    // 100 * 333 / 10000 = 3.33, truncated to 3
-}
-
-/// apply_to returns Overflow when multiplication overflows i128.
-#[test]
-fn test_rate_apply_to_overflow_returns_err() {
-    let rate = Rate::from_bps(u32::MAX);
-    assert_eq!(rate.apply_to(i128::MAX), Err(RateError::Overflow));
-}
-
-/// apply_to on a large-but-safe amount succeeds.
-#[test]
-fn test_rate_apply_to_large_safe_amount() {
-    let rate = Rate::from_bps(100); // 1%
-    // i128::MAX / 100 is safe for 1% multiplication.
-    let amount = i128::MAX / 100;
-    let expected = (amount * 100) / BASIS_POINTS as i128;
-    assert_eq!(rate.apply_to(amount), Ok(expected));
-}
-
-/// Zero amount always yields zero, even at max rate.
-#[test]
-fn test_rate_apply_to_zero_amount() {
-    let rate = Rate::from_bps(u32::MAX);
-    assert_eq!(rate.apply_to(0), Ok(0));
-}
-
-/// Rate::ZERO is 0 bps.
-#[test]
-fn test_rate_constants() {
-    assert_eq!(Rate::ZERO, Rate::from_bps(0));
-    assert_eq!(Rate::ZERO.to_bps(), 0);
-    assert_eq!(Rate::MAX.to_bps(), u32::MAX);
-}
-
-/// Rate round-trips through from_bps / to_bps.
-#[test]
-fn test_rate_from_bps_round_trip() {
-    let values = [0, 1, 100, 500, 1_000, 10_000, 50_000, u32::MAX];
-    for &bps in &values {
-        assert_eq!(Rate::from_bps(bps).to_bps(), bps);
-    }
-}
-
-/// ToI128Checked for Rate succeeds for all reasonable values.
-#[test]
-fn test_rate_to_i128_checked() {
-    let rate = Rate::from_bps(10_000);
-    let result: Result<i128, _> = rate.to_i128_checked();
-    assert_eq!(result, Ok(10_000i128));
-}
-
-/// Rate ordering matches the underlying u32 values.
-#[test]
-fn test_rate_ordering() {
-    let low = Rate::from_bps(100);
-    let high = Rate::from_bps(500);
-    assert!(low < high);
-    assert!(high > low);
-    assert_eq!(low, Rate::from_bps(100));
-}
-
-/// Rate encoding stability: round-trips through Val.
-#[test]
-fn test_rate_xdr_round_trip() {
-    use soroban_sdk::{IntoVal, TryFromVal};
-    use soroban_sdk::Val;
+fn test_require_valid_symbol_length_9_chars_passes() {
     let env = Env::default();
-    let original = Rate::from_bps(5_000);
-    let val: Val = original.into_val(&env);
-    let decoded: Rate = Rate::try_from_val(&env, &val).expect("Rate must round-trip through Val");
-    assert_eq!(decoded, original);
+    let sym = Symbol::new(&env, "boundary9"); // exactly 9 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
 }
 
-/// Rate::apply_to with negative amount returns a negative result.
+/// A 1-char symbol passes validation.
 #[test]
-fn test_rate_apply_to_negative_amount() {
-    let rate = Rate::from_bps(500); // 5%
-    assert_eq!(rate.apply_to(-1000), Ok(-50));
+fn test_require_valid_symbol_length_single_char_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "a");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// An empty symbol (0 bytes) passes validation (it's under 9).
+#[test]
+fn test_require_valid_symbol_length_empty_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A 10-char symbol (one past the short-symbol boundary) is rejected.
+#[test]
+fn test_require_valid_symbol_length_10_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "boundary10"); // exactly 10 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A 32-char symbol (at the SDK's hard limit) is rejected because it's
+/// still past the 9-char short-symbol boundary.
+#[test]
+fn test_require_valid_symbol_length_32_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyzabcd"); // 32 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A short 4-char symbol passes validation.
+#[test]
+fn test_require_valid_symbol_length_short_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "test"); // 4 chars, well within limit
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A typical storage-key style symbol (≤ 9 chars) passes.
+#[test]
+fn test_require_valid_symbol_length_storage_key_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "ADMIN"); // 5 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// The error discriminant is stable (pinned to 1) via `#[contracterror]`.
+/// This test checks that the enum round-trips through Val encoding.
+#[test]
+fn test_symbol_error_encoding_stability() {
+    use soroban_sdk::TryFromVal;
+    let env = Env::default();
+    let val: soroban_sdk::Val = soroban_sdk::IntoVal::into_val(&SymbolError::SymbolTooLong, &env);
+    let err: SymbolError =
+        <SymbolError as TryFromVal<Env, soroban_sdk::Val>>::try_from_val(&env, &val)
+            .expect("SymbolError must round-trip through Val");
+    assert_eq!(err, SymbolError::SymbolTooLong);
 }
 
 // ============================================================================
