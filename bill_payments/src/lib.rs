@@ -7,6 +7,7 @@ use remitwise_common::{
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
     SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
+use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
@@ -93,6 +94,16 @@ pub struct BillPage {
     pub next_cursor: u32,
     /// Total items returned in this page
     pub count: u32,
+}
+
+impl BillPage {
+    /// Returns the first bill in the page, or a typed error when the page is empty.
+    pub fn first(&self) -> Result<Bill, BillPaymentsError> {
+        match self.items.get(0) {
+            Some(bill) => Ok(bill.clone()),
+            None => Err(BillPaymentsError::EmptyPage),
+        }
+    }
 }
 
 pub mod pause_functions {
@@ -186,11 +197,10 @@ pub enum BillPaymentsError {
     SnapshotNotFound = 26,
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 27,
-    /// Bill name is empty or exceeds the maximum allowed length.
-    ///
-    /// Triggered when `name.len() == 0` or `name.len() > MAX_NAME_LEN` (64).
-    /// This prevents unbounded storage bloat from excessively long names.
-    InvalidName = 28,
+    /// The admin grant has expired and must be refreshed.
+    AdminGrantExpired = 28,
+    /// The page is empty so there is no first item to return.
+    EmptyPage = 29,
 }
 
 pub type Error = BillPaymentsError;
@@ -217,6 +227,16 @@ pub struct ArchivedBillPage {
     /// 0 means no more pages
     pub next_cursor: u32,
     pub count: u32,
+}
+
+impl ArchivedBillPage {
+    /// Returns the first archived bill in the page, or a typed error when the page is empty.
+    pub fn first(&self) -> Result<ArchivedBill, BillPaymentsError> {
+        match self.items.get(0) {
+            Some(bill) => Ok(bill.clone()),
+            None => Err(BillPaymentsError::EmptyPage),
+        }
+    }
 }
 
 #[contracttype]

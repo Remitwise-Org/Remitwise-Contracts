@@ -998,6 +998,7 @@ where
     }
 }
 
+pub mod events;
 pub mod reversible_op;
 
 /// Event emission helper
