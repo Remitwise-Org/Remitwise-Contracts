@@ -720,7 +720,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactvt"), symbol_short!("policy")),
+            (symbol_short!("react"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
