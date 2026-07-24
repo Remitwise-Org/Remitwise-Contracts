@@ -79,68 +79,68 @@ echo ""
 
 for contract in "${contracts[@]}"; do
   contract_path="${contract}/src/lib.rs"
-  
+
   if [ ! -f "$contract_path" ]; then
     echo "  ⚠️  Skipping $contract: file not found"
     continue
   fi
-  
+
   echo "  Checking $contract..."
-  
+
   # Use ripgrep if available for better performance, otherwise grep
   if command -v rg &> /dev/null; then
     grep_cmd="rg"
   else
     grep_cmd="grep"
   fi
-  
+
   # Find all view function definitions
   for prefix in "${view_function_prefixes[@]}"; do
     # Find lines with "pub fn get_" or "pub fn is_"
     view_funcs=$(grep -n "pub fn ${prefix}" "$contract_path" 2>/dev/null || true)
-    
+
     if [ -z "$view_funcs" ]; then
       continue
     fi
-    
+
     # For each view function, check if it contains storage write operations
     while IFS= read -r line_info; do
       if [ -z "$line_info" ]; then
         continue
       fi
-      
+
       line_num=$(echo "$line_info" | cut -d: -f1)
       func_line=$(echo "$line_info" | cut -d: -f2-)
-      
+
       # Extract function name
       func_name=$(echo "$func_line" | sed 's/.*pub fn \([a-z_0-9]*\).*/\1/')
-      
+
       # Extract the function body (from current line to next "pub fn" or end of impl)
       # Use awk to find the function's closing brace based on balanced braces
       # Simple approach: get the next 150 lines (most functions are shorter)
       end_line=$((line_num + 150))
       func_body=$(sed -n "${line_num},${end_line}p" "$contract_path")
-      
+
       # Check for storage write patterns
       for pattern in "${storage_write_patterns[@]}"; do
         if echo "$func_body" | grep -qE "$pattern"; then
           # Get the specific lines that match
           matches=$(echo "$func_body" | grep -nE "$pattern" | head -3)
-          
+
           while IFS= read -r match; do
             if [ -z "$match" ]; then
               continue
             fi
-            
+
             rel_line=$(echo "$match" | cut -d: -f1)
             actual_line=$((line_num + rel_line - 1))
             match_text=$(echo "$match" | cut -d: -f2- | sed 's/^[[:space:]]*//')
-            
+
             violations+=("$contract:$actual_line: Function '${func_name}' writes storage: ${match_text}")
           done <<< "$matches"
         fi
       done
-      
+
     done <<< "$view_funcs"
   done
 done
