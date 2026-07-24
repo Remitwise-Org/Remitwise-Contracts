@@ -148,6 +148,94 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Settlement amount validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a settlement-moving amount is not strictly positive.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SettlementAmountError {
+    /// `amount <= 0`. Every settlement (a value transfer that finalizes an
+    /// obligation — a bill payment, premium payment, goal contribution,
+    /// remittance disbursement, etc.) must be strictly positive by policy.
+    NonPositiveAmount = 1,
+}
+
+/// Guards that a settlement amount is strictly positive (`> 0`).
+///
+/// This is a defence-in-depth check meant to be called at the top of any
+/// entry point that finalizes a value transfer ("settles" an obligation),
+/// in addition to — not instead of — each contract's own existing
+/// validation. Individual contracts have historically implemented this
+/// bound inconsistently (some guard `amount <= 0`, at least one guard only
+/// `amount < 0`, silently letting a zero-amount settlement through as a
+/// successful no-op). A shared, single-purpose helper removes the chance
+/// of a future entry point picking the wrong comparison operator.
+///
+/// # Threat model
+/// A settlement of `0` that is accepted rather than rejected lets a caller
+/// trigger the full side effects of a "successful" settlement — state
+/// mutation, an emitted settlement event, consumption of a rate-limit
+/// budget, or satisfying a downstream "was this settled?" check in an
+/// orchestrating contract — without moving any value. That gap is useful
+/// to an attacker who wants to grief accounting/audit trails, force
+/// extra event-indexer/off-chain load, or manufacture a "paid" state to
+/// unblock a workflow gate that only checks for success, not amount.
+/// Negative amounts are equally invalid and are rejected by the same
+/// check, since a "negative settlement" has no valid real-world meaning
+/// and would invert the direction of a transfer if it reached arithmetic.
+///
+/// # Cost
+/// A single `i128` comparison; negligible relative to any settlement
+/// entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`SettlementAmountError::NonPositiveAmount`] if `amount <= 0`.
+pub fn require_positive_settlement_amount(amount: i128) -> Result<(), SettlementAmountError> {
+    if amount <= 0 {
+        Err(SettlementAmountError::NonPositiveAmount)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod settlement_amount_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_zero() {
+        assert_eq!(
+            require_positive_settlement_amount(0),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn rejects_negative() {
+        assert_eq!(
+            require_positive_settlement_amount(-1),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+        assert_eq!(
+            require_positive_settlement_amount(i128::MIN),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn accepts_smallest_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(1), Ok(()));
+    }
+
+    #[test]
+    fn accepts_large_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(i128::MAX), Ok(()));
+    }
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
