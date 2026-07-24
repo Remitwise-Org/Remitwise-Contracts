@@ -15,8 +15,6 @@
 ///   that need uniqueness must deduplicate the result themselves.
 extern crate std;
 
-use ed25519_dalek::Signer;
-
 use super::*;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
