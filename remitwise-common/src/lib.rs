@@ -287,6 +287,50 @@ impl ToI128Checked for i32 {
     }
 }
 
+/// Basis points in 100% (1 bps = 0.01%).
+pub const BPS_IN_FULL: u32 = 10_000;
+
+/// Error returned when constructing a [`Rate`] from an out-of-range input.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RateError {
+    /// The input represents more than 100% ([`BPS_IN_FULL`] basis points).
+    AboveMax = 1,
+}
+
+/// A proportion stored as basis points (1 bps = 0.01%).
+///
+/// Callers currently pass percentages around as bare `u32`s, some in whole
+/// percent (0-100, e.g. the remittance split fields) and some already in basis
+/// points (0-10_000, e.g. the data-migration split validation). `Rate` keeps
+/// the two representations from mixing by making the conversion explicit and
+/// range-checked at the boundary.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Rate {
+    bps: u32,
+}
+
+impl Rate {
+    /// Builds a rate from hundredths of a percent: `1` is 0.01% (1 bps) and
+    /// `10_000` is 100%. Inputs above 100% are rejected.
+    ///
+    /// # Errors
+    /// Returns [`RateError::AboveMax`] when `percent_x100 > BPS_IN_FULL`.
+    pub fn from_percent(percent_x100: u32) -> Result<Self, RateError> {
+        if percent_x100 > BPS_IN_FULL {
+            return Err(RateError::AboveMax);
+        }
+        Ok(Self { bps: percent_x100 })
+    }
+
+    /// The rate in basis points (0-10_000).
+    pub fn bps(self) -> u32 {
+        self.bps
+    }
+}
+
 /// Error related to time and periods.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -628,7 +672,7 @@ impl RemitwiseEvents {
         F: FnOnce(&T) -> bool,
     {
         use soroban_sdk::testutils::Events as _;
-        use soroban_sdk::{IntoVal, TryFromVal};
+        use soroban_sdk::IntoVal;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -674,8 +718,7 @@ impl RemitwiseEvents {
         let payload: T = T::try_from_val(env, &data).expect("failed to decode event data");
         assert!(
             data_pred(&payload),
-            "event data predicate failed for action {:?}",
-            expected_action
+            "event data predicate failed for action {expected_action:?}"
         );
     }
 }
@@ -951,9 +994,7 @@ mod encoding_stability_tests {
             }
         }
 
-        for v in [PolicyMode::Strict] {
-            cover_all_variants(v);
-        }
+        cover_all_variants(PolicyMode::Strict);
 
         let vec = Vec::from_array(&env, [PolicyMode::Strict]);
         let mut out = Vec::<PolicyMode>::new(&env);

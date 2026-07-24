@@ -584,7 +584,8 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     let env = Env::default();
-    let tags = soroban_sdk::vec![&env,
+    let tags = soroban_sdk::vec![
+        &env,
         soroban_sdk::String::from_str(&env, "payments"),
         soroban_sdk::String::from_str(&env, "SAVINGS"),
     ];
@@ -592,7 +593,10 @@ fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     assert!(result.is_ok());
     let out = result.unwrap();
     assert_eq!(out.len(), 2);
-    assert_eq!(out.get(1).unwrap(), soroban_sdk::String::from_str(&env, "savings"));
+    assert_eq!(
+        out.get(1).unwrap(),
+        soroban_sdk::String::from_str(&env, "savings")
+    );
 }
 
 #[test]
@@ -636,5 +640,49 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "=formula")];
     let result = canonicalize_tags_checked(&env, &tags);
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
-    assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
+    assert!(matches!(
+        result,
+        Err(crate::TagError::InvalidChar { position: 0 })
+    ));
+}
+
+// ─── Rate::from_percent boundary tests (#1186) ───────────────────────────────
+
+#[test]
+fn rate_from_percent_accepts_zero() {
+    let rate = Rate::from_percent(0).unwrap();
+    assert_eq!(rate.bps(), 0);
+}
+
+#[test]
+fn rate_from_percent_accepts_one_hundredth_of_a_percent() {
+    // 0.01% is the smallest representable rate: 1 unit in, 1 bps out.
+    let rate = Rate::from_percent(1).unwrap();
+    assert_eq!(rate.bps(), 1);
+}
+
+#[test]
+fn rate_from_percent_accepts_exactly_one_hundred_percent() {
+    let rate = Rate::from_percent(BPS_IN_FULL).unwrap();
+    assert_eq!(rate.bps(), 10_000);
+}
+
+#[test]
+fn rate_from_percent_rejects_above_one_hundred_percent() {
+    // 100.01% is the first invalid input.
+    assert_eq!(Rate::from_percent(10_001), Err(RateError::AboveMax));
+    assert_eq!(Rate::from_percent(u32::MAX), Err(RateError::AboveMax));
+}
+
+proptest! {
+    #[test]
+    fn rate_from_percent_round_trips_any_valid_input(p in 0u32..=BPS_IN_FULL) {
+        let rate = Rate::from_percent(p).unwrap();
+        prop_assert_eq!(rate.bps(), p);
+    }
+
+    #[test]
+    fn rate_from_percent_rejects_any_input_above_full(p in (BPS_IN_FULL + 1)..=u32::MAX) {
+        prop_assert_eq!(Rate::from_percent(p), Err(RateError::AboveMax));
+    }
 }

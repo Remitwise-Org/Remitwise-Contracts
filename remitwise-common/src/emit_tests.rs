@@ -1,5 +1,7 @@
 use crate::{EventCategory, EventPriority, RemitwiseEvents};
-use soroban_sdk::{contract, contractimpl, symbol_short, testutils::Events as _, Env, FromVal, Vec};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, testutils::Events as _, Env, FromVal, Vec,
+};
 
 // Events published outside a contract context are dropped by the host
 // (soroban-sdk 21), so tests publish through a minimal registered contract.
@@ -118,12 +120,7 @@ fn test_emit_encodes_priority_as_third_topic() {
 fn test_emit_batch_uses_low_priority_topic() {
     let env = Env::default();
     in_contract_context(&env, || {
-        RemitwiseEvents::emit_batch(
-            &env,
-            EventCategory::Transaction,
-            symbol_short!("batch"),
-            5,
-        );
+        RemitwiseEvents::emit_batch(&env, EventCategory::Transaction, symbol_short!("batch"), 5);
     });
     let events = env.events().all();
     let (_, topics, _) = events.last().unwrap();
@@ -133,9 +130,18 @@ fn test_emit_batch_uses_low_priority_topic() {
 
 #[test]
 fn test_emit_all_categories_are_distinct() {
-    assert_ne!(EventCategory::Transaction.to_u32(), EventCategory::Access.to_u32());
-    assert_ne!(EventCategory::Access.to_u32(), EventCategory::System.to_u32());
-    assert_ne!(EventCategory::Transaction.to_u32(), EventCategory::System.to_u32());
+    assert_ne!(
+        EventCategory::Transaction.to_u32(),
+        EventCategory::Access.to_u32()
+    );
+    assert_ne!(
+        EventCategory::Access.to_u32(),
+        EventCategory::System.to_u32()
+    );
+    assert_ne!(
+        EventCategory::Transaction.to_u32(),
+        EventCategory::System.to_u32()
+    );
 }
 
 #[test]
