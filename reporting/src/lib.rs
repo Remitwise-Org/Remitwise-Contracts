@@ -7,7 +7,7 @@ use soroban_sdk::{
 mod utils;
 use utils::u64_to_u32;
 
-pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
+pub use remitwise_common::{Category, CoverageType, ToI128Checked, DEFAULT_PAGE_LIMIT};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -1093,7 +1093,8 @@ impl ReportingContract {
         }
 
         let completion_percentage = safe_percent(total_saved, total_target, 100).min(100);
-            let completion_percentage = u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
+        let completion_percentage =
+            u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
 
         Ok(SavingsReport {
             total_goals,
@@ -1171,11 +1172,8 @@ impl ReportingContract {
         let compliance_percentage = if total_bills == 0 {
             100u32
         } else {
-            let val: i128 = safe_percent(
-                paid_bills as i128,
-                total_bills as i128,
-                100,
-            ).clamp(0, 100);
+            let val: i128 =
+                safe_percent(paid_bills as i128, total_bills as i128, 100).clamp(0, 100);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -1244,7 +1242,8 @@ impl ReportingContract {
 
         let annual_premium = monthly_premium.saturating_mul(12);
         let coverage_to_premium_ratio = {
-            let val: i128 = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
+            let val: i128 =
+                safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -2252,8 +2251,9 @@ impl ReportingContract {
                 // Update index
                 if let Some(mut user_idx) = arch_idx.get(user.clone()) {
                     if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        let idx_u32 = u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
-            user_idx.remove(idx_u32);
+                        let idx_u32 =
+                            u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
+                        user_idx.remove(idx_u32);
                         if user_idx.is_empty() {
                             arch_idx.remove(user);
                         } else {

@@ -531,9 +531,7 @@ mod tests {
         );
 
         assert_eq!(
-            c.try_reactivate_policy(&owner, &pid)
-                .unwrap_err()
-                .unwrap(),
+            c.try_reactivate_policy(&owner, &pid).unwrap_err().unwrap(),
             InsuranceError::PolicyAlreadyActive
         );
     }
@@ -561,14 +559,12 @@ mod tests {
         for i in MAX_POLICIES + 1..=MAX_POLICIES * 2 {
             full.push_back(i);
         }
-        env.as_contract(&c.address, || {
-            env.storage().instance().set(&DataKey::ActivePolicies, &full);
-        });
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivePolicies, &full);
 
         assert_eq!(
-            c.try_reactivate_policy(&owner, &pid)
-                .unwrap_err()
-                .unwrap(),
+            c.try_reactivate_policy(&owner, &pid).unwrap_err().unwrap(),
             InsuranceError::MaxPoliciesReached
         );
     }
@@ -580,10 +576,34 @@ mod tests {
         let (c, _contract_owner) = setup_with_owner(&env);
         let owner = Address::generate(&env);
 
-        let _p1 = c.create_policy(&owner, &n(&env, "P1"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
-        let p2 = c.create_policy(&owner, &n(&env, "P2"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
-        let _p3 = c.create_policy(&owner, &n(&env, "P3"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
-        let p4 = c.create_policy(&owner, &n(&env, "P4"), &CoverageType::Health, &5_000_000i128, &50_000_000i128);
+        let p1 = c.create_policy(
+            &owner,
+            &n(&env, "P1"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+        let p2 = c.create_policy(
+            &owner,
+            &n(&env, "P2"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+        let p3 = c.create_policy(
+            &owner,
+            &n(&env, "P3"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
+        let p4 = c.create_policy(
+            &owner,
+            &n(&env, "P4"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
 
         // Deactivate a subset
         c.deactivate_policy(&owner, &p2);

@@ -5712,12 +5712,10 @@ fn test_batch_add_to_goals_locked_goal_rejects() {
     // Locked goals still accept deposits in batch
     let contributions = SorobanVec::from_array(
         &env,
-        [
-            ContributionItem {
-                goal_id: id_b,
-                amount: 500,
-            },
-        ],
+        [ContributionItem {
+            goal_id: id_b,
+            amount: 500,
+        }],
     );
     let res = client.batch_add_to_goals(&owner, &contributions);
     assert_eq!(res, 1, "locked goals accept deposits in batch");
@@ -5794,8 +5792,7 @@ fn test_batch_add_to_goals_duplicate_goal_ids_sequential() {
 
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(
-        goal.current_amount,
-        600,
+        goal.current_amount, 600,
         "duplicate goal_id contributions must accumulate"
     );
 }

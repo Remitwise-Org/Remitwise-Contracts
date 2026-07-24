@@ -466,8 +466,12 @@ impl Insurance {
             deactivated_at: 0,
         };
 
-        env.storage().instance().set(&DataKey::Policy(next_id), &policy);
-        env.storage().instance().set(&DataKey::PolicyCount, &next_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(next_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::PolicyCount, &next_id);
         // Add to active index (helper enforces no-dup and capacity)
         Self::add_active_policy(&env, next_id)?;
 
@@ -645,8 +649,9 @@ impl Insurance {
 
         let now = env.ledger().timestamp();
         policy.active = false;
-        policy.deactivated_at = now;
-        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
         // Remove from active index (helper)
         Self::remove_active_policy(&env, policy_id)?;
 
@@ -696,7 +701,9 @@ impl Insurance {
         // Refresh payment cadence to the next logical due date relative to now.
         policy.next_payment_date = Self::advance_next_payment_date(policy.next_payment_date, now);
         policy.active = true;
-        env.storage().instance().set(&DataKey::Policy(policy_id), &policy);
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
 
         // Attempt to add to the active index; helper enforces capacity/dup.
         Self::add_active_policy(&env, policy_id)?;
@@ -1038,9 +1045,11 @@ impl Insurance {
     // ── Scheduler ──────────────────────────────────────────────────────────
 
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
-        env.storage()
-            .persistent()
-            .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
     }
 
     /// Create a recurring premium schedule for a policy.
@@ -1416,6 +1425,6 @@ impl Insurance {
 }
 
 #[cfg(test)]
-mod test;
-#[cfg(test)]
 mod next_payment_scheduling_tests;
+#[cfg(test)]
+mod test;

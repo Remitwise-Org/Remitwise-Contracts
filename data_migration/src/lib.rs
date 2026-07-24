@@ -2307,7 +2307,10 @@ mod tests {
         let rb = RollbackMetadata::capture(Some(&prev), &attempted, 12_345);
 
         let description = rb.describe();
-        assert!(description.contains("12345"), "timestamp should appear: {description}");
+        assert!(
+            description.contains("12345"),
+            "timestamp should appear: {description}"
+        );
         assert!(
             description.contains(&prev.header.version.to_string()),
             "previous version should appear: {description}"

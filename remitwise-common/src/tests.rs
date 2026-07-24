@@ -804,7 +804,8 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     let env = Env::default();
-    let tags = soroban_sdk::vec![&env,
+    let tags = soroban_sdk::vec![
+        &env,
         soroban_sdk::String::from_str(&env, "payments"),
         soroban_sdk::String::from_str(&env, "SAVINGS"),
     ];
@@ -812,7 +813,10 @@ fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     assert!(result.is_ok());
     let out = result.unwrap();
     assert_eq!(out.len(), 2);
-    assert_eq!(out.get(1).unwrap(), soroban_sdk::String::from_str(&env, "savings"));
+    assert_eq!(
+        out.get(1).unwrap(),
+        soroban_sdk::String::from_str(&env, "savings")
+    );
 }
 
 #[test]
@@ -856,7 +860,10 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "=formula")];
     let result = canonicalize_tags_checked(&env, &tags);
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
-    assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
+    assert!(matches!(
+        result,
+        Err(crate::TagError::InvalidChar { position: 0 })
+    ));
 }
 
 // ─── require_matching_ledger ───────────────────────────────────────────────────
