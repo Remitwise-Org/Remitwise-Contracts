@@ -16,6 +16,7 @@
 extern crate std;
 
 use super::*;
+use crate::distribute_pro_rata;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
 use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
