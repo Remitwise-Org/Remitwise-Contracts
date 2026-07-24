@@ -912,3 +912,50 @@ fn test_require_matching_ledger_far_after() {
     let result = require_matching_ledger(&env, 100);
     assert_eq!(result, Err(LedgerError::LedgerMismatch));
 }
+
+// ─── require_matching_ledger ───────────────────────────────────────────────────
+
+/// Calling with the current ledger sequence returns Ok(()).
+#[test]
+fn test_require_matching_ledger_same_ledger() {
+    let env = Env::default();
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 42);
+    assert_eq!(result, Ok(()));
+}
+
+/// Calling with one less than the current ledger returns Err(LedgerMismatch).
+#[test]
+fn test_require_matching_ledger_one_before() {
+    let env = Env::default();
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 41);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
+}
+
+/// Calling with one more than the current ledger returns Err(LedgerMismatch).
+#[test]
+fn test_require_matching_ledger_one_after() {
+    let env = Env::default();
+    set_ledger(&env, 42);
+    let result = require_matching_ledger(&env, 43);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
+}
+
+/// Calling with a far-earlier ledger also returns Err(LedgerMismatch).
+#[test]
+fn test_require_matching_ledger_far_before() {
+    let env = Env::default();
+    set_ledger(&env, 100);
+    let result = require_matching_ledger(&env, 1);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
+}
+
+/// Calling with a far-later ledger also returns Err(LedgerMismatch).
+#[test]
+fn test_require_matching_ledger_far_after() {
+    let env = Env::default();
+    set_ledger(&env, 1);
+    let result = require_matching_ledger(&env, 100);
+    assert_eq!(result, Err(LedgerError::LedgerMismatch));
+}
