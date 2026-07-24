@@ -1250,7 +1250,10 @@ mod testsuit {
 
         let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
-        assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
+        assert!(
+            page.next_cursor > 0,
+            "must have a non-zero next_cursor when more pages exist"
+        );
     }
 
     /// Admin can iterate through all bills across multiple pages and see the correct total.
@@ -1296,7 +1299,8 @@ mod testsuit {
 
         let page = client.get_all_bills_page(&admin, &0, &100);
         assert_eq!(
-            page.items.len(), 6,
+            page.items.len(),
+            6,
             "admin should see bills from all 6 owners combined"
         );
     }
@@ -3445,6 +3449,7 @@ mod testsuit {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(clippy::enum_variant_names)]
     enum Operation {
         CreateBill {
             amount: i128,
@@ -3460,6 +3465,120 @@ mod testsuit {
     }
 
     proptest! {
+        #[test]
+        fn prop_currency_index_random_add_remove_maintains_ascending_order_and_consistency(
+            ops in proptest::collection::vec(
+                proptest::prop_oneof![
+                    1 => (1u32..=200u32).prop_map(|id| (true, id)),
+                    1 => (1u32..=200u32).prop_map(|id| (false, id)),
+                ],
+                0..100
+            )
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            let mut expected: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+
+            for (is_add, id) in ops {
+                if is_add {
+                    expected.insert(id);
+                    env.as_contract(&contract_id, || {
+                        BillPayments::index_add_currency(&env, &owner, &currency, id);
+                    });
+                } else {
+                    expected.remove(&id);
+                    env.as_contract(&contract_id, || {
+                        BillPayments::index_remove_currency(&env, &owner, &currency, id);
+                    });
+                }
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+
+            for i in 1..idx_ids.len() {
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
+                assert!(
+                    prev < curr,
+                    "Currency index must be maintained in strictly ascending order: prev={} curr={}",
+                    prev,
+                    curr
+                );
+            }
+
+            let actual_set: std::collections::BTreeSet<u32> = idx_ids.iter().collect();
+            assert_eq!(
+                actual_set, expected,
+                "Currency index must match the expected set after random add/remove operations"
+            );
+        }
+
+        #[test]
+        fn prop_currency_index_add_only_grows_monotonically(
+            ids in proptest::collection::vec(0u32..=50u32, 0..30)
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            for id in &ids {
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_add_currency(&env, &owner, &currency, *id);
+                });
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+
+            for i in 1..idx_ids.len() {
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
+                assert!(prev < curr, "Index must be strictly ascending after add-only operations");
+            }
+        }
+
+        #[test]
+        fn prop_currency_index_remove_non_existent_is_noop(
+            ids in proptest::collection::vec(0u32..=30u32, 1..20),
+            ghosts in proptest::collection::vec(100u32..=200u32, 1..10)
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            let mut expected: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            for id in &ids {
+                expected.insert(*id);
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_add_currency(&env, &owner, &currency, *id);
+                });
+            }
+
+            for ghost in &ghosts {
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_remove_currency(&env, &owner, &currency, *ghost);
+                });
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+            let actual_set: std::collections::BTreeSet<u32> = idx_ids.iter().collect();
+            assert_eq!(actual_set, expected,
+                "Removing non-existent IDs must not affect the currency index");
+        }
+
         #[test]
         fn prop_unpaid_total_invariant(
             operations in proptest::collection::vec(

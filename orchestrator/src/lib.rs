@@ -655,8 +655,11 @@ impl Orchestrator {
         let split = amount / 3;
         let remainder = amount - split * 3;
 
-        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
-            .add_to_goal(&executor, &goal_id, &(split + remainder));
+        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr).add_to_goal(
+            &executor,
+            &goal_id,
+            &(split + remainder),
+        );
         let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
             .pay_bill(&executor, &bill_id, &split);
         let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
@@ -1337,13 +1340,7 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(
-                        env,
-                        caller,
-                        routing.bill_id,
-                        bills_amt,
-                        bills_done,
-                    );
+                    Self::compensate_bill(env, caller, routing.bill_id, bills_amt, bills_done);
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);
@@ -1728,15 +1725,7 @@ mod tests_nonce_eviction {
     }
 
     fn request_hash(amount: i128, nonce: u64, deadline: u64) -> u64 {
-        Orchestrator::compute_request_hash(
-            symbol_short!("flow"),
-            nonce,
-            amount,
-            deadline,
-            1,
-            1,
-            1,
-        )
+        Orchestrator::compute_request_hash(symbol_short!("flow"), nonce, amount, deadline, 1, 1, 1)
     }
 
     fn execute_signed_flow(

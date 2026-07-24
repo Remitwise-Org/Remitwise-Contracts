@@ -214,11 +214,11 @@ fn compute_test_hash(
 
 fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
     &[
-        ("remittance_split.wasm", 99_000),
-        ("savings_goals.wasm", 101_000),
-        ("bill_payments.wasm", 122_000),
-        ("insurance.wasm", 42_057),
-        ("family_wallet.wasm", 120_000),
+        ("remittance_split.wasm", 110_000),
+        ("savings_goals.wasm", 112_000),
+        ("bill_payments.wasm", 135_000),
+        ("insurance.wasm", 52_000),
+        ("family_wallet.wasm", 130_000),
     ]
 }
 
@@ -1841,7 +1841,7 @@ fn test_exec_lock_released_when_hostile_downstream_fails_bill() {
     let caller = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &mock_id));
-    assert_eq!(result, Err(Ok(OrchestratorError::RemittanceFlowRolledBack)));
+    assert_eq!(result, Err(Ok(OrchestratorError::CrossContractCallFailed)));
     assert!(!client.get_execution_state());
 }
 

@@ -43,6 +43,9 @@ $DENY_BIN check
 echo "Running gas benchmarks..."
 ./scripts/run_gas_benchmarks.sh
 
+echo "Running workspace invariant checks..."
+python3 scripts/check_workspace_invariants.py
+
 echo "Running cross-contract invariant checks..."
 python3 scripts/verify_cross_contract_invariants.py
 

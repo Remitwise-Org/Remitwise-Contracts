@@ -1502,12 +1502,7 @@ impl RemittanceSplit {
         // Increment nonce and record success
         Self::increment_nonce(&env, &request.from)?;
         Self::append_audit(&env, symbol_short!("distH"), &request.from, true);
-        Self::emit_distribution_completed(
-            &env,
-            &request.from,
-            request.total_amount,
-            &amounts,
-        );
+        Self::emit_distribution_completed(&env, &request.from, request.total_amount, &amounts);
         Ok(true)
     }
 
