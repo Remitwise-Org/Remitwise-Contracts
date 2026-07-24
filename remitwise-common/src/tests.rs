@@ -572,6 +572,123 @@ fn test_verify_slash_signature_invalid() {
     assert_eq!(result, Err(SlashError::InvalidSignature));
 }
 
+// ─── Rate newtype tests (#1080) ────────────────────────────────────────────
+
+/// A Rate of 0 bps (0%) should apply to any amount as 0.
+#[test]
+fn test_rate_zero_apply_to() {
+    let rate = Rate::from_bps(0);
+    assert_eq!(rate.apply_to(1000), Ok(0));
+}
+
+/// A Rate of 10_000 bps (100%) should return the full amount unchanged.
+#[test]
+fn test_rate_full_apply_to() {
+    let rate = Rate::from_bps(BASIS_POINTS);
+    assert_eq!(rate.apply_to(1000), Ok(1000));
+}
+
+/// A Rate of 500 bps (5%) should compute the correct percentage.
+#[test]
+fn test_rate_percentage_apply_to() {
+    let rate = Rate::from_bps(500);
+    assert_eq!(rate.apply_to(1000), Ok(50));
+}
+
+/// A Rate of 1 bps (0.01%) on a large amount should truncate correctly.
+#[test]
+fn test_rate_minimal_apply_to() {
+    let rate = Rate::from_bps(1);
+    assert_eq!(rate.apply_to(100_000), Ok(10));
+}
+
+/// apply_to rounds toward zero (truncates).
+#[test]
+fn test_rate_apply_to_truncates_towards_zero() {
+    let rate = Rate::from_bps(333); // 3.33%
+    // 100 * 333 / 10000 = 33299 / 10000 = 3 (truncated)
+    assert_eq!(rate.apply_to(100), Ok(3));
+    // 100 * 333 / 10000 = 3.33, truncated to 3
+}
+
+/// apply_to returns Overflow when multiplication overflows i128.
+#[test]
+fn test_rate_apply_to_overflow_returns_err() {
+    let rate = Rate::from_bps(u32::MAX);
+    assert_eq!(rate.apply_to(i128::MAX), Err(RateError::Overflow));
+}
+
+/// apply_to on a large-but-safe amount succeeds.
+#[test]
+fn test_rate_apply_to_large_safe_amount() {
+    let rate = Rate::from_bps(100); // 1%
+    // i128::MAX / 100 is safe for 1% multiplication.
+    let amount = i128::MAX / 100;
+    let expected = (amount * 100) / BASIS_POINTS as i128;
+    assert_eq!(rate.apply_to(amount), Ok(expected));
+}
+
+/// Zero amount always yields zero, even at max rate.
+#[test]
+fn test_rate_apply_to_zero_amount() {
+    let rate = Rate::from_bps(u32::MAX);
+    assert_eq!(rate.apply_to(0), Ok(0));
+}
+
+/// Rate::ZERO is 0 bps.
+#[test]
+fn test_rate_constants() {
+    assert_eq!(Rate::ZERO, Rate::from_bps(0));
+    assert_eq!(Rate::ZERO.to_bps(), 0);
+    assert_eq!(Rate::MAX.to_bps(), u32::MAX);
+}
+
+/// Rate round-trips through from_bps / to_bps.
+#[test]
+fn test_rate_from_bps_round_trip() {
+    let values = [0, 1, 100, 500, 1_000, 10_000, 50_000, u32::MAX];
+    for &bps in &values {
+        assert_eq!(Rate::from_bps(bps).to_bps(), bps);
+    }
+}
+
+/// ToI128Checked for Rate succeeds for all reasonable values.
+#[test]
+fn test_rate_to_i128_checked() {
+    let rate = Rate::from_bps(10_000);
+    let result: Result<i128, _> = rate.to_i128_checked();
+    assert_eq!(result, Ok(10_000i128));
+}
+
+/// Rate ordering matches the underlying u32 values.
+#[test]
+fn test_rate_ordering() {
+    let low = Rate::from_bps(100);
+    let high = Rate::from_bps(500);
+    assert!(low < high);
+    assert!(high > low);
+    assert_eq!(low, Rate::from_bps(100));
+}
+
+/// Rate encoding stability: round-trips through Val.
+#[test]
+fn test_rate_xdr_round_trip() {
+    use soroban_sdk::{IntoVal, TryFromVal};
+    use soroban_sdk::Val;
+    let env = Env::default();
+    let original = Rate::from_bps(5_000);
+    let val: Val = original.into_val(&env);
+    let decoded: Rate = Rate::try_from_val(&env, &val).expect("Rate must round-trip through Val");
+    assert_eq!(decoded, original);
+}
+
+/// Rate::apply_to with negative amount returns a negative result.
+#[test]
+fn test_rate_apply_to_negative_amount() {
+    let rate = Rate::from_bps(500); // 5%
+    assert_eq!(rate.apply_to(-1000), Ok(-50));
+}
+
 // ============================================================================
 // canonicalize_tags_checked — untrusted caller tests (#1034)
 // ============================================================================

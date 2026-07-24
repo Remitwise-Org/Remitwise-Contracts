@@ -287,6 +287,97 @@ impl ToI128Checked for i32 {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rate newtype — basis-points arithmetic
+// ---------------------------------------------------------------------------
+
+/// Basis-points denominator: 10_000 basis points = 100%.
+///
+/// All Remitwise contracts express percentages in basis points (1 bps = 0.01%)
+/// so that integer arithmetic can be used without floating point.
+pub const BASIS_POINTS: u32 = 10_000;
+
+/// Error returned by [`Rate`] arithmetic when the result overflows `i128`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RateError {
+    /// The intermediate or final result exceeds `i128::MAX`.
+    Overflow,
+}
+
+/// A rate expressed in basis points (1 bps = 0.01 %).
+///
+/// `Rate` wraps a `u32` where the stored value represents hundredths of a
+/// percent:
+///
+/// | Value | Meaning         |
+/// |-------|-----------------|
+/// | 0     | 0 %             |
+/// | 1     | 0.01 %          |
+/// | 100   | 1 %             |
+/// | 500   | 5 %             |
+/// | 1_000 | 10 %            |
+/// | 10_000| 100 %           |
+/// | 50_000| 500 % (overage) |
+///
+/// Use [`apply_to`](Rate::apply_to) to compute `amount * rate / BASIS_POINTS`
+/// with checked arithmetic.
+///
+/// # Examples
+/// ```
+/// use remitwise_common::{Rate, BASIS_POINTS, RateError};
+///
+/// let rate = Rate::from_bps(500); // 5%
+/// assert_eq!(rate.apply_to(1000), Ok(50));
+/// assert_eq!(rate.apply_to(i128::MAX), Err(RateError::Overflow));
+/// ```
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Rate(u32);
+
+impl Rate {
+    pub const ZERO: Rate = Rate(0);
+    pub const MAX: Rate = Rate(u32::MAX);
+
+    /// Create a `Rate` from a raw basis-point value.
+    ///
+    /// No validation is performed — `u32::MAX` is accepted. Callers that need
+    /// semantic bounds (e.g. `rate <= BASIS_POINTS` for a discount rate) should
+    /// check them at the call site.
+    #[inline(always)]
+    pub fn from_bps(bps: u32) -> Self {
+        Self(bps)
+    }
+
+    /// Return the raw basis-point value.
+    #[inline(always)]
+    pub fn to_bps(self) -> u32 {
+        self.0
+    }
+
+    /// Apply this rate to `amount`, computing `(amount * self) / BASIS_POINTS`.
+    ///
+    /// Uses checked arithmetic. Returns:
+    /// - `Ok(result)` when the multiplication and division succeed.
+    /// - `Err(RateError::Overflow)` when `amount * self` overflows `i128`.
+    ///
+    /// Note: the division truncates towards zero. This matches the behaviour of
+    /// `safe_percent` elsewhere in the codebase.
+    pub fn apply_to(self, amount: i128) -> Result<i128, RateError> {
+        let rate_i128 = self.0 as i128;
+        amount
+            .checked_mul(rate_i128)
+            .and_then(|product| product.checked_div(BASIS_POINTS as i128))
+            .ok_or(RateError::Overflow)
+    }
+}
+
+impl ToI128Checked for Rate {
+    #[inline(always)]
+    fn to_i128_checked(self) -> Result<i128, IntConversionError> {
+        Ok(self.0 as i128)
+    }
+}
+
 /// Error related to time and periods.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
