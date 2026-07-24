@@ -627,7 +627,7 @@ fn test_nonce_starts_at_zero() {
 }
 
 #[test]
-fn test_execute_flow_signed_invalid_amount() {
+fn test_execute_flow_signed_invalid_amount_zero() {
     let (env, owner) = setup_test();
     let (_, client) = register_orchestrator(&env);
     init_orchestrator(&env, &client, &owner);
@@ -638,11 +638,68 @@ fn test_execute_flow_signed_invalid_amount() {
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 0, deadline);
 
     let result = client.try_execute_remittance_flow_signed(
-        &executor, &0, // amount 0
+        &executor, &0,
         &0, &deadline, &hash,
     );
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_invalid_amount_negative() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, -100, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &(-100i128),
+        &0, &deadline, &hash,
+    );
+
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_invalid_amount_i128_min() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, i128::MIN, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &(i128::MIN),
+        &0, &deadline, &hash,
+    );
+
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_valid_amount_minimum_positive() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &1,
+        &0, &deadline, &hash,
+    );
+
+    assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
 }
 
 #[test]
@@ -1485,6 +1542,45 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
     assert_eq!(stats.total_executions, 0);
     assert_eq!(stats.successful_executions, 0);
     assert_eq!(stats.failed_executions, 0);
+}
+
+#[test]
+fn test_invalid_amount_unsigned_negative() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, -100));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_invalid_amount_unsigned_i128_min() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, i128::MIN));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_valid_amount_unsigned_minimum_positive() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1));
+    assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
 }
 
 #[test]
