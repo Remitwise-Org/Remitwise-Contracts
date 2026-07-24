@@ -1826,13 +1826,13 @@ mod mock_hostile_all_fail {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
         pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            false
+            panic!("savings step failed")
         }
         pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            false
+            panic!("bill step failed")
         }
         pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            false
+            panic!("insurance step failed")
         }
         pub fn remove_from_goal(
             _env: Env,
@@ -1913,7 +1913,7 @@ fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
 
     // Second call — well-behaved downstream, must succeed.
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(Ok(())));
     assert!(!client.get_execution_state());
 }
 
