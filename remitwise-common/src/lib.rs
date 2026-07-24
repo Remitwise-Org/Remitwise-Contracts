@@ -244,6 +244,60 @@ mod settlement_amount_tests {
     }
 }
 
+/// Minimum transfer amount to prevent gas grief.
+pub const MIN_TRANSFER: i128 = 100;
+
+/// Error returned when a transfer amount is too small (dust).
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum DustError {
+    /// The amount is below `MIN_TRANSFER`.
+    AmountTooSmall = 1,
+}
+
+/// Guards that a transfer amount meets the minimum threshold to prevent dust spam.
+///
+/// # Threat model
+/// Without a minimum transfer bound, an attacker could repeatedly trigger token 
+/// transfers of 1 minor unit (e.g., 1 stroop). This could be used to grief the 
+/// network (wasting block space or gas) and the application (generating many 
+/// events or consuming rate limits) while moving virtually no economic value.
+///
+/// # Cost
+/// A single `i128` comparison.
+///
+/// # Errors
+/// Returns [`DustError::AmountTooSmall`] if `amount < MIN_TRANSFER`.
+pub fn verify_no_dust(amount: i128) -> Result<(), DustError> {
+    if amount < MIN_TRANSFER {
+        Err(DustError::AmountTooSmall)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod dust_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_dust() {
+        assert_eq!(verify_no_dust(99), Err(DustError::AmountTooSmall));
+        assert_eq!(verify_no_dust(0), Err(DustError::AmountTooSmall));
+    }
+
+    #[test]
+    fn accepts_min_transfer() {
+        assert_eq!(verify_no_dust(MIN_TRANSFER), Ok(()));
+    }
+
+    #[test]
+    fn accepts_large_amount() {
+        assert_eq!(verify_no_dust(i128::MAX), Ok(()));
+    }
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
