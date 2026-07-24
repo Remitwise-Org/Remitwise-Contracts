@@ -320,6 +320,7 @@ To run an example, use `cargo run --example <example_name>`:
 
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
+- [Amount Invariants](docs/AMOUNT_INVARIANTS.md) - Which entrypoints reject a zero amount, which accept it, and which normalize it away (for downstream integrators)
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
