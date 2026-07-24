@@ -1088,6 +1088,8 @@ impl FamilyWallet {
     ///
     /// # Errors
     /// Panics if the contract is paused.
+    /// Returns [`Error::InvalidSplitConfig`] if any percentage exceeds 100
+    /// or the four percentages do not sum to exactly 100.
     pub fn propose_split_config_change(
         env: Env,
         proposer: Address,
@@ -1095,13 +1097,20 @@ impl FamilyWallet {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
         Self::require_not_paused(&env);
+        if spending_percent > 100
+            || savings_percent > 100
+            || bills_percent > 100
+            || insurance_percent > 100
+        {
+            return Err(Error::InvalidSplitConfig);
+        }
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
-            panic!("Percentages must sum to 100");
+            return Err(Error::InvalidSplitConfig);
         }
 
-        Self::propose_transaction(
+        Ok(Self::propose_transaction(
             env,
             proposer,
             TransactionType::SplitConfigChange,
@@ -1111,7 +1120,7 @@ impl FamilyWallet {
                 bills_percent,
                 insurance_percent,
             ),
-        )
+        ))
     }
 
     /// Propose a family member role change.

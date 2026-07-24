@@ -209,8 +209,8 @@ Restores a split configuration from a previously exported snapshot.
 | 1 | `snapshot.version` within `[MIN_SNAPSHOT_VERSION, SNAPSHOT_VERSION]` | `UnsupportedVersion` |
 | 2 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
 | 3 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
-| 4 | Each percentage field `<= 100` | `InvalidPercentageRange` |
-| 5 | Sum of percentages `== 100` | `InvalidPercentages` |
+| 4 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
+| 5 | Sum of percentages `== 10_000` | `PercentagesDoNotSumTo100` |
 | 6 | `config.timestamp` and `exported_at` not in the future | `FutureTimestamp` |
 | 7 | Caller is the current contract owner | `Unauthorized` |
 | 8 | `snapshot.config.owner == caller` | `OwnerMismatch` |
@@ -255,8 +255,8 @@ failure.
 | 2 | `snapshot.version` within `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]` | `UnsupportedVersion` |
 | 3 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
 | 4 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
-| 5 | Each percentage field `<= 100` | `InvalidPercentageRange` |
-| 6 | Sum of all four percentage fields `== 100` | `InvalidPercentages` |
+| 5 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
+| 6 | Sum of all four percentage fields `== 10_000` | `PercentagesDoNotSumTo100` |
 | 7 | `snapshot.config.timestamp` and `exported_at` are not in the future | `InvalidAmount` |
 | 8 | Caller is the current on-chain owner (`existing.owner == caller`) | `Unauthorized` |
 | 9 | Snapshot owner matches caller (`snapshot.config.owner == caller`) | `OwnerMismatch` |
@@ -288,8 +288,8 @@ writing state.
 | 1 | Schema version within supported range | `UnsupportedVersion` |
 | 2 | FNV-1a checksum integrity | `ChecksumMismatch` |
 | 3 | `config.initialized == true` | `SnapshotNotInitialized` |
-| 4 | Per-field percentage range (`<= 100`) | `InvalidPercentageRange` |
-| 5 | Percentage sum `== 100` | `InvalidPercentages` |
+| 4 | Per-field percentage range (`<= 10_000`) | `PercentageOutOfRange` |
+| 5 | Percentage sum `== 10_000` | `PercentagesDoNotSumTo100` |
 | 6 | Timestamp not in the future | `InvalidAmount` |
 
 **Not checked by `verify_snapshot`:**
