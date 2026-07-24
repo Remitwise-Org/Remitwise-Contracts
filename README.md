@@ -322,7 +322,10 @@ To run an example, use `cargo run --example <example_name>`:
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
-- [Amount Invariants](docs/AMOUNT_INVARIANTS.md) - Which entrypoints reject a zero amount, which accept it, and which normalize it away (for downstream integrators)
+- [Verifier Registry](docs/VERIFIER_REGISTRY.md) - How authorized verifier keys are added, rotated, and revoked
+- [Dust Policy](docs/DUST_POLICY.md) - Rationale, overrides, and minimum transfer updates for dust prevention
+- [Reversibility Matrix](docs/REVERSIBILITY_MATRIX.md) - Summary of irreversible operations and how to undo reversible ones
+- [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
