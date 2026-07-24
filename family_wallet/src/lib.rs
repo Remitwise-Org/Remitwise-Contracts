@@ -393,6 +393,8 @@ pub enum Error {
     /// An emergency transfer was rejected because the resulting balance would
     /// fall below `EmergencyConfig.min_balance`.
     MinBalanceViolation = 24,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 25,
 }
 
 #[contractimpl]
@@ -3200,6 +3202,9 @@ impl FamilyWallet {
                 .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("family"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -3240,9 +3245,17 @@ impl FamilyWallet {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
         if snapshot.schema_version != SNAPSHOT_VERSION {
-            panic!("Unsupported snapshot version");
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, Error::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             panic!("Snapshot owner mismatch");
