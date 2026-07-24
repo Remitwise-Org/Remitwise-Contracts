@@ -1,4 +1,5 @@
 #![doc = include_str!("../../docs/EVENTS.md")]
+use soroban_sdk::{contracttype, Address, Symbol};
 
 /// Primary contract topic symbols
 pub const TOPIC_REMITWISE: &str = "Remitwise";
@@ -42,3 +43,58 @@ pub const ACTION_FLOW_FAIL: &str = "flow_fail";
 pub const ACTION_INIT_OK: &str = "init_ok";
 pub const ACTION_BATCH: &str = "batch";
 pub const ACTION_SNAP_EXP: &str = "snap_exp";
+
+pub const ACTION_PAUSED_V2: &str = "paused_v2";
+pub const ACTION_UNPAUSED_V2: &str = "unpaused_v2";
+pub const ACTION_M_PAUSED_V2: &str = "m_paused_v2";
+pub const ACTION_M_UNPAUSED_V2: &str = "m_unpause_v2";
+pub const ACTION_F_PAUSED_V2: &str = "f_paused_v2";
+pub const ACTION_F_UNPAUSED_V2: &str = "f_unpause_v2";
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PauseEvent {
+    pub paused_at: u64,
+    pub paused_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnpauseEvent {
+    pub unpaused_at: u64,
+    pub unpaused_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModulePauseEvent {
+    pub module_id: Symbol,
+    pub paused_at: u64,
+    pub paused_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModuleUnpauseEvent {
+    pub module_id: Symbol,
+    pub unpaused_at: u64,
+    pub unpaused_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FunctionPauseEvent {
+    pub module_id: Symbol,
+    pub func: Symbol,
+    pub paused_at: u64,
+    pub paused_by: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FunctionUnpauseEvent {
+    pub module_id: Symbol,
+    pub func: Symbol,
+    pub unpaused_at: u64,
+    pub unpaused_by: Address,
+}

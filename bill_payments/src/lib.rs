@@ -3,8 +3,9 @@
 
 use remitwise_common::{
     check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
-    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{
@@ -18,7 +19,6 @@ fn is_valid_currency_chars(s: &[u8]) -> bool {
 
 const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
 const SECONDS_PER_DAY: u64 = 86_400;
-const MAX_CURRENCY_LEN: u32 = 10;
 pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
 
 /// Rate limits for bill payments operations
@@ -30,6 +30,9 @@ const MAX_EXTERNAL_REF_LEN: u32 = 64;
 const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
 const MAX_SCHEDULE_LEAD_TIME: u64 = 365 * 24 * 3_600;
 const MAX_BILL_SCHEDULES_PER_OWNER: u32 = 50;
+/// Admin grant time-to-live in seconds (30 days). After this period the pause admin
+/// must call set_pause_admin or refresh_admin_grant to extend the grant.
+const ADMIN_GRANT_TTL: u64 = 30 * 24 * 60 * 60;
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -103,6 +106,7 @@ pub mod pause_functions {
     pub const ADD_TAGS: soroban_sdk::Symbol = symbol_short!("add_tags");
     pub const REM_TAGS: soroban_sdk::Symbol = symbol_short!("rem_tags");
     pub const SET_EXT_REF: soroban_sdk::Symbol = symbol_short!("ext_ref");
+    pub const REVERSE_PAYMENT: soroban_sdk::Symbol = symbol_short!("rev_pay");
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
@@ -175,6 +179,10 @@ pub enum BillPaymentsError {
     ScheduleNotFound = 24,
     /// Bill schedule is not active
     ScheduleNotActive = 25,
+    /// No pre-upgrade snapshot was persisted for restore.
+    SnapshotNotFound = 26,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 27,
 }
 
 pub type Error = BillPaymentsError;
@@ -626,9 +634,9 @@ impl BillPayments {
     ) -> Result<String, BillPaymentsError> {
         let len = currency.len();
 
-        // Empty string defaults to "XLM"
+        // Empty string defaults to the platform default currency
         if len == 0 {
-            return Ok(String::from_str(env, "XLM"));
+            return Ok(String::from_str(env, DEFAULT_CURRENCY));
         }
 
         // Check length constraint
@@ -650,8 +658,8 @@ impl BillPayments {
             .unwrap_or(0);
 
         if start >= end {
-            // Only whitespace - default to XLM
-            return Ok(String::from_str(env, "XLM"));
+            // Only whitespace - default to platform default currency
+            return Ok(String::from_str(env, DEFAULT_CURRENCY));
         }
 
         let trimmed = &s[start..end];
@@ -667,7 +675,7 @@ impl BillPayments {
             upper[i] = b.to_ascii_uppercase();
         }
 
-        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+        let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or(DEFAULT_CURRENCY);
         Ok(String::from_str(env, upper_str))
     }
 
@@ -678,7 +686,7 @@ impl BillPayments {
         // For backward compatibility, try validation first, fall back on error
         match Self::validate_and_normalize_currency(env, currency) {
             Ok(normalized) => normalized,
-            Err(_) => String::from_str(env, "XLM"),
+            Err(_) => String::from_str(env, DEFAULT_CURRENCY),
         }
     }
 
@@ -772,6 +780,28 @@ impl BillPayments {
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
+    fn require_admin_grant_valid(env: &Env) -> Result<(), BillPaymentsError> {
+        let granted_at: Option<u64> =
+            env.storage().instance().get(&symbol_short!("PADM_GT"));
+        match granted_at {
+            Some(granted) => {
+                let now = env.ledger().timestamp();
+                if now >= granted.saturating_add(ADMIN_GRANT_TTL) {
+                    Err(BillPaymentsError::AdminGrantExpired)
+                } else {
+                    Ok(())
+                }
+            }
+            None => {
+                // Legacy: no grant timestamp stored. Migration path: store now so
+                // the TTL clock starts from the next time the admin is read.
+                env.storage()
+                    .instance()
+                    .set(&symbol_short!("PADM_GT"), &env.ledger().timestamp());
+                Ok(())
+            }
+        }
+    }
     fn get_next_bill_id(env: &Env) -> u32 {
         env.storage()
             .instance()
@@ -833,6 +863,9 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PADM_GT"), &env.ledger().timestamp());
         Ok(())
     }
 
@@ -841,6 +874,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -854,8 +888,11 @@ impl BillPayments {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("paused"),
-            (),
+            soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
         );
         Ok(())
     }
@@ -865,6 +902,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::ContractPaused` or `Error::UnauthorizedPause`.
     pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -883,8 +921,11 @@ impl BillPayments {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("unpaused"),
-            (),
+            soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
         );
         Ok(())
     }
@@ -894,6 +935,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::InvalidAmount` or `Error::UnauthorizedPause`.
     pub fn schedule_unpause(env: Env, caller: Address, at_timestamp: u64) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -912,6 +954,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -933,6 +976,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -954,6 +998,7 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise the underlying pause errors.
     pub fn emergency_pause_all(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
+        Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
@@ -967,8 +1012,11 @@ impl BillPayments {
             &env,
             EventCategory::System,
             EventPriority::High,
-            symbol_short!("paused"),
-            (),
+            soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
         );
 
         let mut paused_functions: Map<Symbol, bool> = env
@@ -1006,6 +1054,21 @@ impl BillPayments {
     }
     pub fn get_pause_admin_public(env: Env) -> Option<Address> {
         Self::get_pause_admin(&env)
+    }
+    pub fn refresh_admin_grant(
+        env: Env,
+        caller: Address,
+    ) -> Result<(), BillPaymentsError> {
+        caller.require_auth();
+        let admin =
+            Self::get_pause_admin(&env).ok_or(BillPaymentsError::AdminGrantExpired)?;
+        if admin != caller {
+            return Err(BillPaymentsError::UnauthorizedPause);
+        }
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PADM_GT"), &env.ledger().timestamp());
+        Ok(())
     }
     pub fn get_version(env: Env) -> u32 {
         env.storage()
@@ -1126,6 +1189,9 @@ impl BillPayments {
             pause_admin: Self::get_pause_admin(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1161,9 +1227,17 @@ impl BillPayments {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .ok_or(BillPaymentsError::Unauthorized)?;
+            .ok_or(BillPaymentsError::SnapshotNotFound)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(BillPaymentsError::InvalidLimit);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(BillPaymentsError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
         env.storage()
@@ -2394,13 +2468,13 @@ impl BillPayments {
 
         // Handle index updates
         if bill.external_ref != validated_ext_ref {
-            // Release old ref if it existed
-            if let Some(ref old_ref) = bill.external_ref {
-                Self::release_external_ref(&env, &caller, old_ref);
-            }
-            // Claim new ref if provided
+            // Claim new ref first if provided
             if let Some(ref new_ref) = validated_ext_ref {
                 Self::claim_external_ref(&env, &caller, new_ref, bill_id)?;
+            }
+            // Release old ref only after new ref is successfully claimed
+            if let Some(ref old_ref) = bill.external_ref {
+                Self::release_external_ref(&env, &caller, old_ref);
             }
         }
 
@@ -3340,6 +3414,64 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&STORAGE_UNPAID_TOTALS, &totals);
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl BillPaymentsReversible for BillPayments {
+    /// Reverse a previous `pay_bill` call for the given bill.
+    ///
+    /// Marks the bill as unpaid and restores the unpaid-total tracker.
+    /// Returns `Ok(false)` when the bill was already unpaid (idempotent).
+    fn reverse_payment(
+        env: Env,
+        user: Address,
+        bill_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
+            .map_err(|_| ReversibleOpError::InvalidState)?;
+        Self::extend_instance_ttl(&env);
+
+        let mut bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut bill = bills.get(bill_id).ok_or(ReversibleOpError::NotFound)?;
+
+        if bill.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if !bill.paid {
+            return Ok(false);
+        }
+
+        bill.paid = false;
+        bill.paid_at = None;
+
+        let reversed_amount = bill.amount;
+        bills.set(bill_id, bill);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BILLS"), &bills);
+
+        Self::adjust_unpaid_total(&env, &user, reversed_amount);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::High,
+            symbol_short!("reverse"),
+            (bill_id, user, reversed_amount),
+        );
+
+        Ok(true)
     }
 }
 

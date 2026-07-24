@@ -72,6 +72,15 @@ jobs:
           cargo --version
           rustup target list --installed | grep wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown
 
+      - name: Pin ed25519-dalek to v2.x
+        # soroban-env-host v21.2.1 specifies ed25519-dalek = ">=2.0.0" which
+        # resolves to v3.0.0 on fresh lockfiles, breaking its testutils code.
+        run: |
+          if cargo tree -i "ed25519-dalek@3.0.0" &>/dev/null; then
+            echo "Pinning ed25519-dalek to v2.2.0..."
+            cargo update -p "ed25519-dalek@3.0.0" --precise 2.2.0
+          fi
+
       - name: Build workspace (WASM)
         run: |
           cargo build --release --target wasm32-unknown-unknown --workspace \
@@ -163,6 +172,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Pin ed25519-dalek to v2.x
+        run: |
+          if cargo tree -i "ed25519-dalek@3.0.0" &>/dev/null; then
+            echo "Pinning ed25519-dalek to v2.2.0..."
+            cargo update -p "ed25519-dalek@3.0.0" --precise 2.2.0
+          fi
+
       - name: Enforce no unwrap/expect in production code (SC-054)
         run: |
           cargo clippy --workspace --lib -- -D clippy::unwrap_used -D clippy::expect_used
@@ -201,6 +217,20 @@ jobs:
       - name: Run cargo audit
         run: |
           cargo audit --deny warnings
+        continue-on-error: true
+
+  workspace-invariants:
+    name: Workspace Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check workspace invariants
+        run: |
+          python3 scripts/check_workspace_invariants.py
         continue-on-error: true
 
   storage-key-validation:

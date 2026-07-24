@@ -3,8 +3,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, Symbol, Vec,
 };
 
 #[allow(dead_code)]
@@ -23,17 +23,17 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> bool;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128);
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> bool;
+        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128);
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128);
     }
 
     /// Compensation / reverse interfaces for rollback support.
@@ -43,17 +43,17 @@ mod interface {
     /// the reverse call.
     #[contractclient(name = "SavingsGoalsCompClient")]
     pub trait SavingsGoalsCompInterface {
-        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
+        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128);
     }
 
     #[contractclient(name = "BillPaymentsCompClient")]
     pub trait BillPaymentsCompInterface {
-        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
+        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128);
     }
 
     #[contractclient(name = "InsuranceCompClient")]
     pub trait InsuranceCompInterface {
-        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
+        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128);
     }
 
     /// External token contract interface used by `claim_rewards_summary_external`.
@@ -91,6 +91,7 @@ pub enum FlowStep {
 }
 
 use remitwise_common::{
+    reversible_op::{BillPaymentsReversibleClient, SavingsGoalsReversibleClient},
     EventCategory, EventPriority, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -125,6 +126,9 @@ const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
 /// Storage key for per-address pending reward balances.
 /// Value type: `Map<Address, i128>`.
 const PENDING_REWARDS: Symbol = symbol_short!("PNDG_RWD");
+/// Storage key for the current actor epoch.
+/// Value type: `u64`.
+const ACTOR_EPOCH: Symbol = symbol_short!("ACT_EPOCH");
 
 /// Pre-upgrade snapshot for upgrade rollback protection.
 ///
@@ -159,6 +163,8 @@ pub struct PreUpgradeSnapshot {
     pub bill_id: u32,
     /// Policy execution parameter ID.
     pub policy_id: u32,
+    /// Current actor epoch.
+    pub actor_epoch: u64,
 }
 
 /// RAII guard to ensure the execution lock is released on drop.
@@ -324,6 +330,8 @@ pub enum OrchestratorError {
     ReentrancyDetected = 12,
     /// The caller has no pending rewards to claim.
     NoPendingRewards = 13,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 14,
 }
 
 #[contract]
@@ -469,6 +477,12 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("POL_ID"), &1u32);
 
+        // Initialize actor epoch to 0. This can be bumped by the owner
+        // to invalidate stale actor tokens (defence-in-depth).
+        env.storage()
+            .instance()
+            .set(&ACTOR_EPOCH, &0u64);
+
         let stats = ExecutionStats {
             total_executions: 0,
             successful_executions: 0,
@@ -502,6 +516,7 @@ impl Orchestrator {
     /// - Execution lock to prevent cross-contract reentrancy
     /// - Nonce replay protection with deadline window validation
     /// - Request hash binding to prevent parameter-swap attacks
+    /// - Epoch validation to prevent stale actor token replay
     ///
     /// # Errors
     /// - `Unauthorized` if executor doesn't authorize or contract not initialized
@@ -510,6 +525,7 @@ impl Orchestrator {
     /// - `InvalidNonce` if nonce or hash is invalid
     /// - `NonceAlreadyUsed` if nonce was already used
     /// - `ExecutionLocked` if reentrancy detected
+    /// - `EpochMismatch` if actor_epoch does not match current epoch
     pub fn execute_remittance_flow_signed(
         env: Env,
         executor: Address,
@@ -517,6 +533,7 @@ impl Orchestrator {
         nonce: u64,
         deadline: u64,
         request_hash: u64,
+        actor_epoch: u64,
     ) -> Result<bool, OrchestratorError> {
         // 1. Authorization first — before any storage reads
         executor.require_auth();
@@ -541,7 +558,10 @@ impl Orchestrator {
             return Err(OrchestratorError::ExecutionLocked);
         }
 
-        // 5. Hardened nonce validation with deadline + hash binding.
+        // 5. Validate actor epoch to prevent stale token replay
+        Self::verify_matching_epoch(&env, actor_epoch)?;
+
+        // 6. Hardened nonce validation with deadline + hash binding.
         // Execution parameter IDs are read from instance storage (defaults set
         // at init) and folded into the hash so relayers cannot redirect funds
         // to a different goal/bill/policy after signing.
@@ -566,13 +586,13 @@ impl Orchestrator {
 
         Self::emit_flow_started(&env, &executor, amount);
 
-        // 6. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
+        // 7. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
         let result = {
             let _guard = Self::acquire_execution_lock(&env)?;
             Self::execute_flow_internal(&env, &executor, amount)
         };
 
-        // 7. On success: advance nonce, then record shared flow outcome
+        // 8. On success: advance nonce, then record shared flow outcome
         match result {
             Ok(_) => {
                 Self::increment_nonce(&env, &executor)?;
@@ -636,11 +656,11 @@ impl Orchestrator {
         let remainder = amount - split * 3;
 
         let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
-            .add_to_goal(&executor, &goal_id, &(split + remainder));
+            .try_add_to_goal(&executor, &goal_id, &(split + remainder)).is_err();
         let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
-            .pay_bill(&executor, &bill_id, &split);
+            .try_pay_bill(&executor, &bill_id, &split).is_err();
         let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
-            .pay_premium(&executor, &policy_id, &split);
+            .try_pay_premium(&executor, &policy_id, &split).is_err();
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -878,6 +898,59 @@ impl Orchestrator {
         Ok(true)
     }
 
+    /// Bump the actor epoch to invalidate stale actor tokens.
+    ///
+    /// This is a defence-in-depth mechanism. When called, all actor tokens
+    /// created before the bump will fail the `verify_matching_epoch` check.
+    ///
+    /// # Threat mitigated
+    /// Without this check, an attacker who obtains a stale actor token (e.g.,
+    /// through a compromised signing service) could replay it indefinitely.
+    /// Bumping the epoch forces all actors to obtain fresh tokens.
+    ///
+    /// # Authorization
+    /// Only the contract owner may bump the epoch.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if caller is not the owner
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("epoch_bump"))` with (old_epoch, new_epoch).
+    pub fn bump_actor_epoch(env: Env, caller: Address) -> Result<u64, OrchestratorError> {
+        caller.require_auth();
+
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let old_epoch = Self::get_actor_epoch(&env);
+        let new_epoch = old_epoch.checked_add(1).ok_or(OrchestratorError::Overflow)?;
+
+        env.storage().instance().set(&ACTOR_EPOCH, &new_epoch);
+
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("epch_bump")),
+            (old_epoch, new_epoch),
+        );
+
+        Ok(new_epoch)
+    }
+
+    /// Get the current actor epoch.
+    ///
+    /// This allows actors to query the current epoch before creating tokens.
+    pub fn get_actor_epoch_public(env: Env) -> u64 {
+        Self::get_actor_epoch(&env)
+    }
+
     /// Capture a pre-upgrade snapshot of critical instance storage.
     ///
     /// Call this before performing a contract upgrade. The snapshot captures
@@ -964,8 +1037,12 @@ impl Orchestrator {
                 .instance()
                 .get(&symbol_short!("POL_ID"))
                 .unwrap_or(1),
+            actor_epoch: Self::get_actor_epoch(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -1006,6 +1083,14 @@ impl Orchestrator {
             .ok_or(OrchestratorError::InvalidDependency)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(OrchestratorError::InvalidDependency);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(OrchestratorError::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             return Err(OrchestratorError::Unauthorized);
@@ -1054,6 +1139,11 @@ impl Orchestrator {
         env.storage()
             .instance()
             .set(&symbol_short!("POL_ID"), &snapshot.policy_id);
+
+        // Restore actor epoch
+        env.storage()
+            .instance()
+            .set(&ACTOR_EPOCH, &snapshot.actor_epoch);
 
         // Consume the snapshot
         env.storage().persistent().remove(&SNAPSHOT_KEY);
@@ -1223,7 +1313,7 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            if !s_client.add_to_goal(caller, &routing.goal_id, &savings_amt) {
+            if s_client.try_add_to_goal(caller, &routing.goal_id, &savings_amt).is_err() {
                 return Err(OrchestratorError::CrossContractCallFailed);
             }
             savings_done = true;
@@ -1231,7 +1321,7 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            if !b_client.pay_bill(caller, &routing.bill_id, &bills_amt) {
+            if b_client.try_pay_bill(caller, &routing.bill_id, &bills_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1249,7 +1339,7 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            if !i_client.pay_premium(caller, &routing.policy_id, &insurance_amt) {
+            if i_client.try_pay_premium(caller, &routing.policy_id, &insurance_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1258,13 +1348,7 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(
-                        env,
-                        caller,
-                        routing.bill_id,
-                        bills_amt,
-                        bills_done,
-                    );
+                    Self::compensate_bill(env, caller, routing.bill_id, bills_amt, bills_done);
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);
@@ -1290,7 +1374,7 @@ impl Orchestrator {
             None => return,
         };
         let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
-        client.remove_from_goal(executor, &goal_id, &amount);
+        let _ = client.try_remove_from_goal(executor, &goal_id, &amount);
     }
 
     /// Compensate a bill payment if it was applied.
@@ -1303,7 +1387,7 @@ impl Orchestrator {
             None => return,
         };
         let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
-        client.reverse_payment(executor, &bill_id, &amount);
+        let _ = client.try_reverse_payment(executor, &bill_id, &amount);
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {
@@ -1532,6 +1616,35 @@ impl Orchestrator {
         }
     }
 
+    /// Get the current actor epoch from instance storage.
+    fn get_actor_epoch(env: &Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&ACTOR_EPOCH)
+            .unwrap_or(0)
+    }
+
+    /// Verify that the provided actor epoch matches the current epoch.
+    ///
+    /// This is a defence-in-depth check to prevent replay of stale actor tokens
+    /// after epoch bumps. An attacker who obtains a stale actor token cannot
+    /// replay it after the epoch has been bumped by the contract owner.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `actor_epoch` - The epoch value provided by the actor
+    ///
+    /// # Returns
+    /// * `Ok(())` if the epochs match
+    /// * `Err(OrchestratorError::EpochMismatch)` if they differ
+    fn verify_matching_epoch(env: &Env, actor_epoch: u64) -> Result<(), OrchestratorError> {
+        let current_epoch = Self::get_actor_epoch(env);
+        if actor_epoch != current_epoch {
+            return Err(OrchestratorError::EpochMismatch);
+        }
+        Ok(())
+    }
+
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
@@ -1560,23 +1673,23 @@ mod tests_nonce_eviction {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+
         }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+
         }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+
         }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+
         }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+
         }
     }
 
@@ -1620,15 +1733,7 @@ mod tests_nonce_eviction {
     }
 
     fn request_hash(amount: i128, nonce: u64, deadline: u64) -> u64 {
-        Orchestrator::compute_request_hash(
-            symbol_short!("flow"),
-            nonce,
-            amount,
-            deadline,
-            1,
-            1,
-            1,
-        )
+        Orchestrator::compute_request_hash(symbol_short!("flow"), nonce, amount, deadline, 1, 1, 1)
     }
 
     fn execute_signed_flow(
