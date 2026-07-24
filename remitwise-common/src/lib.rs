@@ -294,6 +294,84 @@ mod settlement_amount_tests {
 }
 
 // ---------------------------------------------------------------------------
+// Non-zero amount validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a non-zero amount is required but zero was supplied.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum AmountError {
+    /// `amount == 0`.  Any entry point that accepts a monetary amount must
+    /// reject zero to prevent valueless side-effects from being treated as
+    /// successful operations.
+    ZeroAmount = 1,
+}
+
+/// Guards that `amount` is non-zero (`!= 0`).
+///
+/// This is a defence-in-depth check for any entry point that accepts a
+/// monetary amount, regardless of whether the amount is also subject to
+/// settlement-specific or dust-level validation.  It catches the
+/// zero-amount case that some existing per-contract guards miss (e.g.
+/// guards written as `amount < 0` rather than `amount <= 0`).
+///
+/// # Threat model
+/// A zero-amount call that is accepted as a success lets a caller
+/// trigger the full side-effects of the operation — state mutation,
+/// event emission, rate-limit consumption, or satisfying a downstream
+/// "was this done?" gate — without moving any value.  An attacker can
+/// use this to grief audit trails, inflate off-chain analytics, or
+/// manufacture a "completed" state that unlocks a workflow gate.  The
+/// check also rejects negative amounts, which are equally invalid for
+/// monetary inputs and would invert the direction of a transfer if
+/// they reached arithmetic.
+///
+/// # Cost
+/// A single `i128` comparison; negligible relative to any entry
+/// point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`AmountError::ZeroAmount`] if `amount == 0`.
+pub fn require_non_zero_amount(amount: i128) -> Result<(), AmountError> {
+    if amount == 0 {
+        Err(AmountError::ZeroAmount)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod non_zero_amount_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_zero() {
+        assert_eq!(require_non_zero_amount(0), Err(AmountError::ZeroAmount));
+    }
+
+    #[test]
+    fn accepts_one() {
+        assert_eq!(require_non_zero_amount(1), Ok(()));
+    }
+
+    #[test]
+    fn accepts_negative_one() {
+        assert_eq!(require_non_zero_amount(-1), Ok(()));
+    }
+
+    #[test]
+    fn accepts_min() {
+        assert_eq!(require_non_zero_amount(i128::MIN), Ok(()));
+    }
+
+    #[test]
+    fn accepts_max() {
+        assert_eq!(require_non_zero_amount(i128::MAX), Ok(()));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Settlement currency validation
 // ---------------------------------------------------------------------------
 
