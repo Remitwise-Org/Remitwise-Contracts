@@ -125,6 +125,9 @@ const FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");
 /// Storage key for per-address pending reward balances.
 /// Value type: `Map<Address, i128>`.
 const PENDING_REWARDS: Symbol = symbol_short!("PNDG_RWD");
+/// Storage key for the current actor epoch.
+/// Value type: `u64`.
+const ACTOR_EPOCH: Symbol = symbol_short!("ACT_EPOCH");
 
 /// Pre-upgrade snapshot for upgrade rollback protection.
 ///
@@ -159,6 +162,8 @@ pub struct PreUpgradeSnapshot {
     pub bill_id: u32,
     /// Policy execution parameter ID.
     pub policy_id: u32,
+    /// Current actor epoch.
+    pub actor_epoch: u64,
 }
 
 /// RAII guard to ensure the execution lock is released on drop.
@@ -324,6 +329,9 @@ pub enum OrchestratorError {
     ReentrancyDetected = 12,
     /// The caller has no pending rewards to claim.
     NoPendingRewards = 13,
+    /// The provided actor epoch does not match the current epoch.
+    /// This prevents replay of stale actor tokens after epoch bumps.
+    EpochMismatch = 14,
 }
 
 #[contract]
@@ -469,6 +477,12 @@ impl Orchestrator {
             .instance()
             .set(&symbol_short!("POL_ID"), &1u32);
 
+        // Initialize actor epoch to 0. This can be bumped by the owner
+        // to invalidate stale actor tokens (defence-in-depth).
+        env.storage()
+            .instance()
+            .set(&ACTOR_EPOCH, &0u64);
+
         let stats = ExecutionStats {
             total_executions: 0,
             successful_executions: 0,
@@ -502,6 +516,7 @@ impl Orchestrator {
     /// - Execution lock to prevent cross-contract reentrancy
     /// - Nonce replay protection with deadline window validation
     /// - Request hash binding to prevent parameter-swap attacks
+    /// - Epoch validation to prevent stale actor token replay
     ///
     /// # Errors
     /// - `Unauthorized` if executor doesn't authorize or contract not initialized
@@ -510,6 +525,7 @@ impl Orchestrator {
     /// - `InvalidNonce` if nonce or hash is invalid
     /// - `NonceAlreadyUsed` if nonce was already used
     /// - `ExecutionLocked` if reentrancy detected
+    /// - `EpochMismatch` if actor_epoch does not match current epoch
     pub fn execute_remittance_flow_signed(
         env: Env,
         executor: Address,
@@ -517,6 +533,7 @@ impl Orchestrator {
         nonce: u64,
         deadline: u64,
         request_hash: u64,
+        actor_epoch: u64,
     ) -> Result<bool, OrchestratorError> {
         // 1. Authorization first — before any storage reads
         executor.require_auth();
@@ -541,7 +558,10 @@ impl Orchestrator {
             return Err(OrchestratorError::ExecutionLocked);
         }
 
-        // 5. Hardened nonce validation with deadline + hash binding.
+        // 5. Validate actor epoch to prevent stale token replay
+        Self::verify_matching_epoch(&env, actor_epoch)?;
+
+        // 6. Hardened nonce validation with deadline + hash binding.
         // Execution parameter IDs are read from instance storage (defaults set
         // at init) and folded into the hash so relayers cannot redirect funds
         // to a different goal/bill/policy after signing.
@@ -566,13 +586,13 @@ impl Orchestrator {
 
         Self::emit_flow_started(&env, &executor, amount);
 
-        // 6. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
+        // 7. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)
         let result = {
             let _guard = Self::acquire_execution_lock(&env)?;
             Self::execute_flow_internal(&env, &executor, amount)
         };
 
-        // 7. On success: advance nonce, then record shared flow outcome
+        // 8. On success: advance nonce, then record shared flow outcome
         match result {
             Ok(_) => {
                 Self::increment_nonce(&env, &executor)?;
@@ -878,6 +898,59 @@ impl Orchestrator {
         Ok(true)
     }
 
+    /// Bump the actor epoch to invalidate stale actor tokens.
+    ///
+    /// This is a defence-in-depth mechanism. When called, all actor tokens
+    /// created before the bump will fail the `verify_matching_epoch` check.
+    ///
+    /// # Threat mitigated
+    /// Without this check, an attacker who obtains a stale actor token (e.g.,
+    /// through a compromised signing service) could replay it indefinitely.
+    /// Bumping the epoch forces all actors to obtain fresh tokens.
+    ///
+    /// # Authorization
+    /// Only the contract owner may bump the epoch.
+    ///
+    /// # Errors
+    /// - `Unauthorized` if caller is not the owner
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("orch"), symbol_short!("epoch_bump"))` with (old_epoch, new_epoch).
+    pub fn bump_actor_epoch(env: Env, caller: Address) -> Result<u64, OrchestratorError> {
+        caller.require_auth();
+
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .ok_or(OrchestratorError::Unauthorized)?;
+
+        if caller != owner {
+            return Err(OrchestratorError::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let old_epoch = Self::get_actor_epoch(&env);
+        let new_epoch = old_epoch.checked_add(1).ok_or(OrchestratorError::Overflow)?;
+
+        env.storage().instance().set(&ACTOR_EPOCH, &new_epoch);
+
+        env.events().publish(
+            (symbol_short!("orch"), symbol_short!("epch_bump")),
+            (old_epoch, new_epoch),
+        );
+
+        Ok(new_epoch)
+    }
+
+    /// Get the current actor epoch.
+    ///
+    /// This allows actors to query the current epoch before creating tokens.
+    pub fn get_actor_epoch_public(env: Env) -> u64 {
+        Self::get_actor_epoch(&env)
+    }
+
     /// Capture a pre-upgrade snapshot of critical instance storage.
     ///
     /// Call this before performing a contract upgrade. The snapshot captures
@@ -964,6 +1037,7 @@ impl Orchestrator {
                 .instance()
                 .get(&symbol_short!("POL_ID"))
                 .unwrap_or(1),
+            actor_epoch: Self::get_actor_epoch(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
         env.events().publish(
@@ -1054,6 +1128,11 @@ impl Orchestrator {
         env.storage()
             .instance()
             .set(&symbol_short!("POL_ID"), &snapshot.policy_id);
+
+        // Restore actor epoch
+        env.storage()
+            .instance()
+            .set(&ACTOR_EPOCH, &snapshot.actor_epoch);
 
         // Consume the snapshot
         env.storage().persistent().remove(&SNAPSHOT_KEY);
@@ -1530,6 +1609,35 @@ impl Orchestrator {
         } else {
             limit
         }
+    }
+
+    /// Get the current actor epoch from instance storage.
+    fn get_actor_epoch(env: &Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&ACTOR_EPOCH)
+            .unwrap_or(0)
+    }
+
+    /// Verify that the provided actor epoch matches the current epoch.
+    ///
+    /// This is a defence-in-depth check to prevent replay of stale actor tokens
+    /// after epoch bumps. An attacker who obtains a stale actor token cannot
+    /// replay it after the epoch has been bumped by the contract owner.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `actor_epoch` - The epoch value provided by the actor
+    ///
+    /// # Returns
+    /// * `Ok(())` if the epochs match
+    /// * `Err(OrchestratorError::EpochMismatch)` if they differ
+    fn verify_matching_epoch(env: &Env, actor_epoch: u64) -> Result<(), OrchestratorError> {
+        let current_epoch = Self::get_actor_epoch(env);
+        if actor_epoch != current_epoch {
+            return Err(OrchestratorError::EpochMismatch);
+        }
+        Ok(())
     }
 
     fn extend_instance_ttl(env: &Env) {

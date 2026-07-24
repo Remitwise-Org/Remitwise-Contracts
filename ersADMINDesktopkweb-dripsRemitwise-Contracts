@@ -1,0 +1,303 @@
+[1mdiff --git a/orchestrator/src/lib.rs b/orchestrator/src/lib.rs[m
+[1mindex c4851f3..a6b659f 100644[m
+[1m--- a/orchestrator/src/lib.rs[m
+[1m+++ b/orchestrator/src/lib.rs[m
+[36m@@ -125,6 +125,9 @@[m [mconst FLOW_EXEC_AUDIT: Symbol = symbol_short!("flow_exec");[m
+ /// Storage key for per-address pending reward balances.[m
+ /// Value type: `Map<Address, i128>`.[m
+ const PENDING_REWARDS: Symbol = symbol_short!("PNDG_RWD");[m
+[32m+[m[32m/// Storage key for the current actor epoch.[m
+[32m+[m[32m/// Value type: `u64`.[m
+[32m+[m[32mconst ACTOR_EPOCH: Symbol = symbol_short!("ACT_EPOCH");[m
+ [m
+ /// Pre-upgrade snapshot for upgrade rollback protection.[m
+ ///[m
+[36m@@ -159,6 +162,8 @@[m [mpub struct PreUpgradeSnapshot {[m
+     pub bill_id: u32,[m
+     /// Policy execution parameter ID.[m
+     pub policy_id: u32,[m
+[32m+[m[32m    /// Current actor epoch.[m
+[32m+[m[32m    pub actor_epoch: u64,[m
+ }[m
+ [m
+ /// RAII guard to ensure the execution lock is released on drop.[m
+[36m@@ -324,6 +329,9 @@[m [mpub enum OrchestratorError {[m
+     ReentrancyDetected = 12,[m
+     /// The caller has no pending rewards to claim.[m
+     NoPendingRewards = 13,[m
+[32m+[m[32m    /// The provided actor epoch does not match the current epoch.[m
+[32m+[m[32m    /// This prevents replay of stale actor tokens after epoch bumps.[m
+[32m+[m[32m    EpochMismatch = 14,[m
+ }[m
+ [m
+ #[contract][m
+[36m@@ -469,6 +477,12 @@[m [mimpl Orchestrator {[m
+             .instance()[m
+             .set(&symbol_short!("POL_ID"), &1u32);[m
+ [m
+[32m+[m[32m        // Initialize actor epoch to 0. This can be bumped by the owner[m
+[32m+[m[32m        // to invalidate stale actor tokens (defence-in-depth).[m
+[32m+[m[32m        env.storage()[m
+[32m+[m[32m            .instance()[m
+[32m+[m[32m            .set(&ACTOR_EPOCH, &0u64);[m
+[32m+[m
+         let stats = ExecutionStats {[m
+             total_executions: 0,[m
+             successful_executions: 0,[m
+[36m@@ -502,6 +516,7 @@[m [mimpl Orchestrator {[m
+     /// - Execution lock to prevent cross-contract reentrancy[m
+     /// - Nonce replay protection with deadline window validation[m
+     /// - Request hash binding to prevent parameter-swap attacks[m
+[32m+[m[32m    /// - Epoch validation to prevent stale actor token replay[m
+     ///[m
+     /// # Errors[m
+     /// - `Unauthorized` if executor doesn't authorize or contract not initialized[m
+[36m@@ -510,6 +525,7 @@[m [mimpl Orchestrator {[m
+     /// - `InvalidNonce` if nonce or hash is invalid[m
+     /// - `NonceAlreadyUsed` if nonce was already used[m
+     /// - `ExecutionLocked` if reentrancy detected[m
+[32m+[m[32m    /// - `EpochMismatch` if actor_epoch does not match current epoch[m
+     pub fn execute_remittance_flow_signed([m
+         env: Env,[m
+         executor: Address,[m
+[36m@@ -517,6 +533,7 @@[m [mimpl Orchestrator {[m
+         nonce: u64,[m
+         deadline: u64,[m
+         request_hash: u64,[m
+[32m+[m[32m        actor_epoch: u64,[m
+     ) -> Result<bool, OrchestratorError> {[m
+         // 1. Authorization first — before any storage reads[m
+         executor.require_auth();[m
+[36m@@ -541,7 +558,10 @@[m [mimpl Orchestrator {[m
+             return Err(OrchestratorError::ExecutionLocked);[m
+         }[m
+ [m
+[31m-        // 5. Hardened nonce validation with deadline + hash binding.[m
+[32m+[m[32m        // 5. Validate actor epoch to prevent stale token replay[m
+[32m+[m[32m        Self::verify_matching_epoch(&env, actor_epoch)?;[m
+[32m+[m
+[32m+[m[32m        // 6. Hardened nonce validation with deadline + hash binding.[m
+         // Execution parameter IDs are read from instance storage (defaults set[m
+         // at init) and folded into the hash so relayers cannot redirect funds[m
+         // to a different goal/bill/policy after signing.[m
+[36m@@ -566,13 +586,13 @@[m [mimpl Orchestrator {[m
+ [m
+         Self::emit_flow_started(&env, &executor, amount);[m
+ [m
+[31m-        // 6. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)[m
+[32m+[m[32m        // 7. Execute under reentrancy guard (LockGuard RAII ensures release on all paths)[m
+         let result = {[m
+             let _guard = Self::acquire_execution_lock(&env)?;[m
+             Self::execute_flow_internal(&env, &executor, amount)[m
+         };[m
+ [m
+[31m-        // 7. On success: advance nonce, then record shared flow outcome[m
+[32m+[m[32m        // 8. On success: advance nonce, then record shared flow outcome[m
+         match result {[m
+             Ok(_) => {[m
+                 Self::increment_nonce(&env, &executor)?;[m
+[36m@@ -878,6 +898,59 @@[m [mimpl Orchestrator {[m
+         Ok(true)[m
+     }[m
+ [m
+[32m+[m[32m    /// Bump the actor epoch to invalidate stale actor tokens.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// This is a defence-in-depth mechanism. When called, all actor tokens[m
+[32m+[m[32m    /// created before the bump will fail the `verify_matching_epoch` check.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Threat mitigated[m
+[32m+[m[32m    /// Without this check, an attacker who obtains a stale actor token (e.g.,[m
+[32m+[m[32m    /// through a compromised signing service) could replay it indefinitely.[m
+[32m+[m[32m    /// Bumping the epoch forces all actors to obtain fresh tokens.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Authorization[m
+[32m+[m[32m    /// Only the contract owner may bump the epoch.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Errors[m
+[32m+[m[32m    /// - `Unauthorized` if caller is not the owner[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Events[m
+[32m+[m[32m    /// Emits `(symbol_short!("orch"), symbol_short!("epoch_bump"))` with (old_epoch, new_epoch).[m
+[32m+[m[32m    pub fn bump_actor_epoch(env: Env, caller: Address) -> Result<u64, OrchestratorError> {[m
+[32m+[m[32m        caller.require_auth();[m
+[32m+[m
+[32m+[m[32m        let owner: Address = env[m
+[32m+[m[32m            .storage()[m
+[32m+[m[32m            .instance()[m
+[32m+[m[32m            .get(&symbol_short!("OWNER"))[m
+[32m+[m[32m            .ok_or(OrchestratorError::Unauthorized)?;[m
+[32m+[m
+[32m+[m[32m        if caller != owner {[m
+[32m+[m[32m            return Err(OrchestratorError::Unauthorized);[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        Self::extend_instance_ttl(&env);[m
+[32m+[m
+[32m+[m[32m        let old_epoch = Self::get_actor_epoch(&env);[m
+[32m+[m[32m        let new_epoch = old_epoch.checked_add(1).ok_or(OrchestratorError::Overflow)?;[m
+[32m+[m
+[32m+[m[32m        env.storage().instance().set(&ACTOR_EPOCH, &new_epoch);[m
+[32m+[m
+[32m+[m[32m        env.events().publish([m
+[32m+[m[32m            (symbol_short!("orch"), symbol_short!("epch_bump")),[m
+[32m+[m[32m            (old_epoch, new_epoch),[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        Ok(new_epoch)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    /// Get the current actor epoch.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// This allows actors to query the current epoch before creating tokens.[m
+[32m+[m[32m    pub fn get_actor_epoch_public(env: Env) -> u64 {[m
+[32m+[m[32m        Self::get_actor_epoch(&env)[m
+[32m+[m[32m    }[m
+[32m+[m
+     /// Capture a pre-upgrade snapshot of critical instance storage.[m
+     ///[m
+     /// Call this before performing a contract upgrade. The snapshot captures[m
+[36m@@ -964,6 +1037,7 @@[m [mimpl Orchestrator {[m
+                 .instance()[m
+                 .get(&symbol_short!("POL_ID"))[m
+                 .unwrap_or(1),[m
+[32m+[m[32m            actor_epoch: Self::get_actor_epoch(&env),[m
+         };[m
+         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);[m
+         env.events().publish([m
+[36m@@ -1055,6 +1129,11 @@[m [mimpl Orchestrator {[m
+             .instance()[m
+             .set(&symbol_short!("POL_ID"), &snapshot.policy_id);[m
+ [m
+[32m+[m[32m        // Restore actor epoch[m
+[32m+[m[32m        env.storage()[m
+[32m+[m[32m            .instance()[m
+[32m+[m[32m            .set(&ACTOR_EPOCH, &snapshot.actor_epoch);[m
+[32m+[m
+         // Consume the snapshot[m
+         env.storage().persistent().remove(&SNAPSHOT_KEY);[m
+ [m
+[36m@@ -1532,6 +1611,35 @@[m [mimpl Orchestrator {[m
+         }[m
+     }[m
+ [m
+[32m+[m[32m    /// Get the current actor epoch from instance storage.[m
+[32m+[m[32m    fn get_actor_epoch(env: &Env) -> u64 {[m
+[32m+[m[32m        env.storage()[m
+[32m+[m[32m            .instance()[m
+[32m+[m[32m            .get(&ACTOR_EPOCH)[m
+[32m+[m[32m            .unwrap_or(0)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    /// Verify that the provided actor epoch matches the current epoch.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// This is a defence-in-depth check to prevent replay of stale actor tokens[m
+[32m+[m[32m    /// after epoch bumps. An attacker who obtains a stale actor token cannot[m
+[32m+[m[32m    /// replay it after the epoch has been bumped by the contract owner.[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Arguments[m
+[32m+[m[32m    /// * `env` - Soroban environment[m
+[32m+[m[32m    /// * `actor_epoch` - The epoch value provided by the actor[m
+[32m+[m[32m    ///[m
+[32m+[m[32m    /// # Returns[m
+[32m+[m[32m    /// * `Ok(())` if the epochs match[m
+[32m+[m[32m    /// * `Err(OrchestratorError::EpochMismatch)` if they differ[m
+[32m+[m[32m    fn verify_matching_epoch(env: &Env, actor_epoch: u64) -> Result<(), OrchestratorError> {[m
+[32m+[m[32m        let current_epoch = Self::get_actor_epoch(env);[m
+[32m+[m[32m        if actor_epoch != current_epoch {[m
+[32m+[m[32m            return Err(OrchestratorError::EpochMismatch);[m
+[32m+[m[32m        }[m
+[32m+[m[32m        Ok(())[m
+[32m+[m[32m    }[m
+[32m+[m
+     fn extend_instance_ttl(env: &Env) {[m
+         env.storage()[m
+             .instance()[m
+[1mdiff --git a/orchestrator/src/test.rs b/orchestrator/src/test.rs[m
+[1mindex bb7e034..7cd1f05 100644[m
+[1m--- a/orchestrator/src/test.rs[m
+[1m+++ b/orchestrator/src/test.rs[m
+[36m@@ -1862,3 +1862,84 @@[m [mfn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {[m
+     // the lock is released, confirming we exited cleanly before execution.[m
+     assert!(!client.get_execution_state());[m
+ }[m
+[32m+[m
+[32m+[m[32m/// Test that epoch mismatch rejects stale actor tokens.[m
+[32m+[m[32m#[test][m
+[32m+[m[32mfn test_epoch_mismatch_rejects_stale_token() {[m
+[32m+[m[32m    let env = Env::default();[m
+[32m+[m[32m    env.mock_all_auths();[m
+[32m+[m[32m    env.ledger().set_timestamp(1_000);[m
+[32m+[m[41m    [m
+[32m+[m[32m    let orchestrator_id = env.register_contract(None, Orchestrator);[m
+[32m+[m[32m    let client = OrchestratorClient::new(&env, &orchestrator_id);[m
+[32m+[m[32m    let mock_id = env.register_contract(None, MockContract);[m
+[32m+[m[32m    let owner = Address::generate(&env);[m
+[32m+[m[32m    let executor = Address::generate(&env);[m
+[32m+[m
+[32m+[m[32m    // Initialize orchestrator[m
+[32m+[m[32m    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);[m
+[32m+[m
+[32m+[m[32m    // Get current epoch (should be 0)[m
+[32m+[m[32m    let current_epoch = client.get_actor_epoch_public();[m
+[32m+[m[32m    assert_eq!(current_epoch, 0);[m
+[32m+[m
+[32m+[m[32m    // Bump epoch to 1[m
+[32m+[m[32m    let new_epoch = client.bump_actor_epoch(&owner).unwrap();[m
+[32m+[m[32m    assert_eq!(new_epoch, 1);[m
+[32m+[m
+[32m+[m[32m    // Try to execute with stale epoch (0) - should fail with EpochMismatch[m
+[32m+[m[32m    let amount = 10_000i128;[m
+[32m+[m[32m    let nonce = 0u64;[m
+[32m+[m[32m    let deadline = 10_000u64;[m
+[32m+[m[32m    let request_hash = 12345u64;[m
+[32m+[m[41m    [m
+[32m+[m[32m    let result = client.try_execute_remittance_flow_signed([m
+[32m+[m[32m        &executor,[m
+[32m+[m[32m        &amount,[m
+[32m+[m[32m        &nonce,[m
+[32m+[m[32m        &deadline,[m
+[32m+[m[32m        &request_hash,[m
+[32m+[m[32m        &0u64, // stale epoch[m
+[32m+[m[32m    );[m
+[32m+[m[41m    [m
+[32m+[m[32m    assert_eq!(result, Err(Ok(OrchestratorError::EpochMismatch)));[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/// Test that matching epoch allows execution (doesn't fail with EpochMismatch).[m
+[32m+[m[32m#[test][m
+[32m+[m[32mfn test_matching_epoch_allows_execution() {[m
+[32m+[m[32m    let env = Env::default();[m
+[32m+[m[32m    env.mock_all_auths();[m
+[32m+[m[32m    env.ledger().set_timestamp(1_000);[m
+[32m+[m[41m    [m
+[32m+[m[32m    let orchestrator_id = env.register_contract(None, Orchestrator);[m
+[32m+[m[32m    let client = OrchestratorClient::new(&env, &orchestrator_id);[m
+[32m+[m[32m    let mock_id = env.register_contract(None, MockContract);[m
+[32m+[m[32m    let owner = Address::generate(&env);[m
+[32m+[m[32m    let executor = Address::generate(&env);[m
+[32m+[m
+[32m+[m[32m    // Initialize orchestrator[m
+[32m+[m[32m    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);[m
+[32m+[m
+[32m+[m[32m    // Get current epoch (should be 0)[m
+[32m+[m[32m    let current_epoch = client.get_actor_epoch_public();[m
+[32m+[m[32m    assert_eq!(current_epoch, 0);[m
+[32m+[m
+[32m+[m[32m    // Execute with matching epoch (0) - should not fail with EpochMismatch[m
+[32m+[m[32m    let amount = 10_000i128;[m
+[32m+[m[32m    let nonce = 0u64;[m
+[32m+[m[32m    let deadline = 10_000u64;[m
+[32m+[m[32m    let request_hash = 12345u64;[m
+[32m+[m[41m    [m
+[32m+[m[32m    let result = client.try_execute_remittance_flow_signed([m
+[32m+[m[32m        &executor,[m
+[32m+[m[32m        &amount,[m
+[32m+[m[32m        &nonce,[m
+[32m+[m[32m        &deadline,[m
+[32m+[m[32m        &request_hash,[m
+[32m+[m[32m        &0u64, // matching epoch[m
+[32m+[m[32m    );[m
+[32m+[m[41m    [m
+[32m+[m[32m    // Should not fail with EpochMismatch (may fail for other reasons like nonce validation)[m
+[32m+[m[32m    assert_ne!(result, Err(Ok(OrchestratorError::EpochMismatch)));[m
+[32m+[m[32m}[m
