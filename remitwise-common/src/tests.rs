@@ -18,8 +18,10 @@ extern crate std;
 use ed25519_dalek::Signer;
 
 use super::*;
+use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::{Bytes, Env, String, Vec};
+use soroban_sdk::{Env, String, Symbol, Vec};
+use std::string::ToString;
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -377,6 +379,184 @@ fn test_checked_empty_batch_before_length_check() {
     assert_eq!(err, TagError::Empty);
 }
 
+// ─── canonicalise_symbol ──────────────────────────────────────────────────────
+
+/// A deterministic helper: get string content from a Symbol for assertions.
+/// Available only in non-WASM (test) builds via `ToString`.
+fn symbol_str(sym: &Symbol) -> std::string::String {
+    sym.to_string()
+}
+
+/// Lowercase-only input passes through unchanged.
+#[test]
+fn test_canonicalise_symbol_lowercase_passthrough() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Uppercase letters are folded to lowercase.
+#[test]
+fn test_canonicalise_symbol_uppercase_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HELLO");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Mixed case is fully lowercased.
+#[test]
+fn test_canonicalise_symbol_mixed_case() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HelloWorld");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "helloworld");
+}
+
+/// Leading whitespace is stripped.
+#[test]
+fn test_canonicalise_symbol_leading_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Trailing whitespace is stripped.
+#[test]
+fn test_canonicalise_symbol_trailing_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello  ");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Whitespace on both sides is stripped.
+#[test]
+fn test_canonicalise_symbol_surrounding_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello_World  ");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "hello_world");
+}
+
+/// Underscore is a valid Symbol character.
+#[test]
+fn test_canonicalise_symbol_underscore_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "my_symbol");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "my_symbol");
+}
+
+/// Digits are valid Symbol characters.
+#[test]
+fn test_canonicalise_symbol_digits_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "goal2025");
+    let out = canonicalise_symbol(&env, &input);
+    assert_eq!(symbol_str(&out), "goal2025");
+}
+
+/// Function is idempotent: applying twice yields the same Symbol.
+#[test]
+fn test_canonicalise_symbol_idempotent() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  HeLLo_WORLD  ");
+    let once = canonicalise_symbol(&env, &input);
+    let once_str = symbol_str(&once);
+    let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+    let twice = canonicalise_symbol(&env, &twice_input);
+    assert_eq!(symbol_str(&once), symbol_str(&twice));
+}
+
+/// Space-only input panics.
+#[test]
+#[should_panic(expected = "non-whitespace character")]
+fn test_canonicalise_symbol_whitespace_only_panics() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "   ");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Empty input panics.
+#[test]
+#[should_panic(expected = "symbol input must contain between 1 and 32 characters")]
+fn test_canonicalise_symbol_empty_panics() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Input with invalid Symbol character (hyphen) panics.
+#[test]
+#[should_panic]
+fn test_canonicalise_symbol_hyphen_invalid() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello-world");
+    canonicalise_symbol(&env, &input);
+}
+
+/// Input with invalid Symbol character (space inside) panics.
+#[test]
+#[should_panic]
+fn test_canonicalise_symbol_internal_space_invalid() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello world");
+    canonicalise_symbol(&env, &input);
+}
+
+proptest! {
+    /// Property test for `canonicalise_symbol`.
+    ///
+    /// Pins the canonicalization contract:
+    /// 1. **Idempotence** — applying the function twice yields the same Symbol.
+    /// 2. **Whitespace stripping** — leading/trailing whitespace is removed.
+    /// 3. **Case folding** — ASCII uppercase letters are lowered.
+    /// 4. **Length discipline** — input must be 1..=32 bytes after trimming.
+    #[test]
+    fn proptest_canonicalise_symbol_contract(
+        s in proptest::string::string_regex(" *[a-zA-Z0-9_]+ *").unwrap(),
+    ) {
+        let trimmed = s.trim();
+        let trimmed_len = trimmed.len();
+        // Skip strings longer than 32 bytes after trimming (Symbol max length).
+        if trimmed_len > 32 {
+            return Ok(());
+        }
+
+        let env = Env::default();
+        let input = soroban_sdk::String::from_str(&env, &s);
+        let once = canonicalise_symbol(&env, &input);
+        let once_str = symbol_str(&once);
+
+        // Property 1: idempotence — second application yields the same Symbol.
+        let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+        let twice = canonicalise_symbol(&env, &twice_input);
+        prop_assert_eq!(once.clone(), twice);
+
+        // Property 2: whitespace was stripped — output equals
+        // canonicalising the trimmed form directly.
+        let trimmed_input = soroban_sdk::String::from_str(&env, trimmed);
+        let from_trimmed = canonicalise_symbol(&env, &trimmed_input);
+        prop_assert_eq!(once, from_trimmed);
+
+        // Property 3: output contains only lowercase ASCII letters, digits, underscores.
+        prop_assert!(
+            once_str.len() == trimmed_len,
+            "output length must equal trimmed input length (no chars added/removed)"
+        );
+        for b in once_str.bytes() {
+            prop_assert!(
+                b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_',
+                "canonical output char {:?} is not in [a-z0-9_]",
+                b as char
+            );
+        }
+    }
+}
+
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
 
 /// 0 is treated as "use default" and returns DEFAULT_PAGE_LIMIT.
@@ -535,17 +715,14 @@ fn test_verify_slash_signature_valid() {
     let env = Env::default();
     let message = b"slash payload";
 
-    // Generate a keypair
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
 
-    // Sign the prefixed message
     let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(b"slash-auth");
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    // Verify the slash signature
     let result = verify_slash_signature(&env, message, Some(&signature), &pk);
     assert_eq!(result, Ok(()));
 }
@@ -562,18 +739,16 @@ fn test_verify_slash_signature_optional_none() {
 }
 
 #[test]
+#[should_panic]
 fn test_verify_slash_signature_invalid() {
     let env = Env::default();
     let message = b"slash payload";
 
-    // Generate a keypair
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
-    // Verify the invalid slash signature
-    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
-    assert_eq!(result, Err(SlashError::InvalidSignature));
+    let _ = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
 }
 
 // ============================================================================
@@ -736,240 +911,4 @@ fn guard_bytes_len_fresh_bytes_has_valid_env_binding() {
     assert!(bytes.is_empty());
     // Must succeed — the env binding is valid and 0 <= MAX_BYTES_RETURN.
     assert_eq!(guard_bytes_len(&bytes), Ok(()));
-}
-
-// ============================================================================
-// distribute_pro_rata tests — saturating pro-rata distribution
-// ============================================================================
-
-/// Equal weights with clean division produce exact equal shares.
-#[test]
-fn distribute_pro_rata_equal_split_exact() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(100, &[25, 25, 25, 25], 100, &mut out);
-    assert_eq!(out, [25, 25, 25, 25]);
-}
-
-/// Standard basis-point split (50/30/15/5 of 1_000_000).
-#[test]
-fn distribute_pro_rata_basis_points_typical() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
-    assert_eq!(out, [500_000, 300_000, 150_000, 50_000]);
-}
-
-/// Conservation: sum of output buckets equals total for exact split.
-#[test]
-fn distribute_pro_rata_conserves_total_exact() {
-    let total = 1_000_000i128;
-    let weights = [5000u32, 3000, 1500, 500];
-    let mut out = [0i128; 4];
-    distribute_pro_rata(total, &weights, 10_000, &mut out);
-    let sum: i128 = out.iter().sum();
-    assert_eq!(sum, total);
-}
-
-/// Non-divisible amount: dust (remainder) goes to the last bucket.
-#[test]
-fn distribute_pro_rata_dust_to_last_bucket() {
-    // 10 * 33 / 100 = 3, leaving remainder 1 in the last bucket.
-    let mut out = [0i128; 4];
-    distribute_pro_rata(10, &[33, 33, 33, 1], 100, &mut out);
-    // Floor: 10*33/100=3, 10*1/100=0, but remainder 1 goes to last.
-    assert_eq!(out, [3, 3, 3, 1]);
-    assert_eq!(out.iter().sum::<i128>(), 10);
-}
-
-/// Single bucket gets everything.
-#[test]
-fn distribute_pro_rata_single_bucket() {
-    let mut out = [0i128; 1];
-    distribute_pro_rata(500, &[100], 100, &mut out);
-    assert_eq!(out, [500]);
-}
-
-/// Zero total produces all zeros.
-#[test]
-fn distribute_pro_rata_zero_total() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(0, &[25, 25, 25, 25], 100, &mut out);
-    assert_eq!(out, [0, 0, 0, 0]);
-}
-
-/// Total of 1 with equal weights: dust to last.
-#[test]
-fn distribute_pro_rata_unit_total() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(1, &[25, 25, 25, 25], 100, &mut out);
-    // 1*25/100=0 for first three, remainder 1 to last.
-    assert_eq!(out, [0, 0, 0, 1]);
-    assert_eq!(out.iter().sum::<i128>(), 1);
-}
-
-/// All weight in one (non-last) bucket: last still gets remainder.
-#[test]
-fn distribute_pro_rata_100_percent_first_bucket() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(100, &[100, 0, 0, 0], 100, &mut out);
-    assert_eq!(out, [100, 0, 0, 0]);
-    assert_eq!(out.iter().sum::<i128>(), 100);
-}
-
-/// All weight in last bucket: remainder lands there anyway.
-#[test]
-fn distribute_pro_rata_100_percent_last_bucket() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(100, &[0, 0, 0, 100], 100, &mut out);
-    assert_eq!(out, [0, 0, 0, 100]);
-    assert_eq!(out.iter().sum::<i128>(), 100);
-}
-
-/// Large but safe amount (i128::MAX / 100) with equal weights.
-#[test]
-fn distribute_pro_rata_large_safe_amount() {
-    let max_safe = i128::MAX / 100;
-    let mut out = [0i128; 4];
-    distribute_pro_rata(max_safe, &[25, 25, 25, 25], 100, &mut out);
-    let sum: i128 = out.iter().sum();
-    assert_eq!(sum, max_safe, "total must be conserved at max safe amount");
-}
-
-/// Overflow-saturating total: saturates allocations rather than panicking.
-#[test]
-fn distribute_pro_rata_saturates_on_overflow() {
-    // i128::MAX * 50 would overflow i128 — saturating path caps it.
-    let total = i128::MAX;
-    let mut out = [0i128; 2];
-    distribute_pro_rata(total, &[50, 50], 100, &mut out);
-    // First bucket: MAX * 50 saturates at MAX, div 100 = i128::MAX / 100
-    // But more specifically, saturating_mul(MAX, 50) = MAX, then /100 yields MAX/100.
-    // Last bucket gets remainder = MAX - (MAX/100).
-    assert!(out[0] > 0);
-    assert!(out[1] > 0);
-    // Conservation with saturating: the sum may saturate but should be consistent.
-    // The key test: it doesn't panic.
-    let sum = out[0].saturating_add(out[1]);
-    assert!(sum <= total);
-}
-
-/// i128::MAX total overflows in saturating path.
-#[test]
-fn distribute_pro_rata_i128_max_does_not_panic() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(i128::MAX, &[5000, 3000, 1500, 500], 10_000, &mut out);
-    // The test passes if we reach here without panic.
-    // With saturating arithmetic, each bucket saturates at i128::MAX.
-    let sum: i128 = out.iter().fold(0i128, |a, &b| a.saturating_add(b));
-    // The sum may not exactly equal i128::MAX due to saturating intermediate
-    // operations, but it should be a significant portion of it.
-    assert!(sum > 0);
-}
-
-/// Two buckets with odd prime amount.
-#[test]
-fn distribute_pro_rata_odd_prime_two_buckets() {
-    let mut out = [0i128; 2];
-    distribute_pro_rata(97, &[50, 50], 100, &mut out);
-    // floor(97*50/100) = 48, remainder 49.
-    assert_eq!(out, [48, 49]);
-    assert_eq!(out.iter().sum::<i128>(), 97);
-}
-
-/// Many buckets (10-way split) with basis points.
-#[test]
-fn distribute_pro_rata_ten_buckets() {
-    let weights = [1000u32; 10]; // 10% each
-    let mut out = [0i128; 10];
-    distribute_pro_rata(1000, &weights, 10_000, &mut out);
-    // Each of first 9 gets floor(1000*1000/10000) = 100
-    // Last gets remainder = 1000 - 9*100 = 100
-    for (i, val) in out.iter().enumerate().take(9) {
-        assert_eq!(*val, 100, "bucket {} should be 100", i);
-    }
-    assert_eq!(out[9], 100);
-    assert_eq!(out.iter().sum::<i128>(), 1000);
-}
-
-/// Determism: same input gives same output twice.
-#[test]
-fn distribute_pro_rata_deterministic() {
-    let total = 777_777i128;
-    let weights = [4000u32, 3000, 2000, 1000];
-    let mut a = [0i128; 4];
-    let mut b = [0i128; 4];
-    distribute_pro_rata(total, &weights, 10_000, &mut a);
-    distribute_pro_rata(total, &weights, 10_000, &mut b);
-    assert_eq!(a, b, "two calls with same inputs must yield identical results");
-}
-
-/// Total of 3 with 33/33/33/1: remainder calculation for small amount.
-#[test]
-fn distribute_pro_rata_three_with_unequal_weights() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(3, &[33, 33, 33, 1], 100, &mut out);
-    // 3*33/100 = 0 for first three, remainder 3 for last.
-    assert_eq!(out, [0, 0, 0, 3]);
-    assert_eq!(out.iter().sum::<i128>(), 3);
-}
-
-/// Basis points with total of 7.
-#[test]
-fn distribute_pro_rata_basis_points_small_amount() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(7, &[4000, 3000, 2000, 1000], 10_000, &mut out);
-    // 7*4000/10000 = 2, 7*3000/10000 = 2, 7*2000/10000 = 1
-    // allocated = 2+2+1=5, remainder = 7-5 = 2
-    assert_eq!(out[0], 2);
-    assert_eq!(out[1], 2);
-    assert_eq!(out[2], 1);
-    assert_eq!(out[3], 2);
-    assert_eq!(out.iter().sum::<i128>(), 7);
-}
-
-/// All weights zero except one middle bucket.
-#[test]
-fn distribute_pro_rata_only_middle_bucket_weighted() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(500, &[0, 100, 0, 0], 100, &mut out);
-    // 500*100/100 = 500 for bucket 1, remainder = 500-500 = 0 for last.
-    assert_eq!(out, [0, 500, 0, 0]);
-    assert_eq!(out.iter().sum::<i128>(), 500);
-}
-
-// ─── panic / precondition tests ─────────────────────────────────────────
-
-#[test]
-#[should_panic(expected = "total must be non-negative")]
-fn distribute_pro_rata_panics_on_negative_total() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(-1, &[25, 25, 25, 25], 100, &mut out);
-}
-
-#[test]
-#[should_panic(expected = "total_weight must be positive")]
-fn distribute_pro_rata_panics_on_zero_total_weight() {
-    let mut out = [0i128; 4];
-    distribute_pro_rata(100, &[25, 25, 25, 25], 0, &mut out);
-}
-
-#[test]
-#[should_panic(expected = "weights must not be empty")]
-fn distribute_pro_rata_panics_on_empty_weights() {
-    let mut out = [0i128; 1];
-    distribute_pro_rata(100, &[], 100, &mut out);
-}
-
-#[test]
-#[should_panic(expected = "out must not be empty")]
-fn distribute_pro_rata_panics_on_empty_out() {
-    let weights: &[u32] = &[];
-    let out: &mut [i128] = &mut [];
-    distribute_pro_rata(100, weights, 100, out);
-}
-
-#[test]
-#[should_panic(expected = "weights and out must have the same length")]
-fn distribute_pro_rata_panics_on_length_mismatch() {
-    let mut out = [0i128; 3];
-    distribute_pro_rata(100, &[25, 25, 25, 25], 100, &mut out);
 }

@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 soroban-sdk = "=21.7.7"
+ed25519-dalek = "2"
 
 [dev-dependencies]
 proptest = "1"

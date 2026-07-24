@@ -584,15 +584,13 @@ impl FamilyWallet {
         caller: Address,
         member_address: Address,
         new_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
-        if !Self::is_owner_or_admin(&env, &caller) {
-            panic!("Only Owner or Admin can update spending limits");
-        }
+        Self::require_governance_ok(&env, &caller)?;
         if new_limit < 0 {
-            panic!("InvalidSpendingLimit");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         let mut members: Map<Address, FamilyMember> = env
@@ -603,8 +601,7 @@ impl FamilyWallet {
 
         let mut record = members
             .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)
-            .unwrap_or_else(|_| panic!("MemberNotFound"));
+            .ok_or(Error::MemberNotFound)?;
 
         let old_limit = record.spending_limit;
         record.spending_limit = new_limit;
@@ -629,7 +626,7 @@ impl FamilyWallet {
             },
         );
 
-        true
+        Ok(true)
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -1998,8 +1995,16 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        env.events().publish(
+            (
+                symbol_short!("wallet"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
+        );
         true
     }
 
@@ -2020,8 +2025,16 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events()
-            .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
+        env.events().publish(
+            (
+                symbol_short!("wallet"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
+        );
         true
     }
 
@@ -3063,6 +3076,27 @@ impl FamilyWallet {
         }
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
+        }
+    }
+
+    /// Governance check helper for parameter changes.
+    ///
+    /// Returns a typed `Error::Unauthorized` instead of panicking when the caller
+    /// is not an Owner or Admin. This provides consistent error handling for
+    /// governance-level operations and enables proper error propagation to callers.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `caller` - Address attempting the governance operation
+    ///
+    /// # Returns
+    /// * `Ok(())` if caller is Owner or Admin
+    /// * `Err(Error::Unauthorized)` if caller lacks governance role
+    fn require_governance_ok(env: &Env, caller: &Address) -> Result<(), Error> {
+        if Self::is_owner_or_admin(env, caller) {
+            Ok(())
+        } else {
+            Err(Error::Unauthorized)
         }
     }
 

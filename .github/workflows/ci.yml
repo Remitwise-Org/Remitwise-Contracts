@@ -203,6 +203,20 @@ jobs:
           cargo audit --deny warnings
         continue-on-error: true
 
+      - name: Install cargo-geiger
+        run: |
+          if ! command -v cargo-geiger &> /dev/null; then
+            cargo install cargo-geiger --locked
+          fi
+
+      - name: Check for unsafe code
+        run: |
+          if command -v python3 >/dev/null 2>&1; then
+            python3 scripts/check_unsafe.py
+          else
+            python scripts/check_unsafe.py
+          fi
+
   storage-key-validation:
     name: Storage Key Naming Convention Validation
     runs-on: macos-latest

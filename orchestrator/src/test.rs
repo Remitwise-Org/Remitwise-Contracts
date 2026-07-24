@@ -627,7 +627,7 @@ fn test_nonce_starts_at_zero() {
 }
 
 #[test]
-fn test_execute_flow_signed_invalid_amount() {
+fn test_execute_flow_signed_invalid_amount_zero() {
     let (env, owner) = setup_test();
     let (_, client) = register_orchestrator(&env);
     init_orchestrator(&env, &client, &owner);
@@ -638,11 +638,68 @@ fn test_execute_flow_signed_invalid_amount() {
     let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 0, deadline);
 
     let result = client.try_execute_remittance_flow_signed(
-        &executor, &0, // amount 0
+        &executor, &0,
         &0, &deadline, &hash,
     );
 
     assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_invalid_amount_negative() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, -100, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &(-100i128),
+        &0, &deadline, &hash,
+    );
+
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_invalid_amount_i128_min() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, i128::MIN, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &(i128::MIN),
+        &0, &deadline, &hash,
+    );
+
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_execute_flow_signed_valid_amount_minimum_positive() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1, deadline);
+
+    let result = client.try_execute_remittance_flow_signed(
+        &executor, &1,
+        &0, &deadline, &hash,
+    );
+
+    assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
 }
 
 #[test]
@@ -1488,6 +1545,45 @@ fn test_invalid_amount_unsigned_emits_audit_without_lifecycle_events() {
 }
 
 #[test]
+fn test_invalid_amount_unsigned_negative() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, -100));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_invalid_amount_unsigned_i128_min() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, i128::MIN));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_valid_amount_unsigned_minimum_positive() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    let result = client.try_execute_remittance_flow(&flow_params(&env, &caller, &mock_id, 1));
+    assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
+}
+
+#[test]
 fn test_double_init_fails() {
     let (env, owner) = setup_test();
     let (_, client) = register_orchestrator(&env);
@@ -1767,7 +1863,7 @@ fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
 
     // Second call — well-behaved downstream, must succeed.
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
-    assert_eq!(result, Ok(true));
+    assert_eq!(result, Ok(Ok(())));
     assert!(!client.get_execution_state());
 }
 
@@ -1861,4 +1957,85 @@ fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
     // No downstream add_to_goal/pay_bill/pay_premium must have been called —
     // the lock is released, confirming we exited cleanly before execution.
     assert!(!client.get_execution_state());
+}
+
+/// Test that epoch mismatch rejects stale actor tokens.
+#[test]
+fn test_epoch_mismatch_rejects_stale_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+    
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, MockContract);
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    // Initialize orchestrator
+    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);
+
+    // Get current epoch (should be 0)
+    let current_epoch = client.get_actor_epoch_public();
+    assert_eq!(current_epoch, 0);
+
+    // Bump epoch to 1
+    let new_epoch = client.bump_actor_epoch(&owner).unwrap();
+    assert_eq!(new_epoch, 1);
+
+    // Try to execute with stale epoch (0) - should fail with EpochMismatch
+    let amount = 10_000i128;
+    let nonce = 0u64;
+    let deadline = 10_000u64;
+    let request_hash = 12345u64;
+    
+    let result = client.try_execute_remittance_flow_signed(
+        &executor,
+        &amount,
+        &nonce,
+        &deadline,
+        &request_hash,
+        &0u64, // stale epoch
+    );
+    
+    assert_eq!(result, Err(Ok(OrchestratorError::EpochMismatch)));
+}
+
+/// Test that matching epoch allows execution (doesn't fail with EpochMismatch).
+#[test]
+fn test_matching_epoch_allows_execution() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+    
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+    let mock_id = env.register_contract(None, MockContract);
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    // Initialize orchestrator
+    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);
+
+    // Get current epoch (should be 0)
+    let current_epoch = client.get_actor_epoch_public();
+    assert_eq!(current_epoch, 0);
+
+    // Execute with matching epoch (0) - should not fail with EpochMismatch
+    let amount = 10_000i128;
+    let nonce = 0u64;
+    let deadline = 10_000u64;
+    let request_hash = 12345u64;
+    
+    let result = client.try_execute_remittance_flow_signed(
+        &executor,
+        &amount,
+        &nonce,
+        &deadline,
+        &request_hash,
+        &0u64, // matching epoch
+    );
+    
+    // Should not fail with EpochMismatch (may fail for other reasons like nonce validation)
+    assert_ne!(result, Err(Ok(OrchestratorError::EpochMismatch)));
 }

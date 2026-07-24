@@ -1,11 +1,12 @@
 #![no_std]
 use remitwise_common::{
     CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
-    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
-    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    clamp_limit, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT,
+    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ pub enum InsuranceError {
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 12,
+    PolicyAlreadyInactive = 52,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -339,7 +340,7 @@ impl Insurance {
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
             .ok_or(InsuranceError::NotInitialized)?;
-        let mut new_active = Vec::new(&env);
+        let mut new_active = Vec::new(env);
         for id in active.iter() {
             if id != policy_id {
                 new_active.push_back(id);
@@ -438,7 +439,7 @@ impl Insurance {
 
         // Reserve a slot in the active index and ensure we don't exceed capacity.
         // `add_active_policy` also prevents duplication.
-        let mut active = env
+        let active = env
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
@@ -695,7 +696,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactivated"), symbol_short!("policy")),
+            (Symbol::new(&env, "reactivated"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,

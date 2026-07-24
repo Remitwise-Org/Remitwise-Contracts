@@ -148,6 +148,94 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Settlement amount validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a settlement-moving amount is not strictly positive.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SettlementAmountError {
+    /// `amount <= 0`. Every settlement (a value transfer that finalizes an
+    /// obligation — a bill payment, premium payment, goal contribution,
+    /// remittance disbursement, etc.) must be strictly positive by policy.
+    NonPositiveAmount = 1,
+}
+
+/// Guards that a settlement amount is strictly positive (`> 0`).
+///
+/// This is a defence-in-depth check meant to be called at the top of any
+/// entry point that finalizes a value transfer ("settles" an obligation),
+/// in addition to — not instead of — each contract's own existing
+/// validation. Individual contracts have historically implemented this
+/// bound inconsistently (some guard `amount <= 0`, at least one guard only
+/// `amount < 0`, silently letting a zero-amount settlement through as a
+/// successful no-op). A shared, single-purpose helper removes the chance
+/// of a future entry point picking the wrong comparison operator.
+///
+/// # Threat model
+/// A settlement of `0` that is accepted rather than rejected lets a caller
+/// trigger the full side effects of a "successful" settlement — state
+/// mutation, an emitted settlement event, consumption of a rate-limit
+/// budget, or satisfying a downstream "was this settled?" check in an
+/// orchestrating contract — without moving any value. That gap is useful
+/// to an attacker who wants to grief accounting/audit trails, force
+/// extra event-indexer/off-chain load, or manufacture a "paid" state to
+/// unblock a workflow gate that only checks for success, not amount.
+/// Negative amounts are equally invalid and are rejected by the same
+/// check, since a "negative settlement" has no valid real-world meaning
+/// and would invert the direction of a transfer if it reached arithmetic.
+///
+/// # Cost
+/// A single `i128` comparison; negligible relative to any settlement
+/// entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`SettlementAmountError::NonPositiveAmount`] if `amount <= 0`.
+pub fn require_positive_settlement_amount(amount: i128) -> Result<(), SettlementAmountError> {
+    if amount <= 0 {
+        Err(SettlementAmountError::NonPositiveAmount)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod settlement_amount_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_zero() {
+        assert_eq!(
+            require_positive_settlement_amount(0),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn rejects_negative() {
+        assert_eq!(
+            require_positive_settlement_amount(-1),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+        assert_eq!(
+            require_positive_settlement_amount(i128::MIN),
+            Err(SettlementAmountError::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn accepts_smallest_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(1), Ok(()));
+    }
+
+    #[test]
+    fn accepts_large_positive_amount() {
+        assert_eq!(require_positive_settlement_amount(i128::MAX), Ok(()));
+    }
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
@@ -608,6 +696,69 @@ where
     }
 }
 
+/// Canonicalizes a single label string into a `Symbol`.
+///
+/// Rules:
+/// - Leading and trailing ASCII whitespace is stripped.
+/// - ASCII uppercase letters are folded to lowercase.
+/// - The result must satisfy `Symbol`'s charset (`[a-zA-Z0-9_]` after folding)
+///   and length (`1..=32` bytes after trimming), otherwise this panics.
+///
+/// # Idempotency guarantee
+///
+/// Applying this function twice to any input yields the same `Symbol`:
+/// `canonicalise_symbol(env, &canonicalise_symbol(env, &x).to_string()) == canonicalise_symbol(env, &x)`.
+///
+/// # Whitespace round-trip
+///
+/// Inputs that differ only in leading/trailing whitespace produce identical
+/// canonical `Symbol` values: `"hello"`, `" hello"`, and `"hello "` all map
+/// to `Symbol("hello")`.
+///
+/// # Panics
+///
+/// - On empty or whitespace-only input (after trimming length is 0).
+/// - On input over 32 bytes (after trimming).
+/// - When the trimmed, lowercased content contains bytes outside `[a-z0-9_]`.
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    let len = input.len();
+    if len == 0 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+    let mut buf = [0u8; 256];
+    if len as usize > buf.len() {
+        panic!("symbol input is too long");
+    }
+    input.copy_into_slice(&mut buf[..len as usize]);
+
+    let s = core::str::from_utf8(&buf[..len as usize])
+        .unwrap_or_else(|_| panic!("symbol input is not valid UTF-8"));
+
+    let trimmed = s.trim();
+    let trimmed_len = trimmed.len();
+    if trimmed_len == 0 {
+        panic!("symbol input must contain at least one non-whitespace character");
+    }
+    if trimmed_len > 32 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+
+    let trimmed_bytes = trimmed.as_bytes();
+    let mut canonical = [0u8; 32];
+    for (i, &byte) in trimmed_bytes.iter().enumerate() {
+        canonical[i] = if byte.is_ascii_uppercase() {
+            byte.to_ascii_lowercase()
+        } else {
+            byte
+        };
+    }
+
+    let canonical_str = core::str::from_utf8(&canonical[..trimmed_len])
+        .unwrap_or_else(|_| panic!("canonicalised symbol is not valid UTF-8"));
+
+    Symbol::new(env, canonical_str)
+}
+
 /// Event emission helper
 pub struct RemitwiseEvents;
 
@@ -649,6 +800,8 @@ impl RemitwiseEvents {
 
         #[cfg(test)]
         {
+            use soroban_sdk::xdr::ToXdr;
+            use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
             env.events().publish(topics, val);
         }
@@ -697,7 +850,8 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::testutils::Events as _;
+        use soroban_sdk::testutils::Events;
+        use soroban_sdk::FromVal;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -713,30 +867,30 @@ impl RemitwiseEvents {
         let sentinel: soroban_sdk::Symbol =
             soroban_sdk::FromVal::from_val(env, &topics.get(0).unwrap());
         assert_eq!(
-            sentinel,
-            symbol_short!("Remitwise"),
+            topics.get(0).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &symbol_short!("Remitwise")).get_payload(),
             "first topic must be the Remitwise marker"
         );
 
         let cat: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(1).unwrap());
         assert_eq!(
-            cat,
-            expected_category.to_u32(),
+            topics.get(1).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_category.to_u32()).get_payload(),
             "event category mismatch"
         );
 
         let prio: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(2).unwrap());
         assert_eq!(
-            prio,
-            expected_priority.to_u32(),
+            topics.get(2).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_priority.to_u32()).get_payload(),
             "event priority mismatch"
         );
 
         let action: soroban_sdk::Symbol =
             soroban_sdk::FromVal::from_val(env, &topics.get(3).unwrap());
         assert_eq!(
-            action,
-            expected_action,
+            topics.get(3).unwrap().get_payload(),
+            soroban_sdk::Val::from_val(env, &expected_action).get_payload(),
             "event action mismatch"
         );
 
@@ -1004,9 +1158,7 @@ mod encoding_stability_tests {
             }
         }
 
-        for v in [PolicyMode::Strict] {
-            cover_all_variants(v);
-        }
+        cover_all_variants(PolicyMode::Strict);
 
         let vec = Vec::from_array(&env, [PolicyMode::Strict]);
         let mut out = Vec::<PolicyMode>::new(&env);
