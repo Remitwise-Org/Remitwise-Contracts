@@ -1913,7 +1913,7 @@ fn test_lock_recovers_for_subsequent_valid_call_after_hostile_failure() {
 
     // Second call — well-behaved downstream, must succeed.
     let result = client.try_execute_remittance_flow(&flow_params_single(&env, &caller, &good_id));
-    assert!(result.is_ok());
+    assert_eq!(result, Ok(Ok(())));
     assert!(!client.get_execution_state());
 }
 
