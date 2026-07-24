@@ -578,8 +578,6 @@ dependencies = [
 [[package]]
 name = "ed25519-dalek"
 version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
@@ -618,6 +616,7 @@ dependencies = [
 name = "emergency_killswitch"
 version = "0.1.0"
 dependencies = [
+ "remitwise-common",
  "soroban-sdk",
 ]
 
