@@ -16,8 +16,9 @@
 extern crate std;
 
 use super::*;
+use ed25519_dalek::Signer as _;
 use proptest::prelude::*;
-use soroban_sdk::{Bytes, Env, String, Vec};
+use soroban_sdk::{Env, String, Vec};
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -534,13 +535,14 @@ fn test_verify_slash_signature_valid() {
     let message = b"slash payload";
 
     // Generate a keypair
-    let (sk, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
 
     // Sign the prefixed message
     let mut prefixed = std::vec::Vec::new();
     prefixed.extend_from_slice(b"slash-auth");
     prefixed.extend_from_slice(message);
-    let signature = soroban_sdk::testutils::ed25519::sign(&env, &sk, &prefixed);
+    let signature = sk.sign(&prefixed).to_bytes();
 
     // Verify the slash signature
     let result = verify_slash_signature(&env, message, Some(&signature), &pk);
@@ -559,17 +561,20 @@ fn test_verify_slash_signature_optional_none() {
 }
 
 #[test]
+#[should_panic]
 fn test_verify_slash_signature_invalid() {
     let env = Env::default();
     let message = b"slash payload";
 
     // Generate a keypair
-    let (_, pk) = soroban_sdk::testutils::ed25519::generate(&env);
+    let pk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng)
+        .verifying_key()
+        .to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
-    // Verify the invalid slash signature
-    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
-    assert_eq!(result, Err(SlashError::InvalidSignature));
+    // A well-formed but cryptographically invalid signature escalates to a
+    // host panic inside ed25519_verify, same as verify_signature.
+    let _ = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
 }
 
 // ============================================================================
