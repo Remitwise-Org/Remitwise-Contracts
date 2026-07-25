@@ -1745,7 +1745,7 @@ mod tests_nonce_eviction {
         deadline: u64,
     ) {
         let hash = request_hash(amount, nonce, deadline);
-        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash));
+        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash, &0u64));
     }
 
     #[test]
@@ -1789,6 +1789,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &replay_hash,
+            &0u64,
         );
         assert_eq!(replay, Err(Ok(OrchestratorError::NonceAlreadyUsed)));
 
@@ -1799,6 +1800,7 @@ mod tests_nonce_eviction {
             &3,
             &deadline,
             &skipped_hash,
+            &0u64,
         );
         assert_eq!(skipped, Err(Ok(OrchestratorError::InvalidNonce)));
         assert_eq!(client.get_nonce(&executor), 1);
@@ -1826,6 +1828,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &oldest_before_eviction_hash,
+            &0u64,
         );
         assert_eq!(
             oldest_before_eviction_replay,
@@ -1844,6 +1847,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &evicted_nonce_hash,
+            &0u64,
         );
         assert_eq!(
             evicted_nonce_replay,
@@ -1869,6 +1873,7 @@ mod tests_nonce_eviction {
             &0,
             &expired_deadline,
             &expired_hash,
+            &0u64,
         );
         assert_eq!(expired, Err(Ok(OrchestratorError::DeadlineExpired)));
         assert_eq!(client.get_nonce(&executor), 0);
@@ -1881,6 +1886,7 @@ mod tests_nonce_eviction {
             &0,
             &beyond_window_deadline,
             &beyond_window_hash,
+            &0u64,
         );
         assert_eq!(beyond_window, Err(Ok(OrchestratorError::DeadlineExpired)));
         assert_eq!(client.get_nonce(&executor), 0);
@@ -1905,6 +1911,7 @@ mod tests_nonce_eviction {
             &nonce,
             &deadline,
             &original_hash,
+            &0u64,
         );
         assert_eq!(swapped, Err(Ok(OrchestratorError::InvalidNonce)));
         assert_eq!(client.get_nonce(&executor), 0);
