@@ -1,13 +1,13 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 use remitwise_common::{
     check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
     SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
-use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
@@ -811,8 +811,7 @@ impl BillPayments {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
     fn require_admin_grant_valid(env: &Env) -> Result<(), BillPaymentsError> {
-        let granted_at: Option<u64> =
-            env.storage().instance().get(&symbol_short!("PADM_GT"));
+        let granted_at: Option<u64> = env.storage().instance().get(&symbol_short!("PADM_GT"));
         match granted_at {
             Some(granted) => {
                 let now = env.ledger().timestamp();
@@ -1085,13 +1084,9 @@ impl BillPayments {
     pub fn get_pause_admin_public(env: Env) -> Option<Address> {
         Self::get_pause_admin(&env)
     }
-    pub fn refresh_admin_grant(
-        env: Env,
-        caller: Address,
-    ) -> Result<(), BillPaymentsError> {
+    pub fn refresh_admin_grant(env: Env, caller: Address) -> Result<(), BillPaymentsError> {
         caller.require_auth();
-        let admin =
-            Self::get_pause_admin(&env).ok_or(BillPaymentsError::AdminGrantExpired)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::AdminGrantExpired)?;
         if admin != caller {
             return Err(BillPaymentsError::UnauthorizedPause);
         }
@@ -1374,7 +1369,7 @@ impl BillPayments {
             return Err(BillPaymentsError::ScheduleIntervalTooShort);
         }
 
-        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+        if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
         }
 
@@ -1449,7 +1444,7 @@ impl BillPayments {
             return Err(BillPaymentsError::ScheduleIntervalTooShort);
         }
 
-        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+        if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
         }
 

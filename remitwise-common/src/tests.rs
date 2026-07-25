@@ -15,9 +15,8 @@
 ///   that need uniqueness must deduplicate the result themselves.
 extern crate std;
 
-use ed25519_dalek::Signer;
-
 use super::*;
+use crate::distribute_pro_rata;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
 use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
@@ -642,6 +641,32 @@ fn test_clamp_limit_u32_max_contract_regression() {
     assert_eq!(clamp_limit(clamped), clamped);
 }
 
+// ─── Timestamp::seconds_until ────────────────────────────────────────────────
+
+/// A future target returns the exact distance in seconds.
+#[test]
+fn test_timestamp_seconds_until_future_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_300), 300);
+}
+
+/// A target equal to now has no remaining distance.
+#[test]
+fn test_timestamp_seconds_until_equal_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_000), 0);
+}
+
+/// A past target saturates at zero instead of underflowing.
+#[test]
+fn test_timestamp_seconds_until_past_target_saturates() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_300, 1_700_000_000), 0);
+}
+
+/// The helper remains overflow-safe at the upper `u64` boundary.
+#[test]
+fn test_timestamp_seconds_until_u64_max_boundary() {
+    assert_eq!(Timestamp::seconds_until(u64::MAX - 1, u64::MAX), 1);
+}
+
 // ─── verify_signature tests ──────────────────────────────────────────────────
 
 #[test]
@@ -794,6 +819,216 @@ fn test_verify_slash_signature_invalid() {
     // Verify the invalid slash signature
     let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
     assert_eq!(result, Err(SlashError::InvalidSignature));
+}
+
+// ─── distribute_pro_rata tests (#1085) ───────────────────────────────────────
+
+/// Distributes an indivisible total across unequal weights — remainder benefits smallest recipient.
+#[test]
+fn distributes_indivisible_total_with_remainder_to_last_bucket() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
+    
+    // First three buckets receive their floor share
+    assert_eq!(out[0], 50); // 100 * 50 / 100 = 50
+    assert_eq!(out[1], 30); // 100 * 30 / 100 = 30
+    assert_eq!(out[2], 15); // 100 * 15 / 100 = 15
+    assert_eq!(out[3], 5);  // 100 * 5 / 100 = 5, plus remainder 0
+    
+    // Conservation: sum equals input total
+    assert_eq!(out.iter().sum::<i128>(), 100);
+}
+
+/// Distributes an indivisible amount where rounding creates a remainder.
+#[test]
+fn distributes_amount_with_non_zero_remainder_to_last_bucket() {
+    let mut out = [0i128; 3];
+    // 10 * 3333 / 10000 = 3.333 → floor = 3 (per bucket)
+    // Allocated: 3 + 3 = 6, remainder: 10 - 6 = 4 goes to last bucket
+    distribute_pro_rata(10, &[3333, 3333, 3334], 10_000, &mut out);
+    
+    assert_eq!(out[0], 3);  // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[1], 3);  // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[2], 4);  // 10 - 3 - 3 = 4 (includes remainder)
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 10);
+}
+
+/// Last bucket receives extra units when total does not divide evenly.
+#[test]
+fn last_bucket_receives_rounding_remainder() {
+    let mut out = [0i128; 4];
+    // 1_000_007 * 2500 / 10000 = 250001.75 → floor = 250001
+    // Four buckets, each gets floor share, last gets remainder
+    distribute_pro_rata(1_000_007, &[2500, 2500, 2500, 2500], 10_000, &mut out);
+    
+    // First three buckets
+    assert_eq!(out[0], 250001);
+    assert_eq!(out[1], 250001);
+    assert_eq!(out[2], 250001);
+    
+    // Last bucket gets remainder: 1_000_007 - 3*250001 = 1_000_007 - 750_003 = 250_004
+    assert_eq!(out[3], 250_004);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 1_000_007);
+}
+
+/// Distributes a perfectly divisible total with no remainder.
+#[test]
+fn distributes_evenly_divisible_total_exactly() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+    
+    assert_eq!(out[0], 500_000); // 1M * 5000 / 10000
+    assert_eq!(out[1], 300_000); // 1M * 3000 / 10000
+    assert_eq!(out[2], 150_000); // 1M * 1500 / 10000
+    assert_eq!(out[3], 50_000);  // 1M * 500 / 10000
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 1_000_000);
+}
+
+/// Distributes entire amount to a single recipient.
+#[test]
+fn distributes_full_amount_to_single_recipient() {
+    let mut out = [0i128; 1];
+    distribute_pro_rata(999_999, &[100], 100, &mut out);
+    
+    assert_eq!(out[0], 999_999);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 999_999);
+}
+
+/// Distributes zero total — all recipients receive zero.
+#[test]
+fn distributes_zero_total_without_panic() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(0, &[25, 25, 25, 25], 100, &mut out);
+    
+    assert_eq!(out[0], 0);
+    assert_eq!(out[1], 0);
+    assert_eq!(out[2], 0);
+    assert_eq!(out[3], 0);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 0);
+}
+
+/// Distributes when one weight is zero — zero-weight recipient receives nothing.
+#[test]
+fn distributes_with_zero_weight_recipient() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(100, &[50, 30, 20, 0], 100, &mut out);
+    
+    assert_eq!(out[0], 50);
+    assert_eq!(out[1], 30);
+    assert_eq!(out[2], 20);
+    assert_eq!(out[3], 0);  // zero weight → receives only remainder (0 in this case)
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 100);
+}
+
+/// Distributes when last weight is zero and remainder exists.
+#[test]
+fn zero_weight_last_bucket_receives_remainder() {
+    let mut out = [0i128; 3];
+    // 10 * 4000 / 10000 = 4, twice = 8
+    // Remainder: 10 - 8 = 2 goes to last bucket (even though its weight is 0)
+    distribute_pro_rata(10, &[4000, 4000, 0], 10_000, &mut out);
+    
+    assert_eq!(out[0], 4);
+    assert_eq!(out[1], 4);
+    assert_eq!(out[2], 2); // weight is 0, but receives remainder 2
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 10);
+}
+
+/// Distributes using basis points (10_000 = 100%).
+#[test]
+fn distributes_using_basis_points_denomination() {
+    let mut out = [0i128; 4];
+    // 5% = 500 bps, 3% = 300 bps, 1.5% = 150 bps, 0.5% = 50 bps
+    distribute_pro_rata(1_000_000, &[500, 300, 150, 50], 10_000, &mut out);
+    
+    assert_eq!(out[0], 50_000);  // 5%
+    assert_eq!(out[1], 30_000);  // 3%
+    assert_eq!(out[2], 15_000);  // 1.5%
+    assert_eq!(out[3], 5_000);   // 0.5%
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 100_000); // only 10% of total distributed
+}
+
+/// Conservation invariant holds for large total near i128 upper range.
+#[test]
+fn conservation_holds_for_large_total() {
+    let mut out = [0i128; 4];
+    let large_total = i128::MAX / 1_000_000; // Large but won't overflow in multiplication
+    
+    distribute_pro_rata(large_total, &[2500, 2500, 2500, 2500], 10_000, &mut out);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), large_total);
+    
+    // Each bucket gets approximately 1/4
+    let expected_floor = large_total / 4;
+    assert!(out[0] >= expected_floor);
+    assert!(out[1] >= expected_floor);
+    assert!(out[2] >= expected_floor);
+    // Last bucket absorbs remainder
+    assert!(out[3] >= expected_floor);
+}
+
+proptest! {
+    /// Property test: conservation and smallest-benefits-from-rounding invariants.
+    ///
+    /// For any valid input (non-negative total, positive total_weight, non-empty weights),
+    /// the following properties must hold:
+    /// 1. **Conservation**: sum(out) == total
+    /// 2. **Non-negative outputs**: every output >= 0
+    /// 3. **Last bucket absorbs remainder**: out[last] >= floor(total * weight[last] / total_weight)
+    /// 4. **Bounded outputs**: each out[i] <= total
+    #[test]
+    fn proptest_distribute_pro_rata_conservation_and_rounding(
+        total in 0i128..=i128::MAX / 1_000_000, // Avoid overflow in intermediate products
+        weights in proptest::collection::vec(1u32..=1000u32, 1..=10),
+    ) {
+        let total_weight: u32 = weights.iter().map(|&w| w as u32).sum();
+        if total_weight == 0 {
+            return Ok(()); // Skip invalid input
+        }
+        
+        let mut out = std::vec![0i128; weights.len()];
+        distribute_pro_rata(total, &weights, total_weight, &mut out);
+        
+        // Property 1: Conservation — sum equals input
+        prop_assert_eq!(out.iter().sum::<i128>(), total);
+        
+        // Property 2: Non-negative outputs
+        for &amount in &out {
+            prop_assert!(amount >= 0, "output must be non-negative");
+        }
+        
+        // Property 3: Last bucket receives at least its floor share (absorbs remainder)
+        let last_idx = weights.len() - 1;
+        let last_floor = (total as i128)
+            .saturating_mul(weights[last_idx] as i128)
+            .saturating_div(total_weight as i128);
+        prop_assert!(
+            out[last_idx] >= last_floor,
+            "last bucket must receive at least floor share (absorbs rounding remainder)"
+        );
+        
+        // Property 4: No output exceeds total
+        for &amount in &out {
+            prop_assert!(amount <= total, "no bucket can exceed total");
+        }
+    }
 }
 
 // ─── require_valid_symbol_length tests (#1078) ───────────────────────────────
@@ -959,8 +1194,11 @@ fn test_require_active_pause_channel_active() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
     map.set(soroban_sdk::Symbol::short("PAYMENTS"), false);
-    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
-    
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
+    );
+
     // Channel is active (false), should not panic
     crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
@@ -971,8 +1209,11 @@ fn test_require_active_pause_channel_paused() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
     map.set(soroban_sdk::Symbol::short("PAYMENTS"), true);
-    env.storage().instance().set(&soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS), &map);
-    
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
+    );
+
     // Channel is paused (true), should panic
     crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
