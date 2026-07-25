@@ -23,17 +23,17 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> bool;
+        fn add_to_goal(env: Env, caller: Address, goal_id: u32, amount: i128);
     }
 
     #[contractclient(name = "BillPaymentsClient")]
     pub trait BillPaymentsInterface {
-        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128) -> bool;
+        fn pay_bill(env: Env, caller: Address, bill_id: u32, amount: i128);
     }
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128) -> bool;
+        fn pay_premium(env: Env, caller: Address, policy_id: u32, amount: i128);
     }
 
     /// Compensation / reverse interfaces for rollback support.
@@ -43,17 +43,17 @@ mod interface {
     /// the reverse call.
     #[contractclient(name = "SavingsGoalsCompClient")]
     pub trait SavingsGoalsCompInterface {
-        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128) -> bool;
+        fn remove_from_goal(env: Env, user: Address, goal_id: u32, amount: i128);
     }
 
     #[contractclient(name = "BillPaymentsCompClient")]
     pub trait BillPaymentsCompInterface {
-        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128) -> bool;
+        fn reverse_payment(env: Env, user: Address, bill_id: u32, amount: i128);
     }
 
     #[contractclient(name = "InsuranceCompClient")]
     pub trait InsuranceCompInterface {
-        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128) -> bool;
+        fn reverse_premium(env: Env, user: Address, policy_id: u32, amount: i128);
     }
 
     /// External token contract interface used by `claim_rewards_summary_external`.
@@ -329,9 +329,10 @@ pub enum OrchestratorError {
     ReentrancyDetected = 12,
     /// The caller has no pending rewards to claim.
     NoPendingRewards = 13,
-    /// The provided actor epoch does not match the current epoch.
-    /// This prevents replay of stale actor tokens after epoch bumps.
-    EpochMismatch = 14,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 14,
+    /// The actor epoch does not match the contract's current epoch.
+    EpochMismatch = 15,
 }
 
 #[contract]
@@ -656,11 +657,11 @@ impl Orchestrator {
         let remainder = amount - split * 3;
 
         let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
-            .add_to_goal(&executor, &goal_id, &(split + remainder));
+            .try_add_to_goal(&executor, &goal_id, &(split + remainder)).is_err();
         let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
-            .pay_bill(&executor, &bill_id, &split);
+            .try_pay_bill(&executor, &bill_id, &split).is_err();
         let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
-            .pay_premium(&executor, &policy_id, &split);
+            .try_pay_premium(&executor, &policy_id, &split).is_err();
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -1040,6 +1041,9 @@ impl Orchestrator {
             actor_epoch: Self::get_actor_epoch(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("orch"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -1080,6 +1084,14 @@ impl Orchestrator {
             .ok_or(OrchestratorError::InvalidDependency)?;
         if snapshot.schema_version != SNAPSHOT_VERSION {
             return Err(OrchestratorError::InvalidDependency);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            return Err(OrchestratorError::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             return Err(OrchestratorError::Unauthorized);
@@ -1302,7 +1314,7 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            if !s_client.add_to_goal(caller, &routing.goal_id, &savings_amt) {
+            if s_client.try_add_to_goal(caller, &routing.goal_id, &savings_amt).is_err() {
                 return Err(OrchestratorError::CrossContractCallFailed);
             }
             savings_done = true;
@@ -1310,7 +1322,7 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            if !b_client.pay_bill(caller, &routing.bill_id, &bills_amt) {
+            if b_client.try_pay_bill(caller, &routing.bill_id, &bills_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1328,7 +1340,7 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            if !i_client.pay_premium(caller, &routing.policy_id, &insurance_amt) {
+            if i_client.try_pay_premium(caller, &routing.policy_id, &insurance_amt).is_err() {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1337,13 +1349,7 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(
-                        env,
-                        caller,
-                        routing.bill_id,
-                        bills_amt,
-                        bills_done,
-                    );
+                    Self::compensate_bill(env, caller, routing.bill_id, bills_amt, bills_done);
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);
@@ -1369,7 +1375,7 @@ impl Orchestrator {
             None => return,
         };
         let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
-        client.remove_from_goal(executor, &goal_id, &amount);
+        let _ = client.try_remove_from_goal(executor, &goal_id, &amount);
     }
 
     /// Compensate a bill payment if it was applied.
@@ -1382,7 +1388,7 @@ impl Orchestrator {
             None => return,
         };
         let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
-        client.reverse_payment(executor, &bill_id, &amount);
+        let _ = client.try_reverse_payment(executor, &bill_id, &amount);
     }
 
     fn get_nonce_value(env: &Env, address: &Address) -> u64 {
@@ -1668,23 +1674,23 @@ mod tests_nonce_eviction {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+
         }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+
         }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+
         }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+
         }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+
         }
     }
 
@@ -1728,15 +1734,7 @@ mod tests_nonce_eviction {
     }
 
     fn request_hash(amount: i128, nonce: u64, deadline: u64) -> u64 {
-        Orchestrator::compute_request_hash(
-            symbol_short!("flow"),
-            nonce,
-            amount,
-            deadline,
-            1,
-            1,
-            1,
-        )
+        Orchestrator::compute_request_hash(symbol_short!("flow"), nonce, amount, deadline, 1, 1, 1)
     }
 
     fn execute_signed_flow(
@@ -1747,7 +1745,7 @@ mod tests_nonce_eviction {
         deadline: u64,
     ) {
         let hash = request_hash(amount, nonce, deadline);
-        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash));
+        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash, &0u64));
     }
 
     #[test]
@@ -1791,6 +1789,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &replay_hash,
+            &0u64,
         );
         assert_eq!(replay, Err(Ok(OrchestratorError::NonceAlreadyUsed)));
 
@@ -1801,6 +1800,7 @@ mod tests_nonce_eviction {
             &3,
             &deadline,
             &skipped_hash,
+            &0u64,
         );
         assert_eq!(skipped, Err(Ok(OrchestratorError::InvalidNonce)));
         assert_eq!(client.get_nonce(&executor), 1);
@@ -1828,6 +1828,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &oldest_before_eviction_hash,
+            &0u64,
         );
         assert_eq!(
             oldest_before_eviction_replay,
@@ -1846,6 +1847,7 @@ mod tests_nonce_eviction {
             &0,
             &deadline,
             &evicted_nonce_hash,
+            &0u64,
         );
         assert_eq!(
             evicted_nonce_replay,
@@ -1871,6 +1873,7 @@ mod tests_nonce_eviction {
             &0,
             &expired_deadline,
             &expired_hash,
+            &0u64,
         );
         assert_eq!(expired, Err(Ok(OrchestratorError::DeadlineExpired)));
         assert_eq!(client.get_nonce(&executor), 0);
@@ -1883,6 +1886,7 @@ mod tests_nonce_eviction {
             &0,
             &beyond_window_deadline,
             &beyond_window_hash,
+            &0u64,
         );
         assert_eq!(beyond_window, Err(Ok(OrchestratorError::DeadlineExpired)));
         assert_eq!(client.get_nonce(&executor), 0);
@@ -1907,6 +1911,7 @@ mod tests_nonce_eviction {
             &nonce,
             &deadline,
             &original_hash,
+            &0u64,
         );
         assert_eq!(swapped, Err(Ok(OrchestratorError::InvalidNonce)));
         assert_eq!(client.get_nonce(&executor), 0);

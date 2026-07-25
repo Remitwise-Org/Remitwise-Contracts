@@ -4,7 +4,8 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 
 ## Features
 
-- Shared enums: Category, FamilyRole, CoverageType
+- Shared enums: Category, FamilyRole, CoverageType, SupportedToken
+- Token registry: SupportedToken, stroop/decimal constants, currency helpers
 - Event taxonomy: EventCategory, EventPriority, RemitwiseEvents emitter
 - Pagination utilities: clamp_limit
 - Storage TTL constants
@@ -16,11 +17,27 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 ```rust
 use remitwise_common::{
     Category, FamilyRole, EventCategory, EventPriority, RemitwiseEvents,
-    canonicalize_tags_checked, TagError, clamp_limit
+    canonicalize_tags_checked, TagError, Timestamp, clamp_limit,
+    SupportedToken, STROOPS_PER_XLM, DEFAULT_CURRENCY,
 };
+
+// Look up token metadata
+let xlm = SupportedToken::XLM;
+assert_eq!(xlm.decimals(), 7);
+assert_eq!(xlm.base_units_per_unit(), STROOPS_PER_XLM);
+
+// Parse a currency code
+let token = SupportedToken::from_currency_code("USDC"); // Some(USDC)
+
+// Use the default currency constant
+assert_eq!(DEFAULT_CURRENCY, "XLM");
 
 // Normalize a pagination limit
 let limit = clamp_limit(100); // becomes 50
+
+// Measure future distance without underflowing
+let seconds = Timestamp::seconds_until(1_700_000_000, 1_700_000_300);
+assert_eq!(seconds, 300);
 
 // Emit an event
 RemitwiseEvents::emit(
@@ -51,6 +68,17 @@ Financial categories for remittance allocation:
 - Bills
 - Insurance
 
+### SupportedToken
+
+Every token the Remitwise platform recognises. Adding a variant forces all
+consumers to handle it via exhaustive match.
+
+- XLM (7 decimals, stroops)
+- USDC (6 decimals)
+- EURC (7 decimals)
+
+See `docs/token-registry.md` for the full registry documentation.
+
 ### FamilyRole
 
 Access control roles:
@@ -75,6 +103,9 @@ Insurance coverage types:
 - `MAX_BATCH_SIZE`: 50
 - `TAG_MAX_LEN`: 32
 - `CONTRACT_VERSION`: 1
+- `STROOPS_PER_XLM`: 10_000_000
+- `DEFAULT_CURRENCY`: "XLM"
+- `MAX_CURRENCY_LEN`: 10
 
 ## Utilities
 
@@ -84,6 +115,13 @@ Normalizes pagination limits:
 - 0 → DEFAULT_PAGE_LIMIT
 - 1..=MAX_PAGE_LIMIT → unchanged
 - > MAX_PAGE_LIMIT → MAX_PAGE_LIMIT
+
+### `Timestamp::seconds_until(now, target)`
+
+Computes the future distance to `target` with saturating semantics:
+- `target > now` → returns `target - now`
+- `target == now` → returns `0`
+- `target < now` → returns `0`
 
 ### `canonicalize_tags_checked(env, tags)`
 
@@ -98,4 +136,3 @@ Emits a standardized event.
 ```bash
 cargo test -p remitwise-common
 ```
-

@@ -5712,12 +5712,10 @@ fn test_batch_add_to_goals_locked_goal_rejects() {
     // Locked goals still accept deposits in batch
     let contributions = SorobanVec::from_array(
         &env,
-        [
-            ContributionItem {
-                goal_id: id_b,
-                amount: 500,
-            },
-        ],
+        [ContributionItem {
+            goal_id: id_b,
+            amount: 500,
+        }],
     );
     let res = client.batch_add_to_goals(&owner, &contributions);
     assert_eq!(res, 1, "locked goals accept deposits in batch");
@@ -5794,8 +5792,7 @@ fn test_batch_add_to_goals_duplicate_goal_ids_sequential() {
 
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(
-        goal.current_amount,
-        600,
+        goal.current_amount, 600,
         "duplicate goal_id contributions must accumulate"
     );
 }
@@ -7123,6 +7120,26 @@ fn test_pre_upgrade_roundtrip() {
         &false,
     );
     assert_eq!(id_new, 1);
+}
+
+#[test]
+fn test_pre_upgrade_restore_rejects_stale_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    env.ledger().set_timestamp(env.ledger().timestamp() + 31 * 24 * 60 * 60 + 1);
+
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_err());
 }
 
 #[test]

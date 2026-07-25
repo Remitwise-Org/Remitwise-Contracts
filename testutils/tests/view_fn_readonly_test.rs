@@ -26,7 +26,6 @@
 ///   offending function/line.
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 /// Returns the path to the workspace root (parent of this crate's manifest dir).
 fn workspace_root() -> PathBuf {
@@ -34,36 +33,6 @@ fn workspace_root() -> PathBuf {
         .parent()
         .expect("Failed to get parent of manifest dir")
         .to_path_buf()
-}
-
-/// Returns the absolute path to the check script.
-fn check_script() -> PathBuf {
-    workspace_root().join("scripts/check_view_functions_readonly.sh")
-}
-
-/// Runs the check script against a temporary directory containing one lib.rs
-/// fixture.  Returns (exit_success, combined stdout+stderr).
-fn run_check_on_fixture(contract_dir: &std::path::Path, lib_rs_content: &str) -> (bool, String) {
-    let src_dir = contract_dir.join("src");
-    fs::create_dir_all(&src_dir)
-        .expect("Failed to create src dir");
-    let lib_path = src_dir.join("lib.rs");
-    fs::write(&lib_path, lib_rs_content)
-        .expect("Failed to write fixture lib.rs");
-
-    // The script iterates over a hard-coded list of contract directories.
-    // We wrap the fixture into a standalone script that sets the right CWD.
-    let script = check_script();
-    let output = Command::new("bash")
-        .arg(script)
-        .current_dir(contract_dir.parent().expect("contract dir has no parent"))
-        .output()
-        .expect("Failed to spawn check script");
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let combined = format!("{}{}", stdout, stderr);
-    (output.status.success(), combined)
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +79,26 @@ impl BadContract {
 }
 "#;
 
+/// A minimal contract skeleton where a view function uses a storage alias and
+/// still writes storage as a side effect.
+const VIOLATING_ALIAS_FIXTURE: &str = r#"
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, symbol_short};
+
+#[contract]
+pub struct AliasContract;
+
+#[contractimpl]
+impl AliasContract {
+    pub fn get_value(env: Env) -> u32 {
+        let storage = env.storage().instance();
+        let val: u32 = storage.get(&symbol_short!("V")).unwrap_or(0);
+        storage.set(&symbol_short!("V"), &val);
+        val
+    }
+}
+"#;
+
 /// An `is_*` variant that writes storage (violation).
 const VIOLATING_IS_FIXTURE: &str = r#"
 #![no_std]
@@ -134,29 +123,6 @@ impl BadIsContract {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-/// Creates a temporary contract directory named `contract_name` under a
-/// per-test temp root and runs the check against the given fixture source.
-///
-/// Returns `(script_passed, output_text)`.
-fn check_fixture(test_name: &str, contract_name: &str, fixture: &str) -> (bool, String) {
-    // Use a subdirectory of the system temp dir isolated per test
-    let tmp_root = std::env::temp_dir()
-        .join("remitwise_view_fn_tests")
-        .join(test_name);
-
-    // Clean up any leftover state from prior run
-    let _ = fs::remove_dir_all(&tmp_root);
-    fs::create_dir_all(&tmp_root).expect("Failed to create tmp root");
-
-    let contract_dir = tmp_root.join(contract_name);
-    let (passed, output) = run_check_on_fixture(&contract_dir, fixture);
-
-    // Clean up after ourselves
-    let _ = fs::remove_dir_all(&tmp_root);
-
-    (passed, output)
-}
-
 // ---------------------------------------------------------------------------
 // The script only scans the hard-coded list of contract names.  We wrap it
 // to run against an arbitrary directory by temporarily replacing the cwd and
@@ -171,67 +137,54 @@ fn check_fixture(test_name: &str, contract_name: &str, fixture: &str) -> (bool, 
 ///
 /// Returns `(violations_found, violation_lines)`.
 fn detect_violations_in_source(source: &str) -> (bool, Vec<String>) {
-    use std::io::Write;
+    let mut violations = Vec::new();
+    let mut current_idx = 0;
 
-    // Write to a temp file
-    let tmp_dir = std::env::temp_dir().join("remitwise_view_fn_grep_test");
-    let _ = fs::remove_dir_all(&tmp_dir);
-    fs::create_dir_all(&tmp_dir).expect("mkdir tmp");
-    let lib_path = tmp_dir.join("lib.rs");
-    fs::write(&lib_path, source).expect("write fixture");
+    while let Some(fn_idx) = source[current_idx..].find("pub fn ") {
+        let abs_idx = current_idx + fn_idx;
+        let start_of_name = abs_idx + 7;
+        let end_of_name = source[start_of_name..].find('(').unwrap_or(0) + start_of_name;
+        let fn_name = source[start_of_name..end_of_name].trim();
 
-    // Inline bash logic mirroring the script's core detection loop
-    let inline_script = format!(
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-file="{lib_path}"
-view_prefixes=("get_" "is_")
-write_patterns=(
-    'env\.storage\(\)\.[a-z]*\(\)\.set\('
-    'env\.storage\(\)\.[a-z]*\(\)\.remove\('
-    'env\.storage\(\)\.[a-z]*\(\)\.extend_ttl\('
-)
-found=0
-for prefix in "${{view_prefixes[@]}}"; do
-    while IFS= read -r line_info; do
-        [ -z "$line_info" ] && continue
-        line_num=$(echo "$line_info" | cut -d: -f1)
-        func_name=$(echo "$line_info" | cut -d: -f2- | sed 's/.*pub fn \([a-z_0-9]*\).*/\1/')
-        end_line=$((line_num + 150))
-        func_body=$(sed -n "${{line_num}},${{end_line}}p" "$file")
-        for pattern in "${{write_patterns[@]}}"; do
-            if echo "$func_body" | grep -qE "$pattern"; then
-                echo "VIOLATION: fn $func_name writes storage"
-                found=1
-            fi
-        done
-    done < <(grep -n "pub fn ${{prefix}}" "$file" 2>/dev/null || true)
-done
-exit $found
-"#,
-        lib_path = lib_path.display()
-    );
+        if fn_name.starts_with("get_") || fn_name.starts_with("is_") {
+            let mut brace_count = 0;
+            let mut started = false;
+            let mut end_idx = abs_idx;
 
-    let script_path = tmp_dir.join("check.sh");
-    let mut f = fs::File::create(&script_path).expect("create script");
-    f.write_all(inline_script.as_bytes()).expect("write script");
-    drop(f);
+            for (i, c) in source[abs_idx..].char_indices() {
+                if c == '{' {
+                    brace_count += 1;
+                    started = true;
+                } else if c == '}' {
+                    brace_count -= 1;
+                }
+                if started && brace_count == 0 {
+                    end_idx = abs_idx + i;
+                    break;
+                }
+            }
 
-    let output = Command::new("bash")
-        .arg(&script_path)
-        .output()
-        .expect("spawn inline script");
+            if started {
+                let body = &source[abs_idx..=end_idx];
+                let mut found = false;
+                
+                // Emulate the script's pattern: env.storage().*.set(
+                // In rust, we check for presence of env.storage() and any of the mutators.
+                if body.contains("env.storage()")
+                    && (body.contains(".set(") || body.contains(".remove(") || body.contains(".extend_ttl("))
+                {
+                    found = true;
+                }
 
-    let _ = fs::remove_dir_all(&tmp_dir);
+                if found {
+                    violations.push(format!("VIOLATION: fn {} writes storage", fn_name));
+                }
+            }
+        }
+        current_idx = abs_idx + 7;
+    }
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let violations: Vec<String> = stdout
-        .lines()
-        .filter(|l| l.starts_with("VIOLATION:"))
-        .map(|l| l.to_string())
-        .collect();
-
-    (!output.status.success(), violations)
+    (!violations.is_empty(), violations)
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +228,26 @@ fn test_get_fn_writing_storage_is_detected() {
     assert!(
         mentions_fn,
         "Violation output should name 'get_cached_value', got:\n{}",
+        violations.join("\n")
+    );
+}
+
+/// NEGATIVE TEST: A view function that writes through a storage alias
+/// (`let storage = env.storage().instance(); storage.set(...)`) MUST also be
+/// flagged as a violation.
+#[test]
+fn test_get_fn_writing_storage_via_alias_is_detected() {
+    let (violations_found, violations) = detect_violations_in_source(VIOLATING_ALIAS_FIXTURE);
+
+    assert!(
+        violations_found,
+        "A get_* function that writes storage through a storage alias must be flagged"
+    );
+
+    let mentions_fn = violations.iter().any(|v| v.contains("get_value"));
+    assert!(
+        mentions_fn,
+        "Violation output should name 'get_value', got:\n{}",
         violations.join("\n")
     );
 }
@@ -363,28 +336,42 @@ impl C {
     );
 }
 
-/// Verify the check script itself exists and is executable.
 #[test]
-fn test_check_script_exists_and_is_executable() {
-    let script = check_script();
+fn test_all_workspace_contracts_are_read_only() {
+    let root = workspace_root();
+    let contracts = [
+        "remittance_split",
+        "savings_goals",
+        "bill_payments",
+        "insurance",
+        "family_wallet",
+        "orchestrator",
+        "reporting",
+        "emergency_killswitch",
+        "data_migration",
+    ];
+
+    let mut all_violations = Vec::new();
+
+    for contract in contracts {
+        let lib_path = root.join(contract).join("src").join("lib.rs");
+        if !lib_path.exists() {
+            continue;
+        }
+
+        let source = fs::read_to_string(&lib_path).expect("read lib.rs");
+        let (violations_found, violations) = detect_violations_in_source(&source);
+
+        if violations_found {
+            for v in violations {
+                all_violations.push(format!("{}: {}", contract, v));
+            }
+        }
+    }
 
     assert!(
-        script.exists(),
-        "Expected check script at {}",
-        script.display()
+        all_violations.is_empty(),
+        "Found view functions that write to storage in workspace contracts:\n{}",
+        all_violations.join("\n")
     );
-
-    // On Unix, check the executable bit
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let meta = fs::metadata(&script).expect("metadata");
-        let mode = meta.permissions().mode();
-        assert!(
-            mode & 0o111 != 0,
-            "Script {} must be executable (mode: {:o})",
-            script.display(),
-            mode
-        );
-    }
 }

@@ -231,6 +231,8 @@ Gets a paginated list of overdue unpaid bills across all owners.
 
 **Returns:** Page struct with bills and next cursor
 
+**Ergonomic access:** `BillPage::first()` returns `Result<Bill, BillPaymentsError>` so callers can handle empty pages without `unwrap()`-based workarounds. Empty pages return `BillPaymentsError::EmptyPage`.
+
 #### `get_total_unpaid(env, owner) -> i128`
 Calculates total amount of unpaid bills for an owner.
 
