@@ -15,6 +15,8 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **[reporting](reporting/README.md)**: Financial reporting and insights
 - **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
 - **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
+- **[docs/PERIOD_INVARIANTS.md](docs/PERIOD_INVARIANTS.md)**: Time-bound period invariants, ledger timestamp rules, and execution windows
+- **[docs/AMOUNT_INVARIANTS.md](docs/AMOUNT_INVARIANTS.md)**: Amount zero-handling rules across contract entrypoints
 
 ## Shared Components
 
