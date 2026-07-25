@@ -61,6 +61,7 @@ use std::collections::{BTreeMap, HashMap};
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
 /// Format: `enc:v2:<base64>` — future version placeholder with stricter size cap.
+#[cfg(test)]
 const ENCRYPTED_PAYLOAD_PREFIX_V2: &str = "enc:v2:";
 
 /// Current encrypted payload schema version.
@@ -407,7 +408,7 @@ impl ExportSnapshot {
 
     /// Check if snapshot version is supported for import.
     pub fn is_version_compatible(&self) -> bool {
-        self.header.version >= MIN_SUPPORTED_VERSION && self.header.version <= SCHEMA_VERSION
+        (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&self.header.version)
     }
 
     /// Validate payload size and logical record bounds.
@@ -879,7 +880,7 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     })?;
 
     // Check version compatibility
-    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > MAX_SUPPORTED_ENCRYPTED_VERSION {
+    if !(MIN_SUPPORTED_ENCRYPTED_VERSION..=MAX_SUPPORTED_ENCRYPTED_VERSION).contains(&version) {
         return Err(MigrationError::UnsupportedEncryptedVersion {
             found: version,
             max: MAX_SUPPORTED_ENCRYPTED_VERSION,
@@ -1159,7 +1160,7 @@ struct CsvGoalRow {
 
 /// Version compatibility check for migration scripts.
 pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
-    if version >= MIN_SUPPORTED_VERSION && version <= SCHEMA_VERSION {
+    if (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&version) {
         Ok(())
     } else {
         Err(MigrationError::IncompatibleVersion {
@@ -2306,7 +2307,10 @@ mod tests {
         let rb = RollbackMetadata::capture(Some(&prev), &attempted, 12_345);
 
         let description = rb.describe();
-        assert!(description.contains("12345"), "timestamp should appear: {description}");
+        assert!(
+            description.contains("12345"),
+            "timestamp should appear: {description}"
+        );
         assert!(
             description.contains(&prev.header.version.to_string()),
             "previous version should appear: {description}"

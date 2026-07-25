@@ -5,6 +5,7 @@ This document defines the complete event schema for all Remitwise smart contract
 **Version:** 1.0  
 **Last Updated:** 2026-02-25  
 **Compatibility:** Soroban SDK v21+
+**Versioning:** See [Event Versioning ADR](events-versioning.md)
 
 ---
 
@@ -131,9 +132,21 @@ pub struct BillRestoredEvent {
 ### Event: Contract Paused/Unpaused
 
 **Topic:** `"Remitwise"` (category: System, priority: High)  
-**Action Symbol:** `"paused"` or `"unpaused"`
+**Action Symbol:** `"paused_v2"` or `"unpaused_v2"`
 
-**Data:** Empty tuple `()`
+**Data Structure:**
+
+```rust
+pub struct PauseEvent {
+    pub paused_at: u64,
+    pub paused_by: Address,
+}
+
+pub struct UnpauseEvent {
+    pub unpaused_at: u64,
+    pub unpaused_by: Address,
+}
+```
 
 ### Event: Contract Upgraded
 

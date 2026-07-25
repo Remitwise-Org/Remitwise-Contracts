@@ -581,6 +581,90 @@ fn test_propose_split_config_change() {
 }
 
 #[test]
+fn test_propose_split_config_change_invalid_sum_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Percentages sum to 101 instead of 100 — must be rejected with typed error, not panic.
+    let result = client.try_propose_split_config_change(&owner, &50, &30, &20, &1);
+    assert_eq!(result, Err(Ok(Error::InvalidSplitConfig)));
+}
+
+#[test]
+fn test_propose_split_config_change_individual_out_of_range_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Individual percentage exceeds 100 — must be rejected with typed error, not panic.
+    let result = client.try_propose_split_config_change(&owner, &101, &0, &0, &0);
+    assert_eq!(result, Err(Ok(Error::InvalidSplitConfig)));
+}
+
+#[test]
 fn test_propose_role_change() {
     let env = Env::default();
     env.mock_all_auths();
@@ -6749,10 +6833,14 @@ fn test_auth_matrix_update_spending_limit_by_owner() {
 
     // Action: Owner updates member's spending limit
     let new_limit = 1000_0000000i128;
-    let result = client.update_spending_limit(&owner, &member, &new_limit);
+    let result = client.try_update_spending_limit(&owner, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert!(result, "Owner must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Owner must be able to update spending limits"
+    );
 
     // Verification: Spending limit was updated
     let member_data = client.get_family_member(&member);
@@ -6784,10 +6872,14 @@ fn test_auth_matrix_update_spending_limit_by_admin() {
 
     // Action: Admin updates member's spending limit
     let new_limit = 500_0000000i128;
-    let result = client.update_spending_limit(&admin, &member, &new_limit);
+    let result = client.try_update_spending_limit(&admin, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert!(result, "Admin must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Admin must be able to update spending limits"
+    );
 
     // Verification
     let member_data = client.get_family_member(&member);
@@ -6818,9 +6910,10 @@ fn test_auth_matrix_update_spending_limit_by_member_fails() {
     // Action: Member1 attempts to update Member2's spending limit (should fail)
     let result = client.try_update_spending_limit(&member1, &member2, &1000_0000000);
 
-    // Assertion: Operation fails
-    assert!(
-        result.is_err(),
+    // Assertion: Operation fails with typed error
+    assert_eq!(
+        result,
+        Err(Ok(Error::Unauthorized)),
         "Member must not be able to update spending limits"
     );
 }
@@ -6846,10 +6939,40 @@ fn test_auth_matrix_update_spending_limit_by_viewer_fails() {
     // Action: Viewer attempts to update spending limit (should fail)
     let result = client.try_update_spending_limit(&viewer, &member, &1000_0000000);
 
-    // Assertion: Operation fails
-    assert!(
-        result.is_err(),
+    // Assertion: Operation fails with typed error
+    assert_eq!(
+        result,
+        Err(Ok(Error::Unauthorized)),
         "Viewer must not be able to update spending limits"
+    );
+}
+
+#[test]
+fn test_require_governance_ok_returns_typed_error() {
+    // **Description**:
+    // Verifies that `require_governance_ok` helper returns a typed `Error::Unauthorized`
+    // instead of panicking when a non-admin attempts a parameter change.
+    //
+    // **Security Note**: This test ensures governance checks use typed errors for
+    // consistent error handling and proper audit trails.
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    // Setup
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    // Action: Member attempts to update spending limit (should fail with typed error)
+    let result = client.try_update_spending_limit(&member, &member, &1000_0000000);
+
+    // Assertion: Operation fails with specific typed error
+    assert_eq!(
+        result,
+        Err(Ok(Error::Unauthorized)),
+        "require_governance_ok must return typed Error::Unauthorized"
     );
 }
 
@@ -6940,8 +7063,9 @@ fn test_auth_matrix_comprehensive_role_isolation() {
 
         // Member cannot update spending limit
         let result_update = client.try_update_spending_limit(&member, &test_target, &1000_0000000);
-        assert!(
-            result_update.is_err(),
+        assert_eq!(
+            result_update,
+            Err(Ok(Error::Unauthorized)),
             "Member cannot update spending limit"
         );
     }
@@ -6954,8 +7078,9 @@ fn test_auth_matrix_comprehensive_role_isolation() {
 
         // Viewer cannot update spending limit
         let result_update = client.try_update_spending_limit(&viewer, &test_target, &1000_0000000);
-        assert!(
-            result_update.is_err(),
+        assert_eq!(
+            result_update,
+            Err(Ok(Error::Unauthorized)),
             "Viewer cannot update spending limit"
         );
     }

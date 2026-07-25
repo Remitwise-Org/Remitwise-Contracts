@@ -217,7 +217,7 @@ fn test_pay_premium_at_exact_period_boundary_is_accepted() {
 
     // Set ledger timestamp to exactly the due date (exact period boundary)
     env.ledger().with_mut(|li| li.timestamp = due);
-    
+
     // Call pay_premium - must be accepted (return true)
     assert!(client.pay_premium(&owner, &id));
 

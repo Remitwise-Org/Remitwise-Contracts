@@ -318,22 +318,33 @@ To run an example, use `cargo run --example <example_name>`:
 
 ## Documentation
 
+- [Contributor Overview](docs/CONTRIBUTOR_OVERVIEW.md) - Onboarding guide for new contributors
+- [ADR: Ban unwrap in Release Builds](docs/adr-ban-unwrap-in-release.md) - Why unwrap and panic are forbidden in production contract code
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
+- [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
+- [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
+- [Committed Hashes](docs/COMMITTED_HASHES.md) - Request-hash coverage and verification guidance for downstream integrators
+- [Zero-Amount Policy](docs/ZERO_AMOUNT_POLICY.md) - Which entrypoints reject, accept, or normalize zero amounts; quick reference for integrators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
+- [String and Bytes Canonicalisation](docs/CANONICALISATION.md) - Tag casefold, currency trim/uppercase, external-ref charset, and migration checksum byte-order
+- [Type-Safe Percent Conversion](docs/type-safe-percent-conversion.md) - Converting whole percentages to basis points with checked overflow arithmetic
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
 - [Contract Specs & Migrations](docs/MIGRATIONS.md) - How to bump a contract spec without breaking existing storage
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone
+- [Settler Whitelist](docs/SETTLER_WHITELIST.md) - Operator guide: how settlers are added, rotated, and revoked
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
+- [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
+- [Event Versioning Discipline](docs/EVENT_VERSIONING.md) - Backward-compatibility rules, migration steps, and indexer guidelines for event schema changes
 
 ## Contracts
 
