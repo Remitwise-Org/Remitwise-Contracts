@@ -32,8 +32,7 @@ use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
 // ---------------------------------------------------------------------------
 // Mock downstream contract — implements the five trait methods the
 // orchestrator's signed fan-out actually invokes via `try_*` calls.
-// Returning `bool true` matches the behaviour of the existing in-`src/`
-// `MockContract`, which is verified end-to-end by the suite at large.
+// Returning unit `()` matches the interfaces in orchestrator/src/lib.rs.
 // ---------------------------------------------------------------------------
 #[contract]
 struct MockDep;
@@ -46,15 +45,9 @@ impl MockDep {
     pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
         soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
     }
-    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) -> bool {
-        true
-    }
-    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32, _amount: i128) -> bool {
-        true
-    }
-    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32, _amount: i128) -> bool {
-        true
-    }
+    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) {}
+    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32, _amount: i128) {}
+    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32, _amount: i128) {}
 }
 
 // ---------------------------------------------------------------------------
