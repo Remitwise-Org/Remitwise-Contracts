@@ -49,7 +49,7 @@ fn test_emit_topics_include_remitwise_sentinel() {
     let events = env.events().all();
     assert!(!events.is_empty());
     // The first topic element must be the Remitwise sentinel symbol.
-    let (topics, _) = events.last().unwrap();
+    let (_cid, topics, _data) = events.last().unwrap();
     let sentinel = soroban_sdk::Val::from_val(&env, &topics.get(0).unwrap());
     let expected = soroban_sdk::Symbol::new(&env, "Remitwise").to_val();
     assert_eq!(sentinel.get_payload(), expected.get_payload());
@@ -66,7 +66,7 @@ fn test_emit_encodes_category_as_second_topic() {
         0u32,
     );
     let events = env.events().all();
-    let (topics, _) = events.last().unwrap();
+    let (_cid, topics, _data) = events.last().unwrap();
     let cat_raw: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(1).unwrap());
     assert_eq!(cat_raw, EventCategory::Compliance.to_u32());
 }
@@ -82,7 +82,7 @@ fn test_emit_encodes_priority_as_third_topic() {
         99u32,
     );
     let events = env.events().all();
-    let (topics, _) = events.last().unwrap();
+    let (_cid, topics, _data) = events.last().unwrap();
     let prio_raw: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(2).unwrap());
     assert_eq!(prio_raw, EventPriority::Critical.to_u32());
 }
@@ -92,7 +92,7 @@ fn test_emit_batch_uses_low_priority_topic() {
     let env = Env::default();
     RemitwiseEvents::emit_batch(&env, EventCategory::Transaction, symbol_short!("batch"), 5);
     let events = env.events().all();
-    let (topics, _) = events.last().unwrap();
+    let (_cid, topics, _data) = events.last().unwrap();
     let prio_raw: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(2).unwrap());
     assert_eq!(prio_raw, EventPriority::Low.to_u32());
 }

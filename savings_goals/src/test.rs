@@ -7136,7 +7136,8 @@ fn test_pre_upgrade_restore_rejects_stale_snapshot() {
     let result = client.try_pre_upgrade(&admin);
     assert!(result.is_ok());
 
-    env.ledger().set_timestamp(env.ledger().timestamp() + 31 * 24 * 60 * 60 + 1);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 31 * 24 * 60 * 60 + 1);
 
     let result = client.try_restore_from_snapshot(&admin);
     assert!(result.is_err());
