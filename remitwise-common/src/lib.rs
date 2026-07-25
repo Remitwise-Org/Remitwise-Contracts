@@ -786,6 +786,41 @@ impl ToI128Checked for i32 {
 /// so that integer arithmetic can be used without floating point.
 pub const BASIS_POINTS: u32 = 10_000;
 
+/// Supported units for externally supplied rate inputs.
+///
+/// Remitwise contracts currently accept only basis points. Treating a raw rate
+/// value as unitless would let a caller supply an unexpected denomination and
+/// have the contract silently interpret it as basis points, potentially
+/// magnifying or shrinking fee/discount/allocation calculations. This guard
+/// makes the accepted unit explicit and reject-by-default.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RateUnit {
+    BasisPoints = 1,
+}
+
+/// Error returned when an externally supplied rate unit is unsupported.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RateUnitError {
+    UnsupportedRateUnit = 1,
+}
+
+/// Require that `unit` is one of the rate denominations currently supported by
+/// the contracts.
+///
+/// # Errors
+/// Returns [`RateUnitError::UnsupportedRateUnit`] when `unit` is not accepted.
+#[inline(always)]
+pub fn require_supported_rate_unit(unit: u32) -> Result<RateUnit, RateUnitError> {
+    match unit {
+        1 => Ok(RateUnit::BasisPoints),
+        _ => Err(RateUnitError::UnsupportedRateUnit),
+    }
+}
+
 /// Error returned by [`Rate`] arithmetic when the result overflows `i128`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RateError {
@@ -835,6 +870,16 @@ impl Rate {
     #[inline(always)]
     pub fn from_bps(bps: u32) -> Self {
         Self(bps)
+    }
+
+    /// Construct a `Rate` from an externally supplied raw value plus unit.
+    ///
+    /// This is the safe entry point for untrusted inputs that carry an explicit
+    /// unit field. Only supported units are accepted.
+    #[inline(always)]
+    pub fn try_from_input(value: u32, unit: u32) -> Result<Self, RateUnitError> {
+        require_supported_rate_unit(unit)?;
+        Ok(Self::from_bps(value))
     }
 
     /// Return the raw basis-point value.

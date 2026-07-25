@@ -828,13 +828,13 @@ fn test_verify_slash_signature_invalid() {
 fn distributes_indivisible_total_with_remainder_to_last_bucket() {
     let mut out = [0i128; 4];
     distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
-    
+
     // First three buckets receive their floor share
     assert_eq!(out[0], 50); // 100 * 50 / 100 = 50
     assert_eq!(out[1], 30); // 100 * 30 / 100 = 30
     assert_eq!(out[2], 15); // 100 * 15 / 100 = 15
     assert_eq!(out[3], 5);  // 100 * 5 / 100 = 5, plus remainder 0
-    
+
     // Conservation: sum equals input total
     assert_eq!(out.iter().sum::<i128>(), 100);
 }
@@ -846,11 +846,11 @@ fn distributes_amount_with_non_zero_remainder_to_last_bucket() {
     // 10 * 3333 / 10000 = 3.333 → floor = 3 (per bucket)
     // Allocated: 3 + 3 = 6, remainder: 10 - 6 = 4 goes to last bucket
     distribute_pro_rata(10, &[3333, 3333, 3334], 10_000, &mut out);
-    
+
     assert_eq!(out[0], 3);  // floor(10 * 3333 / 10000) = 3
     assert_eq!(out[1], 3);  // floor(10 * 3333 / 10000) = 3
     assert_eq!(out[2], 4);  // 10 - 3 - 3 = 4 (includes remainder)
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 10);
 }
@@ -862,15 +862,15 @@ fn last_bucket_receives_rounding_remainder() {
     // 1_000_007 * 2500 / 10000 = 250001.75 → floor = 250001
     // Four buckets, each gets floor share, last gets remainder
     distribute_pro_rata(1_000_007, &[2500, 2500, 2500, 2500], 10_000, &mut out);
-    
+
     // First three buckets
     assert_eq!(out[0], 250001);
     assert_eq!(out[1], 250001);
     assert_eq!(out[2], 250001);
-    
+
     // Last bucket gets remainder: 1_000_007 - 3*250001 = 1_000_007 - 750_003 = 250_004
     assert_eq!(out[3], 250_004);
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 1_000_007);
 }
@@ -880,12 +880,12 @@ fn last_bucket_receives_rounding_remainder() {
 fn distributes_evenly_divisible_total_exactly() {
     let mut out = [0i128; 4];
     distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
-    
+
     assert_eq!(out[0], 500_000); // 1M * 5000 / 10000
     assert_eq!(out[1], 300_000); // 1M * 3000 / 10000
     assert_eq!(out[2], 150_000); // 1M * 1500 / 10000
     assert_eq!(out[3], 50_000);  // 1M * 500 / 10000
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 1_000_000);
 }
@@ -895,9 +895,9 @@ fn distributes_evenly_divisible_total_exactly() {
 fn distributes_full_amount_to_single_recipient() {
     let mut out = [0i128; 1];
     distribute_pro_rata(999_999, &[100], 100, &mut out);
-    
+
     assert_eq!(out[0], 999_999);
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 999_999);
 }
@@ -907,12 +907,12 @@ fn distributes_full_amount_to_single_recipient() {
 fn distributes_zero_total_without_panic() {
     let mut out = [0i128; 4];
     distribute_pro_rata(0, &[25, 25, 25, 25], 100, &mut out);
-    
+
     assert_eq!(out[0], 0);
     assert_eq!(out[1], 0);
     assert_eq!(out[2], 0);
     assert_eq!(out[3], 0);
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 0);
 }
@@ -922,12 +922,12 @@ fn distributes_zero_total_without_panic() {
 fn distributes_with_zero_weight_recipient() {
     let mut out = [0i128; 4];
     distribute_pro_rata(100, &[50, 30, 20, 0], 100, &mut out);
-    
+
     assert_eq!(out[0], 50);
     assert_eq!(out[1], 30);
     assert_eq!(out[2], 20);
     assert_eq!(out[3], 0);  // zero weight → receives only remainder (0 in this case)
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 100);
 }
@@ -939,11 +939,11 @@ fn zero_weight_last_bucket_receives_remainder() {
     // 10 * 4000 / 10000 = 4, twice = 8
     // Remainder: 10 - 8 = 2 goes to last bucket (even though its weight is 0)
     distribute_pro_rata(10, &[4000, 4000, 0], 10_000, &mut out);
-    
+
     assert_eq!(out[0], 4);
     assert_eq!(out[1], 4);
     assert_eq!(out[2], 2); // weight is 0, but receives remainder 2
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 10);
 }
@@ -954,12 +954,12 @@ fn distributes_using_basis_points_denomination() {
     let mut out = [0i128; 4];
     // 5% = 500 bps, 3% = 300 bps, 1.5% = 150 bps, 0.5% = 50 bps
     distribute_pro_rata(1_000_000, &[500, 300, 150, 50], 10_000, &mut out);
-    
+
     assert_eq!(out[0], 50_000);  // 5%
     assert_eq!(out[1], 30_000);  // 3%
     assert_eq!(out[2], 15_000);  // 1.5%
     assert_eq!(out[3], 5_000);   // 0.5%
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 100_000); // only 10% of total distributed
 }
@@ -969,12 +969,12 @@ fn distributes_using_basis_points_denomination() {
 fn conservation_holds_for_large_total() {
     let mut out = [0i128; 4];
     let large_total = i128::MAX / 1_000_000; // Large but won't overflow in multiplication
-    
+
     distribute_pro_rata(large_total, &[2500, 2500, 2500, 2500], 10_000, &mut out);
-    
+
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), large_total);
-    
+
     // Each bucket gets approximately 1/4
     let expected_floor = large_total / 4;
     assert!(out[0] >= expected_floor);
@@ -1002,18 +1002,18 @@ proptest! {
         if total_weight == 0 {
             return Ok(()); // Skip invalid input
         }
-        
+
         let mut out = std::vec![0i128; weights.len()];
         distribute_pro_rata(total, &weights, total_weight, &mut out);
-        
+
         // Property 1: Conservation — sum equals input
         prop_assert_eq!(out.iter().sum::<i128>(), total);
-        
+
         // Property 2: Non-negative outputs
         for &amount in &out {
             prop_assert!(amount >= 0, "output must be non-negative");
         }
-        
+
         // Property 3: Last bucket receives at least its floor share (absorbs remainder)
         let last_idx = weights.len() - 1;
         let last_floor = (total as i128)
@@ -1023,12 +1023,38 @@ proptest! {
             out[last_idx] >= last_floor,
             "last bucket must receive at least floor share (absorbs rounding remainder)"
         );
-        
+
         // Property 4: No output exceeds total
         for &amount in &out {
             prop_assert!(amount <= total, "no bucket can exceed total");
         }
     }
+}
+
+// ─── require_supported_rate_unit tests (#1188) ───────────────────────────────
+
+#[test]
+fn test_require_supported_rate_unit_accepts_basis_points() {
+    assert_eq!(
+        require_supported_rate_unit(1),
+        Ok(RateUnit::BasisPoints)
+    );
+    assert_eq!(
+        Rate::try_from_input(500, 1),
+        Ok(Rate::from_bps(500))
+    );
+}
+
+#[test]
+fn test_require_supported_rate_unit_rejects_unsupported_unit() {
+    assert_eq!(
+        require_supported_rate_unit(2),
+        Err(RateUnitError::UnsupportedRateUnit)
+    );
+    assert_eq!(
+        Rate::try_from_input(500, 2),
+        Err(RateUnitError::UnsupportedRateUnit)
+    );
 }
 
 // ─── require_valid_symbol_length tests (#1078) ───────────────────────────────
