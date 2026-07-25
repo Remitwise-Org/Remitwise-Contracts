@@ -786,11 +786,68 @@ impl ToI128Checked for i32 {
 /// so that integer arithmetic can be used without floating point.
 pub const BASIS_POINTS: u32 = 10_000;
 
-/// Error returned by [`Rate`] arithmetic when the result overflows `i128`.
+/// Basis points per 1% percentage point: 100 basis points = 1%.
+pub const BPS_PER_PERCENT: u32 = 100;
+
+/// Alias for [`BPS_PER_PERCENT`]: 100 basis points = 1%.
+pub const BASIS_POINTS_PER_PERCENT: u32 = BPS_PER_PERCENT;
+
+/// Error returned by [`Rate`] arithmetic or conversion when the operation overflows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RateError {
-    /// The intermediate or final result exceeds `i128::MAX`.
+    /// The intermediate or final result exceeds numerical limits (`i128::MAX` or `u32::MAX`).
     Overflow,
+}
+
+/// A whole percentage value (1% = 100 basis points).
+///
+/// `Percent` wraps a `u32` representing whole percentage units. Safe conversions
+/// to basis points ([`Rate`]) are provided via [`to_rate`](Percent::to_rate),
+/// [`to_bps`](Percent::to_bps), and `TryFrom<Percent> for Rate`.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Percent(u32);
+
+impl Percent {
+    pub const ZERO: Percent = Percent(0);
+    pub const HUNDRED: Percent = Percent(100);
+
+    /// Create a `Percent` from a whole percentage integer value.
+    #[inline(always)]
+    pub fn from_percentage(percent: u32) -> Self {
+        Self(percent)
+    }
+
+    /// Return the whole percentage integer value.
+    #[inline(always)]
+    pub fn to_percentage(self) -> u32 {
+        self.0
+    }
+
+    /// Convert this `Percent` to a basis-points [`Rate`].
+    ///
+    /// Returns `Ok(Rate)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_rate(self) -> Result<Rate, RateError> {
+        Rate::from_percent(self.0)
+    }
+
+    /// Convert this `Percent` to raw basis points (`u32`).
+    ///
+    /// Returns `Ok(bps)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_bps(self) -> Result<u32, RateError> {
+        self.0
+            .checked_mul(BPS_PER_PERCENT)
+            .ok_or(RateError::Overflow)
+    }
+}
+
+impl TryFrom<Percent> for Rate {
+    type Error = RateError;
+
+    #[inline(always)]
+    fn try_from(percent: Percent) -> Result<Self, Self::Error> {
+        percent.to_rate()
+    }
 }
 
 /// A rate expressed in basis points (1 bps = 0.01 %).
@@ -837,10 +894,40 @@ impl Rate {
         Self(bps)
     }
 
+    /// Create a `Rate` from a whole percentage integer value (1% = 100 basis points).
+    ///
+    /// Returns `Ok(Rate)` if `percent * BPS_PER_PERCENT` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn from_percent(percent: u32) -> Result<Self, RateError> {
+        percent
+            .checked_mul(BPS_PER_PERCENT)
+            .map(Self::from_bps)
+            .ok_or(RateError::Overflow)
+    }
+
+    /// Create a `Rate` from a [`Percent`] instance.
+    ///
+    /// Returns `Ok(Rate)` if `percent * BPS_PER_PERCENT` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    #[inline(always)]
+    pub fn from_percent_type(percent: Percent) -> Result<Self, RateError> {
+        percent.to_rate()
+    }
+
     /// Return the raw basis-point value.
     #[inline(always)]
     pub fn to_bps(self) -> u32 {
         self.0
+    }
+
+    /// Convert this rate back to a whole percentage integer value, truncating fractional basis points.
+    #[inline(always)]
+    pub fn to_percent(self) -> u32 {
+        self.0 / BPS_PER_PERCENT
+    }
+
+    /// Return true if this rate contains a fractional percentage (basis points not divisible by 100).
+    #[inline(always)]
+    pub fn has_fractional_percent(self) -> bool {
+        self.0 % BPS_PER_PERCENT != 0
     }
 
     /// Apply this rate to `amount`, computing `(amount * self) / BASIS_POINTS`.
