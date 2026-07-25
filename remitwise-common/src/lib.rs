@@ -1,14 +1,14 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{
-    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
-};
-
 pub mod tokens;
 pub use tokens::{
     SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
     MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
+};
+
+use soroban_sdk::{
+    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
 };
 
 /// Financial categories for remittance allocation
@@ -824,8 +824,59 @@ pub fn require_supported_rate_unit(unit: u32) -> Result<RateUnit, RateUnitError>
 /// Error returned by [`Rate`] arithmetic when the result overflows `i128`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RateError {
-    /// The intermediate or final result exceeds `i128::MAX`.
+    /// The intermediate or final result exceeds numerical limits (`i128::MAX` or `u32::MAX`).
     Overflow,
+}
+
+/// A whole percentage value (1% = 100 basis points).
+///
+/// `Percent` wraps a `u32` representing whole percentage units. Safe conversions
+/// to basis points ([`Rate`]) are provided via [`to_rate`](Percent::to_rate),
+/// [`to_bps`](Percent::to_bps), and `TryFrom<Percent> for Rate`.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Percent(u32);
+
+impl Percent {
+    pub const ZERO: Percent = Percent(0);
+    pub const HUNDRED: Percent = Percent(100);
+
+    /// Create a `Percent` from a whole percentage integer value.
+    #[inline(always)]
+    pub fn from_percentage(percent: u32) -> Self {
+        Self(percent)
+    }
+
+    /// Return the whole percentage integer value.
+    #[inline(always)]
+    pub fn to_percentage(self) -> u32 {
+        self.0
+    }
+
+    /// Convert this `Percent` to a basis-points [`Rate`].
+    ///
+    /// Returns `Ok(Rate)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_rate(self) -> Result<Rate, RateError> {
+        Rate::from_percent(self.0)
+    }
+
+    /// Convert this `Percent` to raw basis points (`u32`).
+    ///
+    /// Returns `Ok(bps)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_bps(self) -> Result<u32, RateError> {
+        self.0
+            .checked_mul(BPS_PER_PERCENT)
+            .ok_or(RateError::Overflow)
+    }
+}
+
+impl TryFrom<Percent> for Rate {
+    type Error = RateError;
+
+    #[inline(always)]
+    fn try_from(percent: Percent) -> Result<Self, Self::Error> {
+        percent.to_rate()
+    }
 }
 
 /// A rate expressed in basis points (1 bps = 0.01 %).
@@ -886,6 +937,19 @@ impl Rate {
     #[inline(always)]
     pub fn to_bps(self) -> u32 {
         self.0
+    }
+
+    /// Convert this rate back to a whole percentage integer value, truncating fractional basis points.
+    #[inline(always)]
+    pub fn to_percent(self) -> u32 {
+        self.0 / BPS_PER_PERCENT
+    }
+
+    /// Return true if this rate contains a fractional percentage (basis points not divisible by 100).
+    #[inline(always)]
+    #[allow(clippy::manual_is_multiple_of)]
+    pub fn has_fractional_percent(self) -> bool {
+        self.0 % BPS_PER_PERCENT != 0
     }
 
     /// Apply this rate to `amount`, computing `(amount * self) / BASIS_POINTS`.
@@ -1247,6 +1311,101 @@ where
 
 pub mod events;
 pub mod reversible_op;
+
+/// Error returned when a currency symbol is not a supported stable asset.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum StableCurrencyError {
+    /// The currency symbol is not a recognized stable asset (e.g., rebase/deflationary tokens).
+    UnsupportedCurrency = 1,
+}
+
+/// Known stable currency symbols (case-insensitive).
+/// This is a defence-in-depth allowlist of well-known stablecoins.
+/// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM, TIME) are intentionally excluded.
+const STABLE_CURRENCIES: &[&str] = &[
+    "USDC",
+    "USDT",
+    "USDP",
+    "BUSD",
+    "GUSD",
+    "TUSD",
+    "USDD",
+    "EURC",
+    "EURS",
+    "DAI",
+    "XLM",
+];
+
+/// Validates that a currency symbol represents a supported stable asset.
+///
+/// This is a defence-in-depth check to reject rebase/deflationary/elastic-supply
+/// token contracts at ingress. If an unsupported currency is accepted at ingress,
+/// it can silently change balances during transfer and violate contract invariants
+/// (e.g., remittance splits, bill payments, insurance payouts).
+///
+/// # Threat model
+/// An attacker who can inject a rebase/deflationary token at ingress can:
+/// - Cause silent balance drift during transfers, breaking settlement invariants
+/// - Grief accounting/audit trails by manufacturing "settled" states with altered values
+/// - Subvert split/allocation logic that assumes stable 1:1 value transfer
+///
+/// # Arguments
+/// * `env` - The Soroban environment
+/// * `symbol` - The currency symbol to validate (case-insensitive, whitespace trimmed)
+///
+/// # Returns
+/// * `Ok(())` if the symbol is a recognized stable currency
+/// * `Err(StableCurrencyError::UnsupportedCurrency)` if the symbol is not recognized
+pub fn require_stable_currency(env: &Env, symbol: &Symbol) -> Result<(), StableCurrencyError> {
+    for known in STABLE_CURRENCIES {
+        if symbol_matches_known_case_insensitive(env, symbol, known) {
+            return Ok(());
+        }
+    }
+    Err(StableCurrencyError::UnsupportedCurrency)
+}
+
+/// Compare a Symbol case-insensitively against a known ASCII currency string.
+///
+/// Since Soroban Symbol comparison is exact (case-sensitive) and there is no
+/// `no_std`-compatible way to extract raw bytes from a Symbol, we generate all
+/// 2^N case variants of the known string (where N = len ≤ 10) and compare each
+/// against the input Symbol.  The first match short-circuits the search.
+fn symbol_matches_known_case_insensitive(env: &Env, symbol: &Symbol, known: &str) -> bool {
+    let bytes = known.as_bytes();
+    let len = bytes.len();
+
+    // Try uppercase (exact) match first — the common case after normalization.
+    if symbol == &Symbol::new(env, known) {
+        return true;
+    }
+
+    // Generate all 2^len case-variant strings and compare as Symbols.
+    // Symbols are bounded at 32 bytes and currencies at 10 bytes, so 2^10 = 1024
+    // max iterations which is acceptable for an ingress guard.
+    let num_variants = 1u32 << len;
+    let mut buf = [0u8; 10];
+    for mask in 0..num_variants {
+        for (i, &b) in bytes.iter().enumerate() {
+            buf[i] = if (mask >> i) & 1 == 0 {
+                b.to_ascii_lowercase()
+            } else {
+                b
+            };
+        }
+        // Safety: buf contains only ASCII letters after case folding.
+        let variant = match core::str::from_utf8(&buf[..len]) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if symbol == &Symbol::new(env, variant) {
+            return true;
+        }
+    }
+    false
+}
 
 /// Event emission helper
 pub struct RemitwiseEvents;
@@ -1622,5 +1781,152 @@ mod encoding_stability_tests {
             out_map.set(k, round_trip(&env, v));
         }
         assert_eq!(out_map, map);
+    }
+}
+
+#[cfg(test)]
+mod stable_currency_tests {
+    use super::{require_stable_currency, StableCurrencyError};
+    use soroban_sdk::{Env, Symbol};
+
+    #[test]
+    fn accepts_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDC");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdt() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDT");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdp() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDP");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_busd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "BUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_gusd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "GUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_tusd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "TUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_eurc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "EURC");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_eurs() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "EURS");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_dai() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "DAI");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_xlm() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "XLM");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_lowercase_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "usdc");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_mixed_case_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "UsDc");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn rejects_rebase_token_ampl() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "AMPL");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_rebase_token_ohm() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "OHM");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_rebase_token_time() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "TIME");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_token() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "RANDOM");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_symbol() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
     }
 }

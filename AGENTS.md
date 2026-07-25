@@ -17,7 +17,7 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `remitwise-common/src/tests.rs`: rewrote `ed25519::generate` / `ed25519::sign` helpers with `ed25519-dalek::SigningKey` / `Signer` (dev-dependency only)
 - `remitwise-common/src/tests.rs`: updated `verify_signature` tests — invalid signature tests changed from `assert_eq!(..., Err(SignatureError::VerificationFailed))` to `#[should_panic]`
 - `bill_payments/src/lib.rs`: fixed `&env` → `env` type mismatch (line 1722), fixed `next_bill` use-after-move (line 1772)
-- **This session (Issue #1148):** `remitwise-common/src/lib.rs`: added `canonicalise_symbol` function (takes `&soroban_sdk::String`, returns `Symbol`; strips leading/trailing whitespace, lowercases ASCII). 15 unit tests + 1 proptest added in `remitwise-common/src/tests.rs`.
+- **This session (Type-Safe Percent Conversion):** Implemented `BPS_PER_PERCENT` / `BASIS_POINTS_PER_PERCENT` constants, `Percent` newtype, `TryFrom<Percent> for Rate`, `Rate::from_percent`, `Rate::to_percent`, and `Rate::has_fractional_percent` in `remitwise-common`. Added 4 unit tests + 1 proptest in `remitwise-common/src/tests.rs` and created `docs/type-safe-percent-conversion.md`.
 - `remitwise-common/Cargo.toml`: moved `ed25519-dalek` from dev-deps to regular deps (version `"2"`) to prevent CI resolving to v3.0.0 (incompatible with `soroban-env-host-21.2.1`).
 - `insurance/src/lib.rs`: fixed `symbol_short!("reactivated")` (too long, 11 > 9) → `Symbol::new(&env, "reactivated")`; fixed `PolicyAlreadyInactive` duplicate discriminant `12` → `52`; added `clamp_limit` to import; removed `mut` from `let mut active` (no mutation needed); fixed `Vec::new(&env)` → `Vec::new(env)` in `remove_active_policy`.
 - `data_migration/src/lib.rs`: fixed `manual_range_contains` clippy lint (`version < MIN || version > MAX` → `!range.contains`); gated `ENCRYPTED_PAYLOAD_PREFIX_V2` with `#[cfg(test)]` (only used in tests).
@@ -25,10 +25,8 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `remittance_split/src/lib.rs`: added `#[allow(dead_code)]` to unused `STORAGE_OWNER_SCHED_IDS`.
 
 ### Verified
-- `cargo check --workspace` — clean, no warnings.
-- `cargo clippy --workspace --lib -- -D warnings` — clean.
-- `cargo build --release --target wasm32-unknown-unknown` — clean (WASM release build).
-- `cargo test -p remitwise-common -- tests::` — all 14 `canonicalise_symbol` tests pass + proptest. 6 pre-existing emit_tests failures (unrelated).
+- `cargo check --workspace` — clean.
+- `remitwise-common` unit tests & proptest for `Percent` and `Rate` — clean.
 
 ### Remaining / Untested
 - CI (`check_ci.sh`) not yet run on CI runner — needs push and PR re-trigger.
@@ -41,13 +39,11 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `ed25519-dalek = "2"` added as regular dep (not dev-dep) to `remitwise-common` to constrain transitive resolution.
 - `Cargo.lock` **committed** (force-added, bypassing `.gitignore`). CI regenerates a fresh lockfile each run, but `cargo generate-lockfile` without `--workspace` constraints doesn't consider all workspace members' dep specs, allowing `ed25519-dalek` v3.0.0 to be picked for targets outside the root package graph (e.g., `--package testutils`). Committed lockfile ensures every CI job uses v2.2.0 regardless of which target or feature set is built.
 - Pre-existing warnings in `insurance`, `data_migration`, `reporting`, `remittance_split` fixed prophylactically to avoid CI clippy failures with `-D warnings`.
+- `BPS_PER_PERCENT: u32 = 100` and `Percent(u32)` newtype centralize whole percentage → basis points conversion to prevent ad-hoc arithmetic and potential integer overflow.
 
 ## File Changes
-- `/remitwise-common/src/lib.rs`: `canonicalise_symbol` function, `verify_signature` (lines 195–226)
-- `/remitwise-common/src/tests.rs`: 15 `canonicalise_symbol` tests + 1 proptest, `verify_signature` tests (lines 450–527)
-- `/remitwise-common/Cargo.toml`: `ed25519-dalek = "2"` added as regular dep, removed from dev-deps
-- `/bill_payments/src/lib.rs`: `&env` → `env` at line 1722, `next_bill` fix at line 1772
-- `/insurance/src/lib.rs`: `symbol_short!` → `Symbol::new`, discriminant fix, `clamp_limit` import, `mut` removed, `&env` → `env`
-- `/data_migration/src/lib.rs`: range contains fix, `#[cfg(test)]` gate on V2 prefix
-- `/reporting/src/utils.rs`: removed `#![no_std]`
-- `/remittance_split/src/lib.rs`: `#[allow(dead_code)]` on `STORAGE_OWNER_SCHED_IDS`
+- `/remitwise-common/src/lib.rs`: `BPS_PER_PERCENT`, `BASIS_POINTS_PER_PERCENT`, `Percent` struct, `Rate::from_percent`, `Rate::to_percent`, `Rate::has_fractional_percent`
+- `/remitwise-common/src/tests.rs`: `test_bps_per_percent_constants`, `test_rate_from_percent`, `test_rate_to_percent_and_fractional`, `test_percent_type_conversions`, `proptest_percent_rate_roundtrip`
+- `/docs/type-safe-percent-conversion.md`: New documentation page
+- `/remitwise-common/README.md`: Updated documentation for `Percent`, `Rate`, and constants
+- `/README.md`: Linked `docs/type-safe-percent-conversion.md` in workspace documentation index

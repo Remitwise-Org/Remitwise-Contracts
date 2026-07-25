@@ -1243,3 +1243,95 @@ fn test_require_active_pause_channel_paused() {
     // Channel is paused (true), should panic
     crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
+
+// ============================================================================
+// Type-safe Percent -> Basis Points conversion tests
+// ============================================================================
+
+#[test]
+fn test_bps_per_percent_constants() {
+    assert_eq!(BPS_PER_PERCENT, 100);
+    assert_eq!(BASIS_POINTS_PER_PERCENT, 100);
+    assert_eq!(BASIS_POINTS, 10_000);
+    assert_eq!(BASIS_POINTS / BPS_PER_PERCENT, 100);
+}
+
+#[test]
+fn test_rate_from_percent() {
+    assert_eq!(Rate::from_percent(0), Ok(Rate::from_bps(0)));
+    assert_eq!(Rate::from_percent(1), Ok(Rate::from_bps(100)));
+    assert_eq!(Rate::from_percent(5), Ok(Rate::from_bps(500)));
+    assert_eq!(Rate::from_percent(50), Ok(Rate::from_bps(5_000)));
+    assert_eq!(Rate::from_percent(100), Ok(Rate::from_bps(10_000)));
+    assert_eq!(Rate::from_percent(500), Ok(Rate::from_bps(50_000)));
+    assert_eq!(
+        Rate::from_percent(u32::MAX / 100),
+        Ok(Rate::from_bps((u32::MAX / 100) * 100))
+    );
+    assert_eq!(
+        Rate::from_percent((u32::MAX / 100) + 1),
+        Err(RateError::Overflow)
+    );
+    assert_eq!(Rate::from_percent(u32::MAX), Err(RateError::Overflow));
+}
+
+#[test]
+fn test_rate_to_percent_and_fractional() {
+    let rate_0 = Rate::from_bps(0);
+    assert_eq!(rate_0.to_percent(), 0);
+    assert!(!rate_0.has_fractional_percent());
+
+    let rate_500 = Rate::from_bps(500); // 5%
+    assert_eq!(rate_500.to_percent(), 5);
+    assert!(!rate_500.has_fractional_percent());
+
+    let rate_550 = Rate::from_bps(550); // 5.5%
+    assert_eq!(rate_550.to_percent(), 5); // truncated
+    assert!(rate_550.has_fractional_percent());
+
+    let rate_1 = Rate::from_bps(1); // 0.01%
+    assert_eq!(rate_1.to_percent(), 0);
+    assert!(rate_1.has_fractional_percent());
+}
+
+#[test]
+fn test_percent_type_conversions() {
+    let p0 = Percent::ZERO;
+    assert_eq!(p0.to_percentage(), 0);
+    assert_eq!(p0.to_rate(), Ok(Rate::ZERO));
+    assert_eq!(p0.to_bps(), Ok(0));
+
+    let p5 = Percent::from_percentage(5);
+    assert_eq!(p5.to_percentage(), 5);
+    assert_eq!(p5.to_rate(), Ok(Rate::from_bps(500)));
+    assert_eq!(p5.to_bps(), Ok(500));
+
+    let p100 = Percent::HUNDRED;
+    assert_eq!(p100.to_percentage(), 100);
+    assert_eq!(p100.to_rate(), Ok(Rate::from_bps(10_000)));
+    assert_eq!(p100.to_bps(), Ok(10_000));
+
+    let rate_from_p: Result<Rate, RateError> = p5.try_into();
+    assert_eq!(rate_from_p, Ok(Rate::from_bps(500)));
+
+    let rate_from_type = Rate::from_percent_type(p5);
+    assert_eq!(rate_from_type, Ok(Rate::from_bps(500)));
+
+    let p_overflow = Percent::from_percentage(u32::MAX);
+    assert_eq!(p_overflow.to_rate(), Err(RateError::Overflow));
+    assert_eq!(p_overflow.to_bps(), Err(RateError::Overflow));
+}
+
+proptest! {
+    #[test]
+    fn proptest_percent_rate_roundtrip(pct in 0u32..=(u32::MAX / 100)) {
+        let rate = Rate::from_percent(pct).unwrap();
+        prop_assert_eq!(rate.to_percent(), pct);
+        prop_assert_eq!(rate.to_bps(), pct * 100);
+        prop_assert!(!rate.has_fractional_percent());
+
+        let p = Percent::from_percentage(pct);
+        prop_assert_eq!(p.to_rate(), Ok(rate));
+        prop_assert_eq!(p.to_bps(), Ok(pct * 100));
+    }
+}
