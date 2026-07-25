@@ -285,6 +285,7 @@ If you encounter issues with a specific Soroban version:
 
 - **[UPGRADE_GUIDE.md](UPGRADE_GUIDE.md)** - Comprehensive upgrade procedures and version-specific migration guides
 - **[docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md)** - Step-by-step contract upgrade runbook and rollback plan for operators
+- **[docs/SETTLEMENT_WINDOWS.md](docs/SETTLEMENT_WINDOWS.md)** - Specification of invoice settlement window rules, creation acceptance bounds, overdue semantics, and late catch-up loops
 - **[VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md)** - Detailed compatibility matrix and testing status
 - **[COMPATIBILITY_QUICK_REFERENCE.md](COMPATIBILITY_QUICK_REFERENCE.md)** - Quick reference for common compatibility tasks
 - **[.github/SOROBAN_VERSION_CHECKLIST.md](.github/SOROBAN_VERSION_CHECKLIST.md)** - Validation checklist for new versions
@@ -325,18 +326,22 @@ To run an example, use `cargo run --example <example_name>`:
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
+- [Pagination Handbook](docs/PAGINATION_HANDBOOK.md) - How every paginated read is structured, cursor semantics, reviewer checklist, and implementation guide
 - [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
 - [Committed Hashes](docs/COMMITTED_HASHES.md) - Request-hash coverage and verification guidance for downstream integrators
+- [Zero-Amount Policy](docs/ZERO_AMOUNT_POLICY.md) - Which entrypoints reject, accept, or normalize zero amounts; quick reference for integrators
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [String and Bytes Canonicalisation](docs/CANONICALISATION.md) - Tag casefold, currency trim/uppercase, external-ref charset, and migration checksum byte-order
+- [Type-Safe Percent Conversion](docs/type-safe-percent-conversion.md) - Converting whole percentages to basis points with checked overflow arithmetic
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
 - [Contract Specs & Migrations](docs/MIGRATIONS.md) - How to bump a contract spec without breaking existing storage
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone
+- [Settler Whitelist](docs/SETTLER_WHITELIST.md) - Operator guide: how settlers are added, rotated, and revoked
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations

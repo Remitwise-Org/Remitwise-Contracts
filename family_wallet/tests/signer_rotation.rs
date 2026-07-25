@@ -45,14 +45,14 @@ fn signer_rotation_stale_signature_does_not_count_toward_quorum() {
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,
@@ -118,14 +118,14 @@ fn signer_rotation_new_signer_can_sign_and_reach_quorum() {
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,
@@ -181,7 +181,7 @@ fn signer_rotation_rejects_threshold_above_signer_count() {
         &TransactionType::RegularWithdrawal,
         &1,
         &impossible_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     let result = client.try_configure_multisig(
         &owner,
@@ -225,14 +225,14 @@ fn signer_rotation_removing_proposer_invalidates_or_ignores_auto_signature() {
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
         &original_signers,
-        &1_000_0000000,
+        &10_000_000_000,
     );
     client.configure_multisig(
         &owner,

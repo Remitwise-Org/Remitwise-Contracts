@@ -1587,6 +1587,9 @@ impl SavingsGoalContract {
 
     /// Returns a deterministic page of goals for one owner using cursor-based pagination.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Pagination Contract (Cursor-Based)
     /// - **Deterministic order**: Goals are ordered by ID ascending (creation order)
     /// - **Cursor semantics**: `cursor` is the ID of the last goal from the previous page.
@@ -1678,6 +1681,9 @@ impl SavingsGoalContract {
     }
 
     /// Returns a deterministic page of active goals matching a given tag for an owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// # Arguments
     /// * `owner`  - whose goals to filter by tag
@@ -1896,6 +1902,9 @@ impl SavingsGoalContract {
     }
 
     /// Returns a deterministic page of archived goals for one owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// @dev Paging order is anchored to the archived owner-goal ID index (ascending goal ID),
     ///      not map iteration order.

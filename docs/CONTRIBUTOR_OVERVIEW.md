@@ -123,5 +123,6 @@ Before opening a pull request, run the following verification steps locally:
 * [Period Invariants Specifications](PERIOD_INVARIANTS.md)
 * [Amount Invariants Specifications](AMOUNT_INVARIANTS.md)
 * [Authorization Matrix](AUTHORIZATION_MATRIX.md)
+* [Invoice Settlement Windows](SETTLEMENT_WINDOWS.md)
 * [Threat Model](../THREAT_MODEL.md)
 
