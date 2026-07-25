@@ -480,9 +480,7 @@ impl Orchestrator {
 
         // Initialize actor epoch to 0. This can be bumped by the owner
         // to invalidate stale actor tokens (defence-in-depth).
-        env.storage()
-            .instance()
-            .set(&ACTOR_EPOCH, &0u64);
+        env.storage().instance().set(&ACTOR_EPOCH, &0u64);
 
         let stats = ExecutionStats {
             total_executions: 0,
@@ -657,11 +655,14 @@ impl Orchestrator {
         let remainder = amount - split * 3;
 
         let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
-            .try_add_to_goal(&executor, &goal_id, &(split + remainder)).is_err();
+            .try_add_to_goal(&executor, &goal_id, &(split + remainder))
+            .is_err();
         let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
-            .try_pay_bill(&executor, &bill_id, &split).is_err();
+            .try_pay_bill(&executor, &bill_id, &split)
+            .is_err();
         let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
-            .try_pay_premium(&executor, &policy_id, &split).is_err();
+            .try_pay_premium(&executor, &policy_id, &split)
+            .is_err();
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -936,7 +937,9 @@ impl Orchestrator {
         Self::extend_instance_ttl(&env);
 
         let old_epoch = Self::get_actor_epoch(&env);
-        let new_epoch = old_epoch.checked_add(1).ok_or(OrchestratorError::Overflow)?;
+        let new_epoch = old_epoch
+            .checked_add(1)
+            .ok_or(OrchestratorError::Overflow)?;
 
         env.storage().instance().set(&ACTOR_EPOCH, &new_epoch);
 
@@ -1317,7 +1320,10 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            if s_client.try_add_to_goal(caller, &routing.goal_id, &savings_amt).is_err() {
+            if s_client
+                .try_add_to_goal(caller, &routing.goal_id, &savings_amt)
+                .is_err()
+            {
                 return Err(OrchestratorError::CrossContractCallFailed);
             }
             savings_done = true;
@@ -1325,7 +1331,10 @@ impl Orchestrator {
 
         if bills_amt > 0 {
             let b_client = interface::BillPaymentsClient::new(env, &routing.bills);
-            if b_client.try_pay_bill(caller, &routing.bill_id, &bills_amt).is_err() {
+            if b_client
+                .try_pay_bill(caller, &routing.bill_id, &bills_amt)
+                .is_err()
+            {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1343,7 +1352,10 @@ impl Orchestrator {
 
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
-            if i_client.try_pay_premium(caller, &routing.policy_id, &insurance_amt).is_err() {
+            if i_client
+                .try_pay_premium(caller, &routing.policy_id, &insurance_amt)
+                .is_err()
+            {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
@@ -1622,10 +1634,7 @@ impl Orchestrator {
 
     /// Get the current actor epoch from instance storage.
     fn get_actor_epoch(env: &Env) -> u64 {
-        env.storage()
-            .instance()
-            .get(&ACTOR_EPOCH)
-            .unwrap_or(0)
+        env.storage().instance().get(&ACTOR_EPOCH).unwrap_or(0)
     }
 
     /// Verify that the provided actor epoch matches the current epoch.
@@ -1677,24 +1686,12 @@ mod tests_nonce_eviction {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
-
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
-
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
-
-        }
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
-
-        }
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
-
-        }
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
-
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 
     const BASE_TIME: u64 = 1_000;
@@ -1748,7 +1745,8 @@ mod tests_nonce_eviction {
         deadline: u64,
     ) {
         let hash = request_hash(amount, nonce, deadline);
-        assert!(client.execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash, &0u64));
+        assert!(client
+            .execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash, &0u64));
     }
 
     #[test]

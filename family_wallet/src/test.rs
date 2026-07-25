@@ -6836,7 +6836,11 @@ fn test_auth_matrix_update_spending_limit_by_owner() {
     let result = client.try_update_spending_limit(&owner, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert_eq!(result, Ok(Ok(true)), "Owner must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Owner must be able to update spending limits"
+    );
 
     // Verification: Spending limit was updated
     let member_data = client.get_family_member(&member);
@@ -6871,7 +6875,11 @@ fn test_auth_matrix_update_spending_limit_by_admin() {
     let result = client.try_update_spending_limit(&admin, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert_eq!(result, Ok(Ok(true)), "Admin must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Admin must be able to update spending limits"
+    );
 
     // Verification
     let member_data = client.get_family_member(&member);
