@@ -46,7 +46,7 @@ fn assert_no_double_init() {
     // Non-initialized functions should fail with NotInitialized before init
     let env2 = Env::default();
     let (_, client2) = setup(&env2);
-    let admin2 = Address::generate(&env2);
+    let _admin2 = Address::generate(&env2);
     assert_eq!(client2.try_pause(), Err(Ok(Error::NotInitialized)));
 }
 

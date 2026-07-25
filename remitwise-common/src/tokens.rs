@@ -118,7 +118,12 @@ mod tests {
         ];
 
         for (token, decimals) in expected {
-            assert_eq!(token.decimals(), decimals, "{} decimals", token.currency_code());
+            assert_eq!(
+                token.decimals(),
+                decimals,
+                "{} decimals",
+                token.currency_code()
+            );
         }
     }
 

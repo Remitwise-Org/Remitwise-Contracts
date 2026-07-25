@@ -576,7 +576,7 @@ impl Insurance {
         for id in ids.iter() {
             let mut policy = Self::load_policy(&env, id)?;
             if policy.active && policy.owner == caller {
-        let now = env.ledger().timestamp();
+                let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
                 policy.next_payment_date =
                     Self::advance_next_payment_date(policy.next_payment_date, now);
@@ -737,6 +737,9 @@ impl Insurance {
 
     /// Get a paginated list of active policies for an owner.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Errors
     /// - `NotInitialized` if the contract has not been initialized
     pub fn get_active_policies(
@@ -792,6 +795,9 @@ impl Insurance {
     }
 
     /// Get a paginated list of deactivated policies for an owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// Mirrors the shape and semantics of `get_active_policies` but filters
     /// for policies where `active == false`. `limit` is normalized via
