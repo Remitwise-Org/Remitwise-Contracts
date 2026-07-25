@@ -316,20 +316,8 @@ fn bench_emergency_killswitch_transfer_admin() {
 
     let (cpu, mem, _) = measure(&env, || client.transfer_admin(&new_admin));
 
-    emit_bench_result(
-        "transfer_admin",
-        "admin_transfer",
-        cpu,
-        mem,
-        TRANSFER_ADMIN,
-    );
-    assert_regression_bounds(
-        "transfer_admin",
-        "admin_transfer",
-        cpu,
-        mem,
-        TRANSFER_ADMIN,
-    );
+    emit_bench_result("transfer_admin", "admin_transfer", cpu, mem, TRANSFER_ADMIN);
+    assert_regression_bounds("transfer_admin", "admin_transfer", cpu, mem, TRANSFER_ADMIN);
 }
 
 #[test]

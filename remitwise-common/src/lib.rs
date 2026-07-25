@@ -926,6 +926,7 @@ impl Rate {
 
     /// Return true if this rate contains a fractional percentage (basis points not divisible by 100).
     #[inline(always)]
+    #[allow(clippy::manual_is_multiple_of)]
     pub fn has_fractional_percent(self) -> bool {
         self.0 % BPS_PER_PERCENT != 0
     }

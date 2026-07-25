@@ -2506,5 +2506,8 @@ fn test_update_split_percentages_invalid_sum() {
     // Try to update with percentages that don't sum to 10_000 (sum = 9_999)
     let result = client.try_update_split(&owner, &1, &4_000, &3_000, &2_000, &999);
 
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }

@@ -24,9 +24,7 @@
 // =========================================================================
 
 use soroban_sdk::{
-    contract, contractimpl, symbol_short,
-    testutils::Address as _,
-    Address, Env, Symbol, Vec,
+    contract, contractimpl, symbol_short, testutils::Address as _, Address, Env, Symbol, Vec,
 };
 
 use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
@@ -131,14 +129,8 @@ fn accepts_current_epoch_at_non_zero_value() {
     let deadline = env.ledger().timestamp() + 1000;
     let hash = signed_request_hash(symbol_short!("flow"), nonce, amount, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor,
-        &amount,
-        &nonce,
-        &deadline,
-        &hash,
-        &current,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &amount, &nonce, &deadline, &hash, &current);
     assert_eq!(
         result,
         Ok(Ok(true)),
@@ -174,14 +166,8 @@ fn rejects_prior_epoch_one_below_current() {
     // (step 6), so the hash value is irrelevant here — any u64 suffices.
     let hash = signed_request_hash(symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor,
-        &1000i128,
-        &0u64,
-        &deadline,
-        &hash,
-        &prior,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &1000i128, &0u64, &deadline, &hash, &prior);
     assert_eq!(
         result,
         Err(Ok(OrchestratorError::EpochMismatch)),
@@ -211,14 +197,8 @@ fn rejects_ancient_epoch_at_zero_after_many_bumps() {
     let deadline = env.ledger().timestamp() + 1000;
     let hash = signed_request_hash(symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor,
-        &1000i128,
-        &0u64,
-        &deadline,
-        &hash,
-        &0u64,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &1000i128, &0u64, &deadline, &hash, &0u64);
     assert_eq!(
         result,
         Err(Ok(OrchestratorError::EpochMismatch)),
@@ -249,14 +229,8 @@ fn rejects_future_epoch_one_above_current() {
     let deadline = env.ledger().timestamp() + 1000;
     let hash = signed_request_hash(symbol_short!("flow"), 0, 1000, deadline);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor,
-        &1000i128,
-        &0u64,
-        &deadline,
-        &hash,
-        &future,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &1000i128, &0u64, &deadline, &hash, &future);
     assert_eq!(
         result,
         Err(Ok(OrchestratorError::EpochMismatch)),
@@ -296,12 +270,7 @@ fn rejects_representative_non_matching_epochs_with_identical_error() {
     // middle (7, 100), and `u64::MAX`.
     for supplied in [0u64, 1, 2, 3, 4, 6, 7, 100, u64::MAX] {
         let result = client.try_execute_remittance_flow_signed(
-            &executor,
-            &amount,
-            &nonce,
-            &deadline,
-            &hash,
-            &supplied,
+            &executor, &amount, &nonce, &deadline, &hash, &supplied,
         );
         assert_eq!(
             result,

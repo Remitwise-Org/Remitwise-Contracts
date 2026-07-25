@@ -96,11 +96,30 @@ fn checked_mul_preserves_total_at_minimum_valid_amount_boundary() {
     let amounts = client.calculate_split(&1i128);
     let sum: i128 = amounts.iter().sum();
 
-    assert_eq!(sum, 1i128, "total conservation must hold at the minimum transfer boundary");
-    assert_eq!(amounts.get(0).unwrap(), 0i128, "spending should round down to zero");
-    assert_eq!(amounts.get(1).unwrap(), 0i128, "savings should round down to zero");
-    assert_eq!(amounts.get(2).unwrap(), 0i128, "bills should round down to zero");
-    assert_eq!(amounts.get(3).unwrap(), 1i128, "insurance must receive the lone remainder");
+    assert_eq!(
+        sum, 1i128,
+        "total conservation must hold at the minimum transfer boundary"
+    );
+    assert_eq!(
+        amounts.get(0).unwrap(),
+        0i128,
+        "spending should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(1).unwrap(),
+        0i128,
+        "savings should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(2).unwrap(),
+        0i128,
+        "bills should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(3).unwrap(),
+        1i128,
+        "insurance must receive the lone remainder"
+    );
 }
 
 /// One unit above the minimum valid amount must still conserve the total without
@@ -114,11 +133,30 @@ fn checked_mul_preserves_total_one_above_minimum_valid_amount_boundary() {
     let amounts = client.calculate_split(&2i128);
     let sum: i128 = amounts.iter().sum();
 
-    assert_eq!(sum, 2i128, "total conservation must hold one unit above the minimum transfer boundary");
-    assert_eq!(amounts.get(0).unwrap(), 0i128, "spending should round down to zero");
-    assert_eq!(amounts.get(1).unwrap(), 0i128, "savings should round down to zero");
-    assert_eq!(amounts.get(2).unwrap(), 0i128, "bills should round down to zero");
-    assert_eq!(amounts.get(3).unwrap(), 2i128, "insurance must receive the full remainder");
+    assert_eq!(
+        sum, 2i128,
+        "total conservation must hold one unit above the minimum transfer boundary"
+    );
+    assert_eq!(
+        amounts.get(0).unwrap(),
+        0i128,
+        "spending should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(1).unwrap(),
+        0i128,
+        "savings should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(2).unwrap(),
+        0i128,
+        "bills should round down to zero"
+    );
+    assert_eq!(
+        amounts.get(3).unwrap(),
+        2i128,
+        "insurance must receive the full remainder"
+    );
 }
 
 /// The largest safe amount (i128::MAX / 100) must succeed and conserve total.
