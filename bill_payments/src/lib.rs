@@ -3,8 +3,9 @@
 
 use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    check_and_increment_rate_limit, clamp_limit, require_stable_currency, EventCategory,
+    EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
     SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -193,6 +194,9 @@ pub enum BillPaymentsError {
     ScheduleNotFound = 24,
     /// Bill schedule is not active
     ScheduleNotActive = 25,
+    /// The currency is not a recognized stable asset.
+    /// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM) are intentionally rejected.
+    UnsupportedCurrency = 31,
     /// No pre-upgrade snapshot was persisted for restore.
     SnapshotNotFound = 26,
     /// The pre-upgrade snapshot is older than the freshness window.
@@ -202,7 +206,7 @@ pub enum BillPaymentsError {
     /// The page is empty so there is no first item to return.
     EmptyPage = 29,
     /// Bill or schedule name is invalid (empty or exceeds max length)
-    InvalidName = 30,
+    InvalidName = 30
 }
 
 pub type Error = BillPaymentsError;
@@ -706,6 +710,13 @@ impl BillPayments {
         }
 
         let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or(DEFAULT_CURRENCY);
+
+        // Defence-in-depth: reject rebase/deflationary tokens.
+        // After normalizing to uppercase, verify the symbol is a recognized stable asset.
+        let sym = Symbol::new(env, upper_str);
+        require_stable_currency(env, &sym)
+            .map_err(|_| BillPaymentsError::UnsupportedCurrency)?;
+
         Ok(String::from_str(env, upper_str))
     }
 
@@ -2138,6 +2149,9 @@ impl BillPayments {
 
     /// Get a page of unpaid bills for `owner`.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Arguments
     /// * `owner`  – whose bills to return
     /// * `cursor` – start after this bill ID (pass 0 for the first page)
@@ -3259,6 +3273,9 @@ impl BillPayments {
     }
 
     /// Get a page of **unpaid** bills for `owner` that match `currency`.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// # Arguments
     /// * `owner`    – Address of the bill owner

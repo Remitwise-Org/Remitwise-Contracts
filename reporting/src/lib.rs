@@ -2107,6 +2107,9 @@ impl ReportingContract {
 
     /// Get a paginated list of archived reports for a user.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// This is the supported entrypoint for reading the archive — see the
     /// deprecation note on [`ReportingContract::get_archived_reports`].
     ///

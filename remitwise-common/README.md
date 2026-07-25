@@ -4,8 +4,9 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 
 ## Features
 
-- Shared enums: Category, FamilyRole, CoverageType, SupportedToken
+- Shared types: Category, FamilyRole, CoverageType, SupportedToken, Percent, Rate
 - Token registry: SupportedToken, stroop/decimal constants, currency helpers
+- Rate arithmetic & percent conversion: BPS_PER_PERCENT, Percent type, Rate::from_percent
 - Event taxonomy: EventCategory, EventPriority, RemitwiseEvents emitter
 - Pagination utilities: clamp_limit
 - Storage TTL constants
@@ -96,6 +97,14 @@ Insurance coverage types:
 - Auto
 - Liability
 
+### Percent & Rate
+
+Type-safe percentage and basis-points arithmetic:
+- `Percent`: Whole percentage newtype (`Percent::from_percentage(5)` for 5%)
+- `Rate`: Basis-points newtype (`10_000` bps = 100%) with `Rate::from_percent` and `Rate::apply_to`
+
+See `docs/type-safe-percent-conversion.md` for complete documentation.
+
 ## Constants
 
 - `DEFAULT_PAGE_LIMIT`: 20
@@ -106,6 +115,9 @@ Insurance coverage types:
 - `STROOPS_PER_XLM`: 10_000_000
 - `DEFAULT_CURRENCY`: "XLM"
 - `MAX_CURRENCY_LEN`: 10
+- `BASIS_POINTS`: 10_000
+- `BPS_PER_PERCENT`: 100
+- `BASIS_POINTS_PER_PERCENT`: 100
 
 ## Utilities
 
