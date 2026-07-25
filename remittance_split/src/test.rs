@@ -429,7 +429,9 @@ fn test_distribute_usdc_deadline_expired() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -469,7 +471,9 @@ fn test_distribute_usdc_deadline_too_far() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -509,7 +513,9 @@ fn test_distribute_usdc_deadline_zero() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -549,7 +555,9 @@ fn test_distribute_usdc_hash_mismatch() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -592,7 +600,9 @@ fn test_distribute_usdc_deadline_at_boundary() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -2438,7 +2448,9 @@ fn test_initialize_split_percentage_out_of_range() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
 
     // Call try_initialize_split with spending_percent = 10_001
     let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
@@ -2456,7 +2468,9 @@ fn test_initialize_split_percentages_invalid_sum() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
 
     // Call try_initialize_split with sum = 9_999
     let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
@@ -2464,5 +2478,25 @@ fn test_initialize_split_percentages_invalid_sum() {
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
+}
+
+#[test]
+fn test_initialize_split_rejects_unsupported_ingress_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
+
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UnsupportedTokenContract))
     );
 }

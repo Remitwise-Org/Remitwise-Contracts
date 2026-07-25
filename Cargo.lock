@@ -618,6 +618,7 @@ dependencies = [
 name = "emergency_killswitch"
 version = "0.1.0"
 dependencies = [
+ "remitwise-common",
  "soroban-sdk",
 ]
 

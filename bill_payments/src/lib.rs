@@ -2,8 +2,9 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, EventCategory, EventPriority, RemitwiseEvents,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
+    check_and_increment_rate_limit, clamp_limit, require_stable_currency, EventCategory,
+    EventPriority, RemitwiseEvents, ARCHIVE_BUMP_AMOUNT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -175,6 +176,9 @@ pub enum BillPaymentsError {
     ScheduleNotFound = 24,
     /// Bill schedule is not active
     ScheduleNotActive = 25,
+    /// The currency is not a recognized stable asset.
+    /// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM) are intentionally rejected.
+    UnsupportedCurrency = 26,
 }
 
 pub type Error = BillPaymentsError;
@@ -668,6 +672,13 @@ impl BillPayments {
         }
 
         let upper_str = core::str::from_utf8(&upper[..trimmed.len()]).unwrap_or("XLM");
+
+        // Defence-in-depth: reject rebase/deflationary tokens.
+        // After normalizing to uppercase, verify the symbol is a recognized stable asset.
+        let sym = Symbol::new(env, upper_str);
+        require_stable_currency(env, &sym)
+            .map_err(|_| BillPaymentsError::UnsupportedCurrency)?;
+
         Ok(String::from_str(env, upper_str))
     }
 
