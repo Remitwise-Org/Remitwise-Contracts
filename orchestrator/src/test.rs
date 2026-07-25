@@ -80,15 +80,11 @@ mod mock_fail_savings {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            false
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+            panic!("savings step failed");
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -106,15 +102,11 @@ mod mock_fail_bill {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+            panic!("bill step failed");
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            false
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -132,14 +124,10 @@ mod mock_fail_insurance {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            false
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+            panic!("insurance step failed");
         }
     }
 }
@@ -2057,12 +2045,18 @@ fn test_epoch_mismatch_rejects_stale_token() {
 
     let orchestrator_id = env.register_contract(None, Orchestrator);
     let client = OrchestratorClient::new(&env, &orchestrator_id);
-    let mock_id = env.register_contract(None, MockContract);
+    let mock_id1 = env.register_contract(None, MockContract);
+    let mock_id2 = env.register_contract(None, MockContract);
+    let mock_id3 = env.register_contract(None, MockContract);
+    let mock_id4 = env.register_contract(None, MockContract);
+    let mock_id5 = env.register_contract(None, MockContract);
     let owner = Address::generate(&env);
     let executor = Address::generate(&env);
 
     // Initialize orchestrator
-    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);
+    client.init(
+        &owner, &mock_id1, &mock_id2, &mock_id3, &mock_id4, &mock_id5,
+    );
 
     // Get current epoch (should be 0)
     let current_epoch = client.get_actor_epoch_public();
@@ -2099,12 +2093,18 @@ fn test_matching_epoch_allows_execution() {
 
     let orchestrator_id = env.register_contract(None, Orchestrator);
     let client = OrchestratorClient::new(&env, &orchestrator_id);
-    let mock_id = env.register_contract(None, MockContract);
+    let mock_id1 = env.register_contract(None, MockContract);
+    let mock_id2 = env.register_contract(None, MockContract);
+    let mock_id3 = env.register_contract(None, MockContract);
+    let mock_id4 = env.register_contract(None, MockContract);
+    let mock_id5 = env.register_contract(None, MockContract);
     let owner = Address::generate(&env);
     let executor = Address::generate(&env);
 
     // Initialize orchestrator
-    client.init(&owner, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id);
+    client.init(
+        &owner, &mock_id1, &mock_id2, &mock_id3, &mock_id4, &mock_id5,
+    );
 
     // Get current epoch (should be 0)
     let current_epoch = client.get_actor_epoch_public();
