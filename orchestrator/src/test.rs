@@ -64,15 +64,11 @@ mod mock_fail_savings {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            false
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
+            panic!("savings step failed")
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -90,15 +86,11 @@ mod mock_fail_bill {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
+            panic!("bill step failed")
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            false
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -116,14 +108,10 @@ mod mock_fail_insurance {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            false
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
+            panic!("insurance step failed")
         }
     }
 }
