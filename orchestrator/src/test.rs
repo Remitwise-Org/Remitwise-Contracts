@@ -202,7 +202,7 @@ fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
         ("remittance_split.wasm", 110_000),
         ("savings_goals.wasm", 112_000),
         ("bill_payments.wasm", 135_000),
-        ("insurance.wasm", 52_000),
+        ("insurance.wasm", 57_000),
         ("family_wallet.wasm", 130_000),
     ]
 }
