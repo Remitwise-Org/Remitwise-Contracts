@@ -1842,6 +1842,9 @@ impl RemittanceSplit {
 
     /// Return a page of audit log entries with a stable cursor.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Parameters
     /// - `from_index`: zero-based starting index (pass 0 for the first page,
     ///   then use the returned `next_cursor` for subsequent pages).
@@ -2843,6 +2846,9 @@ impl RemittanceSplit {
     }
 
     /// Get a single page of remittance schedules for `owner` using cursor-based pagination.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// Schedules are ordered by ID ascending. `cursor` is a zero-based index into the
     /// owner's sorted schedule list. `limit` is clamped to `MAX_PAGE_LIMIT` via

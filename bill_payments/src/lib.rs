@@ -2138,6 +2138,9 @@ impl BillPayments {
 
     /// Get a page of unpaid bills for `owner`.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Arguments
     /// * `owner`  – whose bills to return
     /// * `cursor` – start after this bill ID (pass 0 for the first page)
@@ -3259,6 +3262,9 @@ impl BillPayments {
     }
 
     /// Get a page of **unpaid** bills for `owner` that match `currency`.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// # Arguments
     /// * `owner`    – Address of the bill owner

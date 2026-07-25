@@ -823,6 +823,9 @@ impl Orchestrator {
 
     /// Get a page of audit log entries.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Parameters
     /// - `from_index`: zero-based cursor into the current bounded window (oldest = 0)
     /// - `limit`: entries to return; clamped to `[1, MAX_AUDIT_ENTRIES]`; 0 → default 20

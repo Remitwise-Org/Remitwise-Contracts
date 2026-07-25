@@ -1918,6 +1918,9 @@ impl FamilyWallet {
 
     /// Paginated listing of family-member addresses for downstream readers.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// Cursor is the number of members already returned. Pass `0` for the
     /// first page.
     pub fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage {
