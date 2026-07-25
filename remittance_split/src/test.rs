@@ -2452,7 +2452,7 @@ fn test_initialize_split_percentage_out_of_range() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token_addr = token_contract.address();
 
-    // Call try_initialize_split with spending_percent = 10_001
+    // Call try_initialize_split with spending_percent = 10_001 (> 10_000)
     let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
 
     assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
@@ -2472,8 +2472,8 @@ fn test_initialize_split_percentages_invalid_sum() {
     let token_contract = env.register_stellar_asset_contract_v2(token_admin);
     let token_addr = token_contract.address();
 
-    // Call try_initialize_split with sum = 9_999
-    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
+    // Call try_initialize_split with sum = 9_999 (!= 10_000)
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &999);
 
     assert_eq!(
         result,

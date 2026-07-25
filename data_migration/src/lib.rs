@@ -408,7 +408,7 @@ impl ExportSnapshot {
 
     /// Check if snapshot version is supported for import.
     pub fn is_version_compatible(&self) -> bool {
-        self.header.version >= MIN_SUPPORTED_VERSION && self.header.version <= SCHEMA_VERSION
+        (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&self.header.version)
     }
 
     /// Validate payload size and logical record bounds.
@@ -1160,7 +1160,7 @@ struct CsvGoalRow {
 
 /// Version compatibility check for migration scripts.
 pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
-    if version >= MIN_SUPPORTED_VERSION && version <= SCHEMA_VERSION {
+    if (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&version) {
         Ok(())
     } else {
         Err(MigrationError::IncompatibleVersion {
@@ -2307,7 +2307,10 @@ mod tests {
         let rb = RollbackMetadata::capture(Some(&prev), &attempted, 12_345);
 
         let description = rb.describe();
-        assert!(description.contains("12345"), "timestamp should appear: {description}");
+        assert!(
+            description.contains("12345"),
+            "timestamp should appear: {description}"
+        );
         assert!(
             description.contains(&prev.header.version.to_string()),
             "previous version should appear: {description}"

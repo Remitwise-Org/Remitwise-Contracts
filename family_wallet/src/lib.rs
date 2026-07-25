@@ -7,7 +7,7 @@ use soroban_sdk::{
 
 use remitwise_common::{
     EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY,
-    SNAPSHOT_VERSION,
+    SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -38,6 +38,13 @@ const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
 const MAX_MEMBER_PAGE_LIMIT: u32 = 100;
 const DEFAULT_MEMBER_PAGE_LIMIT: u32 = 20;
+
+/// Default multisig spending limit: 1 000 XLM in stroops.
+const DEFAULT_MULTISIG_SPENDING_LIMIT: i128 = 1_000 * STROOPS_PER_XLM;
+/// Default emergency-config maximum single-transfer amount: 10 000 XLM in stroops.
+const DEFAULT_EMERGENCY_MAX_AMOUNT: i128 = 10_000 * STROOPS_PER_XLM;
+/// Default emergency-config daily limit: 100 000 XLM in stroops.
+const DEFAULT_EMERGENCY_DAILY_LIMIT: i128 = 100_000 * STROOPS_PER_XLM;
 
 /// Hard cap on the number of entries retained in `ARCH_TX`.
 /// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
@@ -386,6 +393,11 @@ pub enum Error {
     /// An emergency transfer was rejected because the resulting balance would
     /// fall below `EmergencyConfig.min_balance`.
     MinBalanceViolation = 24,
+    /// One or more split percentages are invalid: either a fee is negative
+    /// (defence-in-depth; u32 makes this impossible) or the four split
+    /// percentages do not sum to exactly 100.
+    InvalidSplitConfig = 25,
+    SnapshotTooOld = 26,
 }
 
 #[contractimpl]
@@ -440,7 +452,7 @@ impl FamilyWallet {
         let default_config = MultiSigConfig {
             threshold: 2,
             signers: Vec::new(&env),
-            spending_limit: 1000_0000000,
+            spending_limit: DEFAULT_MULTISIG_SPENDING_LIMIT,
         };
 
         for tx_type in [
@@ -469,10 +481,10 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("NEXT_TX"), &1u64);
         let em_config = EmergencyConfig {
-            max_amount: 10000_0000000,
+            max_amount: DEFAULT_EMERGENCY_MAX_AMOUNT,
             cooldown: 3600,
             min_balance: 0,
-            daily_limit: 100000_0000000,
+            daily_limit: DEFAULT_EMERGENCY_DAILY_LIMIT,
         };
         env.storage()
             .instance()
@@ -584,15 +596,13 @@ impl FamilyWallet {
         caller: Address,
         member_address: Address,
         new_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
-        if !Self::is_owner_or_admin(&env, &caller) {
-            panic!("Only Owner or Admin can update spending limits");
-        }
+        Self::require_governance_ok(&env, &caller)?;
         if new_limit < 0 {
-            panic!("InvalidSpendingLimit");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         let mut members: Map<Address, FamilyMember> = env
@@ -603,8 +613,7 @@ impl FamilyWallet {
 
         let mut record = members
             .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)
-            .unwrap_or_else(|_| panic!("MemberNotFound"));
+            .ok_or(Error::MemberNotFound)?;
 
         let old_limit = record.spending_limit;
         record.spending_limit = new_limit;
@@ -629,7 +638,7 @@ impl FamilyWallet {
             },
         );
 
-        true
+        Ok(true)
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -1082,6 +1091,8 @@ impl FamilyWallet {
     ///
     /// # Errors
     /// Panics if the contract is paused.
+    /// Returns [`Error::InvalidSplitConfig`] if any percentage exceeds 100
+    /// or the four percentages do not sum to exactly 100.
     pub fn propose_split_config_change(
         env: Env,
         proposer: Address,
@@ -1089,13 +1100,20 @@ impl FamilyWallet {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
         Self::require_not_paused(&env);
+        if spending_percent > 100
+            || savings_percent > 100
+            || bills_percent > 100
+            || insurance_percent > 100
+        {
+            return Err(Error::InvalidSplitConfig);
+        }
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
-            panic!("Percentages must sum to 100");
+            return Err(Error::InvalidSplitConfig);
         }
 
-        Self::propose_transaction(
+        Ok(Self::propose_transaction(
             env,
             proposer,
             TransactionType::SplitConfigChange,
@@ -1105,7 +1123,7 @@ impl FamilyWallet {
                 bills_percent,
                 insurance_percent,
             ),
-        )
+        ))
     }
 
     /// Propose a family member role change.
@@ -3082,6 +3100,27 @@ impl FamilyWallet {
         }
     }
 
+    /// Governance check helper for parameter changes.
+    ///
+    /// Returns a typed `Error::Unauthorized` instead of panicking when the caller
+    /// is not an Owner or Admin. This provides consistent error handling for
+    /// governance-level operations and enables proper error propagation to callers.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `caller` - Address attempting the governance operation
+    ///
+    /// # Returns
+    /// * `Ok(())` if caller is Owner or Admin
+    /// * `Err(Error::Unauthorized)` if caller lacks governance role
+    fn require_governance_ok(env: &Env, caller: &Address) -> Result<(), Error> {
+        if Self::is_owner_or_admin(env, caller) {
+            Ok(())
+        } else {
+            Err(Error::Unauthorized)
+        }
+    }
+
     fn append_access_audit(
         env: &Env,
         operation: Symbol,
@@ -3175,6 +3214,9 @@ impl FamilyWallet {
                 .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("family"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -3215,9 +3257,17 @@ impl FamilyWallet {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
         if snapshot.schema_version != SNAPSHOT_VERSION {
-            panic!("Unsupported snapshot version");
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, Error::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             panic!("Snapshot owner mismatch");

@@ -4,7 +4,7 @@
 //!   - Unit tests: edge cases, cursor boundary, limit clamping, restore/cleanup index maintenance
 //!   - Property-based tests (proptest): all 9 correctness properties from the design document
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
 use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env};
@@ -104,6 +104,26 @@ fn test_page_single_page() {
     let page = client.get_archived_bills_page(&owner, &0, &10);
     assert_eq!(page.count, 3);
     assert_eq!(page.next_cursor, 0);
+}
+
+#[test]
+fn test_page_first_returns_typed_error_for_empty_page() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    let page = client.get_archived_bills_page(&owner, &0, &10);
+
+    assert!(matches!(page.first(), Err(BillPaymentsError::EmptyPage)));
+}
+
+#[test]
+fn test_page_first_returns_first_item_for_non_empty_page() {
+    let env = make_env();
+    let (client, owner) = setup_client(&env);
+    create_pay_archive(&env, &client, &owner, 2);
+    let page = client.get_archived_bills_page(&owner, &0, &10);
+
+    let first = page.first().expect("page should contain an archived bill");
+    assert_eq!(first.id, 1);
 }
 
 #[test]

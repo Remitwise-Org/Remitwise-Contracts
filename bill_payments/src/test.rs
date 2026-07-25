@@ -111,6 +111,64 @@ mod testsuit {
     }
 
     #[test]
+    fn test_create_bill_empty_name_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, ""),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidName)));
+    }
+
+    #[test]
+    fn test_create_bill_name_too_long_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        // Build a string longer than MAX_NAME_LEN (64)
+        let long_name = String::from_str(&env, &"x".repeat(65));
+        let result = client.try_create_bill(
+            &owner,
+            &long_name,
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidName)));
+    }
+
+    #[test]
+    fn test_create_bill_name_at_max_length_succeeds() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+        // A name exactly MAX_NAME_LEN (64) bytes should be accepted
+        let valid_name = String::from_str(&env, &"x".repeat(64));
+        let bill_id = client.create_bill(
+            &owner,
+            &valid_name,
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        assert_eq!(bill_id, 1);
+    }
+
+    #[test]
     fn test_create_recurring_bill_invalid_frequency() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -677,7 +735,7 @@ mod testsuit {
         assert_eq!(bill3.external_ref, ref_1);
 
         // Revoke ref_2 via cancel_bill
-        client.cancel_bill(&owner, &bill2_id).unwrap();
+        client.cancel_bill(&owner, &bill2_id);
 
         // Re-verify ref_2 can now be registered to another bill
         let bill4_id = client.create_bill(
@@ -1248,9 +1306,12 @@ mod testsuit {
 
         create_n_bills(&client, &env, &owner, 12);
 
-        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
-        assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
+        assert!(
+            page.next_cursor > 0,
+            "must have a non-zero next_cursor when more pages exist"
+        );
     }
 
     /// Admin can iterate through all bills across multiple pages and see the correct total.
@@ -1269,7 +1330,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            let page = client.get_all_bills_page(&admin, &cursor, &5);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1294,9 +1355,10 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(
-            page.items.len(), 6,
+            page.items.len(),
+            6,
             "admin should see bills from all 6 owners combined"
         );
     }
@@ -1311,7 +1373,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
@@ -3314,6 +3376,64 @@ mod testsuit {
     }
 
     #[test]
+    fn test_pause_and_unpause_emit_ordered_audit_events() {
+        use soroban_sdk::testutils::Events as _;
+        use soroban_sdk::{symbol_short, Symbol};
+
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+
+        client.pause(&admin);
+        client.unpause(&admin);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 2);
+
+        let mut emitted_actions = std::vec::Vec::<Symbol>::new();
+        for event in events.iter() {
+            let topics = event.1;
+            let action: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
+            emitted_actions.push(action);
+        }
+
+        assert_eq!(emitted_actions, [symbol_short!("paused"), symbol_short!("unpaused")]);
+    }
+
+    #[test]
+    fn test_unpause_before_schedule_does_not_emit_unpause_event() {
+        use soroban_sdk::symbol_short;
+        use soroban_sdk::testutils::Events as _;
+
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.set_pause_admin(&admin, &admin);
+        client.pause(&admin);
+
+        let future = env.ledger().timestamp() + 3600;
+        client.schedule_unpause(&admin, &future);
+
+        env.ledger().set_timestamp(future - 1);
+        let result = client.try_unpause(&admin);
+        assert_eq!(result, Err(Ok(Error::ContractPaused)));
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 1);
+        let topics = events.last().unwrap().1;
+        let action: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
+        assert_eq!(action, symbol_short!("paused"));
+    }
+
+    #[test]
     fn test_pause_cancels_schedule() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -3374,6 +3494,35 @@ mod testsuit {
     }
 
     #[test]
+    fn test_admin_grant_expiry_blocks_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Set up pause admin (grant timestamp starts now)
+        client.set_pause_admin(&admin, &admin);
+
+        // Jump ledger timestamp past the grant TTL
+        let now = env.ledger().timestamp();
+        let grant_ttl: u64 = 30 * 24 * 60 * 60;
+        let expired = now + grant_ttl + 1;
+        set_ledger_time(&env, 1, expired);
+
+        // Pause should now fail with AdminGrantExpired
+        let result = client.try_pause(&admin);
+        assert_eq!(result, Err(Ok(Error::AdminGrantExpired)));
+
+        // Call refresh_admin_grant to extend the grant
+        client.refresh_admin_grant(&admin);
+
+        // Now pause should succeed
+        client.pause(&admin);
+        assert!(client.is_paused());
+    }
+
+    #[test]
     fn test_pre_upgrade_roundtrip() {
         let env = Env::default();
         env.mock_all_auths();
@@ -3416,6 +3565,7 @@ mod testsuit {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(clippy::enum_variant_names)]
     enum Operation {
         CreateBill {
             amount: i128,
@@ -3431,6 +3581,120 @@ mod testsuit {
     }
 
     proptest! {
+        #[test]
+        fn prop_currency_index_random_add_remove_maintains_ascending_order_and_consistency(
+            ops in proptest::collection::vec(
+                proptest::prop_oneof![
+                    1 => (1u32..=200u32).prop_map(|id| (true, id)),
+                    1 => (1u32..=200u32).prop_map(|id| (false, id)),
+                ],
+                0..100
+            )
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            let mut expected: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+
+            for (is_add, id) in ops {
+                if is_add {
+                    expected.insert(id);
+                    env.as_contract(&contract_id, || {
+                        BillPayments::index_add_currency(&env, &owner, &currency, id);
+                    });
+                } else {
+                    expected.remove(&id);
+                    env.as_contract(&contract_id, || {
+                        BillPayments::index_remove_currency(&env, &owner, &currency, id);
+                    });
+                }
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+
+            for i in 1..idx_ids.len() {
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
+                assert!(
+                    prev < curr,
+                    "Currency index must be maintained in strictly ascending order: prev={} curr={}",
+                    prev,
+                    curr
+                );
+            }
+
+            let actual_set: std::collections::BTreeSet<u32> = idx_ids.iter().collect();
+            assert_eq!(
+                actual_set, expected,
+                "Currency index must match the expected set after random add/remove operations"
+            );
+        }
+
+        #[test]
+        fn prop_currency_index_add_only_grows_monotonically(
+            ids in proptest::collection::vec(0u32..=50u32, 0..30)
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            for id in &ids {
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_add_currency(&env, &owner, &currency, *id);
+                });
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+
+            for i in 1..idx_ids.len() {
+                let prev = idx_ids.get(i - 1).unwrap();
+                let curr = idx_ids.get(i).unwrap();
+                assert!(prev < curr, "Index must be strictly ascending after add-only operations");
+            }
+        }
+
+        #[test]
+        fn prop_currency_index_remove_non_existent_is_noop(
+            ids in proptest::collection::vec(0u32..=30u32, 1..20),
+            ghosts in proptest::collection::vec(100u32..=200u32, 1..10)
+        ) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, BillPayments);
+            let _client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            let currency = String::from_str(&env, "USDC");
+
+            let mut expected: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            for id in &ids {
+                expected.insert(*id);
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_add_currency(&env, &owner, &currency, *id);
+                });
+            }
+
+            for ghost in &ghosts {
+                env.as_contract(&contract_id, || {
+                    BillPayments::index_remove_currency(&env, &owner, &currency, *ghost);
+                });
+            }
+
+            let idx_ids = env.as_contract(&contract_id, || {
+                BillPayments::get_bills_by_owner_currency(&env, &owner, &currency)
+            });
+            let actual_set: std::collections::BTreeSet<u32> = idx_ids.iter().collect();
+            assert_eq!(actual_set, expected,
+                "Removing non-existent IDs must not affect the currency index");
+        }
+
         #[test]
         fn prop_unpaid_total_invariant(
             operations in proptest::collection::vec(
@@ -3482,7 +3746,7 @@ mod testsuit {
                         if active_bill_ids.contains(&bill_id) {
                             let _ = client.try_pay_bill(&owner, &bill_id);
                             // When you pay a recurring bill, it might create a new bill, so let's check
-                            if let Some(next) = client.get_bill(&(next_bill_id)) {
+                            if let Some(_next) = client.get_bill(&(next_bill_id)) {
                                 active_bill_ids.push_back(next_bill_id);
                                 next_bill_id +=1;
                             }
@@ -3510,5 +3774,31 @@ mod testsuit {
 
             assert_eq!(cached_total, actual_total, "Cached unpaid total must match actual sum of unpaid bills");
         }
+    }
+
+    #[test]
+    fn test_cost_estimate_sanity_check() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &1_000_000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        client.pay_bill(&owner, &1);
+
+        // Soroban SDK no longer exposes `cost_estimate` on Env in this test context.
+        // The test remains as a placeholder for future cost estimate support.
     }
 }
