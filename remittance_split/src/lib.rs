@@ -9,9 +9,9 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, guard_bytes_len, EventCategory, EventPriority, RemitwiseEvents, Timestamp,
-    ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
-    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    clamp_limit, guard_bytes_len, verify_no_dust, DustError, EventCategory, EventPriority,
+    RemitwiseEvents, Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
@@ -1330,6 +1330,10 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("distrib"), &from, false);
             return Err(RemittanceSplitError::InvalidAmount);
         }
+        if verify_no_dust(total_amount).is_err() {
+            Self::append_audit(&env, symbol_short!("distrib"), &from, false);
+            return Err(RemittanceSplitError::InvalidAmount);
+        }
 
         // 7. No destination account may equal the sender (self-transfer guard).
         if accounts.spending == from
@@ -1431,6 +1435,10 @@ impl RemittanceSplit {
         Self::extend_instance_ttl(&env);
         // Validate amount
         if request.total_amount <= 0 {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::InvalidAmount);
+        }
+        if verify_no_dust(request.total_amount).is_err() {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::InvalidAmount);
         }
