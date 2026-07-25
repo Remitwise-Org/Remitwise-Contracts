@@ -167,11 +167,13 @@ fn detect_violations_in_source(source: &str) -> (bool, Vec<String>) {
             if started {
                 let body = &source[abs_idx..=end_idx];
                 let mut found = false;
-                
+
                 // Emulate the script's pattern: env.storage().*.set(
                 // In rust, we check for presence of env.storage() and any of the mutators.
                 if body.contains("env.storage()")
-                    && (body.contains(".set(") || body.contains(".remove(") || body.contains(".extend_ttl("))
+                    && (body.contains(".set(")
+                        || body.contains(".remove(")
+                        || body.contains(".extend_ttl("))
                 {
                     found = true;
                 }
@@ -222,9 +224,7 @@ fn test_get_fn_writing_storage_is_detected() {
     );
 
     // Also verify the violation message mentions the offending function
-    let mentions_fn = violations
-        .iter()
-        .any(|v| v.contains("get_cached_value"));
+    let mentions_fn = violations.iter().any(|v| v.contains("get_cached_value"));
     assert!(
         mentions_fn,
         "Violation output should name 'get_cached_value', got:\n{}",

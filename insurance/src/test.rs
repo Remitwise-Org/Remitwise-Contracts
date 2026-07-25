@@ -669,9 +669,7 @@ mod tests {
         env.ledger().set_timestamp(base_time + MAX_TENURE_SECS - 1);
 
         assert_eq!(
-            c.try_reactivate_policy(&owner, &pid)
-                .unwrap_err()
-                .unwrap(),
+            c.try_reactivate_policy(&owner, &pid).unwrap_err().unwrap(),
             InsuranceError::PolicyDeactivationTooSoon,
             "reactivation one second before tenure must fail"
         );

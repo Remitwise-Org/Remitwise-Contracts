@@ -148,7 +148,9 @@ fn bench_orchestrator_init() {
     let caller = Address::generate(&env);
     let addrs = make_addrs(&env);
     let (cpu, mem, _) = measure(&env, || {
-        client.init(&caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4])
+        client.init(
+            &caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4],
+        )
     });
 
     emit_bench_result("init", "initialized", cpu, mem, INIT);
@@ -162,7 +164,9 @@ fn bench_orchestrator_get_nonce() {
     let client = OrchestratorClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
     let addrs = make_addrs(&env);
-    client.init(&caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4]);
+    client.init(
+        &caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4],
+    );
 
     let (cpu, mem, nonce) = measure(&env, || client.get_nonce(&caller));
     assert_eq!(nonce, 0);
@@ -178,7 +182,9 @@ fn bench_orchestrator_get_execution_stats() {
     let client = OrchestratorClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
     let addrs = make_addrs(&env);
-    client.init(&caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4]);
+    client.init(
+        &caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4],
+    );
 
     let (cpu, mem, stats) = measure(&env, || client.get_execution_stats());
     assert!(stats.is_some());
@@ -207,7 +213,9 @@ fn bench_orchestrator_get_pending_rewards() {
     let client = OrchestratorClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
     let addrs = make_addrs(&env);
-    client.init(&caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4]);
+    client.init(
+        &caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4],
+    );
 
     let (cpu, mem, rewards) = measure(&env, || client.get_pending_rewards(&caller));
     assert_eq!(rewards, 0);
@@ -235,7 +243,9 @@ fn bench_orchestrator_get_audit_log() {
     let client = OrchestratorClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
     let addrs = make_addrs(&env);
-    client.init(&caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4]);
+    client.init(
+        &caller, &addrs[0], &addrs[1], &addrs[2], &addrs[3], &addrs[4],
+    );
 
     let (cpu, mem, log) = measure(&env, || client.get_audit_log(&0u32, &20u32));
     assert_eq!(log.len(), 0);

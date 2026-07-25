@@ -576,7 +576,7 @@ impl Insurance {
         for id in ids.iter() {
             let mut policy = Self::load_policy(&env, id)?;
             if policy.active && policy.owner == caller {
-        let now = env.ledger().timestamp();
+                let now = env.ledger().timestamp();
                 policy.last_payment_at = now;
                 policy.next_payment_date =
                     Self::advance_next_payment_date(policy.next_payment_date, now);
