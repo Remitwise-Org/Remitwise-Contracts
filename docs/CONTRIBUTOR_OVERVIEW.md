@@ -121,5 +121,6 @@ Before opening a pull request, run the following verification steps locally:
 * [Architecture Overview](../ARCHITECTURE.md)
 * [Storage Layout Reference](../STORAGE_LAYOUT.md)
 * [Authorization Matrix](AUTHORIZATION_MATRIX.md)
+* [Invoice Settlement Windows](SETTLEMENT_WINDOWS.md)
 * [Threat Model](../THREAT_MODEL.md)
 

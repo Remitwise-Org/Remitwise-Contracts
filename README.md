@@ -283,6 +283,7 @@ If you encounter issues with a specific Soroban version:
 
 - **[UPGRADE_GUIDE.md](UPGRADE_GUIDE.md)** - Comprehensive upgrade procedures and version-specific migration guides
 - **[docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md)** - Step-by-step contract upgrade runbook and rollback plan for operators
+- **[docs/SETTLEMENT_WINDOWS.md](docs/SETTLEMENT_WINDOWS.md)** - Specification of invoice settlement window rules, creation acceptance bounds, overdue semantics, and late catch-up loops
 - **[VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md)** - Detailed compatibility matrix and testing status
 - **[COMPATIBILITY_QUICK_REFERENCE.md](COMPATIBILITY_QUICK_REFERENCE.md)** - Quick reference for common compatibility tasks
 - **[.github/SOROBAN_VERSION_CHECKLIST.md](.github/SOROBAN_VERSION_CHECKLIST.md)** - Validation checklist for new versions
