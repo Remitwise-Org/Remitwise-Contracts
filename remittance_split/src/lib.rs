@@ -89,6 +89,10 @@ pub enum RemittanceSplitError {
     SnapshotNotFound = 29,
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 30,
+    /// The supplied token contract is not a supported stable ingress asset.
+    /// This is a defence-in-depth rejection for rebase/deflationary or otherwise
+    /// incompatible token contracts that would undermine the remittance invariants.
+    UnsupportedTokenContract = 31,
 }
 
 #[derive(Clone)]
@@ -968,6 +972,38 @@ impl RemittanceSplit {
         Ok(())
     }
 
+    /// Validate that the ingress token is a supported stable asset contract.
+    ///
+    /// This is a defence-in-depth check against rebase/deflationary token contracts
+    /// that can silently change balances during transfer and thereby violate the
+    /// remittance split invariants. The contract only accepts a well-known stable
+    /// asset shape at the point where the trusted token is pinned.
+    fn validate_supported_token_contract(
+        env: &Env,
+        token_contract: &Address,
+    ) -> Result<(), RemittanceSplitError> {
+        let token = TokenClient::new(env, token_contract);
+
+        let symbol = token
+            .try_symbol()
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
+        let name = token
+            .try_name()
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
+        let decimals = token
+            .try_decimals()
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
+            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
+
+        if symbol.is_empty() || name.is_empty() || decimals > 18 {
+            return Err(RemittanceSplitError::UnsupportedTokenContract);
+        }
+
+        Ok(())
+    }
+
     /// Set or update the split percentages used to allocate remittances.
     ///
     /// # Arguments
@@ -1015,6 +1051,11 @@ impl RemittanceSplit {
         Self::require_not_paused(&env)?;
         Self::require_nonce(&env, &owner, nonce)?;
 
+        if let Err(_e) = Self::validate_supported_token_contract(&env, &usdc_contract) {
+            Self::append_audit(&env, symbol_short!("init"), &owner, false);
+            return Err(RemittanceSplitError::UnsupportedTokenContract);
+        }
+
         let existing: Option<SplitConfig> = env.storage().instance().get(&symbol_short!("CONFIG"));
         if existing.is_some() {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
@@ -1029,6 +1070,16 @@ impl RemittanceSplit {
         ) {
             Self::append_audit(&env, symbol_short!("init"), &owner, false);
             return Err(e);
+        }
+
+        if let Err(_e) = Self::validate_supported_token_contract(&env, &usdc_contract) {
+            Self::append_audit(&env, symbol_short!("init"), &owner, false);
+            return Err(RemittanceSplitError::UnsupportedTokenContract);
+        }
+
+        if let Err(_e) = Self::validate_supported_token_contract(&env, &usdc_contract) {
+            Self::append_audit(&env, symbol_short!("init"), &owner, false);
+            return Err(RemittanceSplitError::UnsupportedTokenContract);
         }
 
         Self::extend_instance_ttl(&env);
