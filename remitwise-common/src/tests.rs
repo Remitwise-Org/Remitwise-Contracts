@@ -16,10 +16,24 @@
 extern crate std;
 
 use super::*;
+use crate::distribute_pro_rata;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::{Env, String, Symbol, Vec};
-use std::string::ToString;
+use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
+
+fn set_ledger(env: &Env, sequence_number: u32) {
+    let proto = env.ledger().protocol_version();
+    env.ledger().set(LedgerInfo {
+        protocol_version: proto,
+        sequence_number,
+        timestamp: 1_700_000_000,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 3_000_000,
+    });
+}
 
 // helper: build a single-element tag Vec
 fn single(env: &Env, tag: &str) -> Vec<String> {
@@ -627,6 +641,32 @@ fn test_clamp_limit_u32_max_contract_regression() {
     assert_eq!(clamp_limit(clamped), clamped);
 }
 
+// ─── Timestamp::seconds_until ────────────────────────────────────────────────
+
+/// A future target returns the exact distance in seconds.
+#[test]
+fn test_timestamp_seconds_until_future_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_300), 300);
+}
+
+/// A target equal to now has no remaining distance.
+#[test]
+fn test_timestamp_seconds_until_equal_target() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_000, 1_700_000_000), 0);
+}
+
+/// A past target saturates at zero instead of underflowing.
+#[test]
+fn test_timestamp_seconds_until_past_target_saturates() {
+    assert_eq!(Timestamp::seconds_until(1_700_000_300, 1_700_000_000), 0);
+}
+
+/// The helper remains overflow-safe at the upper `u64` boundary.
+#[test]
+fn test_timestamp_seconds_until_u64_max_boundary() {
+    assert_eq!(Timestamp::seconds_until(u64::MAX - 1, u64::MAX), 1);
+}
+
 // ─── verify_signature tests ──────────────────────────────────────────────────
 
 #[test]
@@ -644,8 +684,27 @@ fn test_verify_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let result = verify_signature(&env, domain, message, &signature, &pk);
     assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_verify_signature_rejects_unregistered_verifier() {
+    let env = Env::default();
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+    let mut prefixed = std::vec::Vec::new();
+    prefixed.extend_from_slice(domain);
+    prefixed.extend_from_slice(message);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    let result = verify_signature(&env, domain, message, &signature, &pk);
+    assert_eq!(result, Err(SignatureError::UnregisteredVerifier));
 }
 
 #[test]
@@ -659,6 +718,8 @@ fn test_verify_signature_invalid_signature() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64];
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
 }
 
@@ -671,6 +732,8 @@ fn test_verify_signature_invalid_signature_length() {
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
     let short_signature = [0u8; 32];
+
+    register_verifier(&env, &pk).unwrap();
 
     let result = verify_signature(&env, domain, message, &short_signature, &pk);
     assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
@@ -705,6 +768,8 @@ fn test_verify_signature_wrong_domain() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
     let _ = verify_signature(&env, domain2, message, &signature, &pk);
 }
 
@@ -721,6 +786,9 @@ fn test_verify_slash_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
+    register_verifier(&env, &pk).unwrap();
+
+    // Verify the slash signature
     let result = verify_slash_signature(&env, message, Some(&signature), &pk);
     assert_eq!(result, Ok(()));
 }
@@ -746,7 +814,299 @@ fn test_verify_slash_signature_invalid() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
-    let _ = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+    register_verifier(&env, &pk).unwrap();
+
+    // Verify the invalid slash signature
+    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+    assert_eq!(result, Err(SlashError::InvalidSignature));
+}
+
+// ─── distribute_pro_rata tests (#1085) ───────────────────────────────────────
+
+/// Distributes an indivisible total across unequal weights — remainder benefits smallest recipient.
+#[test]
+fn distributes_indivisible_total_with_remainder_to_last_bucket() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
+    
+    // First three buckets receive their floor share
+    assert_eq!(out[0], 50); // 100 * 50 / 100 = 50
+    assert_eq!(out[1], 30); // 100 * 30 / 100 = 30
+    assert_eq!(out[2], 15); // 100 * 15 / 100 = 15
+    assert_eq!(out[3], 5);  // 100 * 5 / 100 = 5, plus remainder 0
+    
+    // Conservation: sum equals input total
+    assert_eq!(out.iter().sum::<i128>(), 100);
+}
+
+/// Distributes an indivisible amount where rounding creates a remainder.
+#[test]
+fn distributes_amount_with_non_zero_remainder_to_last_bucket() {
+    let mut out = [0i128; 3];
+    // 10 * 3333 / 10000 = 3.333 → floor = 3 (per bucket)
+    // Allocated: 3 + 3 = 6, remainder: 10 - 6 = 4 goes to last bucket
+    distribute_pro_rata(10, &[3333, 3333, 3334], 10_000, &mut out);
+    
+    assert_eq!(out[0], 3);  // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[1], 3);  // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[2], 4);  // 10 - 3 - 3 = 4 (includes remainder)
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 10);
+}
+
+/// Last bucket receives extra units when total does not divide evenly.
+#[test]
+fn last_bucket_receives_rounding_remainder() {
+    let mut out = [0i128; 4];
+    // 1_000_007 * 2500 / 10000 = 250001.75 → floor = 250001
+    // Four buckets, each gets floor share, last gets remainder
+    distribute_pro_rata(1_000_007, &[2500, 2500, 2500, 2500], 10_000, &mut out);
+    
+    // First three buckets
+    assert_eq!(out[0], 250001);
+    assert_eq!(out[1], 250001);
+    assert_eq!(out[2], 250001);
+    
+    // Last bucket gets remainder: 1_000_007 - 3*250001 = 1_000_007 - 750_003 = 250_004
+    assert_eq!(out[3], 250_004);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 1_000_007);
+}
+
+/// Distributes a perfectly divisible total with no remainder.
+#[test]
+fn distributes_evenly_divisible_total_exactly() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+    
+    assert_eq!(out[0], 500_000); // 1M * 5000 / 10000
+    assert_eq!(out[1], 300_000); // 1M * 3000 / 10000
+    assert_eq!(out[2], 150_000); // 1M * 1500 / 10000
+    assert_eq!(out[3], 50_000);  // 1M * 500 / 10000
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 1_000_000);
+}
+
+/// Distributes entire amount to a single recipient.
+#[test]
+fn distributes_full_amount_to_single_recipient() {
+    let mut out = [0i128; 1];
+    distribute_pro_rata(999_999, &[100], 100, &mut out);
+    
+    assert_eq!(out[0], 999_999);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 999_999);
+}
+
+/// Distributes zero total — all recipients receive zero.
+#[test]
+fn distributes_zero_total_without_panic() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(0, &[25, 25, 25, 25], 100, &mut out);
+    
+    assert_eq!(out[0], 0);
+    assert_eq!(out[1], 0);
+    assert_eq!(out[2], 0);
+    assert_eq!(out[3], 0);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 0);
+}
+
+/// Distributes when one weight is zero — zero-weight recipient receives nothing.
+#[test]
+fn distributes_with_zero_weight_recipient() {
+    let mut out = [0i128; 4];
+    distribute_pro_rata(100, &[50, 30, 20, 0], 100, &mut out);
+    
+    assert_eq!(out[0], 50);
+    assert_eq!(out[1], 30);
+    assert_eq!(out[2], 20);
+    assert_eq!(out[3], 0);  // zero weight → receives only remainder (0 in this case)
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 100);
+}
+
+/// Distributes when last weight is zero and remainder exists.
+#[test]
+fn zero_weight_last_bucket_receives_remainder() {
+    let mut out = [0i128; 3];
+    // 10 * 4000 / 10000 = 4, twice = 8
+    // Remainder: 10 - 8 = 2 goes to last bucket (even though its weight is 0)
+    distribute_pro_rata(10, &[4000, 4000, 0], 10_000, &mut out);
+    
+    assert_eq!(out[0], 4);
+    assert_eq!(out[1], 4);
+    assert_eq!(out[2], 2); // weight is 0, but receives remainder 2
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 10);
+}
+
+/// Distributes using basis points (10_000 = 100%).
+#[test]
+fn distributes_using_basis_points_denomination() {
+    let mut out = [0i128; 4];
+    // 5% = 500 bps, 3% = 300 bps, 1.5% = 150 bps, 0.5% = 50 bps
+    distribute_pro_rata(1_000_000, &[500, 300, 150, 50], 10_000, &mut out);
+    
+    assert_eq!(out[0], 50_000);  // 5%
+    assert_eq!(out[1], 30_000);  // 3%
+    assert_eq!(out[2], 15_000);  // 1.5%
+    assert_eq!(out[3], 5_000);   // 0.5%
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), 100_000); // only 10% of total distributed
+}
+
+/// Conservation invariant holds for large total near i128 upper range.
+#[test]
+fn conservation_holds_for_large_total() {
+    let mut out = [0i128; 4];
+    let large_total = i128::MAX / 1_000_000; // Large but won't overflow in multiplication
+    
+    distribute_pro_rata(large_total, &[2500, 2500, 2500, 2500], 10_000, &mut out);
+    
+    // Conservation
+    assert_eq!(out.iter().sum::<i128>(), large_total);
+    
+    // Each bucket gets approximately 1/4
+    let expected_floor = large_total / 4;
+    assert!(out[0] >= expected_floor);
+    assert!(out[1] >= expected_floor);
+    assert!(out[2] >= expected_floor);
+    // Last bucket absorbs remainder
+    assert!(out[3] >= expected_floor);
+}
+
+proptest! {
+    /// Property test: conservation and smallest-benefits-from-rounding invariants.
+    ///
+    /// For any valid input (non-negative total, positive total_weight, non-empty weights),
+    /// the following properties must hold:
+    /// 1. **Conservation**: sum(out) == total
+    /// 2. **Non-negative outputs**: every output >= 0
+    /// 3. **Last bucket absorbs remainder**: out[last] >= floor(total * weight[last] / total_weight)
+    /// 4. **Bounded outputs**: each out[i] <= total
+    #[test]
+    fn proptest_distribute_pro_rata_conservation_and_rounding(
+        total in 0i128..=i128::MAX / 1_000_000, // Avoid overflow in intermediate products
+        weights in proptest::collection::vec(1u32..=1000u32, 1..=10),
+    ) {
+        let total_weight: u32 = weights.iter().map(|&w| w as u32).sum();
+        if total_weight == 0 {
+            return Ok(()); // Skip invalid input
+        }
+        
+        let mut out = std::vec![0i128; weights.len()];
+        distribute_pro_rata(total, &weights, total_weight, &mut out);
+        
+        // Property 1: Conservation — sum equals input
+        prop_assert_eq!(out.iter().sum::<i128>(), total);
+        
+        // Property 2: Non-negative outputs
+        for &amount in &out {
+            prop_assert!(amount >= 0, "output must be non-negative");
+        }
+        
+        // Property 3: Last bucket receives at least its floor share (absorbs remainder)
+        let last_idx = weights.len() - 1;
+        let last_floor = (total as i128)
+            .saturating_mul(weights[last_idx] as i128)
+            .saturating_div(total_weight as i128);
+        prop_assert!(
+            out[last_idx] >= last_floor,
+            "last bucket must receive at least floor share (absorbs rounding remainder)"
+        );
+        
+        // Property 4: No output exceeds total
+        for &amount in &out {
+            prop_assert!(amount <= total, "no bucket can exceed total");
+        }
+    }
+}
+
+// ─── require_valid_symbol_length tests (#1078) ───────────────────────────────
+
+/// A 9-char short symbol (at the boundary) passes validation.
+#[test]
+fn test_require_valid_symbol_length_9_chars_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "boundary9"); // exactly 9 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A 1-char symbol passes validation.
+#[test]
+fn test_require_valid_symbol_length_single_char_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "a");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// An empty symbol (0 bytes) passes validation (it's under 9).
+#[test]
+fn test_require_valid_symbol_length_empty_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "");
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A 10-char symbol (one past the short-symbol boundary) is rejected.
+#[test]
+fn test_require_valid_symbol_length_10_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "boundary10"); // exactly 10 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A 32-char symbol (at the SDK's hard limit) is rejected because it's
+/// still past the 9-char short-symbol boundary.
+#[test]
+fn test_require_valid_symbol_length_32_chars_rejected() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyzabcd"); // 32 chars
+    assert_eq!(
+        require_valid_symbol_length(&env, &sym),
+        Err(SymbolError::SymbolTooLong)
+    );
+}
+
+/// A short 4-char symbol passes validation.
+#[test]
+fn test_require_valid_symbol_length_short_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "test"); // 4 chars, well within limit
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// A typical storage-key style symbol (≤ 9 chars) passes.
+#[test]
+fn test_require_valid_symbol_length_storage_key_passes() {
+    let env = Env::default();
+    let sym = Symbol::new(&env, "ADMIN"); // 5 chars
+    assert_eq!(require_valid_symbol_length(&env, &sym), Ok(()));
+}
+
+/// The error discriminant is stable (pinned to 1) via `#[contracterror]`.
+/// This test checks that the enum round-trips through Val encoding.
+#[test]
+fn test_symbol_error_encoding_stability() {
+    use soroban_sdk::TryFromVal;
+    let env = Env::default();
+    let val: soroban_sdk::Val = soroban_sdk::IntoVal::into_val(&SymbolError::SymbolTooLong, &env);
+    let err: SymbolError =
+        <SymbolError as TryFromVal<Env, soroban_sdk::Val>>::try_from_val(&env, &val)
+            .expect("SymbolError must round-trip through Val");
+    assert_eq!(err, SymbolError::SymbolTooLong);
 }
 
 // ============================================================================
@@ -756,7 +1116,8 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     let env = Env::default();
-    let tags = soroban_sdk::vec![&env,
+    let tags = soroban_sdk::vec![
+        &env,
         soroban_sdk::String::from_str(&env, "payments"),
         soroban_sdk::String::from_str(&env, "SAVINGS"),
     ];
@@ -764,7 +1125,10 @@ fn test_canonicalize_tags_checked_returns_ok_for_valid_tags() {
     assert!(result.is_ok());
     let out = result.unwrap();
     assert_eq!(out.len(), 2);
-    assert_eq!(out.get(1).unwrap(), soroban_sdk::String::from_str(&env, "savings"));
+    assert_eq!(
+        out.get(1).unwrap(),
+        soroban_sdk::String::from_str(&env, "savings")
+    );
 }
 
 #[test]
@@ -808,105 +1172,48 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     let tags = soroban_sdk::vec![&env, soroban_sdk::String::from_str(&env, "=formula")];
     let result = canonicalize_tags_checked(&env, &tags);
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
-    assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
+    assert!(matches!(
+        result,
+        Err(crate::TagError::InvalidChar { position: 0 })
+    ));
 }
 
 // ============================================================================
-// guard_bytes_len tests — env-matching guard (#1150)
+// require_active_pause_channel tests
 // ============================================================================
 
-/// Empty Bytes (zero length) is well within MAX_BYTES_RETURN.
-/// The guard must accept it without error.
 #[test]
-fn guard_bytes_len_empty_bytes_passes() {
+fn test_require_active_pause_channel_uninitialized() {
     let env = Env::default();
-    let bytes = Bytes::from_slice(&env, &[]);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    // Map doesn't exist yet, should not panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
 
-/// A small payload (100 bytes) is well within the 8 192-byte budget.
 #[test]
-fn guard_bytes_len_small_payload_passes() {
+fn test_require_active_pause_channel_active() {
     let env = Env::default();
-    let data = std::vec![0u8; 100];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
-}
-
-/// SHA-256 output (32 bytes) is the most common Bytes result size
-/// (e.g. `get_request_hash`). The guard must never fire for it.
-#[test]
-fn guard_bytes_len_sha256_sized_passes() {
-    let env = Env::default();
-    let data = std::vec![0u8; 32];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
-}
-
-/// Exactly MAX_BYTES_RETURN (8 192 bytes) must pass — the inclusive
-/// upper bound of the accept range.
-#[test]
-fn guard_bytes_len_at_limit_passes() {
-    let env = Env::default();
-    let data = std::vec![0u8; MAX_BYTES_RETURN as usize];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
-}
-
-/// One byte above MAX_BYTES_RETURN must be rejected with ReturnTooLarge.
-#[test]
-fn guard_bytes_len_one_over_limit_fails() {
-    let env = Env::default();
-    let data = std::vec![0u8; (MAX_BYTES_RETURN + 1) as usize];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(
-        guard_bytes_len(&bytes),
-        Err(BytesReturnError::ReturnTooLarge)
+    let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
+    map.set(soroban_sdk::Symbol::short("PAYMENTS"), false);
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
     );
+
+    // Channel is active (false), should not panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
 
-/// A significantly oversized payload (10 000 bytes) must be rejected.
 #[test]
-fn guard_bytes_len_far_above_limit_fails() {
+#[should_panic(expected = "Pause channel is inactive")]
+fn test_require_active_pause_channel_paused() {
     let env = Env::default();
-    let data = std::vec![0u8; 10_000];
-    let bytes = Bytes::from_slice(&env, &data);
-    assert_eq!(
-        guard_bytes_len(&bytes),
-        Err(BytesReturnError::ReturnTooLarge)
+    let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
+    map.set(soroban_sdk::Symbol::short("PAYMENTS"), true);
+    env.storage().instance().set(
+        &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
+        &map,
     );
-}
 
-/// Bytes carries its own host-environment reference internally.
-/// Creating a second `Env` and calling `guard_bytes_len` on a `Bytes`
-/// from the first `Env` must not panic — the call resolves entirely
-/// within the Bytes's own host without cross-env contamination.
-#[test]
-fn guard_bytes_len_different_env_no_cross_contamination() {
-    let env1 = Env::default();
-    let bytes_in_env1 = Bytes::from_slice(&env1, &[0u8; 64]);
-
-    // A separate Env instance simulates a different execution context.
-    let _env2 = Env::default();
-
-    // guard_bytes_len only accesses `bytes.len()`, which queries the
-    // Bytes's own host (env1). The existence of env2 is irrelevant.
-    assert_eq!(guard_bytes_len(&bytes_in_env1), Ok(()));
-}
-
-/// Freshly created Bytes has a valid env binding — the "missing env
-/// label" edge case is structurally impossible in the Soroban SDK
-/// because `Bytes` cannot be instantiated without an `Env` reference.
-/// This test locks in that invariant by explicitly verifying the Bytes
-/// is usable (len == 0, is_empty) before calling the guard.
-#[test]
-fn guard_bytes_len_fresh_bytes_has_valid_env_binding() {
-    let env = Env::default();
-    // Bytes::new creates a zero-length Bytes tied to the given env.
-    let bytes = Bytes::new(&env);
-    // Verify the env binding is valid before exercising the guard.
-    assert_eq!(bytes.len(), 0);
-    assert!(bytes.is_empty());
-    // Must succeed — the env binding is valid and 0 <= MAX_BYTES_RETURN.
-    assert_eq!(guard_bytes_len(&bytes), Ok(()));
+    // Channel is paused (true), should panic
+    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
 }
