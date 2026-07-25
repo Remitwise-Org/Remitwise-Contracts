@@ -3,7 +3,6 @@
 extern crate std;
 
 use super::*;
-use remitwise_common::reversible_op::ReversibleOpError;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger as _},
@@ -22,40 +21,28 @@ impl MockContract {
     pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
         soroban_sdk::vec![&env, 2500, 2500, 2500, 2500]
     }
-    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) -> bool {
-        true
-    }
-    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32, _amount: i128) -> bool {
-        true
-    }
-    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32, _amount: i128) -> bool {
-        true
-    }
+    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) {}
+    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32, _amount: i128) {}
+    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32, _amount: i128) {}
     // Compensation / reverse methods for rollback support.
     pub fn remove_from_goal(
         _env: Env,
         _user: Address,
         _goal_id: u32,
         _amount: i128,
-    ) -> Result<bool, ReversibleOpError> {
-        Ok(true)
-    }
+    ) {}
     pub fn reverse_payment(
         _env: Env,
         _user: Address,
         _bill_id: u32,
         _amount: i128,
-    ) -> Result<bool, ReversibleOpError> {
-        Ok(true)
-    }
+    ) {}
     pub fn reverse_premium(
         _env: Env,
         _user: Address,
         _policy_id: u32,
         _amount: i128,
-    ) -> Result<bool, ReversibleOpError> {
-        Ok(true)
-    }
+    ) {}
 }
 
 #[contract]
@@ -146,15 +133,9 @@ mod mock_no_limit {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -1696,15 +1677,9 @@ mod mock_split_0 {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             Vec::new(&env)
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -1721,15 +1696,9 @@ mod mock_split_1 {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 10000i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -1746,21 +1715,14 @@ mod mock_split_3 {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
 /// Mock whose calculate_split returns exactly 4 allocations (valid).
 mod mock_split_4 {
-    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
     #[contract]
     pub struct Contract;
@@ -1772,39 +1734,27 @@ mod mock_split_4 {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
         pub fn remove_from_goal(
             _env: Env,
             _user: Address,
             _goal_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(true)
-        }
+        ) {}
         pub fn reverse_payment(
             _env: Env,
             _user: Address,
             _bill_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(true)
-        }
+        ) {}
         pub fn reverse_premium(
             _env: Env,
             _user: Address,
             _policy_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(true)
-        }
+        ) {}
     }
 }
 
@@ -1821,15 +1771,9 @@ mod mock_split_negative {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
-            true
-        }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
-            true
-        }
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
     }
 }
 
@@ -1838,7 +1782,6 @@ mod mock_split_negative {
 /// Used to verify that EXEC_LOCK is released even when downstream contracts
 /// are maximally adversarial (all steps fail without panicking).
 mod mock_hostile_all_fail {
-    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
     #[contract]
@@ -1852,13 +1795,13 @@ mod mock_hostile_all_fail {
         pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {
             panic!("savings step failed")
         }
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {
             panic!("insurance step failed")
         }
         pub fn remove_from_goal(
@@ -1866,25 +1809,19 @@ mod mock_hostile_all_fail {
             _user: Address,
             _goal_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(false)
-        }
+        ) {}
         pub fn reverse_payment(
             _env: Env,
             _user: Address,
             _bill_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(false)
-        }
+        ) {}
         pub fn reverse_premium(
             _env: Env,
             _user: Address,
             _policy_id: u32,
             _amount: i128,
-        ) -> Result<bool, ReversibleOpError> {
-            Ok(false)
-        }
+        ) {}
     }
 }
 
