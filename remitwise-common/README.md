@@ -17,7 +17,7 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 ```rust
 use remitwise_common::{
     Category, FamilyRole, EventCategory, EventPriority, RemitwiseEvents,
-    canonicalize_tags_checked, TagError, clamp_limit,
+    canonicalize_tags_checked, TagError, Timestamp, clamp_limit,
     SupportedToken, STROOPS_PER_XLM, DEFAULT_CURRENCY,
 };
 
@@ -34,6 +34,10 @@ assert_eq!(DEFAULT_CURRENCY, "XLM");
 
 // Normalize a pagination limit
 let limit = clamp_limit(100); // becomes 50
+
+// Measure future distance without underflowing
+let seconds = Timestamp::seconds_until(1_700_000_000, 1_700_000_300);
+assert_eq!(seconds, 300);
 
 // Emit an event
 RemitwiseEvents::emit(
@@ -112,6 +116,13 @@ Normalizes pagination limits:
 - 1..=MAX_PAGE_LIMIT → unchanged
 - > MAX_PAGE_LIMIT → MAX_PAGE_LIMIT
 
+### `Timestamp::seconds_until(now, target)`
+
+Computes the future distance to `target` with saturating semantics:
+- `target > now` → returns `target - now`
+- `target == now` → returns `0`
+- `target < now` → returns `0`
+
 ### `canonicalize_tags_checked(env, tags)`
 
 Validates and canonicalizes tags with error handling.
@@ -125,4 +136,3 @@ Emits a standardized event.
 ```bash
 cargo test -p remitwise-common
 ```
-

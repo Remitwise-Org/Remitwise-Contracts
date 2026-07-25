@@ -26,7 +26,6 @@
 ///   offending function/line.
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 /// Returns the path to the workspace root (parent of this crate's manifest dir).
 fn workspace_root() -> PathBuf {
@@ -34,11 +33,6 @@ fn workspace_root() -> PathBuf {
         .parent()
         .expect("Failed to get parent of manifest dir")
         .to_path_buf()
-}
-
-fn run_check_on_fixture(contract_dir: &std::path::Path, lib_rs_content: &str) -> (bool, String) {
-    let (violations_found, violations) = detect_violations_in_source(lib_rs_content);
-    (!violations_found, violations.join("\n"))
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +79,26 @@ impl BadContract {
 }
 "#;
 
+/// A minimal contract skeleton where a view function uses a storage alias and
+/// still writes storage as a side effect.
+const VIOLATING_ALIAS_FIXTURE: &str = r#"
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, symbol_short};
+
+#[contract]
+pub struct AliasContract;
+
+#[contractimpl]
+impl AliasContract {
+    pub fn get_value(env: Env) -> u32 {
+        let storage = env.storage().instance();
+        let val: u32 = storage.get(&symbol_short!("V")).unwrap_or(0);
+        storage.set(&symbol_short!("V"), &val);
+        val
+    }
+}
+"#;
+
 /// An `is_*` variant that writes storage (violation).
 const VIOLATING_IS_FIXTURE: &str = r#"
 #![no_std]
@@ -108,29 +122,6 @@ impl BadIsContract {
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-
-/// Creates a temporary contract directory named `contract_name` under a
-/// per-test temp root and runs the check against the given fixture source.
-///
-/// Returns `(script_passed, output_text)`.
-fn check_fixture(test_name: &str, contract_name: &str, fixture: &str) -> (bool, String) {
-    // Use a subdirectory of the system temp dir isolated per test
-    let tmp_root = std::env::temp_dir()
-        .join("remitwise_view_fn_tests")
-        .join(test_name);
-
-    // Clean up any leftover state from prior run
-    let _ = fs::remove_dir_all(&tmp_root);
-    fs::create_dir_all(&tmp_root).expect("Failed to create tmp root");
-
-    let contract_dir = tmp_root.join(contract_name);
-    let (passed, output) = run_check_on_fixture(&contract_dir, fixture);
-
-    // Clean up after ourselves
-    let _ = fs::remove_dir_all(&tmp_root);
-
-    (passed, output)
-}
 
 // ---------------------------------------------------------------------------
 // The script only scans the hard-coded list of contract names.  We wrap it
@@ -179,10 +170,10 @@ fn detect_violations_in_source(source: &str) -> (bool, Vec<String>) {
                 
                 // Emulate the script's pattern: env.storage().*.set(
                 // In rust, we check for presence of env.storage() and any of the mutators.
-                if body.contains("env.storage()") {
-                    if body.contains(".set(") || body.contains(".remove(") || body.contains(".extend_ttl(") {
-                        found = true;
-                    }
+                if body.contains("env.storage()")
+                    && (body.contains(".set(") || body.contains(".remove(") || body.contains(".extend_ttl("))
+                {
+                    found = true;
                 }
 
                 if found {
@@ -237,6 +228,26 @@ fn test_get_fn_writing_storage_is_detected() {
     assert!(
         mentions_fn,
         "Violation output should name 'get_cached_value', got:\n{}",
+        violations.join("\n")
+    );
+}
+
+/// NEGATIVE TEST: A view function that writes through a storage alias
+/// (`let storage = env.storage().instance(); storage.set(...)`) MUST also be
+/// flagged as a violation.
+#[test]
+fn test_get_fn_writing_storage_via_alias_is_detected() {
+    let (violations_found, violations) = detect_violations_in_source(VIOLATING_ALIAS_FIXTURE);
+
+    assert!(
+        violations_found,
+        "A get_* function that writes storage through a storage alias must be flagged"
+    );
+
+    let mentions_fn = violations.iter().any(|v| v.contains("get_value"));
+    assert!(
+        mentions_fn,
+        "Violation output should name 'get_value', got:\n{}",
         violations.join("\n")
     );
 }

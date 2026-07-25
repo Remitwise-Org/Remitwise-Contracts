@@ -9,8 +9,8 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, guard_bytes_len, EventCategory, EventPriority, RemitwiseEvents, ToI128Checked,
-    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
+    clamp_limit, guard_bytes_len, EventCategory, EventPriority, RemitwiseEvents, Timestamp,
+    ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
@@ -1447,7 +1447,7 @@ impl RemittanceSplit {
         }
 
         // Validate deadline is within reasonable bounds (max 1 hour from now)
-        let deadline_in_future = request.deadline - current_time;
+        let deadline_in_future = Timestamp::seconds_until(current_time, request.deadline);
         if deadline_in_future > MAX_DEADLINE_WINDOW_SECS {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::InvalidDeadline);
@@ -1712,7 +1712,9 @@ impl RemittanceSplit {
                     Self::append_audit(&env, symbol_short!("import"), &caller, false);
                     return Err(RemittanceSplitError::ScheduleIntervalTooShort);
                 }
-                if schedule.next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+                if Timestamp::seconds_until(current_time, schedule.next_due)
+                    > MAX_SCHEDULE_LEAD_TIME
+                {
                     Self::append_audit(&env, symbol_short!("import"), &caller, false);
                     return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
                 }
@@ -2360,7 +2362,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::ScheduleIntervalTooShort);
         }
 
-        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+        if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
         }
 
@@ -2485,7 +2487,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::ScheduleIntervalTooShort);
         }
 
-        if next_due.saturating_sub(current_time) > MAX_SCHEDULE_LEAD_TIME {
+        if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(RemittanceSplitError::ScheduleLeadTimeTooLong);
         }
 
