@@ -52,7 +52,9 @@ fn init(
     sb: u32,
     si: u32,
 ) {
-    let token = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_contract.address();
     client.initialize_split(owner, &0, &token, &sp, &sg, &sb, &si);
 }
 
