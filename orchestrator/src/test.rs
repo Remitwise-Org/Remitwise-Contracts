@@ -1598,6 +1598,54 @@ fn test_valid_amount_unsigned_minimum_positive() {
 }
 
 #[test]
+fn test_fanout_invalid_amount_zero() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let result = client.try_execute_flow_fanout(&executor, &0);
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_fanout_invalid_amount_negative() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let result = client.try_execute_flow_fanout(&executor, &(-100i128));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_fanout_invalid_amount_i128_min() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let result = client.try_execute_flow_fanout(&executor, &(i128::MIN));
+    assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
+}
+
+#[test]
+fn test_fanout_valid_amount_minimum_positive() {
+    let (env, owner) = setup_test();
+    let (_, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let result = client.try_execute_flow_fanout(&executor, &1);
+    assert!(result.is_ok(), "amount=1 should be accepted as valid positive amount");
+}
+
+#[test]
 fn test_double_init_fails() {
     let (env, owner) = setup_test();
     let (_, client) = register_orchestrator(&env);
