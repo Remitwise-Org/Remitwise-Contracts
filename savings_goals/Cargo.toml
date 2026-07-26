@@ -7,11 +7,11 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "=21.7.7"
+# No std for WASM contracts
+soroban-sdk = { version = "=21.7.7", default-features = false }
 remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
-soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
-testutils = { path = "../testutils" }
+proptest = "1.10.0"
 data_migration = { path = "../data_migration" }
 

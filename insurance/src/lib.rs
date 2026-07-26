@@ -1,6 +1,6 @@
 #![no_std]
 use remitwise_common::{
-    CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
+    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
     PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -50,7 +50,7 @@ pub enum InsuranceError {
     /// an inactive policy) — `PolicyAlreadyInactive` signals that the *deactivation
     /// itself* is a no-op because the policy was never active (or was already
     /// deactivated by a prior call).
-    PolicyAlreadyInactive = 12,
+    PolicyAlreadyInactive = 17,
     /// The requested schedule was not found.
     ScheduleNotFound = 13,
     /// The schedule is inactive (cancelled or deactivated).
@@ -438,7 +438,7 @@ impl Insurance {
 
         // Reserve a slot in the active index and ensure we don't exceed capacity.
         // `add_active_policy` also prevents duplication.
-        let mut active = env
+        let active = env
             .storage()
             .instance()
             .get::<_, Vec<u32>>(&DataKey::ActivePolicies)
@@ -695,7 +695,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("reactivated"), symbol_short!("policy")),
+            (soroban_sdk::Symbol::new(&env, "reactivated"), symbol_short!("policy")),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,

@@ -18,10 +18,11 @@ members = [
     "cli",
     "scenarios",
 
-    "testutils",
     "integration_tests",
     "remitwise-common",
 ]
+exclude = ["testutils"]
+
 default-members = [
     "remittance_split",
     "savings_goals",
@@ -35,8 +36,8 @@ default-members = [
 resolver = "2"
 
 [dependencies]
-soroban-sdk = "=21.7.7"
-ed25519-dalek = "2.1.1"
+# No std for WASM contracts
+soroban-sdk = { version = "=21.7.7", default-features = false }
 remittance_split = { path = "./remittance_split" }
 savings_goals = { path = "./savings_goals" }
 bill_payments = { path = "./bill_payments" }
@@ -46,8 +47,7 @@ reporting = { path = "./reporting" }
 orchestrator = { path = "./orchestrator" }
 remitwise-common = { path = "./remitwise-common" }
 
-[dev-dependencies]
-soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+
 
 [profile.release]
 opt-level = "z"

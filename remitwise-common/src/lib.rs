@@ -58,6 +58,7 @@ pub enum EventCategory {
     Alert = 2,
     System = 3,
     Access = 4,
+    Compliance = 5,
 }
 
 /// Priority levels for events emitted by contracts.
@@ -70,6 +71,7 @@ pub enum EventPriority {
     Low = 0,
     Medium = 1,
     High = 2,
+    Critical = 3,
 }
 
 impl EventCategory {
@@ -567,6 +569,7 @@ impl RemitwiseEvents {
 
         #[cfg(test)]
         {
+            use soroban_sdk::xdr::ToXdr;
             use soroban_sdk::TryFromVal;
             let val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
@@ -626,7 +629,8 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::testutils::Events;
+        use soroban_sdk::IntoVal;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -638,24 +642,29 @@ impl RemitwiseEvents {
             4,
             "expected a 4-element Remitwise event topic tuple"
         );
+        let exp_marker: soroban_sdk::Val = symbol_short!("Remitwise").into_val(env);
+        let exp_cat: soroban_sdk::Val = expected_category.to_u32().into_val(env);
+        let exp_prio: soroban_sdk::Val = expected_priority.to_u32().into_val(env);
+        let exp_act: soroban_sdk::Val = expected_action.into_val(env);
+
         assert_eq!(
-            topics.get(0).unwrap(),
-            symbol_short!("Remitwise").into_val(env),
+            topics.get(0).unwrap().get_payload(),
+            exp_marker.get_payload(),
             "first topic must be the Remitwise marker"
         );
         assert_eq!(
-            topics.get(1).unwrap(),
-            expected_category.to_u32().into_val(env),
+            topics.get(1).unwrap().get_payload(),
+            exp_cat.get_payload(),
             "event category mismatch"
         );
         assert_eq!(
-            topics.get(2).unwrap(),
-            expected_priority.to_u32().into_val(env),
+            topics.get(2).unwrap().get_payload(),
+            exp_prio.get_payload(),
             "event priority mismatch"
         );
         assert_eq!(
-            topics.get(3).unwrap(),
-            expected_action.into_val(env),
+            topics.get(3).unwrap().get_payload(),
+            exp_act.get_payload(),
             "event action mismatch"
         );
 
@@ -675,47 +684,61 @@ impl RemitwiseEvents {
 #[cfg(test)]
 mod assert_event_tests {
     use super::{EventCategory, EventPriority, RemitwiseEvents};
+    use soroban_sdk::{contract, contractimpl};
+
+    #[contract]
+    pub struct DummyContract;
+
+    #[contractimpl]
+    impl DummyContract {}
 
     #[test]
     fn assert_last_event_matches_emitted_topic_and_data() {
         let env = soroban_sdk::Env::default();
+        let contract_id = env.register_contract(None, DummyContract);
         let action = soroban_sdk::Symbol::new(&env, "test_act");
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            (1u32, 2u32),
-        );
+        env.as_contract(&contract_id, || {
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                action.clone(),
+                (1u32, 2u32),
+            );
 
-        RemitwiseEvents::assert_last_event::<(u32, u32), _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            |(a, b)| *a == 1 && *b == 2,
-        );
+            RemitwiseEvents::assert_last_event::<(u32, u32), _>(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                action,
+                |(a, b)| *a == 1 && *b == 2,
+            );
+        });
     }
 
     #[test]
     #[should_panic(expected = "event action mismatch")]
     fn assert_last_event_panics_on_action_mismatch() {
         let env = soroban_sdk::Env::default();
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "one"),
-            1u32,
-        );
-        RemitwiseEvents::assert_last_event::<u32, _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "two"),
-            |_| true,
-        );
+        let contract_id = env.register_contract(None, DummyContract);
+
+        env.as_contract(&contract_id, || {
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                soroban_sdk::Symbol::new(&env, "one"),
+                1u32,
+            );
+            RemitwiseEvents::assert_last_event::<u32, _>(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                soroban_sdk::Symbol::new(&env, "two"),
+                |_| true,
+            );
+        });
     }
 }
 

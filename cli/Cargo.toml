@@ -5,8 +5,12 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
+
+# Tokio is only needed for native builds; exclude it for wasm targets to avoid pulling in `mio` which does not support wasm.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Enable full Tokio runtime for CLI functionality.
+tokio = { version = "1.0", features = ["full"] }
 
 [[bin]]
 name = "remitwise-cli"

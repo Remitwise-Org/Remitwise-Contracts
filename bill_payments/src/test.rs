@@ -677,7 +677,7 @@ mod testsuit {
         assert_eq!(bill3.external_ref, ref_1);
 
         // Revoke ref_2 via cancel_bill
-        client.cancel_bill(&owner, &bill2_id).unwrap();
+        client.cancel_bill(&owner, &bill2_id);
 
         // Re-verify ref_2 can now be registered to another bill
         let bill4_id = client.create_bill(
@@ -1248,7 +1248,7 @@ mod testsuit {
 
         create_n_bills(&client, &env, &owner, 12);
 
-        let page = client.get_all_bills_page(&admin, &0, &5).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &5);
         assert_eq!(page.items.len(), 5, "first page must have exactly 5 items");
         assert!(page.next_cursor > 0, "must have a non-zero next_cursor when more pages exist");
     }
@@ -1269,7 +1269,7 @@ mod testsuit {
         let mut cursor = 0u32;
         let mut total_seen = 0u32;
         for _ in 0..10 {
-            let page = client.get_all_bills_page(&admin, &cursor, &3).unwrap();
+            let page = client.get_all_bills_page(&admin, &cursor, &3);
             total_seen += page.items.len();
             if page.next_cursor == 0 {
                 break;
@@ -1294,7 +1294,7 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &100).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &100);
         assert_eq!(
             page.items.len(), 6,
             "admin should see bills from all 6 owners combined"
@@ -1311,7 +1311,7 @@ mod testsuit {
         env.mock_all_auths();
         client.set_pause_admin(&admin, &admin);
 
-        let page = client.get_all_bills_page(&admin, &0, &10).unwrap();
+        let page = client.get_all_bills_page(&admin, &0, &10);
         assert_eq!(page.items.len(), 0, "empty contract must return 0 items");
         assert_eq!(page.next_cursor, 0, "empty page must have cursor 0");
     }
