@@ -29,6 +29,7 @@ fn create_policy_at(env: &Env, client: &InsuranceClient, owner: &Address, t: u64
         &CoverageType::Health,
         &1_000i128,
         &10_000i128,
+        &None,
     )
 }
 
@@ -141,13 +142,14 @@ fn test_batch_pay_premiums_advances_each_policy_independently_and_counts() {
 }
 
 #[test]
-fn test_batch_pay_premiums_fails_when_policy_not_found() {
+fn test_batch_pay_premiums_skips_when_policy_not_found() {
     let (env, client) = setup_env();
     let owner = Address::generate(&env);
     let id_a = create_policy_at(&env, &client, &owner, 1_000_000u64);
     let ids = soroban_sdk::vec![&env, id_a, 999u32];
-    let res = client.try_batch_pay_premiums(&owner, &ids);
-    assert_eq!(res, Err(Ok(InsuranceError::PolicyNotFound)));
+    // batch_pay_premiums skips not-found policies — only id_a is paid
+    let count = client.batch_pay_premiums(&owner, &ids);
+    assert_eq!(count, 1u32, "only the valid policy should be paid");
 }
 
 #[test]
@@ -217,7 +219,7 @@ fn test_pay_premium_at_exact_period_boundary_is_accepted() {
 
     // Set ledger timestamp to exactly the due date (exact period boundary)
     env.ledger().with_mut(|li| li.timestamp = due);
-    
+
     // Call pay_premium - must be accepted (return true)
     assert!(client.pay_premium(&owner, &id));
 

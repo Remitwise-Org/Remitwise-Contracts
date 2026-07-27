@@ -98,6 +98,7 @@ The following keys are used consistently across multiple contracts:
 |-----|---------|---------|
 | `PAUSE_ADM` | Pause admin address | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `PAUSED` | Global pause flag | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
+| `PAUSED_AT` | Global pause timestamp | remittance_split, bill_payments, emergency_killswitch, savings_goals |
 | `UPG_ADM` | Upgrade admin address | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `VERSION` | Contract version | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `NEXT_ID` | Next entity ID counter | savings_goals, bill_payments, insurance |
@@ -221,6 +222,7 @@ const KEY_rate_lim: Symbol = symbol_short!("rate_lim");  // lowercase - wrong fo
 ## References
 
 - [STORAGE_LAYOUT.md](../STORAGE_LAYOUT.md) - Complete storage layout documentation
+- [RESERVED_STORAGE_KEYS.md](RESERVED_STORAGE_KEYS.md) - Keys reserved for future roadmap features
 - [Soroban Storage Documentation](https://developers.stellar.org/docs/build/smart-contracts/example-contracts/storage)
 - [Soroban Symbol Documentation](https://docs.rs/soroban-sdk/latest/soroban_sdk/struct.Symbol.html)
 

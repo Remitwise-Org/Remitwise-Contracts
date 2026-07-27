@@ -81,3 +81,8 @@ let mut next_due_date = bill.due_date
 | `frequency_days == MAX_FREQUENCY_DAYS` (36_500) | Accepted. |
 | `frequency_days > MAX_FREQUENCY_DAYS` | `InvalidFrequency (4)`. |
 | Payment so late that `parent_due_date + period <= now` | Catch-up loop advances until child is in the future. |
+
+## 6. Related Specifications
+
+- [Invoice Settlement Windows Specification](SETTLEMENT_WINDOWS.md)
+

@@ -2,6 +2,10 @@
 
 This document is for **operators** performing a live contract upgrade using `soroban-cli`. It covers the step-by-step process of preparing the environment, executing the upgrade, verifying the changes, and rolling back if necessary.
 
+Before an operator performs an upgrade, contributors should validate compatibility
+with a prior release snapshot using [Upgrade Testing with a Previous
+Snapshot](UPGRADE_TESTING.md).
+
 ## Prerequisites
 
 Ensure you have the following before starting:

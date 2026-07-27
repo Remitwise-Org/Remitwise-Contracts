@@ -5,7 +5,7 @@ Aggregates financial health data from the remittance_split, savings_goals, bill_
 ## Features
 
 - Generate financial health reports (health score, remittance summary, savings, bills, insurance)
-- Store and retrieve reports per `(user, period_key)`
+- Store and retrieve reports per `(user, period_key)` (see [`docs/PERIOD_KEYS.md`](../docs/PERIOD_KEYS.md) for period key specification)
 - Admin-only archival and cleanup of old reports
 - Storage TTL management (instance: ~30 days, archive: ~180 days)
 

@@ -152,6 +152,12 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             tier: "instance",
         },
         StorageKeyEntry {
+            key: "DataKey::PausedSince",
+            contract: "savings_goals",
+            type_name: "u64",
+            tier: "instance",
+        },
+        StorageKeyEntry {
             key: "DataKey::PausedFunctions",
             contract: "savings_goals",
             type_name: "Map<Symbol, bool>",
@@ -665,6 +671,12 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             key: "DataKey::GlobalPaused",
             contract: "emergency_killswitch",
             type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PausedSince",
+            contract: "emergency_killswitch",
+            type_name: "u64",
             tier: "instance",
         },
         StorageKeyEntry {

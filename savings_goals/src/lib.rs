@@ -1,11 +1,12 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
+    reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
 // Event topics
@@ -148,6 +149,7 @@ pub enum DataKey {
     TagIndex(Address, String),   // Persistent: Vec<u32> (goal ids by owner & canonicalized tag)
     PauseAdmin,                  // Instance: Address
     Paused,                      // Instance: bool
+    PausedSince,                 // Instance: u64
     PausedFunctions,             // Instance: Map<Symbol, bool>
     UnpauseAt,                   // Instance: u64
     UpgradeAdmin,                // Instance: Address
@@ -258,6 +260,7 @@ pub mod pause_functions {
     pub const UNLOCK: Symbol = symbol_short!("unlock");
     pub const ARCHIVE: Symbol = symbol_short!("archive");
     pub const RESTORE: Symbol = symbol_short!("restore");
+    pub const REMOVE_FROM: Symbol = symbol_short!("rem_goal");
 }
 
 #[contracttype]
@@ -289,6 +292,8 @@ pub enum SavingsGoalError {
     /// Time-locks are monotonic while active: they may be extended forward,
     /// but never shortened backward.
     TimeLockShortening = 15,
+    SnapshotNotFound = 16,
+    SnapshotTooOld = 17,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -442,8 +447,19 @@ impl SavingsGoalContract {
             panic!("Unauthorized");
         }
         env.storage().instance().set(&DataKey::Paused, &true);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("paused")), ());
+        env.storage()
+            .instance()
+            .set(&DataKey::PausedSince, &env.ledger().timestamp());
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn unpause(env: Env, caller: Address) {
@@ -460,8 +476,17 @@ impl SavingsGoalContract {
             env.storage().instance().remove(&DataKey::UnpauseAt);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
+        env.storage().instance().remove(&DataKey::PausedSince);
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
@@ -496,6 +521,21 @@ impl SavingsGoalContract {
 
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
+    }
+
+    pub fn get_paused_since(env: Env) -> Option<u64> {
+        if Self::is_paused(env.clone()) {
+            env.storage().instance().get(&DataKey::PausedSince)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_pause_state(env: Env) -> remitwise_common::PauseState {
+        remitwise_common::PauseState {
+            paused: Self::is_paused(env.clone()),
+            paused_since: Self::get_paused_since(env),
+        }
     }
 
     pub fn get_version(env: Env) -> u32 {
@@ -624,6 +664,9 @@ impl SavingsGoalContract {
             pause_admin: Self::get_pause_admin(&env),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("savings"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -656,9 +699,17 @@ impl SavingsGoalContract {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+            .unwrap_or_else(|| panic_with_error!(&env, SavingsGoalError::SnapshotNotFound));
         if snapshot.schema_version != SNAPSHOT_VERSION {
-            panic!("Unsupported snapshot version");
+            panic_with_error!(&env, SavingsGoalError::UnsupportedVersion);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, SavingsGoalError::SnapshotTooOld);
         }
         Self::extend_instance_ttl(&env);
         env.storage()
@@ -1556,6 +1607,9 @@ impl SavingsGoalContract {
 
     /// Returns a deterministic page of goals for one owner using cursor-based pagination.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Pagination Contract (Cursor-Based)
     /// - **Deterministic order**: Goals are ordered by ID ascending (creation order)
     /// - **Cursor semantics**: `cursor` is the ID of the last goal from the previous page.
@@ -1647,6 +1701,9 @@ impl SavingsGoalContract {
     }
 
     /// Returns a deterministic page of active goals matching a given tag for an owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// # Arguments
     /// * `owner`  - whose goals to filter by tag
@@ -1865,6 +1922,9 @@ impl SavingsGoalContract {
     }
 
     /// Returns a deterministic page of archived goals for one owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// @dev Paging order is anchored to the archived owner-goal ID index (ascending goal ID),
     ///      not map iteration order.
@@ -2833,6 +2893,80 @@ impl SavingsGoalContract {
             .unwrap_or_else(|| Vec::new(env));
         ids.push_back(schedule_id);
         env.storage().persistent().set(&key, &ids);
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl SavingsGoalsReversible for SavingsGoalContract {
+    /// Remove `amount` from the specified goal (compensation for `add_to_goal`).
+    ///
+    /// Skips lock/time-lock checks so that compensation can proceed even when
+    /// a goal is locked. Returns `Ok(false)` when the goal's current_amount is
+    /// already zero (idempotent no-op).
+    fn remove_from_goal(
+        env: Env,
+        user: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        Self::require_not_paused(&env, pause_functions::REMOVE_FROM);
+        Self::extend_instance_ttl(&env);
+
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
+            Some(g) => g,
+            None => return Err(ReversibleOpError::NotFound),
+        };
+
+        if goal.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if goal.current_amount == 0 {
+            return Ok(false);
+        }
+
+        let effective = if amount > goal.current_amount {
+            goal.current_amount
+        } else {
+            amount
+        };
+
+        goal.current_amount = goal
+            .current_amount
+            .checked_sub(effective)
+            .ok_or(ReversibleOpError::InvalidState)?;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            INSTANCE_LIFETIME_THRESHOLD,
+            INSTANCE_BUMP_AMOUNT,
+        );
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("funds_rem"),
+            FundsWithdrawnEvent {
+                goal_id,
+                owner: user.clone(),
+                amount: effective,
+                new_total: goal.current_amount,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(true)
     }
 }
 

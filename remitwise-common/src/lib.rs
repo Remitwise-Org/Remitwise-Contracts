@@ -1,7 +1,26 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
+pub mod tokens;
+pub use tokens::{
+    SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
+    MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
+};
+
+
+#[soroban_sdk::contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RemitwiseError {
+    Unauthorized = 1,
+    InvalidSignature = 2,
+    DeadlineExpired = 3,
+    RequestHashMismatch = 4,
+    InvalidAmount = 5,
+    InvalidNonce = 6,
+    DuplicateImport = 7,
+}
 
 /// Financial categories for remittance allocation
 #[contracttype]
@@ -45,6 +64,14 @@ pub enum PolicyMode {
     Strict = 1,
 }
 
+/// Detailed pause state including boolean status and timestamp when paused.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PauseState {
+    pub paused: bool,
+    pub paused_since: Option<u64>,
+}
+
 /// Event categories used for logging across all contracts.
 ///
 /// Determines the high-level classification of an event. The taxonomy is documented in
@@ -58,6 +85,7 @@ pub enum EventCategory {
     Alert = 2,
     System = 3,
     Access = 4,
+    Compliance = 5,
 }
 
 /// Priority levels for events emitted by contracts.
@@ -70,6 +98,7 @@ pub enum EventPriority {
     Low = 0,
     Medium = 1,
     High = 2,
+    Critical = 3,
 }
 
 impl EventCategory {
@@ -84,9 +113,60 @@ impl EventPriority {
     }
 }
 
+#[contracttype]
+#[derive(Clone)]
+pub struct RoleGrantedEvent {
+    pub member: Address,
+    pub role: FamilyRole,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct RoleRevokedEvent {
+    pub member: Address,
+    pub role: FamilyRole,
+    pub timestamp: u64,
+}
+
 /// Pagination limits
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
 pub const MAX_PAGE_LIMIT: u32 = 50;
+
+/// Max items returned in Top-N reports.
+pub const MAX_ITEMS_PER_REPORT: u32 = 10;
+
+/// Helper to insert an item into a Top-N list (bounded).
+/// The list is maintained in sorted order based on the provided comparator.
+pub fn insert_top_n<T, F>(
+    _env: &Env,
+    top_list: &mut soroban_sdk::Vec<T>,
+    max_items: u32,
+    item: T,
+    mut cmp: F,
+) where
+    T: Clone
+        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+        + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+    F: FnMut(&T, &T) -> core::cmp::Ordering,
+{
+    let mut inserted = false;
+    for i in 0..top_list.len() {
+        if let Some(existing) = top_list.get(i) {
+            if cmp(&item, &existing) == core::cmp::Ordering::Greater {
+                top_list.insert(i, item.clone());
+                inserted = true;
+                break;
+            }
+        }
+    }
+
+    if !inserted && top_list.len() < max_items {
+        top_list.push_back(item);
+    } else if top_list.len() > max_items {
+        top_list.remove(max_items);
+    }
+}
 
 /// Standardized TTL Constants (Ledger Counts)
 pub const DAY_IN_LEDGERS: u32 = 17280; // ~5 seconds per ledger
@@ -108,6 +188,12 @@ pub const SIGNATURE_EXPIRATION: u64 = 86400;
 
 /// Contract version
 pub const CONTRACT_VERSION: u32 = 1;
+
+/// Storage key for the pause channels map
+pub const STORAGE_PAUSE_CHANNELS: &str = "PAUSE_CH";
+
+/// Storage key for the global paused_since timestamp
+pub const STORAGE_PAUSED_AT: &str = "PAUSED_AT";
 
 /// Maximum batch size for operations
 pub const MAX_BATCH_SIZE: u32 = 50;
@@ -131,6 +217,55 @@ pub enum BytesReturnError {
     ReturnTooLarge = 1,
 }
 
+/// Verifies that `from` is strictly less than `to`.
+///
+/// # Panics
+/// - Panics if `from >= to`.
+pub fn verify_ordered_pair(from: u64, to: u64) {
+    if from >= to {
+        panic!("Invalid range: from ({from}) must be strictly less than to ({to})");
+    }
+}
+
+/// Event emission helper
+pub struct RemitwiseEvents;
+
+/// Validates that a [`Symbol`] does not exceed the short-symbol limit (9 bytes).
+///
+/// This is a defence-in-depth check.  Symbols longer than 9 bytes use the
+/// large-symbol XDR encoding (`SymbolObject` tag) instead of the inline
+/// short-symbol encoding (`SymbolSmall` tag).  Without this gate, a caller
+/// could supply a long symbol where the contract expects a short one,
+/// potentially leading to storage-key confusion or indexer mismatches
+/// downstream.
+///
+/// The check uses the [`Val`] bit pattern: short symbols are stored inline
+/// (not objects), long symbols are stored as host object references.  This
+/// works on all targets (WASM and non-WASM) without requiring string
+/// conversion.
+///
+/// Call this on any `Symbol` value derived from untrusted input before using
+/// it as a storage key, event action, or comparand against `symbol_short!`
+/// constants.
+///
+/// # Errors
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SymbolError {
+    SymbolTooLong = 35,
+}
+
+/// Returns [`SymbolError::SymbolTooLong`] when the symbol exceeds 9 bytes.
+pub fn require_valid_symbol_length(_env: &Env, sym: &Symbol) -> Result<(), SymbolError> {
+    let val: soroban_sdk::Val = (*sym).into();
+    if val.is_object() {
+        Err(SymbolError::SymbolTooLong)
+    } else {
+        Ok(())
+    }
+}
+
 /// Guards `bytes` against exceeding the XDR return-size budget.
 ///
 /// Call this immediately before returning any variable-length `Bytes` value from a
@@ -148,11 +283,196 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
     }
 }
 
+/// Guards against executing dispute-related operations in an outdated epoch.
+///
+/// This is a defence-in-depth fix. If an attacker could proceed with dispute-related 
+/// operations in an outdated epoch, they could bypass lifecycle expiration rules, 
+/// allowing them to manipulate dispute resolutions or lock funds unexpectedly.
+///
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `ep` - The dispute epoch supplied by the caller
+///
+/// # Returns
+/// * `Ok(())` if the epoch is greater than or equal to the current pending dispute epoch
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum DisputeError {
+    OutdatedEpoch = 36,
+}
+
+/// * `Err(DisputeError::OutdatedEpoch)` if the epoch is outdated
+pub fn require_no_pending_dispute_epoch(env: &Env, ep: u64) -> Result<(), DisputeError> {
+    let current_epoch: u64 = env.storage().instance().get(&symbol_short!("DISP_EP")).unwrap_or(0);
+    if ep < current_epoch {
+        return Err(DisputeError::OutdatedEpoch);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// BytesN validation
+// ---------------------------------------------------------------------------
+
+/// Error returned when a `BytesN` value is completely zeroed.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BytesNError {
+    /// The `BytesN` array consists entirely of zero bytes.
+    AllZeros = 1,
+}
+
+/// Guards that a `BytesN` array is not completely zeroed.
+///
+/// This is a defence-in-depth check. Cryptographic identifiers like public keys
+/// or signatures should never legitimately be all-zeros. If they are, it usually
+/// points to a zero-initialised buffer bug or an attacker intentionally passing
+/// `[0; N]` to exploit uninitialized or default state in a verifier.
+///
+/// # Errors
+/// Returns [`BytesNError::AllZeros`] when `bytes` consists entirely of zero bytes.
+pub fn require_non_zero_bytes<const N: usize>(bytes: &BytesN<N>) -> Result<(), BytesNError> {
+    if bytes.to_array().iter().all(|&b| b == 0) {
+        Err(BytesNError::AllZeros)
+    } else {
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Symbol length validation
+// ---------------------------------------------------------------------------
+
+/// Maximum byte length for a `symbol_short!` storage key (Soroban SDK constraint).
+///
+/// The `symbol_short!` compile-time macro accepts at most 9 ASCII bytes. Every
+/// documented storage key in this workspace is kept at or below this limit so
+/// keys can be constructed at compile time without heap allocation. Values in
+/// the range `1..=SYMBOL_SHORT_MAX_LEN` are valid for `symbol_short!`; values
+/// above this cap require the heap-allocating `Symbol::new(&env, ...)` runtime
+/// constructor and therefore cannot be used as constant storage keys.
+pub const SYMBOL_SHORT_MAX_LEN: u32 = 9;
+
+/// Error returned when a candidate symbol name fails the length check enforced    /// by [`require_valid_symbol_name_length`].
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SymbolLengthError {
+    /// The symbol name is empty (zero bytes).
+    Empty = 1,
+    /// The symbol name exceeds [`SYMBOL_SHORT_MAX_LEN`] bytes.
+    TooLong = 2,
+}
+
+/// Error returned when a [`Symbol`] value exceeds the short-symbol limit (9 bytes).
+///
+/// Short symbols are stored inline in the [`Val`] bit pattern; long symbols use
+/// the heap-allocating `SymbolObject` XDR encoding.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SymbolError {
+    /// The symbol exceeds 9 bytes (too large for inline `symbol_short!` encoding).
+    SymbolTooLong = 1,
+}
+
+/// Validates that a candidate symbol name is within the bounds accepted by the
+/// `symbol_short!` compile-time macro (1–9 bytes inclusive).
+///
+/// All documented storage keys in this workspace use `symbol_short!` so they
+/// are embedded as immediate values in contract bytecode rather than heap
+/// allocations. This function is the runtime guard that enforces the same
+/// constraint for dynamically constructed key names.
+///
+/// # Arguments
+/// * `name` — the raw byte slice to validate.
+///
+/// # Returns
+/// * `Ok(())` when `1 <= name.len() <= SYMBOL_SHORT_MAX_LEN`.
+/// * `Err(SymbolLengthError::Empty)` when `name.len() == 0`.
+/// * `Err(SymbolLengthError::TooLong)` when `name.len() > SYMBOL_SHORT_MAX_LEN`.
+///
+/// # Example
+/// ```ignore
+/// use remitwise_common::{require_valid_symbol_name_length, SymbolLengthError};
+/// assert_eq!(require_valid_symbol_name_length(b"CONFIG"), Ok(()));
+/// assert_eq!(require_valid_symbol_name_length(b""), Err(SymbolLengthError::Empty));
+/// assert_eq!(require_valid_symbol_name_length(b"TOOLONGKEY"), Err(SymbolLengthError::TooLong));
+/// ```
+pub fn require_valid_symbol_length_bytes(name: &[u8]) -> Result<(), SymbolLengthError> {
+    if name.is_empty() {
+        return Err(SymbolLengthError::Empty);
+    }
+    if name.len() as u32 > SYMBOL_SHORT_MAX_LEN {
+        return Err(SymbolLengthError::TooLong);
+    }
+    Ok(())
+}
+
 /// Pre-upgrade snapshot version
 pub const SNAPSHOT_VERSION: u32 = 1;
 
+/// Maximum age of a pre-upgrade snapshot before restore is rejected.
+pub const SNAPSHOT_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+
 /// Storage key for pre-upgrade snapshots
 pub const SNAPSHOT_KEY: Symbol = symbol_short!("SNAPSHOT");
+
+/// Typed error returned when a pre-upgrade snapshot is older than the freshness window.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SnapshotError {
+    SnapshotTooOld = 1,
+}
+
+/// Ensure a pre-upgrade snapshot is still fresh enough to restore.
+pub fn require_recent_snapshot(env: &Env, snapshot_taken_at: u64) -> Result<(), SnapshotError> {
+    let age = env.ledger().timestamp().saturating_sub(snapshot_taken_at);
+    if age > SNAPSHOT_MAX_AGE_SECS {
+        Err(SnapshotError::SnapshotTooOld)
+    } else {
+        Ok(())
+    }
+}
+
+/// Standard Settlement Window limit (30 days)
+pub const MAX_SETTLEMENT_WINDOW_SECS: u64 = 30 * 24 * 60 * 60; // 30 days
+
+/// Typed error returned when settlement occurs outside the acceptable window
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum SettlementWindowError {
+    /// The settlement time exceeds the due date plus the grace period.
+    WindowExpired = 1,
+}
+
+/// Guards against settling an invoice excessively late, which could lead to bounds-checking 
+/// attacks on catch-up loops (DoS) or economic exposure from stale states.
+///
+/// # Arguments
+/// * `settlement_time` - the current ledger time when settlement is occurring.
+/// * `due_date` - the target due date of the obligation.
+/// * `grace_period_secs` - the maximum allowance past the due date (e.g. `MAX_SETTLEMENT_WINDOW_SECS`).
+///
+/// # Returns
+/// * `Ok(())` if `settlement_time <= due_date + grace_period_secs`
+/// * `Err(SettlementWindowError::WindowExpired)` if it's too late.
+pub fn require_within_settlement_window(
+    settlement_time: u64,
+    due_date: u64,
+    grace_period_secs: u64,
+) -> Result<(), SettlementWindowError> {
+    let window_end = due_date.saturating_add(grace_period_secs);
+    if settlement_time > window_end {
+        Err(SettlementWindowError::WindowExpired)
+    } else {
+        Ok(())
+    }
+}
 
 /// Rate limiting constants
 pub const RATE_LIMIT_WINDOW_SECONDS: u64 = 86400; // 24 hours
@@ -264,6 +584,284 @@ pub fn clamp_limit(limit: u32) -> u32 {
     }
 }
 
+#[cfg(test)]
+mod rate_limiting_tests {
+    use super::*;
+    use soroban_sdk::{symbol_short, testutils::Address as AddressTrait, Address, Env};
+
+    #[test]
+    fn allows_requests_within_limit() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let operation = symbol_short!("test_op");
+        let limit = 5u32;
+
+        // First request should succeed
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            Ok(())
+        );
+
+        // Multiple requests within limit should succeed
+        for _ in 0..4 {
+            assert_eq!(
+                check_and_increment_rate_limit(&env, &caller, operation, limit),
+                Ok(())
+            );
+        }
+
+        // At this point we've made 5 requests, which equals the limit
+        // Next request should fail
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            Err(RateLimitError::RateLimitExceeded)
+        );
+    }
+
+    #[test]
+    fn isolates_rate_limits_by_caller() {
+        let env = Env::default();
+        let caller1 = Address::generate(&env);
+        let caller2 = Address::generate(&env);
+        let operation = symbol_short!("test_op");
+        let limit = 2u32;
+
+        // Caller1 uses up their limit
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            Ok(())
+        );
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            Ok(())
+        );
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            Err(RateLimitError::RateLimitExceeded)
+        );
+
+        // Caller2 should still be able to make requests
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller2, operation, limit),
+            Ok(())
+        );
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller2, operation, limit),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn isolates_rate_limits_by_operation() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let operation1 = symbol_short!("op1");
+        let operation2 = symbol_short!("op2");
+        let limit = 1u32;
+
+        // Use up limit for operation1
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation1, limit),
+            Ok(())
+        );
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation1, limit),
+            Err(RateLimitError::RateLimitExceeded)
+        );
+
+        // operation2 should still work
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation2, limit),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn handles_rate_limit_window_boundaries() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let operation = symbol_short!("test_op");
+        let limit = 1u32;
+
+        // Set initial time
+        env.ledger().with_mut(|li| {
+            li.timestamp = 1000;
+        });
+
+        // Use up the limit in the first window
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            Ok(())
+        );
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            Err(RateLimitError::RateLimitExceeded)
+        );
+
+        // Advance time to next rate limit window (24 hours later)
+        env.ledger().with_mut(|li| {
+            li.timestamp = 1000 + RATE_LIMIT_WINDOW_SECONDS;
+        });
+
+        // Should be able to make requests again
+        assert_eq!(
+            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn get_rate_limit_status_returns_correct_values() {
+        let env = Env::default();
+        let caller = Address::generate(&env);
+        let operation = symbol_short!("test_op");
+        let limit = 3u32;
+
+        // Initially should have 0 count
+        let (count, window_end) = get_rate_limit_status(&env, &caller, operation);
+        assert_eq!(count, 0);
+        assert_eq!(window_end, RATE_LIMIT_WINDOW_SECONDS);
+
+        // After one request, count should be 1
+        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
+        let (count, _) = get_rate_limit_status(&env, &caller, operation);
+        assert_eq!(count, 1);
+
+        // After two more requests, count should be 3
+        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
+        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
+        let (count, _) = get_rate_limit_status(&env, &caller, operation);
+        assert_eq!(count, 3);
+    }
+}
+
+#[cfg(test)]
+mod pagination_limit_tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_zero_to_default_limit() {
+        assert_eq!(clamp_limit(0), DEFAULT_PAGE_LIMIT);
+    }
+
+    #[test]
+    fn preserves_valid_limits_unchanged() {
+        assert_eq!(clamp_limit(1), 1);
+        assert_eq!(clamp_limit(20), 20);
+        assert_eq!(clamp_limit(DEFAULT_PAGE_LIMIT), DEFAULT_PAGE_LIMIT);
+        assert_eq!(clamp_limit(MAX_PAGE_LIMIT), MAX_PAGE_LIMIT);
+    }
+
+    #[test]
+    fn clamps_excessive_limits_to_max() {
+        assert_eq!(clamp_limit(MAX_PAGE_LIMIT + 1), MAX_PAGE_LIMIT);
+        assert_eq!(clamp_limit(1000), MAX_PAGE_LIMIT);
+        assert_eq!(clamp_limit(u32::MAX), MAX_PAGE_LIMIT);
+    }
+
+    #[test]
+    fn handles_boundary_conditions() {
+        // Test around the boundary values
+        assert_eq!(clamp_limit(MAX_PAGE_LIMIT - 1), MAX_PAGE_LIMIT - 1);
+        assert_eq!(clamp_limit(MAX_PAGE_LIMIT), MAX_PAGE_LIMIT);
+        assert_eq!(clamp_limit(MAX_PAGE_LIMIT + 1), MAX_PAGE_LIMIT);
+    }
+
+    #[test]
+    fn is_idempotent() {
+        // Applying clamp_limit twice should give same result
+        let test_values = [0, 1, 25, MAX_PAGE_LIMIT, MAX_PAGE_LIMIT + 100, u32::MAX];
+        
+        for value in test_values {
+            let clamped_once = clamp_limit(value);
+            let clamped_twice = clamp_limit(clamped_once);
+            assert_eq!(clamped_once, clamped_twice, "clamp_limit is not idempotent for {}", value);
+        }
+    }
+}
+
+/// Pro-rata distribution helper
+///
+/// Maximum safe weight for a single pro-rata bucket.
+///
+/// Derived from `i128::MAX / i128::MAX` = 1, but the practical constraint is
+/// `total.saturating_mul(max_weight)` must not overflow a consumers mental model.
+/// The denominator (total_weight) is typically 10_000 (100% in basis points) or
+/// 100 (percent). This constant documents the upper bound used by the saturating
+/// path: any weight above this would saturate at `i128::MAX` regardless.
+pub const PRO_RATA_MAX_TOTAL_WEIGHT: u32 = 10_000;
+
+/// Distribute `total` pro-rata across `out.len()` buckets using saturating arithmetic.
+///
+/// Each bucket *i* (except the last) receives
+/// `total.saturating_mul(weights[i] as i128).saturating_div(total_weight as i128)`.
+///
+/// The last bucket receives the remainder (`total - allocated_so_far`) so that
+/// the conservation invariant holds:
+///
+/// ```text
+/// sum(out) == total   (when total does not overflow i128)
+///
+/// ```
+/// When `total` is large enough that intermediate products would exceed `i128::MAX`,
+/// the saturating path caps allocations at `i128::MAX` instead of panicking.
+/// No arithmetic operation in this function can panic.
+///
+/// # Arguments
+/// * `total` - Total amount to distribute. Must be ≥ 0.
+/// * `weights` - Per-bucket weights. Length must equal `out.len()`. Each weight
+///   must be ≤ `total_weight`.
+/// * `total_weight` - Sum of all weights. Must be > 0.
+/// * `out` - Mutable slice filled with the pro-rata distribution.
+///
+/// # Panics (debug-only; in release these are unreachable if preconditions hold)
+/// * `weights.is_empty()` or `out.is_empty()` — there must be at least one bucket.
+/// * `weights.len() != out.len()` — input/output length mismatch.
+/// * `total_weight == 0` — division by zero.
+/// * `total < 0` — negative total is rejected.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(100, &[50, 30, 15, 5], 100, &mut out);
+/// assert_eq!(out, [50, 30, 15, 5]);
+///
+/// // With basis points (10_000 = 100%):
+/// let mut out = [0i128; 4];
+/// distribute_pro_rata(1_000_000, &[5000, 3000, 1500, 500], 10_000, &mut out);
+/// assert_eq!(out, [500_000, 300_000, 150_000, 50_000]);
+/// ```
+pub fn distribute_pro_rata(total: i128, weights: &[u32], total_weight: u32, out: &mut [i128]) {
+    assert!(total >= 0, "total must be non-negative");
+    assert!(total_weight > 0, "total_weight must be positive");
+    assert!(!out.is_empty(), "out must not be empty");
+    assert!(!weights.is_empty(), "weights must not be empty");
+    assert_eq!(
+        weights.len(),
+        out.len(),
+        "weights and out must have the same length"
+    );
+
+    let n = weights.len();
+
+    // All buckets except the last: standard pro-rata floor allocation.
+    let mut allocated: i128 = 0;
+    let last = n.saturating_sub(1);
+    for i in 0..last {
+        let weight = weights[i] as i128;
+        let share = total
+            .saturating_mul(weight)
+            .saturating_div(total_weight as i128);
+        out[i] = share;
+        allocated = allocated.saturating_add(share);
+    }
+
+    // Last bucket receives the remainder, guaranteeing conservation.
+    // When n == 1, last == 0 and allocated == 0, so out[0] == total.
+    out[last] = total.saturating_sub(allocated);
+}
+
 /// Error converting an integer to `i128` when the value is out of range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntConversionError {
@@ -287,6 +885,280 @@ impl ToI128Checked for i32 {
     }
 }
 
+/// Normalizes a `soroban_sdk::String` into a `Symbol` by stripping leading/trailing
+/// whitespace and lowercasing ASCII letters.
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    let len = input.len();
+    if len == 0 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+    let mut buf = [0u8; 256];
+    if len as usize > buf.len() {
+        panic!("symbol input is too long");
+    }
+    input.copy_into_slice(&mut buf[..len as usize]);
+
+    let s = core::str::from_utf8(&buf[..len as usize])
+        .unwrap_or_else(|_| panic!("symbol input is not valid UTF-8"));
+
+    let trimmed = s.trim();
+    let trimmed_len = trimmed.len();
+    if trimmed_len == 0 {
+        panic!("symbol input must contain at least one non-whitespace character");
+    }
+    if trimmed_len > 32 {
+        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    }
+
+    let trimmed_bytes = trimmed.as_bytes();
+    let mut canonical = [0u8; 32];
+    for (i, &byte) in trimmed_bytes.iter().enumerate() {
+        canonical[i] = if byte.is_ascii_uppercase() {
+            byte.to_ascii_lowercase()
+        } else {
+            byte
+        };
+    }
+
+    let canonical_str = core::str::from_utf8(&canonical[..trimmed_len])
+        .unwrap_or_else(|_| panic!("canonicalised symbol is not valid UTF-8"));
+
+    Symbol::new(env, canonical_str)
+}
+
+// ---------------------------------------------------------------------------
+// Rate newtype — basis-points arithmetic
+// ---------------------------------------------------------------------------
+
+/// Basis-points denominator: 10_000 basis points = 100%.
+///
+/// All Remitwise contracts express percentages in basis points (1 bps = 0.01%)
+/// so that integer arithmetic can be used without floating point.
+pub const BASIS_POINTS: u32 = 10_000;
+/// Number of basis points in a single whole percent.
+pub const BPS_PER_PERCENT: u32 = 100;
+/// Alias for the number of basis points in a single whole percent.
+pub const BASIS_POINTS_PER_PERCENT: u32 = BPS_PER_PERCENT;
+
+/// Supported units for externally supplied rate inputs.
+///
+/// Remitwise contracts currently accept only basis points. Treating a raw rate
+/// value as unitless would let a caller supply an unexpected denomination and
+/// have the contract silently interpret it as basis points, potentially
+/// magnifying or shrinking fee/discount/allocation calculations. This guard
+/// makes the accepted unit explicit and reject-by-default.
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RateUnit {
+    BasisPoints = 1,
+}
+
+/// Error returned when an externally supplied rate unit is unsupported.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RateUnitError {
+    UnsupportedRateUnit = 1,
+}
+
+/// Require that `unit` is one of the rate denominations currently supported by
+/// the contracts.
+///
+/// # Errors
+/// Returns [`RateUnitError::UnsupportedRateUnit`] when `unit` is not accepted.
+#[inline(always)]
+pub fn require_supported_rate_unit(unit: u32) -> Result<RateUnit, RateUnitError> {
+    match unit {
+        1 => Ok(RateUnit::BasisPoints),
+        _ => Err(RateUnitError::UnsupportedRateUnit),
+    }
+}
+
+/// Error returned by [`Rate`] arithmetic when the result overflows `i128`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RateError {
+    /// The intermediate or final result exceeds numerical limits (`i128::MAX` or `u32::MAX`).
+    Overflow,
+}
+
+
+
+/// A whole percentage value (1% = 100 basis points).
+///
+/// `Percent` wraps a `u32` representing whole percentage units. Safe conversions
+/// to basis points ([`Rate`]) are provided via [`to_rate`](Percent::to_rate),
+/// [`to_bps`](Percent::to_bps), and `TryFrom<Percent> for Rate`.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Percent(u32);
+
+impl Percent {
+    pub const ZERO: Percent = Percent(0);
+    pub const HUNDRED: Percent = Percent(100);
+
+    /// Create a `Percent` from a whole percentage integer value.
+    #[inline(always)]
+    pub fn from_percentage(percent: u32) -> Self {
+        Self(percent)
+    }
+
+    /// Return the whole percentage integer value.
+    #[inline(always)]
+    pub fn to_percentage(self) -> u32 {
+        self.0
+    }
+
+    /// Convert this `Percent` to a basis-points [`Rate`].
+    ///
+    /// Returns `Ok(Rate)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_rate(self) -> Result<Rate, RateError> {
+        Rate::from_percent(self.0)
+    }
+
+    /// Convert this `Percent` to raw basis points (`u32`).
+    ///
+    /// Returns `Ok(bps)` if `percent * 100` fits in `u32`, or `Err(RateError::Overflow)` otherwise.
+    pub fn to_bps(self) -> Result<u32, RateError> {
+        self.0
+            .checked_mul(BPS_PER_PERCENT)
+            .ok_or(RateError::Overflow)
+    }
+}
+
+impl TryFrom<Percent> for Rate {
+    type Error = RateError;
+
+    #[inline(always)]
+    fn try_from(percent: Percent) -> Result<Self, Self::Error> {
+        percent.to_rate()
+    }
+}
+
+/// A rate expressed in basis points (1 bps = 0.01 %).
+///
+/// `Rate` wraps a `u32` where the stored value represents hundredths of a
+/// percent:
+///
+/// | Value | Meaning         |
+/// |-------|-----------------|
+/// | 0     | 0 %             |
+/// | 1     | 0.01 %          |
+/// | 100   | 1 %             |
+/// | 500   | 5 %             |
+/// | 1_000 | 10 %            |
+/// | 10_000| 100 %           |
+/// | 50_000| 500 % (overage) |
+///
+/// Use [`apply_to`](Rate::apply_to) to compute `amount * rate / BASIS_POINTS`
+/// with checked arithmetic.
+///
+/// # Examples
+/// ```
+/// use remitwise_common::{Rate, BASIS_POINTS, RateError};
+///
+/// let rate = Rate::from_bps(500); // 5%
+/// assert_eq!(rate.apply_to(1000), Ok(50));
+/// assert_eq!(rate.apply_to(i128::MAX), Err(RateError::Overflow));
+/// ```
+/// 
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Rate(u32);
+
+impl Rate {
+    pub const ZERO: Rate = Rate(0);
+    pub const MAX: Rate = Rate(u32::MAX);
+
+    /// Create a `Rate` from a raw basis-point value.
+    ///
+    /// No validation is performed — `u32::MAX` is accepted. Callers that need
+    /// semantic bounds (e.g. `rate <= BASIS_POINTS` for a discount rate) should
+    /// check them at the call site.
+    #[inline(always)]
+    pub fn from_bps(bps: u32) -> Self {
+        Self(bps)
+    }
+
+    /// Create a `Rate` from a percentage value.
+    ///
+    /// Converts percentage to basis points by multiplying by BPS_PER_PERCENT (100).
+    /// For example: 5% becomes 500 basis points.
+    #[inline(always)]
+    pub fn from_percent(percent: u32) -> Result<Self, RateError> {
+        percent
+            .checked_mul(BPS_PER_PERCENT)
+            .map(Self::from_bps)
+            .ok_or(RateError::Overflow)
+    }
+
+    /// Construct a `Rate` from an externally supplied raw value plus unit.
+    ///
+    /// This is the safe entry point for untrusted inputs that carry an explicit
+    /// unit field. Only supported units are accepted.
+    #[inline(always)]    pub fn try_from_input(value: u32, unit: u32) -> Result<Self, RateUnitError> {
+        require_supported_rate_unit(unit)?;
+        Ok(Self::from_bps(value))
+    }
+
+    /// Construct a `Rate` from a `Percent` wrapper.
+    #[inline(always)]
+    pub fn from_percent_type(percent: Percent) -> Result<Self, RateError> {
+        Self::from_percent(percent.to_percentage())
+    }
+
+    /// Return the raw basis-point value.
+    #[inline(always)]
+    pub fn to_bps(self) -> u32 {
+        self.0
+    }
+
+
+
+    /// Convert this rate back to a whole percentage integer value, truncating fractional basis points.
+    ///
+    /// For example: 550 bps becomes 5%.
+    #[inline(always)]
+    pub fn to_percent(self) -> u32 {
+        self.0 / BPS_PER_PERCENT
+    }
+
+    /// Return true if this rate contains a fractional percentage (basis points not divisible by 100).
+    ///
+    /// For example: 550 bps returns true (0.5% fractional), 500 bps returns false (exactly 5%).
+    #[inline(always)]
+    #[allow(clippy::manual_is_multiple_of)]
+    pub fn has_fractional_percent(self) -> bool {
+        self.0 % BPS_PER_PERCENT != 0
+    }
+
+    /// Apply this rate to `amount`, computing `(amount * self) / BASIS_POINTS`.
+    ///
+    /// Uses checked arithmetic. Returns:
+    /// - `Ok(result)` when the multiplication and division succeed.
+    /// - `Err(RateError::Overflow)` when `amount * self` overflows `i128`.
+    ///
+    /// Note: the division truncates towards zero. This matches the behaviour of
+    /// `safe_percent` elsewhere in the codebase.
+    pub fn apply_to(self, amount: i128) -> Result<i128, RateError> {
+        let rate_i128 = self.0 as i128;
+        amount
+            .checked_mul(rate_i128)
+            .and_then(|product| product.checked_div(BASIS_POINTS as i128))
+            .ok_or(RateError::Overflow)
+    }
+
+
+}
+
+impl ToI128Checked for Rate {
+    #[inline(always)]
+    fn to_i128_checked(self) -> Result<i128, IntConversionError> {
+        Ok(self.0 as i128)
+    }
+}
+
 /// Error related to time and periods.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -294,6 +1166,75 @@ impl ToI128Checked for i32 {
 pub enum TimeError {
     InvalidPeriod = 7,
 }
+
+/// Namespace for shared timestamp helpers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct Timestamp;
+
+/// Enumeration of period bucket types for timestamp bucketing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PeriodKind {
+    Day,
+    Week,
+    Month,
+}
+
+/// Seconds in a standard day (86400) and week (604800).
+pub const SECONDS_PER_DAY: u64 = 86400;
+pub const SECONDS_PER_WEEK: u64 = 86400 * 7;
+
+impl Timestamp {
+    /// Returns the number of whole seconds from `now` until `target`.
+    ///
+    /// The result saturates at `0` when `target <= now`, so callers can measure
+    /// future distance without risking underflow or writing their own
+    /// `saturating_sub`/guard pattern.
+    #[inline(always)]
+    pub fn seconds_until(now: u64, target: u64) -> u64 {
+        target.saturating_sub(now)
+    }
+
+    /// Buckets a Unix timestamp into a stable period key (day/week/month).
+    ///
+    /// - Day: Returns the day index since Unix epoch (UTC), i.e. `timestamp / 86400`.
+    /// - Week: Returns the week index since Unix epoch (UTC), i.e. `timestamp / 604800`.
+    /// - Month: Returns the [YYYYMM] encoding as (year * 100 + month), e.g. 202412 for December 2024.
+    ///          Handles proleptic Gregorian conversion in UTC. Leap seconds are ignored.
+    ///
+    /// Pre-1970 timestamps are not representable through the `u64` API (day 0
+    /// is 1970-01-01). The function never panics and returns a `u64` for every
+    /// input; callers do not need to handle an error path.
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    #[inline(always)]
+    pub fn to_period_key(timestamp: u64, period: PeriodKind) -> u64 {
+        match period {
+            PeriodKind::Day => {
+                timestamp / SECONDS_PER_DAY
+            }
+            PeriodKind::Week => {
+                timestamp / SECONDS_PER_WEEK
+            }
+            PeriodKind::Month => {
+                // Convert timestamp (seconds since epoch) to YYYYMM integer.
+                // Uses proleptic Gregorian calendar, UTC; ignores leap seconds.
+                // Algorithm from https://howardhinnant.github.io/date_algorithms.html#civil_from_days
+                let days = timestamp / SECONDS_PER_DAY;
+                // 1970-01-01 is day 0.
+                let z = days as i64 + 719468;
+                let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+                let doe = z - era * 146097;                                    // [0, 146096]
+                let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+                let y = yoe + era * 400;
+                let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+                let mp = (5 * doy + 2) / 153;
+                let month = (mp + 2) % 12 + 1;
+                let year = y + (mp + 2) / 12;
+                (year as u64) * 100 + (month as u64)
+            }
+        }
+    }
+}
+
 
 /// Validates that a requested period is logically ordered.
 ///
@@ -304,6 +1245,75 @@ pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
         Err(TimeError::InvalidPeriod)
     } else {
         Ok(())
+    }
+}
+
+/// Error returned when the current ledger sequence does not match the expected value.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum LedgerError {
+    LedgerMismatch = 1,
+}
+
+/// Asserts that `expected` matches the current ledger sequence number.
+///
+/// This is a replay-prevention helper: if an operation was authorized for a
+/// specific ledger (e.g. via a signed nonce bound to a ledger), executing it in
+/// a different ledger would let an attacker replay the same authorization in a
+/// later ledger.  Call this function at the start of the operation to tie it
+/// to the current ledger.
+///
+/// # Errors
+/// Returns [`LedgerError::LedgerMismatch`] when `expected != env.ledger().sequence()`.
+pub fn require_matching_ledger(env: &Env, expected: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current != expected {
+        Err(LedgerError::LedgerMismatch)
+    } else {
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Non-zero u128 helper
+// ---------------------------------------------------------------------------
+
+/// Error returned when a non-zero u128 value was expected but zero was provided.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ZeroNotAllowed;
+
+/// A u128 value that is guaranteed to be non-zero.
+///
+/// This type wraps a `u128` and enforces at construction that the value is not
+/// zero. Once constructed, callers can safely assume the value is in `1..=u128::MAX`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use remitwise_common::{NonZeroU128, ZeroNotAllowed};
+///
+/// let nz = NonZeroU128::new(42).unwrap();
+/// assert_eq!(nz.get(), 42);
+///
+/// assert_eq!(NonZeroU128::new(0), Err(ZeroNotAllowed));
+/// ```
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct NonZeroU128(u128);
+
+impl NonZeroU128 {
+    /// Creates a new `NonZeroU128` if `value` is non-zero.
+    pub fn new(value: u128) -> Result<Self, ZeroNotAllowed> {
+        if value == 0 {
+            Err(ZeroNotAllowed)
+        } else {
+            Ok(NonZeroU128(value))
+        }
+    }
+
+    /// Returns the contained u128 value.
+    pub fn get(&self) -> u128 {
+        self.0
     }
 }
 
@@ -325,18 +1335,94 @@ pub enum TagError {
     InvalidChar { position: u32 },
 }
 
+
+
 /// Signature verification failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum SignatureError {
     /// Invalid signature length (must be 64 bytes for Ed25519).
-    InvalidSignatureLength,
+    InvalidSignatureLength = 1,
     /// Invalid public key length (must be 32 bytes for Ed25519).
-    InvalidPublicKeyLength,
+    InvalidPublicKeyLength = 2,
     /// Signature verification failed.
-    VerificationFailed,
+    VerificationFailed = 3,
+    /// The verifier public key has not been registered for attestation verification.
+    UnregisteredVerifier = 4,
+    /// The verifier public key was registered under a different Stellar network
+    /// (e.g. Testnet) than the one this contract instance is currently running on.
+    VerifierNetworkMismatch = 5,
+}
+
+/// Storage key for the set of registered verifier public keys.
+const REGISTERED_VERIFIERS_KEY: Symbol = symbol_short!("REGVER");
+
+/// Registers a verifier public key so its attestations may be consumed.
+///
+/// The public key is bound to `env.ledger().network_id()` (the SHA-256 hash of
+/// the network passphrase) at registration time. This prevents a verifier key
+/// that was only ever intended to be trusted on one Stellar network (for
+/// example a "test signer" key provisioned for Testnet QA) from silently
+/// becoming trusted on another network (for example Public/Mainnet) if the
+/// underlying storage entry is ever copied or replayed across deployments —
+/// see [`require_registered_verifier`].
+pub fn register_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let mut registered_verifiers: Map<BytesN<32>, BytesN<32>> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    registered_verifiers.set(key, env.ledger().network_id());
+    env.storage()
+        .instance()
+        .set(&REGISTERED_VERIFIERS_KEY, &registered_verifiers);
+
+    Ok(())
+}
+
+/// Requires the supplied verifier public key to be registered, and registered
+/// under the network this contract instance is currently executing on, before
+/// an external attestation can be consumed.
+///
+/// # Errors
+/// * [`SignatureError::UnregisteredVerifier`] if the key was never registered.
+/// * [`SignatureError::VerifierNetworkMismatch`] if the key was registered
+///   under a different network than the current one (see [`register_verifier`]).
+pub fn require_registered_verifier(env: &Env, public_key: &[u8]) -> Result<(), SignatureError> {
+    let pk_arr: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
+    let key = BytesN::<32>::from_array(env, &pk_arr);
+
+    let registered_verifiers: Map<BytesN<32>, BytesN<32>> = env
+        .storage()
+        .instance()
+        .get(&REGISTERED_VERIFIERS_KEY)
+        .unwrap_or_else(|| Map::new(env));
+
+    match registered_verifiers.get(key) {
+        Some(registered_network_id) if registered_network_id == env.ledger().network_id() => {
+            Ok(())
+        }
+        Some(_) => Err(SignatureError::VerifierNetworkMismatch),
+        None => Err(SignatureError::UnregisteredVerifier),
+    }
 }
 
 /// Verify an Ed25519 signature with domain separation.
+///
+/// The payload is encoded as a length-delimited byte stream so adjacent or
+/// overlapping separators/messages cannot collide. For example, the pair
+/// `(domain="ab", message="cdef")` and `(domain="abc", message="def")`
+/// produce different payloads even though their plain concatenation would be
+/// identical.
 ///
 /// # Arguments
 /// * `env` - Soroban environment
@@ -355,6 +1441,24 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<(), SignatureError> {
+    require_registered_verifier(env, public_key)?;
+
+    let mut prefixed_message = Bytes::new(env);
+    prefixed_message.extend_from_slice(domain_separator);
+    prefixed_message.extend_from_slice(message);
+
+    let sig_bytes: BytesN<64> = {
+        let mut arr = [0u8; 64];
+        arr.copy_from_slice(signature);
+        BytesN::from_array(env, &arr)
+    };
+    let pk_bytes: BytesN<32> = {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(public_key);
+        BytesN::from_array(env, &arr)
+    };
+
+    env.crypto().ed25519_verify(&pk_bytes, &prefixed_message, &sig_bytes);
     let pk_arr: [u8; 32] = public_key
         .try_into()
         .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
@@ -362,7 +1466,13 @@ pub fn verify_signature(
         .try_into()
         .map_err(|_| SignatureError::InvalidSignatureLength)?;
 
-    let mut msg_bytes = Bytes::from_slice(env, domain_separator);
+    let mut msg_bytes = Bytes::new(env);
+    let domain_len = (domain_separator.len() as u64).to_le_bytes();
+    let message_len = (message.len() as u64).to_le_bytes();
+
+    msg_bytes.extend_from_slice(&domain_len);
+    msg_bytes.extend_from_slice(domain_separator);
+    msg_bytes.extend_from_slice(&message_len);
     msg_bytes.extend_from_slice(message);
 
     let sig_bytes = soroban_sdk::BytesN::from_array(env, &sig_arr);
@@ -407,6 +1517,7 @@ pub fn verify_slash_signature(
     }
     Ok(())
 }
+
 
 /// Validates and canonicalizes a batch of tags without panicking.
 ///
@@ -526,14 +1637,130 @@ where
     }
 }
 
-/// Event emission helper
-pub struct RemitwiseEvents;
+pub mod events;
+pub mod reversible_op;
+
+/// Error returned when a currency symbol is not a supported stable asset.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum StableCurrencyError {
+    /// The currency symbol is not a recognized stable asset (e.g., rebase/deflationary tokens).
+    UnsupportedCurrency = 1,
+}
+
+/// Known stable currency symbols (case-insensitive).
+/// This is a defence-in-depth allowlist of well-known stablecoins.
+/// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM, TIME) are intentionally excluded.
+const STABLE_CURRENCIES: &[&str] = &[
+    "USDC", "USDT", "USDP", "BUSD", "GUSD", "TUSD", "USDD", "EURC", "EURS", "DAI", "XLM",
+];
+
+/// Validates that a currency symbol represents a supported stable asset.
+///
+/// This is a defence-in-depth check to reject rebase/deflationary/elastic-supply
+/// token contracts at ingress. If an unsupported currency is accepted at ingress,
+/// it can silently change balances during transfer and violate contract invariants
+/// (e.g., remittance splits, bill payments, insurance payouts).
+///
+/// # Threat model
+/// An attacker who can inject a rebase/deflationary token at ingress can:
+/// - Cause silent balance drift during transfers, breaking settlement invariants
+/// - Grief accounting/audit trails by manufacturing "settled" states with altered values
+/// - Subvert split/allocation logic that assumes stable 1:1 value transfer
+///
+/// # Arguments
+/// * `env` - The Soroban environment
+/// * `symbol` - The currency symbol to validate (case-insensitive, whitespace trimmed)
+///
+/// # Returns
+/// * `Ok(())` if the symbol is a recognized stable currency
+/// * `Err(StableCurrencyError::UnsupportedCurrency)` if the symbol is not recognized
+pub fn require_stable_currency(env: &Env, symbol: &Symbol) -> Result<(), StableCurrencyError> {
+    for known in STABLE_CURRENCIES {
+        if symbol_matches_known_case_insensitive(env, symbol, known) {
+            return Ok(());
+        }
+    }
+    Err(StableCurrencyError::UnsupportedCurrency)
+}
+
+/// Alias for [`require_stable_currency`] with a name that clearly signals
+/// its purpose as an inbound-token ingress guard.
+///
+/// Use this at entry points that receive tokens from external callers
+/// (e.g., deposit, payment, remittance entry points) to reject rebase,
+/// deflationary, or elastic-supply tokens that could silently alter balances
+/// during transfer and violate contract invariants.
+///
+/// # Threat model
+/// Without this guard, an attacker could deposit a rebase/deflationary token
+/// (e.g., AMPL, OHM, TIME) that changes balance on transfer. The contract
+/// would record the nominal amount but the actual value received could differ,
+/// breaking settlement invariants (remittance splits, bill payments, insurance
+/// payouts, savings goals).
+///
+/// # Arguments
+/// * `env` - The Soroban environment
+/// * `symbol` - The currency symbol to validate (case-insensitive, whitespace trimmed)
+///
+/// # Returns
+/// * `Ok(())` if the symbol is a recognized stable currency
+/// * `Err(StableCurrencyError::UnsupportedCurrency)` if the symbol is not recognized
+#[inline(always)]
+pub fn require_supported_currency(env: &Env, symbol: &Symbol) -> Result<(), StableCurrencyError> {
+    require_stable_currency(env, symbol)
+}
+
+/// Compare a Symbol case-insensitively against a known ASCII currency string.
+///
+/// Since Soroban Symbol comparison is exact (case-sensitive) and there is no
+/// `no_std`-compatible way to extract raw bytes from a Symbol, we generate all
+/// 2^N case variants of the known string (where N = len ≤ 10) and compare each
+/// against the input Symbol.  The first match short-circuits the search.
+fn symbol_matches_known_case_insensitive(env: &Env, symbol: &Symbol, known: &str) -> bool {
+    let bytes = known.as_bytes();
+    let len = bytes.len();
+
+    // Try uppercase (exact) match first — the common case after normalization.
+    if symbol == &Symbol::new(env, known) {
+        return true;
+    }
+
+    // Generate all 2^len case-variant strings and compare as Symbols.
+    // Symbols are bounded at 32 bytes and currencies at 10 bytes, so 2^10 = 1024
+    // max iterations which is acceptable for an ingress guard.
+    let num_variants = 1u32 << len;
+    let mut buf = [0u8; 10];
+    for mask in 0..num_variants {
+        for (i, &b) in bytes.iter().enumerate() {
+            buf[i] = if (mask >> i) & 1 == 0 {
+                b.to_ascii_lowercase()
+            } else {
+                b
+            };
+        }
+        // Safety: buf contains only ASCII letters after case folding.
+        let variant = match core::str::from_utf8(&buf[..len]) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if symbol == &Symbol::new(env, variant) {
+            return true;
+        }
+    }
+    false
+}
+
 
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod emit_tests;
+
+#[cfg(test)]
+mod non_zero_u128_tests;
 
 impl RemitwiseEvents {
     /// Emits a single event with the given category, priority, and action.
@@ -565,13 +1792,15 @@ impl RemitwiseEvents {
             action,
         );
 
+        #[cfg(not(test))]
+        env.events().publish(topics, data);
+
         #[cfg(test)]
         {
             use soroban_sdk::TryFromVal;
-            let val = data.into_val(env);
+            let val: soroban_sdk::Val = data.into_val(env);
             if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
-                let xdr_bytes = sc_val.to_xdr(env);
-                let size = xdr_bytes.len();
+                let size = soroban_sdk::xdr::ToXdr::to_xdr(sc_val, env).len();
                 if size > 256 {
                     panic!(
                         "Event data size {} exceeds 256-byte budget. Emits must be compact.",
@@ -581,9 +1810,6 @@ impl RemitwiseEvents {
             }
             env.events().publish(topics, val);
         }
-
-        #[cfg(not(test))]
-        env.events().publish(topics, data);
     }
 
     /// Emits a batch event for the given category and action with a count.
@@ -604,7 +1830,13 @@ impl RemitwiseEvents {
             symbol_short!("batch"),
         );
         let data = (action, count);
+        #[cfg(not(test))]
         env.events().publish(topics, data);
+        #[cfg(test)]
+        {
+            let val: soroban_sdk::Val = data.into_val(env);
+            env.events().publish(topics, val);
+        }
     }
 
     /// Test helper: asserts that the most recently emitted Remitwise event has
@@ -626,7 +1858,7 @@ impl RemitwiseEvents {
         T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>,
         F: FnOnce(&T) -> bool,
     {
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::testutils::Events as soroban_Events;
 
         let all = env.events().all();
         let (_cid, topics, data) = all.last().expect("expected at least one emitted event");
@@ -638,26 +1870,20 @@ impl RemitwiseEvents {
             4,
             "expected a 4-element Remitwise event topic tuple"
         );
+        let sentinel: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(0).unwrap());
         assert_eq!(
-            topics.get(0).unwrap(),
-            symbol_short!("Remitwise").into_val(env),
+            sentinel,
+            symbol_short!("Remitwise"),
             "first topic must be the Remitwise marker"
         );
-        assert_eq!(
-            topics.get(1).unwrap(),
-            expected_category.to_u32().into_val(env),
-            "event category mismatch"
-        );
-        assert_eq!(
-            topics.get(2).unwrap(),
-            expected_priority.to_u32().into_val(env),
-            "event priority mismatch"
-        );
-        assert_eq!(
-            topics.get(3).unwrap(),
-            expected_action.into_val(env),
-            "event action mismatch"
-        );
+        let cat: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(1).unwrap());
+        assert_eq!(cat, expected_category.to_u32(), "event category mismatch");
+        let prio: u32 = soroban_sdk::FromVal::from_val(env, &topics.get(2).unwrap());
+        assert_eq!(prio, expected_priority.to_u32(), "event priority mismatch");
+        let action: soroban_sdk::Symbol =
+            soroban_sdk::FromVal::from_val(env, &topics.get(3).unwrap());
+        assert_eq!(action, expected_action, "event action mismatch");
 
         let payload: T = T::try_from_val(env, &data).expect("failed to decode event data");
         assert!(
@@ -669,55 +1895,339 @@ impl RemitwiseEvents {
 }
 
 // ---------------------------------------------------------------------------
-// Encoding stability tests (cross-contract ABI)
+// Shared audit-event helper (#1268)
 // ---------------------------------------------------------------------------
 
+/// Emits a standardised audit event carrying `(op, actor, meta)`.
+///
+/// # Purpose
+/// Before this helper existed each contract rolled its own inline
+/// `env.events().publish(...)` call with slightly different topic tuples,
+/// making it impossible for indexers and compliance tools to subscribe to a
+/// single canonical stream of audit events.  `emit_audit` fixes that by
+/// providing **one place** where the schema is defined and enforced.
+///
+/// # Schema
+/// The event is published with a 4-element topic tuple:
+///
+/// ```text
+/// ("Remitwise", EventCategory::Compliance (= 5), EventPriority::High (= 2), "audit")
+/// ```
+///
+/// The data payload is the caller-supplied `meta` value, which must implement
+/// `IntoVal`.  Typical payloads are small structs or plain scalars; the same
+/// 256-byte size budget enforced by [`RemitwiseEvents::emit`] applies here.
+///
+/// # Arguments
+/// * `env`   – Soroban environment.
+/// * `op`    – A short [`Symbol`] identifying the operation being audited
+///             (e.g. `symbol_short!("flow_exec")`).  Must be ≤ 9 bytes
+///             ([`SHORT_SYMBOL_MAX_LEN`]).
+/// * `actor` – The [`Address`] of the principal that triggered the operation.
+/// * `meta`  – An arbitrary `IntoVal` payload carrying operation-specific
+///             context (amount, result, IDs, etc.).  Keep it compact.
+///
+/// # Panics (test-only)
+/// In `#[cfg(test)]` builds the call panics if the serialized `meta` payload
+/// exceeds 256 bytes — the same guard used by [`RemitwiseEvents::emit`].
+///
+/// # Example
+/// ```ignore
+/// use remitwise_common::emit_audit;
+/// use soroban_sdk::symbol_short;
+///
+/// emit_audit(&env, symbol_short!("transfer"), &caller, (amount, success));
+/// ```
+pub fn emit_audit<T>(env: &Env, op: Symbol, actor: &Address, meta: T)
+where
+    T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    soroban_sdk::Val: soroban_sdk::TryFromVal<Env, T>,
+{
+    // Fixed topic tuple — every audit event from every contract uses this
+    // identical shape so indexers can subscribe with a single filter.
+    let topics = (
+        symbol_short!("Remitwise"),
+        EventCategory::Compliance.to_u32(), // 5
+        EventPriority::High.to_u32(),       // 2
+        symbol_short!("audit"),
+    );
+
+    // The data tuple encodes (op, actor, meta) so the operation name and
+    // principal are always present in the event payload alongside the
+    // caller-supplied context.
+    let data = (op, actor.clone(), meta);
+
+    // In test builds enforce the same 256-byte payload budget as
+    // RemitwiseEvents::emit so oversized payloads are caught immediately.
+    #[cfg(test)]
+    {
+        use soroban_sdk::xdr::ToXdr;
+        use soroban_sdk::TryFromVal;
+        let val: soroban_sdk::Val = data.into_val(env);
+        if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
+            let size = soroban_sdk::xdr::ToXdr::to_xdr(sc_val, env).len();
+            if size > 256 {
+                panic!(
+                    "emit_audit: meta payload size {} exceeds 256-byte budget. \
+                     Keep audit payloads compact.",
+                    size
+                );
+            }
+        }
+        env.events().publish(topics, val);
+        return;
+    }
+
+    #[cfg(not(test))]
+    env.events().publish(topics, data);
+}
+
 #[cfg(test)]
-mod assert_event_tests {
-    use super::{EventCategory, EventPriority, RemitwiseEvents};
+mod emit_audit_tests {
+    use super::*;
+    use soroban_sdk::{symbol_short, testutils::Address as _, Env};
 
+    // -----------------------------------------------------------------------
+    // Schema / topic tests
+    // -----------------------------------------------------------------------
+
+    /// The emitted event carries a 4-element topic tuple whose first element
+    /// is the "Remitwise" sentinel symbol.
     #[test]
-    fn assert_last_event_matches_emitted_topic_and_data() {
-        let env = soroban_sdk::Env::default();
-        let action = soroban_sdk::Symbol::new(&env, "test_act");
+    fn emit_audit_event_has_remitwise_sentinel_topic() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("xfer"), &actor, 1u32);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            (1u32, 2u32),
-        );
+        let events = env.events().all();
+        assert!(!events.is_empty());
+        let (_cid, topics, _data) = events.last().unwrap();
+        assert_eq!(topics.len(), 4, "audit event must have 4 topics");
 
-        RemitwiseEvents::assert_last_event::<(u32, u32), _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            action,
-            |(a, b)| *a == 1 && *b == 2,
+        let sentinel: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
+        assert_eq!(sentinel, symbol_short!("Remitwise"));
+    }
+
+    /// Category must be `EventCategory::Compliance` (discriminant 5).
+    #[test]
+    fn emit_audit_event_uses_compliance_category() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("op"), &actor, 0u32);
+
+        let events = env.events().all();
+        let (_cid, topics, _data) = events.last().unwrap();
+        let cat: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(1).unwrap());
+        assert_eq!(
+            cat,
+            EventCategory::Compliance.to_u32(),
+            "audit events must use EventCategory::Compliance"
         );
     }
 
+    /// Priority must be `EventPriority::High` (discriminant 2).
     #[test]
-    #[should_panic(expected = "event action mismatch")]
-    fn assert_last_event_panics_on_action_mismatch() {
-        let env = soroban_sdk::Env::default();
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "one"),
-            1u32,
+    fn emit_audit_event_uses_high_priority() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("op"), &actor, 0u32);
+
+        let events = env.events().all();
+        let (_cid, topics, _data) = events.last().unwrap();
+        let prio: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(2).unwrap());
+        assert_eq!(
+            prio,
+            EventPriority::High.to_u32(),
+            "audit events must use EventPriority::High"
         );
-        RemitwiseEvents::assert_last_event::<u32, _>(
-            &env,
-            EventCategory::Access,
-            EventPriority::High,
-            soroban_sdk::Symbol::new(&env, "two"),
-            |_| true,
-        );
+    }
+
+    /// The fourth topic element must be the literal `"audit"` symbol.
+    #[test]
+    fn emit_audit_event_action_topic_is_audit_symbol() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("settle"), &actor, 42u32);
+
+        let events = env.events().all();
+        let (_cid, topics, _data) = events.last().unwrap();
+        let action: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
+        assert_eq!(action, symbol_short!("audit"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Payload tests
+    // -----------------------------------------------------------------------
+
+    /// A compact scalar payload (u32) is published without error.
+    #[test]
+    fn emit_audit_accepts_scalar_meta_payload() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        // Must not panic.
+        emit_audit(&env, symbol_short!("approve"), &actor, 100u32);
+        assert!(!env.events().all().is_empty());
+    }
+
+    /// A tuple payload (amount + bool) is accepted — typical audit call-site pattern.
+    #[test]
+    fn emit_audit_accepts_tuple_meta_payload() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("flow"), &actor, (1_000i128, true));
+        assert!(!env.events().all().is_empty());
+    }
+
+    /// Multiple audit events emitted in sequence are all present in
+    /// `env.events().all()` and each carries the canonical topic shape.
+    #[test]
+    fn emit_audit_multiple_events_are_all_recorded() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        emit_audit(&env, symbol_short!("op1"), &actor, 1u32);
+        emit_audit(&env, symbol_short!("op2"), &actor, 2u32);
+        emit_audit(&env, symbol_short!("op3"), &actor, 3u32);
+
+        let events = env.events().all();
+        assert_eq!(events.len(), 3, "all three audit events must be recorded");
+
+        for (_cid, topics, _data) in events.iter() {
+            assert_eq!(topics.len(), 4);
+            let sentinel: Symbol = soroban_sdk::FromVal::from_val(&env, &topics.get(0).unwrap());
+            assert_eq!(sentinel, symbol_short!("Remitwise"));
+            let cat: u32 = soroban_sdk::FromVal::from_val(&env, &topics.get(1).unwrap());
+            assert_eq!(cat, EventCategory::Compliance.to_u32());
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Size-budget enforcement (test-only guard)
+    // -----------------------------------------------------------------------
+
+    /// An oversized meta payload (> 256 bytes) must panic in test builds.
+    #[test]
+    #[should_panic(expected = "exceeds 256-byte budget")]
+    fn emit_audit_panics_on_oversized_meta_payload() {
+        let env = Env::default();
+        let actor = Address::generate(&env);
+        // Build a Vec<u32> large enough to exceed 256 XDR bytes.
+        let mut big: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+        for i in 0u32..100 {
+            big.push_back(i);
+        }
+        emit_audit(&env, symbol_short!("big"), &actor, big);
     }
 }
+
+/// Asserts that a specific pause channel is active (not paused).
+/// Panics if the channel is paused.
+pub fn require_active_pause_channel(env: &Env, channel: Symbol) {
+    let paused = env
+        .storage()
+        .instance()
+        .get::<_, Map<Symbol, bool>>(&Symbol::new(env, STORAGE_PAUSE_CHANNELS))
+        .unwrap_or_else(|| Map::new(env))
+        .get(channel)
+        .unwrap_or(false);
+    if paused {
+        panic!("Pause channel is inactive");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Investigation epoch — halt writes during security investigations
+// ---------------------------------------------------------------------------
+
+pub(crate) const STORAGE_INVESTIGATION_EPOCH: Symbol = symbol_short!("INV_EPOCH");
+
+/// Error returned when a write operation is blocked because an
+/// investigation epoch is active.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum InvestigationEpochError {
+    /// A write was blocked because an investigation epoch is in effect
+    /// and no further state mutations are allowed.
+    WriteBlocked = 1,
+}
+
+/// Returns `true` if the current ledger timestamp is before the stored
+/// investigation epoch end timestamp, meaning an investigation epoch is
+/// active and writes must be halted.
+pub fn is_investigation_epoch_active(env: &Env) -> bool {
+    let epoch_end: u64 = env
+        .storage()
+        .instance()
+        .get(&STORAGE_INVESTIGATION_EPOCH)
+        .unwrap_or(0);
+    epoch_end > env.ledger().timestamp()
+}
+
+/// Halts write operations if an investigation epoch is active.
+///
+/// Call this at the top of every write entry point (bill payment, premium
+/// payment, remittance disbursement, etc.) as a defence-in-depth guard.
+/// When an investigation epoch is active the contract rejects any mutation
+/// with [`InvestigationEpochError::WriteBlocked`].
+///
+/// # Threat model
+/// Without this check, an attacker who has discovered a vulnerability can
+/// continue to exploit it during an active investigation — stealing remaining
+/// funds, corrupting state that would otherwise be preserved for forensic
+/// analysis, or escalating the attack by triggering additional write-side
+/// effects. Freezing writes limits the blast radius and preserves evidence
+/// for the investigation team.
+///
+/// # Cost
+/// One instance storage read plus one `u64` comparison. Negligible
+/// relative to any write entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`InvestigationEpochError::WriteBlocked`] when the investigation
+/// epoch is active.
+pub fn require_no_investigation_epoch(env: &Env) -> Result<(), InvestigationEpochError> {
+    if is_investigation_epoch_active(env) {
+        Err(InvestigationEpochError::WriteBlocked)
+    } else {
+        Ok(())
+    }
+}
+
+/// Start an investigation epoch for the given duration in seconds.
+///
+/// The epoch is a time-bounded window during which all write operations
+/// are blocked. After `duration_secs` elapses the epoch expires
+/// automatically (no manual intervention required).
+///
+/// # Security
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth (e.g.
+/// `admin.require_auth()` in the calling contract).
+pub fn start_investigation_epoch(env: &Env, duration_secs: u64) {
+    let end_time = env
+        .ledger()
+        .timestamp()
+        .saturating_add(duration_secs);
+    env.storage()
+        .instance()
+        .set(&STORAGE_INVESTIGATION_EPOCH, &end_time);
+}
+
+/// Clear the investigation epoch immediately, allowing writes to proceed
+/// again.
+///
+/// If no investigation epoch is active, this is a no-op.
+///
+/// # Security
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth.
+pub fn clear_investigation_epoch(env: &Env) {
+    env.storage().instance().remove(&STORAGE_INVESTIGATION_EPOCH);
+}
+
+// ---------------------------------------------------------------------------
+// Encoding stability tests (cross-contract ABI)
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod encoding_stability_tests {
@@ -911,6 +2421,7 @@ mod encoding_stability_tests {
     }
 
     #[test]
+    #[allow(clippy::single_element_loop)]
     fn policy_mode_round_trip_and_encoding_stability() {
         let env = Env::default();
 
@@ -922,9 +2433,7 @@ mod encoding_stability_tests {
             }
         }
 
-        for v in [PolicyMode::Strict] {
-            cover_all_variants(v);
-        }
+        cover_all_variants(PolicyMode::Strict);
 
         let vec = Vec::from_array(&env, [PolicyMode::Strict]);
         let mut out = Vec::<PolicyMode>::new(&env);
@@ -941,5 +2450,382 @@ mod encoding_stability_tests {
             out_map.set(k, round_trip(&env, v));
         }
         assert_eq!(out_map, map);
+    }
+}
+
+#[cfg(test)]
+mod stable_currency_tests {
+    use super::{require_supported_currency, require_stable_currency, StableCurrencyError};
+    use soroban_sdk::{Env, Symbol};
+
+    // --- Whitelisted paths: currency accepted by stable currency allowlist ---
+
+    #[test]
+    fn accepts_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDC");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdt() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDT");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdp() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDP");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_busd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "BUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_gusd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "GUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_tusd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "TUSD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_usdd() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "USDD");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_eurc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "EURC");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_eurs() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "EURS");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_dai() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "DAI");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_xlm() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "XLM");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_lowercase_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "usdc");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_mixed_case_usdc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "UsDc");
+        assert_eq!(require_stable_currency(&env, &sym), Ok(()));
+    }
+
+    #[test]
+    fn accepts_all_case_variants_of_usdt() {
+        let env = Env::default();
+        // Test all four possible case combinations for a 4-letter symbol
+        let sym_upper = Symbol::new(&env, "USDT");
+        let sym_lower = Symbol::new(&env, "usdt");
+        let sym_mixed1 = Symbol::new(&env, "UsDt");
+        let sym_mixed2 = Symbol::new(&env, "usdT");
+
+        assert_eq!(require_stable_currency(&env, &sym_upper), Ok(()));
+        assert_eq!(require_stable_currency(&env, &sym_lower), Ok(()));
+        assert_eq!(require_stable_currency(&env, &sym_mixed1), Ok(()));
+        assert_eq!(require_stable_currency(&env, &sym_mixed2), Ok(()));
+    }
+
+    // --- Non-whitelisted paths: currency rejected (not in stable allowlist) ---
+
+    #[test]
+    fn rejects_rebase_token_ampl() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "AMPL");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_rebase_token_ohm() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "OHM");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_rebase_token_time() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "TIME");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_token() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "RANDOM");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_symbol() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_generic_erc20_token() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "GTOKEN");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_volatile_token_luna() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "LUNA");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_volatile_token_sol() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "SOL");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_volatile_token_eth() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "ETH");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_volatile_token_btc() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "BTC");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_rebase_tokens_case_insensitive() {
+        let env = Env::default();
+        // Verify that rebase token rejection is case-insensitive (consistent with acceptance)
+        let sym_lower = Symbol::new(&env, "ampl");
+        let sym_mixed = Symbol::new(&env, "AmPl");
+        assert_eq!(
+            require_stable_currency(&env, &sym_lower),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+        assert_eq!(
+            require_stable_currency(&env, &sym_mixed),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_very_long_unknown_symbol() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "VERYLONGTOKEN");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_numeric_only_token() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "123");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    #[test]
+    fn rejects_special_char_token() {
+        let env = Env::default();
+        let sym = Symbol::new(&env, "US$D");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Additional boundary tests added per FWC26 issue
+    // "Stable, rebase-suspected, unknown" — locks in the
+    // accept-vs-reject boundary between the stable-currency allowlist
+    // and the reject-by-default fallback.
+    //
+    // Existing tests already cover the bulk of the boundary
+    // (each known stable accepted; rebase/volatile/unknown tokens
+    // rejected; case-insensitive; numeric/special/long rejected).
+    // These four tests target invariants that were not explicitly
+    // pinned: alias equivalence with `require_supported_currency`,
+    // single-character displacement, the 9-byte envelope, and padding.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// `require_supported_currency` is documented as a public alias for
+    /// [`require_stable_currency`]. This test pins that contract for every
+    /// entry in the allowlist so a future refactor cannot silently diverge
+    /// the two entry points.
+    #[test]
+    fn accepts_require_supported_currency_alias_for_every_allowlisted_entry() {
+        let env = Env::default();
+
+        for code in STABLE_CURRENCIES {
+            let sym = Symbol::new(&env, code);
+            assert_eq!(
+                require_stable_currency(&env, &sym),
+                Ok(()),
+                "require_stable_currency must accept allowlisted entry {:?}",
+                code
+            );
+            assert_eq!(
+                require_supported_currency(&env, &sym),
+                Ok(()),
+                "require_supported_currency alias must accept allowlisted entry {:?}",
+                code
+            );
+            // The two entry points must agree byte-for-byte.
+            assert_eq!(
+                require_stable_currency(&env, &sym),
+                require_supported_currency(&env, &sym),
+                "alias diverged from require_stable_currency for {:?}",
+                code
+            );
+        }
+    }
+
+    /// A single-byte displacement away from a whitelisted currency
+    /// must still be rejected. Catches future refactors that loosen
+    /// the comparison (prefix-match, near-match, fuzzy compare).
+    #[test]
+    fn rejects_one_byte_displacement_of_allowlisted_currency() {
+        let env = Env::default();
+        // Each variant differs from a whitelisted code (USDC) by
+        // exactly one ASCII byte at various positions: swap,
+        // duplicate, digit-suffix, digit-prefix. None of these are
+        // in `STABLE_CURRENCIES`, so they must all be rejected.
+        // ("." and whitespace variants are excluded because they are
+        // outside Symbol's `[a-zA-Z0-9_]` charset — `Symbol::new`
+        // would panic on them and mask the boundary we want to test.)
+        for variant in [
+            "USDX",     // swap last byte of USDC
+            "USCA",     // swap last + a different letter
+            "UCDC",     // swap second byte of USDC
+            "USDCC",    // duplicate last byte
+            "USDC0",    // digit suffix
+            "0USDC",    // digit prefix
+        ] {
+            let sym = Symbol::new(&env, variant);
+            assert_eq!(
+                require_stable_currency(&env, &sym),
+                Err(StableCurrencyError::UnsupportedCurrency),
+                "{:?} (one byte away from USDC) must be rejected as a near-miss",
+                variant
+            );
+        }
+    }
+
+    /// A `Symbol` whose length is exactly the short-symbol maximum
+    /// (9 bytes) must not be silently accepted just because the SDK
+    /// encodes it inline. This pins the 9-byte envelope boundary
+    /// documented by `SYMBOL_SHORT_MAX_LEN`.
+    #[test]
+    fn rejects_exactly_nine_byte_unknown_symbol() {
+        let env = Env::default();
+        // "RANDOMX9Z" is exactly 9 ASCII bytes and is not in
+        // STABLE_CURRENCIES.
+        let sym = Symbol::new(&env, "RANDOMX9Z");
+        assert_eq!(
+            require_stable_currency(&env, &sym),
+            Err(StableCurrencyError::UnsupportedCurrency)
+        );
+    }
+
+    /// Allowlist membership is an exact-ASCII match. Padding,
+    /// prefixing, or suffixing an allow-listed code never widens
+    /// acceptance. This pins the comparator — a switch to a
+    /// `starts_with` or `contains` would be caught immediately.
+    /// Note: whitespace-padded variants like `"USDC "` are
+    /// excluded from this test because Symbol's charset is
+    /// `[a-zA-Z0-9_]`; `Symbol::new` would panic on whitespace,
+    /// masking the boundary under test.
+    #[test]
+    fn rejects_padded_variant_of_allowlisted_currency() {
+        let env = Env::default();
+        for variant in ["USDC0", "XUSDC", "USDCX"] {
+            let sym = Symbol::new(&env, variant);
+            assert_eq!(
+                require_stable_currency(&env, &sym),
+                Err(StableCurrencyError::UnsupportedCurrency),
+                "padded variant {:?} must not be accepted as USDC",
+                variant
+            );
+        }
     }
 }

@@ -82,6 +82,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `NEXT_RSCH` | `u32`                          | Next remittance schedule ID                                  |
 | `PAUSE_ADM` | `Address`                      | Pause admin                                                  |
 | `PAUSED`    | `bool`                         | Global pause flag                                            |
+| `PAUSED_AT` | `u64`                          | Timestamp when contract was paused                           |
 | `UPG_ADM`   | `Address`                      | Upgrade admin                                                |
 | `VERSION`   | `u32`                          | Contract version                                             |
 
@@ -112,6 +113,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `AUDIT`     | `Vec<AuditEntry>`           | Rotating audit log, max 100            |
 | `PAUSE_ADM` | `Address`                   | Pause admin                            |
 | `PAUSED`    | `bool`                      | Global pause flag                      |
+| `PausedSince` | `u64`                    | Timestamp when contract was paused     |
 | `PAUSED_FN` | `Map<Symbol, bool>`         | Per-function pause switches            |
 | `UNP_AT`    | `u64`                       | Optional time-locked unpause timestamp |
 | `UPG_ADM`   | `Address`                   | Upgrade admin                          |
@@ -142,6 +144,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `STOR_STAT` | `StorageStats`           | Aggregated storage metrics                                                                                                   |
 | `PAUSE_ADM` | `Address`                | Pause admin                                                                                                                  |
 | `PAUSED`    | `bool`                   | Global pause flag                                                                                                            |
+| `PAUSED_AT` | `u64`                    | Timestamp when contract was paused                                                                                           |
 | `PAUSED_FN` | `Map<Symbol, bool>`      | Per-function pause switches                                                                                                  |
 | `UNP_AT`    | `u64`                    | Optional unpause timestamp                                                                                                   |
 | `UPG_ADM`   | `Address`                | Upgrade admin                                                                                                                |

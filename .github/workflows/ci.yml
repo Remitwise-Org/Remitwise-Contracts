@@ -22,26 +22,44 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable (2026-07-16)
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      # Cache the Cargo registry (downloaded crate sources and index).
+      # Keyed solely by Cargo.lock so the registry layer is shared across
+      # jobs and OS variants that resolve the same dependency graph.
+      - name: Cache Cargo registry
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            cargo-registry-
+
+      # Cache the compiled target directory separately from the registry.
+      # The key includes the OS and Cargo.lock hash so cross-platform
+      # artifacts never bleed into each other.  ~/.cargo/bin/ is included
+      # here so installed binaries (soroban-cli, cargo-audit, etc.) survive
+      # between runs without being re-downloaded.
+      - name: Cache Cargo target dir
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            target/
+          key: cargo-target-${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-stable-
+            cargo-target-${{ runner.os }}-
 
       - name: Install Soroban CLI
         run: |
@@ -72,6 +90,15 @@ jobs:
           cargo --version
           rustup target list --installed | grep wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown
 
+      - name: Pin ed25519-dalek to v2.x
+        # soroban-env-host v21.2.1 specifies ed25519-dalek = ">=2.0.0" which
+        # resolves to v3.0.0 on fresh lockfiles, breaking its testutils code.
+        run: |
+          if cargo tree -i "ed25519-dalek@3.0.0" &>/dev/null; then
+            echo "Pinning ed25519-dalek to v2.2.0..."
+            cargo update -p "ed25519-dalek@3.0.0" --precise 2.2.0
+          fi
+
       - name: Build workspace (WASM)
         run: |
           cargo build --release --target wasm32-unknown-unknown --workspace \
@@ -84,7 +111,7 @@ jobs:
 
       - name: Build Soroban contracts
         run: |
-          for contract in remittance_split savings_goals bill_payments insurance; do
+          for contract in remittance_split savings_goals bill_payments insurance family_wallet; do
             echo "Building contract: $contract"
             # Build from workspace root to ensure WASM files go to target/wasm32-unknown-unknown/release/
             cargo build --release --target wasm32-unknown-unknown --package $contract --verbose
@@ -93,7 +120,7 @@ jobs:
 
       - name: Verify WASM files exist
         run: |
-          for contract in remittance_split savings_goals bill_payments insurance; do
+          for contract in remittance_split savings_goals bill_payments insurance family_wallet; do
             wasm_file="target/wasm32-unknown-unknown/release/${contract}.wasm"
             if [ ! -f "$wasm_file" ]; then
               echo "Error: WASM file not found: $wasm_file"
@@ -118,7 +145,7 @@ jobs:
         continue-on-error: false
 
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: wasm-contracts
@@ -128,7 +155,7 @@ jobs:
           compression-level: 9
 
       - name: Upload build logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: build-logs
@@ -143,25 +170,42 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable (2026-07-16)
         with:
+          toolchain: stable
           components: clippy
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - name: Cache Cargo registry
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            cargo-registry-
+
+      - name: Cache Cargo target dir
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            target/
+          key: cargo-target-${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-stable-
+            cargo-target-${{ runner.os }}-
+
+      - name: Pin ed25519-dalek to v2.x
+        run: |
+          if cargo tree -i "ed25519-dalek@3.0.0" &>/dev/null; then
+            echo "Pinning ed25519-dalek to v2.2.0..."
+            cargo update -p "ed25519-dalek@3.0.0" --precise 2.2.0
+          fi
 
       - name: Enforce no unwrap/expect in production code (SC-054)
         run: |
@@ -174,23 +218,34 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable (2026-07-16)
+        with:
+          toolchain: stable
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - name: Cache Cargo registry
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            cargo-registry-
+
+      - name: Cache Cargo target dir
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            target/
+          key: cargo-target-${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-stable-
+            cargo-target-${{ runner.os }}-
 
       - name: Install cargo-audit
         run: |
@@ -203,6 +258,20 @@ jobs:
           cargo audit --deny warnings
         continue-on-error: true
 
+  workspace-invariants:
+    name: Workspace Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check workspace invariants
+        run: |
+          python3 scripts/check_workspace_invariants.py
+        continue-on-error: true
+
   storage-key-validation:
     name: Storage Key Naming Convention Validation
     runs-on: macos-latest
@@ -210,23 +279,34 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable (2026-07-16)
+        with:
+          toolchain: stable
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - name: Cache Cargo registry
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            cargo-registry-
+
+      - name: Cache Cargo target dir
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            target/
+          key: cargo-target-${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-stable-
+            cargo-target-${{ runner.os }}-
 
       - name: Run storage key naming convention tests
         run: |
@@ -243,25 +323,35 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable (2026-07-16)
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - name: Cache Cargo registry
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            cargo-registry-
+
+      - name: Cache Cargo target dir
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            target/
+          key: cargo-target-${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-stable-
+            cargo-target-${{ runner.os }}-
 
       - name: Install jq
         run: |
@@ -286,7 +376,7 @@ jobs:
         continue-on-error: false
 
       - name: Upload gas benchmark results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: gas-benchmarks
@@ -295,7 +385,7 @@ jobs:
 
       - name: Comment PR with gas results
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

@@ -4,7 +4,7 @@ extern crate std;
 
 use bill_payments::{BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, EnvTestConfig, Events},
+    testutils::{EnvTestConfig, Events},
     Address, Env, String, TryFromVal,
 };
 use testutils::{generate_test_address, set_ledger_time};
@@ -263,7 +263,7 @@ fn test_execution_respects_max_bills_per_owner() {
 
     let bills = client.get_all_unpaid_bills_legacy(&owner);
     assert_eq!(
-        bills.len() as u32,
+        bills.len(),
         bill_payments::MAX_BILLS_PER_OWNER,
         "no new bill should be created when owner is at cap"
     );
@@ -292,7 +292,7 @@ fn test_get_bill_schedules_returns_owner_schedules() {
 
 #[test]
 fn test_get_bill_schedule_returns_none_for_missing() {
-    let (env, client, _owner) = setup();
+    let (_env, client, _owner) = setup();
 
     let sched = client.get_bill_schedule(&9999);
     assert!(sched.is_none());
@@ -354,7 +354,7 @@ fn test_modify_bill_schedule_unauthorized_fails() {
 
 #[test]
 fn test_cancel_bill_schedule_schedule_not_found_fails() {
-    let (env, client, owner) = setup();
+    let (_env, client, owner) = setup();
 
     let result = client.try_cancel_bill_schedule(&owner, &9999);
     assert_eq!(result, Err(Ok(BillPaymentsError::ScheduleNotFound)));
@@ -397,12 +397,11 @@ fn count_bill_event_variant(env: &Env, expected: &BillEvent) -> u32 {
             continue;
         }
         if let Ok(event) = BillEvent::try_from_val(env, &topics.get(1).unwrap()) {
-            let matches = match (&event, expected) {
-                (BillEvent::ScheduleCreated, BillEvent::ScheduleCreated) => true,
-                (BillEvent::ScheduleExecuted, BillEvent::ScheduleExecuted) => true,
-                _ => false,
-            };
-            if matches {
+            if matches!(
+                (&event, expected),
+                (BillEvent::ScheduleCreated, BillEvent::ScheduleCreated)
+                    | (BillEvent::ScheduleExecuted, BillEvent::ScheduleExecuted)
+            ) {
                 count += 1;
             }
         }

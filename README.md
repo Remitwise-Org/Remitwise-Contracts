@@ -15,6 +15,11 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **[reporting](reporting/README.md)**: Financial reporting and insights
 - **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
 - **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
+- **[docs/PERIOD_INVARIANTS.md](docs/PERIOD_INVARIANTS.md)**: Time-bound period invariants, ledger timestamp rules, and execution windows
+- **[docs/PERIOD_KEYS.md](docs/PERIOD_KEYS.md)**: Model + consumer contract for `period_key` period identifiers and report storage
+- **[docs/AMOUNT_INVARIANTS.md](docs/AMOUNT_INVARIANTS.md)**: Amount zero-handling rules across contract entrypoints
+- **[docs/CROSS_CONTRACT_INVARIANTS.md](docs/CROSS_CONTRACT_INVARIANTS.md)**: Invariants that span multiple contracts — split conservation, replay protection, epoch guards, and reviewer checklist
+- **[docs/MIGRATION_FLAGS.md](docs/MIGRATION_FLAGS.md)**: Operator runbook for migration-completion flags, replay-protection sets, and investigation-epoch write freezes
 
 ## Shared Components
 
@@ -27,16 +32,18 @@ A common crate containing shared types, enums, and constants used across multipl
 - `FamilyRole`: Access control roles (Owner, Admin, Member, Viewer)
 - `CoverageType`: Insurance coverage types (Health, Life, Property, Auto, Liability)
 - `EventCategory` & `EventPriority`: Event logging categories and priorities
+- `PauseState`: Structured pause state carrying `paused: bool` and `paused_since: Option<u64>` for analytics
 
 **Shared Constants:**
 - Pagination limits (`DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`)
 - Storage TTL values (`INSTANCE_LIFETIME_THRESHOLD`, `ARCHIVE_LIFETIME_THRESHOLD`, etc.)
+- Pause storage key (`STORAGE_PAUSED_AT`)
 - Contract versioning (`CONTRACT_VERSION`)
 - Batch operation limits (`MAX_BATCH_SIZE`)
 
 **Shared Utilities:**
 - `clamp_limit()`: Helper for pagination limit validation
-- `validate_period()`: Helper for checking logical ordering of start/end ranges
+- `verify_ordered_pair()`: Helper for range validation
 - `RemitwiseEvents`: Standardized event emission with `emit()` and `emit_batch()` methods
 
 ## Shared Enums & Constants Stability Coverage
@@ -283,6 +290,9 @@ If you encounter issues with a specific Soroban version:
 
 - **[UPGRADE_GUIDE.md](UPGRADE_GUIDE.md)** - Comprehensive upgrade procedures and version-specific migration guides
 - **[docs/UPGRADE_RUNBOOK.md](docs/UPGRADE_RUNBOOK.md)** - Step-by-step contract upgrade runbook and rollback plan for operators
+- **[docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md)** - Contributor procedure for loading a previous snapshot and verifying upgrade invariants
+- **[docs/SETTLEMENT_WINDOWS.md](docs/SETTLEMENT_WINDOWS.md)** - Specification of invoice settlement window rules, creation acceptance bounds, overdue semantics, and late catch-up loops
+- **[docs/SETTLEMENT_CURRENCY_POLICY.md](docs/SETTLEMENT_CURRENCY_POLICY.md)** - How settlement currencies are chosen, validated, and enforced across contracts
 - **[VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md)** - Detailed compatibility matrix and testing status
 - **[COMPATIBILITY_QUICK_REFERENCE.md](COMPATIBILITY_QUICK_REFERENCE.md)** - Quick reference for common compatibility tasks
 - **[.github/SOROBAN_VERSION_CHECKLIST.md](.github/SOROBAN_VERSION_CHECKLIST.md)** - Validation checklist for new versions
@@ -318,22 +328,40 @@ To run an example, use `cargo run --example <example_name>`:
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
+- [Top-N Queries](docs/TOP_N_QUERIES.md) - Which entrypoints expose top-N results and their bounds
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
+- [Pagination Handbook](docs/PAGINATION_HANDBOOK.md) - How every paginated read is structured, cursor semantics, reviewer checklist, and implementation guide
+- [Pause Playbook](docs/PAUSE_PLAYBOOK.md) - Emergency pause mechanisms and recovery procedures for operators
+- [Committed Hashes](docs/COMMITTED_HASHES.md) - Request-hash coverage and verification guidance for downstream integrators
+- [Zero-Amount Policy](docs/ZERO_AMOUNT_POLICY.md) - Which entrypoints reject, accept, or normalize zero amounts; quick reference for integrators
+- [Entrypoint N Caps](docs/ENTRYPOINT_N_CAPS.md) - Per-entrypoint record-count upper bounds (N caps), error codes, slot-release rules, and reviewer checklist
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Reporting Admin Rotation](docs/reporting-admin-rotation.md) - Two-step upgrade-admin handoff procedure for reporting dependency configuration
 - [Event Indexing Guide](docs/INDEXING.md) - Mapping contract events to off-chain tables
 - [Financial Health Score Model](docs/HEALTH_SCORE.md) - HealthScore component weights, inputs, clamping, and worked examples
+- [Model Overview](docs/MODEL.md) - Overview of the financial health score model
 - [Frontend Integration Notes](docs/frontend-integration.md)
+- [String and Bytes Canonicalisation](docs/CANONICALISATION.md) - Tag casefold, currency trim/uppercase, external-ref charset, and migration checksum byte-order
+- [Type-Safe Percent Conversion](docs/type-safe-percent-conversion.md) - Converting whole percentages to basis points with checked overflow arithmetic
+- [Configuration Schema Versioning](docs/CONFIG_SCHEMA_VERSIONING.md) - Protocols for bumping configuration schema versions with backward compatibility
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
+- [Reserved Storage Keys](docs/RESERVED_STORAGE_KEYS.md) - Storage keys reserved for roadmap features to prevent collisions (contributor guide)
 - [Contract Specs & Migrations](docs/MIGRATIONS.md) - How to bump a contract spec without breaking existing storage
+- [Migration Paths: N-2 → N](docs/MIGRATION_PATHS.md) - Contributor guide: N-2→N snapshot migration paths, per-payload invariants, test map, rollback, and golden-vector discipline
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone
+- [Settler Whitelist](docs/SETTLER_WHITELIST.md) - Operator guide: how settlers are added, rotated, and revoked
+- [Epoch Model](docs/EPOCH_MODEL.md) - How epoch counters bump, what they invalidate, and the stale-authorization replay threat they mitigate in the emergency killswitch and orchestrator contracts
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
+- [Ledger Monotonicity](docs/LEDGER_MONOTONICITY.md) - Where and why contract code relies on ledger sequence and timestamp monotonicity
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
+- [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
+- [Event Versioning Discipline](docs/EVENT_VERSIONING.md) - Backward-compatibility rules, migration steps, and indexer guidelines for event schema changes
+- [Cross-Contract Epochs](docs/CROSS_CONTRACT_EPOCHS.md) - Actor-epoch semantics, the cross-contract coordination protocol, and the `EpochMismatch` guard
+- [Observability Model](docs/OBSERVABILITY_MODEL.md) - Per-contract event catalogue: what each contract emits and what off-chain consumers rely on
 
 ## Contracts
 
@@ -646,6 +674,7 @@ After verifying optimizations:
 ### Documentation
 
 - **[Benchmarking Guide](benchmarks/README.md)**: Complete benchmarking documentation
+- **[Gas Unit Costs Reference](docs/GAS_UNIT_COSTS.md)**: Per-operation CPU/memory costs, fee formulas, and current network parameters
 - **[Gas Tuning Guide](docs/GAS_TUNING.md)**: How to interpret gas snapshots and optimize costs
 - **[Gas Optimization Guide](docs/gas-optimization.md)**: Optimization strategies and best practices
 - **[Baseline Results](benchmarks/baseline.json)**: Current performance baseline
