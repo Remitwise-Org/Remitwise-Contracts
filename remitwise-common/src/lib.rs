@@ -258,7 +258,7 @@ pub enum SymbolError {
 
 /// Returns [`SymbolError::SymbolTooLong`] when the symbol exceeds 9 bytes.
 pub fn require_valid_symbol_length(_env: &Env, sym: &Symbol) -> Result<(), SymbolError> {
-    let val: soroban_sdk::Val = (*sym).into();
+    let val: soroban_sdk::Val = sym.to_val();
     if val.is_object() {
         Err(SymbolError::SymbolTooLong)
     } else {
@@ -364,18 +364,6 @@ pub enum SymbolLengthError {
     Empty = 1,
     /// The symbol name exceeds [`SYMBOL_SHORT_MAX_LEN`] bytes.
     TooLong = 2,
-}
-
-/// Error returned when a [`Symbol`] value exceeds the short-symbol limit (9 bytes).
-///
-/// Short symbols are stored inline in the [`Val`] bit pattern; long symbols use
-/// the heap-allocating `SymbolObject` XDR encoding.
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum SymbolError {
-    /// The symbol exceeds 9 bytes (too large for inline `symbol_short!` encoding).
-    SymbolTooLong = 1,
 }
 
 /// Validates that a candidate symbol name is within the bounds accepted by the
