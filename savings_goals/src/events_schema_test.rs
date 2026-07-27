@@ -153,6 +153,148 @@ fn goal_completed_event_payload_schema() {
     assert_eq!(decoded.timestamp, 12_345);
 }
 
+#[test]
+fn goal_lock_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = GoalLockEvent {
+        goal_id: 4,
+        owner: owner.clone(),
+        locked: true,
+        timestamp: 55_555,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = GoalLockEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.goal_id, 4);
+    assert_eq!(decoded.owner, owner);
+    assert!(decoded.locked);
+    assert_eq!(decoded.timestamp, 55_555);
+}
+
+#[test]
+fn schedule_created_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = ScheduleCreatedEvent {
+        schedule_id: 1,
+        goal_id: 4,
+        owner: owner.clone(),
+        amount: 1_000,
+        next_due: 1_800_000_000,
+        interval: 604_800,
+        timestamp: 1_234_567_800,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = ScheduleCreatedEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.schedule_id, 1);
+    assert_eq!(decoded.goal_id, 4);
+    assert_eq!(decoded.owner, owner);
+    assert_eq!(decoded.amount, 1_000);
+    assert_eq!(decoded.next_due, 1_800_000_000);
+    assert_eq!(decoded.interval, 604_800);
+    assert_eq!(decoded.timestamp, 1_234_567_800);
+}
+
+#[test]
+fn schedule_modified_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = ScheduleModifiedEvent {
+        schedule_id: 2,
+        goal_id: 7,
+        owner: owner.clone(),
+        amount: 2_000,
+        next_due: 1_800_100_000,
+        interval: 2_592_000,
+        timestamp: 1_234_567_900,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = ScheduleModifiedEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.schedule_id, 2);
+    assert_eq!(decoded.goal_id, 7);
+    assert_eq!(decoded.owner, owner);
+    assert_eq!(decoded.amount, 2_000);
+    assert_eq!(decoded.next_due, 1_800_100_000);
+    assert_eq!(decoded.interval, 2_592_000);
+    assert_eq!(decoded.timestamp, 1_234_567_900);
+}
+
+#[test]
+fn schedule_cancelled_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = ScheduleCancelledEvent {
+        schedule_id: 3,
+        goal_id: 9,
+        owner: owner.clone(),
+        timestamp: 1_234_568_000,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = ScheduleCancelledEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.schedule_id, 3);
+    assert_eq!(decoded.goal_id, 9);
+    assert_eq!(decoded.owner, owner);
+    assert_eq!(decoded.timestamp, 1_234_568_000);
+}
+
+#[test]
+fn schedule_executed_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = ScheduleExecutedEvent {
+        schedule_id: 5,
+        goal_id: 11,
+        owner: owner.clone(),
+        amount: 3_000,
+        timestamp: 1_234_568_100,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = ScheduleExecutedEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.schedule_id, 5);
+    assert_eq!(decoded.goal_id, 11);
+    assert_eq!(decoded.owner, owner);
+    assert_eq!(decoded.amount, 3_000);
+    assert_eq!(decoded.timestamp, 1_234_568_100);
+}
+
+#[test]
+fn schedule_missed_event_payload_schema() {
+    let env = Env::default();
+    let owner = sample_address(&env);
+
+    let evt = ScheduleMissedEvent {
+        schedule_id: 6,
+        goal_id: 13,
+        owner: owner.clone(),
+        missed_count: 3,
+        timestamp: 1_234_568_200,
+    };
+
+    let v: Val = evt.clone().into_val(&env);
+    let decoded = ScheduleMissedEvent::try_from_val(&env, &v).expect("round-trip failed");
+
+    assert_eq!(decoded.schedule_id, 6);
+    assert_eq!(decoded.goal_id, 13);
+    assert_eq!(decoded.owner, owner);
+    assert_eq!(decoded.missed_count, 3);
+    assert_eq!(decoded.timestamp, 1_234_568_200);
+}
+
 // ---------------------------------------------------------------------------
 // Payload schemas - enum events
 // ---------------------------------------------------------------------------

@@ -474,11 +474,16 @@ fn test_schedule_executed_event_emitted_with_correct_id() {
             .unwrap_or(false);
 
         if t0_ok && t1_ok {
-            let data_id: u32 = u32::try_from_val(&env, &ev.2).unwrap();
+            let evt = ScheduleExecutedEvent::try_from_val(&env, &ev.2)
+                .expect("ScheduleExecuted payload must decode as ScheduleExecutedEvent");
             assert_eq!(
-                data_id, sched_id,
+                evt.schedule_id, sched_id,
                 "ScheduleExecuted event data must carry the schedule ID"
             );
+            assert_eq!(evt.goal_id, goal_id);
+            assert_eq!(evt.owner, owner);
+            assert_eq!(evt.amount, 200);
+            assert_eq!(evt.timestamp, 3_500);
             found = true;
         }
     }

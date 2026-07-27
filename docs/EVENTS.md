@@ -275,6 +275,10 @@ pub struct GoalCreatedEvent {
 
 **Topic:** `"added"` (primary)  
 **Secondary Topic:** `("savings", SavingsEvent::FundsAdded)`
+**Emitted by:** `add_to_goal`, `batch_add_to_goals`, `execute_due_savings_schedules` — all three
+paths publish the identical `FundsAddedEvent` shape (including `new_total` and `timestamp`) via
+`RemitwiseEvents::emit`, so indexers see one consistent payload regardless of whether a credit came
+from a manual contribution or a scheduled execution.
 
 **Data Structure:**
 
@@ -304,6 +308,10 @@ pub struct FundsAddedEvent {
 
 **Topic:** `"completed"` (primary)  
  **Secondary Topic:** `("savings", SavingsEvent::GoalCompleted)`
+**Emitted by:** `add_to_goal`, `batch_add_to_goals`, `execute_due_savings_schedules` — exactly once
+per goal, on whichever credit (manual or scheduled) first brings `current_amount >= target_amount`.
+A goal that is already completed before a credit lands must not re-emit this event regardless of
+which path applies the credit.
 
 **Data Structure:**
 
@@ -385,12 +393,14 @@ pub struct FundsWithdrawnEvent {
 ### Event: Goal Locked/Unlocked
 
 **Topic:** `("savings", SavingsEvent::GoalLocked)` or `("savings", SavingsEvent::GoalUnlocked)`
+**Emitted by:** `lock_goal` (`locked: true`), `unlock_goal` (`locked: false`)
 
 **Data Structure:**
 
 ```rust
 pub struct GoalLockEvent {
     pub goal_id: u32,               // Goal ID
+    pub owner: Address,             // Goal owner
     pub locked: bool,               // Lock status
     pub timestamp: u64,             // Event timestamp
 }
@@ -399,16 +409,88 @@ pub struct GoalLockEvent {
 ### Event: Savings Schedule Created
 
 **Topic:** `("savings", SavingsEvent::ScheduleCreated)`
+**Emitted by:** `create_savings_schedule`
 
 **Data Structure:**
 
 ```rust
-pub struct SavingsScheduleCreatedEvent {
+pub struct ScheduleCreatedEvent {
     pub schedule_id: u32,           // Schedule ID
     pub goal_id: u32,               // Associated goal ID
+    pub owner: Address,             // Schedule owner
     pub amount: i128,               // Recurring amount
     pub next_due: u64,              // Next execution timestamp
     pub interval: u64,              // Interval in seconds
+    pub timestamp: u64,             // Event timestamp
+}
+```
+
+### Event: Savings Schedule Modified
+
+**Topic:** `("savings", SavingsEvent::ScheduleModified)`
+**Emitted by:** `modify_savings_schedule`
+
+**Data Structure:**
+
+```rust
+pub struct ScheduleModifiedEvent {
+    pub schedule_id: u32,           // Schedule ID
+    pub goal_id: u32,               // Associated goal ID
+    pub owner: Address,             // Schedule owner
+    pub amount: i128,               // Updated recurring amount
+    pub next_due: u64,              // Updated next execution timestamp
+    pub interval: u64,              // Updated interval in seconds
+    pub timestamp: u64,             // Event timestamp
+}
+```
+
+### Event: Savings Schedule Cancelled
+
+**Topic:** `("savings", SavingsEvent::ScheduleCancelled)`
+**Emitted by:** `cancel_savings_schedule`
+
+**Data Structure:**
+
+```rust
+pub struct ScheduleCancelledEvent {
+    pub schedule_id: u32,           // Schedule ID
+    pub goal_id: u32,               // Associated goal ID
+    pub owner: Address,             // Schedule owner
+    pub timestamp: u64,             // Event timestamp
+}
+```
+
+### Event: Savings Schedule Executed
+
+**Topic:** `("savings", SavingsEvent::ScheduleExecuted)`
+**Emitted by:** `execute_due_savings_schedules`, once per schedule that successfully credits its goal
+
+**Data Structure:**
+
+```rust
+pub struct ScheduleExecutedEvent {
+    pub schedule_id: u32,           // Schedule ID
+    pub goal_id: u32,               // Associated goal ID
+    pub owner: Address,             // Schedule owner
+    pub amount: i128,               // Amount credited this execution
+    pub timestamp: u64,             // Event timestamp
+}
+```
+
+### Event: Savings Schedule Missed Intervals
+
+**Topic:** `("savings", SavingsEvent::ScheduleMissed)`
+**Emitted by:** `execute_due_savings_schedules`, when one or more recurring intervals were skipped
+(delayed execution)
+
+**Data Structure:**
+
+```rust
+pub struct ScheduleMissedEvent {
+    pub schedule_id: u32,           // Schedule ID
+    pub goal_id: u32,               // Associated goal ID
+    pub owner: Address,             // Schedule owner
+    pub missed_count: u32,          // Number of intervals skipped
     pub timestamp: u64,             // Event timestamp
 }
 ```

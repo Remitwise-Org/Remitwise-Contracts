@@ -60,6 +60,73 @@ pub struct GoalCompletedEvent {
     pub timestamp: u64,
 }
 
+/// Emitted by `lock_goal` (`locked: true`) and `unlock_goal` (`locked: false`).
+#[derive(Clone)]
+#[contracttype]
+pub struct GoalLockEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleCreatedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleModifiedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleCancelledEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted once per successful execution of a due schedule by
+/// `execute_due_savings_schedules`.
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleExecutedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted alongside `ScheduleExecutedEvent` when one or more recurring
+/// intervals were skipped (delayed execution).
+#[derive(Clone)]
+#[contracttype]
+pub struct ScheduleMissedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub missed_count: u32,
+    pub timestamp: u64,
+}
+
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
 const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 
@@ -1566,7 +1633,12 @@ impl SavingsGoalContract {
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::GoalLocked),
-            (goal_id, caller),
+            GoalLockEvent {
+                goal_id,
+                owner: caller,
+                locked: true,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
@@ -1622,7 +1694,12 @@ impl SavingsGoalContract {
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::GoalUnlocked),
-            (goal_id, caller),
+            GoalLockEvent {
+                goal_id,
+                owner: caller,
+                locked: false,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
@@ -2660,7 +2737,15 @@ impl SavingsGoalContract {
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCreated),
-            (next_schedule_id, owner),
+            ScheduleCreatedEvent {
+                schedule_id: next_schedule_id,
+                goal_id,
+                owner,
+                amount,
+                next_due,
+                interval,
+                timestamp: current_time,
+            },
         );
 
         next_schedule_id
@@ -2716,7 +2801,15 @@ impl SavingsGoalContract {
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleModified),
-            (schedule_id, caller),
+            ScheduleModifiedEvent {
+                schedule_id,
+                goal_id: schedule.goal_id,
+                owner: caller,
+                amount,
+                next_due,
+                interval,
+                timestamp: current_time,
+            },
         );
 
         true
@@ -2756,7 +2849,12 @@ impl SavingsGoalContract {
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCancelled),
-            (schedule_id, caller),
+            ScheduleCancelledEvent {
+                schedule_id,
+                goal_id: schedule.goal_id,
+                owner: caller,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
@@ -2844,6 +2942,7 @@ impl SavingsGoalContract {
                 None => continue,
             };
 
+            let previously_completed = goal.current_amount >= goal.target_amount;
             let new_total = match goal.current_amount.checked_add(schedule.amount) {
                 Some(v) => v,
                 None => continue, // Skip overflow
@@ -2853,20 +2952,50 @@ impl SavingsGoalContract {
             }
             goal.current_amount = new_total;
 
-            let is_completed = goal.current_amount >= goal.target_amount;
+            let is_completed = new_total >= goal.target_amount;
             env.storage()
                 .persistent()
                 .set(&DataKey::Goal(schedule.goal_id), &goal);
 
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Medium,
+                FUNDS_ADDED,
+                FundsAddedEvent {
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner.clone(),
+                    amount: schedule.amount,
+                    new_total,
+                    timestamp: current_time,
+                },
+            );
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::FundsAdded),
                 (schedule.goal_id, goal.owner.clone(), schedule.amount),
             );
 
-            if is_completed {
+            if is_completed && !previously_completed {
+                let completed_event = GoalCompletedEvent {
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner.clone(),
+                    amount: schedule.amount,
+                    new_total,
+                    name: goal.name.clone(),
+                    timestamp: current_time,
+                };
+
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::State,
+                    EventPriority::Medium,
+                    GOAL_COMPLETED,
+                    completed_event.clone(),
+                );
+                env.events().publish((GOAL_COMPLETED,), completed_event);
                 env.events().publish(
                     (symbol_short!("savings"), SavingsEvent::GoalCompleted),
-                    (schedule.goal_id, goal.owner),
+                    (schedule.goal_id, goal.owner.clone()),
                 );
             }
 
@@ -2885,7 +3014,13 @@ impl SavingsGoalContract {
                 if missed > 0 {
                     env.events().publish(
                         (symbol_short!("savings"), SavingsEvent::ScheduleMissed),
-                        (schedule_id, missed),
+                        ScheduleMissedEvent {
+                            schedule_id,
+                            goal_id: schedule.goal_id,
+                            owner: goal.owner.clone(),
+                            missed_count: missed,
+                            timestamp: current_time,
+                        },
                     );
                 }
             } else {
@@ -2899,7 +3034,13 @@ impl SavingsGoalContract {
 
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::ScheduleExecuted),
-                schedule_id,
+                ScheduleExecutedEvent {
+                    schedule_id,
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner,
+                    amount: schedule.amount,
+                    timestamp: current_time,
+                },
             );
         }
 
@@ -3025,6 +3166,8 @@ impl SavingsGoalsReversible for SavingsGoalContract {
 mod event_test;
 #[cfg(test)]
 mod events_schema_test;
+#[cfg(test)]
+mod schedule_lifecycle_event_test;
 #[cfg(test)]
 mod test;
 #[cfg(test)]
