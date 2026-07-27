@@ -1224,6 +1224,34 @@ fn test_verify_slash_signature_invalid() {
     });
 }
 
+// ─── cross_contract_epoch tests ──────────────────────────────────────────
+
+#[test]
+fn test_require_matching_cross_contract_epoch() {
+    let env = Env::default();
+    
+    // Default is 0, so epoch 0 matches
+    assert_eq!(require_matching_cross_contract_epoch(&env, 0), Ok(()));
+    
+    // Set epoch to 5
+    env.storage().instance().set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
+    
+    // Exact match is accepted
+    assert_eq!(require_matching_cross_contract_epoch(&env, 5), Ok(()));
+    
+    // Stale epoch (less than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 4),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
+    
+    // Future epoch (greater than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 6),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
+}
+
 // ─── distribute_pro_rata tests (#1085) ───────────────────────────────────────
 
 /// Distributes an indivisible total across unequal weights — remainder benefits smallest recipient.

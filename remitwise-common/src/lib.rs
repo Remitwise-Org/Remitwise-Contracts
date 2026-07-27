@@ -311,6 +311,39 @@ pub fn require_no_pending_dispute_epoch(env: &Env, ep: u64) -> Result<(), Disput
     Ok(())
 }
 
+/// Typed error returned when a caller supplies an outdated cross-contract epoch.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum CrossContractEpochError {
+    /// The supplied cross-contract epoch does not match the current contract epoch.
+    EpochMismatch = 37,
+}
+
+pub const STORAGE_CROSS_CONTRACT_EPOCH: Symbol = symbol_short!("XC_EPOCH");
+
+/// Guards against executing cross-contract operations with a stale epoch.
+///
+/// This is a defence-in-depth fix. If a cross-contract message carrying an old epoch
+/// is replayed after the epoch has been bumped, it could lead to state corruption
+/// or unauthorised actions. Rejecting stale epochs ensures only fresh cross-contract
+/// calls are processed.
+///
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `ep` - The cross-contract epoch supplied by the caller
+///
+/// # Returns
+/// * `Ok(())` if the epoch matches the current cross-contract epoch exactly
+/// * `Err(CrossContractEpochError::EpochMismatch)` if the epoch is outdated
+pub fn require_matching_cross_contract_epoch(env: &Env, ep: u64) -> Result<(), CrossContractEpochError> {
+    let current_epoch: u64 = env.storage().instance().get(&STORAGE_CROSS_CONTRACT_EPOCH).unwrap_or(0);
+    if ep != current_epoch {
+        return Err(CrossContractEpochError::EpochMismatch);
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // BytesN validation
 // ---------------------------------------------------------------------------
