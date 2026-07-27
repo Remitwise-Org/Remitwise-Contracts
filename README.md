@@ -358,6 +358,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
+- [Signature Domains](docs/SIGNATURE_DOMAINS.md) - Central registry of domain separation strings used for signature verification and hash preimages
 - [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
 - [Event Versioning Discipline](docs/EVENT_VERSIONING.md) - Backward-compatibility rules, migration steps, and indexer guidelines for event schema changes
 - [Cross-Contract Epochs](docs/CROSS_CONTRACT_EPOCHS.md) - Actor-epoch semantics, the cross-contract coordination protocol, and the `EpochMismatch` guard
