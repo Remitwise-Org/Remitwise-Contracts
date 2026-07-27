@@ -20,6 +20,7 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **[docs/AMOUNT_INVARIANTS.md](docs/AMOUNT_INVARIANTS.md)**: Amount zero-handling rules across contract entrypoints
 - **[docs/CROSS_CONTRACT_INVARIANTS.md](docs/CROSS_CONTRACT_INVARIANTS.md)**: Invariants that span multiple contracts — split conservation, replay protection, epoch guards, and reviewer checklist
 - **[docs/MIGRATION_FLAGS.md](docs/MIGRATION_FLAGS.md)**: Operator runbook for migration-completion flags, replay-protection sets, and investigation-epoch write freezes
+- **[docs/OPERATOR_SIGNATURE_SCOPES.md](docs/OPERATOR_SIGNATURE_SCOPES.md)**: Operator key scopes for `verify_signature`, domain separation, and verifier registry
 
 ## Shared Components
 
