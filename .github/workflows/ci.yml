@@ -313,6 +313,11 @@ jobs:
           cargo test --package testutils storage_key_naming_test -- --nocapture
         continue-on-error: false
 
+      - name: Run storage key source scan (drift detection)
+        run: |
+          cargo test --package testutils --test storage_key_source_scan_test -- --nocapture
+        continue-on-error: false
+
   gas-benchmarks:
     name: Gas Benchmarks
     runs-on: macos-latest
