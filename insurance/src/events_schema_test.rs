@@ -638,3 +638,166 @@ fn all_lifecycle_events_use_insurance_namespace() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Edge-case emission tests — indexer-safety guarantees
+// ---------------------------------------------------------------------------
+
+/// `deactivate_policy` on an already-inactive policy (idempotent path) must
+/// NOT emit a second `Deactivated` event. Indexers must see exactly one event
+/// for the first deactivation and zero for the repeat.
+#[test]
+fn deactivate_policy_idempotent_emits_no_second_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _owner) = setup_contract(&env);
+    let policy_owner = Address::generate(&env);
+
+    let pid = create_health_policy(&env, &client, &policy_owner);
+
+    // First deactivation — emits one Deactivated event.
+    assert!(client.deactivate_policy(&policy_owner, &pid));
+
+    // Count Deactivated events after the first call.
+    let count_after_first = count_deactivated_events(&env, pid);
+    assert_eq!(count_after_first, 1, "expected exactly 1 Deactivated event after first deactivation");
+
+    // Second deactivation (idempotent) — must not add another event.
+    assert!(client.deactivate_policy(&policy_owner, &pid));
+
+    let count_after_second = count_deactivated_events(&env, pid);
+    assert_eq!(
+        count_after_second, 1,
+        "idempotent deactivate_policy must not emit a second Deactivated event"
+    );
+}
+
+/// `batch_pay_premiums` must emit `PremiumPaid` only for policies that are
+/// active and owned by the caller. Inactive policies in the batch must produce
+/// no event — indexers must not see spurious events for skipped entries.
+#[test]
+fn batch_pay_premiums_inactive_policy_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _owner) = setup_contract(&env);
+    let policy_owner = Address::generate(&env);
+
+    let pid_active = create_health_policy(&env, &client, &policy_owner);
+    let pid_inactive = create_health_policy(&env, &client, &policy_owner);
+
+    // Deactivate the second policy before the batch.
+    client.deactivate_policy(&policy_owner, &pid_inactive);
+
+    let mut batch = soroban_sdk::Vec::new(&env);
+    batch.push_back(pid_active);
+    batch.push_back(pid_inactive);
+    let paid = client.batch_pay_premiums(&policy_owner, &batch);
+    assert_eq!(paid, 1, "only the active policy should be counted");
+
+    // Collect all PremiumPaid events and ensure only pid_active appears.
+    let mut paid_ids: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+    for (_cid, topics, data) in env.events().all() {
+        if topics.len() < 2 {
+            continue;
+        }
+        let ns = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if ns != symbol_short!("insurance") {
+            continue;
+        }
+        if let Ok(InsuranceEvent::PremiumPaid) =
+            InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
+        {
+            let payload: PremiumPaidEvent =
+                PremiumPaidEvent::try_from_val(&env, &data).expect("payload decode failed");
+            paid_ids.push_back(payload.policy_id);
+        }
+    }
+
+    assert!(
+        paid_ids.contains(pid_active),
+        "PremiumPaid must be emitted for the active policy"
+    );
+    assert!(
+        !paid_ids.contains(pid_inactive),
+        "PremiumPaid must NOT be emitted for the inactive policy"
+    );
+}
+
+/// `batch_pay_premiums` must not emit any events for a batch where the caller
+/// owns none of the listed policies (all entries are foreign-owner skips).
+#[test]
+fn batch_pay_premiums_foreign_owner_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _owner) = setup_contract(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let alice_pid = create_health_policy(&env, &client, &alice);
+
+    // Bob submits a batch containing only Alice's policy.
+    let mut batch = soroban_sdk::Vec::new(&env);
+    batch.push_back(alice_pid);
+    let paid = client.batch_pay_premiums(&bob, &batch);
+    assert_eq!(paid, 0, "foreign-owner policy must be skipped");
+
+    // No PremiumPaid event should have been emitted.
+    let mut premium_paid_count = 0u32;
+    for (_cid, topics, _data) in env.events().all() {
+        if topics.len() < 2 {
+            continue;
+        }
+        let ns = Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
+        if ns != symbol_short!("insurance") {
+            continue;
+        }
+        if let Ok(InsuranceEvent::PremiumPaid) =
+            InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
+        {
+            premium_paid_count += 1;
+        }
+    }
+    assert_eq!(
+        premium_paid_count, 0,
+        "no PremiumPaid event must be emitted when the batch has only foreign-owner policies"
+    );
+}
+
+/// `INSURANCE_TOPIC` constant must equal the `symbol_short!("insurance")`
+/// value so refactors that change the constant are caught at test time.
+#[test]
+fn insurance_topic_constant_matches_namespace_symbol() {
+    let env = Env::default();
+    let from_constant: Symbol = Symbol::new(&env, INSURANCE_TOPIC);
+    let from_macro: Symbol = symbol_short!("insurance");
+    assert_eq!(
+        from_constant, from_macro,
+        "INSURANCE_TOPIC constant must equal symbol_short!(\"insurance\")"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper — counts Deactivated events for a specific policy id.
+// ---------------------------------------------------------------------------
+fn count_deactivated_events(env: &Env, policy_id: u32) -> u32 {
+    let mut count = 0u32;
+    for (_cid, topics, data) in env.events().all() {
+        if topics.len() < 2 {
+            continue;
+        }
+        let ns = Symbol::try_from_val(env, &topics.get(0).unwrap()).unwrap();
+        if ns != symbol_short!("insurance") {
+            continue;
+        }
+        if let Ok(InsuranceEvent::Deactivated) =
+            InsuranceEvent::try_from_val(env, &topics.get(1).unwrap())
+        {
+            let payload: PolicyDeactivatedEvent =
+                PolicyDeactivatedEvent::try_from_val(env, &data).expect("decode failed");
+            if payload.policy_id == policy_id {
+                count += 1;
+            }
+        }
+    }
+    count
+}
