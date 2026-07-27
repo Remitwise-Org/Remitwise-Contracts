@@ -2226,6 +2226,196 @@ pub fn clear_investigation_epoch(env: &Env) {
 }
 
 // ---------------------------------------------------------------------------
+// Kill switch — binary on/off gate to halt all writes
+// ---------------------------------------------------------------------------
+
+/// Storage key for the kill switch flag.
+/// When set to `true` in instance storage, all write entry points must reject
+/// mutations with [`KillSwitchError::WriteBlocked`].
+pub(crate) const STORAGE_KILL_SWITCH: Symbol = symbol_short!("KILL_SW");
+
+/// Error returned when a write operation is blocked because the kill switch
+/// is active.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum KillSwitchError {
+    /// A write was blocked because the kill switch is engaged and no further
+    /// state mutations are allowed.
+    WriteBlocked = 1,
+}
+
+/// Returns `true` if the kill switch is active, meaning all write operations
+/// must be halted.
+///
+/// Checks instance storage for a boolean `STORAGE_KILL_SWITCH` flag.
+/// If the flag is absent the kill switch is considered inactive (default).
+pub fn is_kill_switch_active(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&STORAGE_KILL_SWITCH)
+        .unwrap_or(false)
+}
+
+/// Halts write operations if the kill switch is active.
+///
+/// Call this at the top of every write entry point (bill payment, premium
+/// payment, remittance disbursement, etc.) as a defence-in-depth guard.
+/// When the kill switch is active the contract rejects any mutation with
+/// [`KillSwitchError::WriteBlocked`].
+///
+/// # Threat model
+/// Without this check, an attacker who has discovered a vulnerability or
+/// obtained administrative access can continue to mutate contract state even
+/// after the kill switch has been triggered — stealing remaining funds,
+/// corrupting state that would otherwise be preserved for forensic analysis,
+/// or escalating the attack by triggering additional write-side effects.
+/// Setting the kill switch limits the blast radius and preserves evidence
+/// for the investigation team.
+///
+/// Unlike the investigation epoch (which is time-bounded), the kill switch
+/// is a binary toggle that stays active until explicitly deactivated by an
+/// admin.
+///
+/// # Cost
+/// A single instance-storage read (`bool`) — negligible (~250 gas units)
+/// relative to any write entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`KillSwitchError::WriteBlocked`] when the kill switch is active.
+pub fn require_no_active_kill_switch(env: &Env) -> Result<(), KillSwitchError> {
+    if is_kill_switch_active(env) {
+        Err(KillSwitchError::WriteBlocked)
+    } else {
+        Ok(())
+    }
+}
+
+/// Activate the kill switch, blocking all write operations.
+///
+/// Sets the `STORAGE_KILL_SWITCH` flag to `true`. After calling this,
+/// every write entry point that calls [`require_no_active_kill_switch`]
+/// will return [`KillSwitchError::WriteBlocked`].
+///
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth (e.g.
+/// `admin.require_auth()` in the calling contract).
+pub fn activate_kill_switch(env: &Env) {
+    env.storage()
+        .instance()
+        .set(&STORAGE_KILL_SWITCH, &true);
+}
+
+/// Deactivate the kill switch, allowing write operations to proceed.
+///
+/// Removes the `STORAGE_KILL_SWITCH` flag from storage. After calling this,
+/// [`require_no_active_kill_switch`] will return `Ok(())` again.
+///
+/// If the kill switch is not active, this is a no-op.
+///
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth.
+pub fn deactivate_kill_switch(env: &Env) {
+    env.storage().instance().remove(&STORAGE_KILL_SWITCH);
+}
+
+#[cfg(test)]
+mod kill_switch_tests {
+    use super::*;
+    use soroban_sdk::Env;
+
+    /// The kill switch is inactive by default (no storage set).
+    #[test]
+    fn test_kill_switch_inactive_by_default() {
+        let env = Env::default();
+        assert!(!is_kill_switch_active(&env));
+        assert_eq!(require_no_active_kill_switch(&env), Ok(()));
+    }
+
+    /// After activation, is_kill_switch_active returns true and
+    /// require_no_active_kill_switch returns WriteBlocked.
+    #[test]
+    fn test_activate_kill_switch_blocks_writes() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+
+        assert!(is_kill_switch_active(&env));
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked)
+        );
+    }
+
+    /// After deactivation, the kill switch is inactive and writes are
+    /// allowed again.
+    #[test]
+    fn test_deactivate_kill_switch_allows_writes() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+        assert_eq!(require_no_active_kill_switch(&env), Ok(()));
+    }
+
+    /// Deactivating when already inactive is a safe no-op.
+    #[test]
+    fn test_deactivate_kill_switch_is_idempotent() {
+        let env = Env::default();
+        assert!(!is_kill_switch_active(&env));
+
+        // Should not panic
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+    }
+
+    /// After activation and deactivation, the kill switch can be
+    /// reactivated (toggle cycle).
+    #[test]
+    fn test_kill_switch_toggle_cycle() {
+        let env = Env::default();
+
+        // Activate
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+
+        // Deactivate
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+
+        // Re-activate
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked)
+        );
+
+        // Final deactivate
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+    }
+
+    /// Negative test: require_no_active_kill_switch fails when kill switch
+    /// is active, and the error type is KillSwitchError::WriteBlocked.
+    #[test]
+    fn test_write_blocked_during_active_kill_switch() {
+        let env = Env::default();
+
+        // Without activation, writes allowed
+        assert!(require_no_active_kill_switch(&env).is_ok());
+
+        // Activate kill switch
+        activate_kill_switch(&env);
+
+        // Writes blocked
+        let result = require_no_active_kill_switch(&env);
+        assert_eq!(result, Err(KillSwitchError::WriteBlocked));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Encoding stability tests (cross-contract ABI)
 // ---------------------------------------------------------------------------
 

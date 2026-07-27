@@ -1,0 +1,28 @@
+feat: add require_no_active_kill_switch() guard on all writes
+
+Closes #1289
+
+Adds a defence-in-depth require_no_active_kill_switch() guard that halts
+all write operations when the kill switch is active. The kill switch is a
+binary toggle stored in instance storage - unlike the investigation epoch
+(time-bounded), it stays active until explicitly deactivated by an admin.
+
+New infrastructure in remitwise-common:
+- KillSwitchError (typed #[contracterror], WriteBlocked = 1)
+- STORAGE_KILL_SWITCH storage key, is_kill_switch_active()
+- require_no_active_kill_switch() guard
+- activate_kill_switch() / deactivate_kill_switch() admin controls
+- 6 unit tests including negative test
+
+Guard added to ~65 write entry points across 7 contracts:
+- bill_payments (19 entry points)
+- insurance (11)
+- remittance_split (7)
+- family_wallet (21)
+- savings_goals (19)
+- orchestrator (4)
+- reporting (2)
+
+Uses panic_with_error! pattern for cross-crate error types (KillSwitchError
+cannot use ? with contract-specific #[contracterror] types). Non-Result
+functions use .is_err() with early return.
