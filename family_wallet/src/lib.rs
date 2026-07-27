@@ -404,6 +404,8 @@ pub enum Error {
     /// in-flight could cause orphaned signatures, silently-invalid quorum
     /// calculations, or execution against stale configuration.
     PendingOperationsExist = 27,
+    /// The supplied expiry timestamp is in the past.
+    RoleExpiryInPast = 28,
 }
 
 #[contractimpl]
@@ -577,6 +579,14 @@ impl FamilyWallet {
             },
         );
 
+        Self::append_access_audit(
+            &env,
+            symbol_short!("add_mem"),
+            &admin,
+            Some(member_address),
+            true,
+        );
+
         Ok(true)
     }
 
@@ -648,14 +658,22 @@ impl FamilyWallet {
             EventPriority::Medium,
             symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 old_limit,
                 new_limit,
                 timestamp: now,
             },
         );
 
-        Ok(true)
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upd_lim"),
+            &caller,
+            Some(member_address),
+            true,
+        );
+
+        true
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -813,6 +831,14 @@ impl FamilyWallet {
                 spending_limit,
                 timestamp: env.ledger().timestamp(),
             },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ms_conf"),
+            &caller,
+            None,
+            true,
         );
 
         Ok(true)
@@ -1728,7 +1754,15 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::TransactionsArchived),
-            (archived_count, caller),
+            (archived_count, caller.clone()),
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("arch_tx"),
+            &caller,
+            None,
+            true,
         );
 
         archived_count
@@ -1829,7 +1863,14 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
-            (removed_count, caller),
+            (removed_count, caller.clone()),
+        );
+        Self::append_access_audit(
+            &env,
+            symbol_short!("cln_exp"),
+            &caller,
+            None,
+            true,
         );
         removed_count
     }
@@ -1869,6 +1910,16 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
         if members.get(member.clone()).is_none() {
             panic!("Member not found");
+        }
+
+        // Reject expiry timestamps that are in the past — setting an already-
+        // expired role timestamp would immediately lock the member out of
+        // their role with no way to recover except through admin intervention.
+        if let Some(t) = expires_at {
+            let now = env.ledger().timestamp();
+            if t <= now {
+                panic_with_error!(&env, Error::RoleExpiryInPast);
+            }
         }
 
         let mut m: Map<Address, u64> = env
@@ -1944,11 +1995,19 @@ impl FamilyWallet {
                 .instance()
                 .get(&symbol_short!("SPND_TRK"))
                 .unwrap_or_else(|| Map::new(&env));
-            trackers.remove(member);
+            trackers.remove(member.clone());
             env.storage()
                 .instance()
                 .set(&symbol_short!("SPND_TRK"), &trackers);
         }
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("prec_lim"),
+            &caller,
+            Some(member),
+            true,
+        );
 
         Ok(true)
     }
@@ -2065,16 +2124,9 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events().publish(
-            (
-                symbol_short!("wallet"),
-                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
-            ),
-            remitwise_common::events::PauseEvent {
-                paused_at: env.ledger().timestamp(),
-                paused_by: caller.clone(),
-            },
-        );
+        env.events()
+            .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }
 
@@ -2095,16 +2147,9 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
-        env.events().publish(
-            (
-                symbol_short!("wallet"),
-                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
-            ),
-            remitwise_common::events::UnpauseEvent {
-                unpaused_at: env.ledger().timestamp(),
-                unpaused_by: caller.clone(),
-            },
-        );
+        env.events()
+            .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
+        Self::append_access_audit(&env, symbol_short!("unpause"), &caller, None, true);
         true
     }
 
@@ -2114,6 +2159,13 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ps_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
         true
     }
 
@@ -2162,6 +2214,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PROP_EXP"), &expiry);
+        Self::append_access_audit(&env, symbol_short!("prop_exp"), &caller, None, true);
         true
     }
 
@@ -2356,6 +2409,14 @@ impl FamilyWallet {
             (current_upgrade_admin.clone(), new_admin.clone()),
         );
 
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upg_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
+
         true
     }
 
@@ -2395,6 +2456,7 @@ impl FamilyWallet {
             (symbol_short!("wallet"), symbol_short!("upgraded")),
             (prev, new_version),
         );
+        Self::append_access_audit(&env, symbol_short!("set_ver"), &caller, None, true);
         true
     }
 

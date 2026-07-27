@@ -258,6 +258,52 @@ pub struct PolicyReactivatedEvent {
     pub timestamp: u64,
 }
 
+/// Typed event discriminant for all insurance policy lifecycle events.
+///
+/// Used as the **second topic** in every `(symbol_short!("insurance"), InsuranceEvent::*)` pair,
+/// giving indexers a single stable enum to subscribe to instead of ad-hoc symbol pairs.
+///
+/// # Wire stability
+/// Variants are serialized by `#[contracttype]` as their ordinal position.
+/// **Do not reorder or remove variants** — that is a breaking change for downstream indexers.
+/// New variants must be appended at the end.
+#[contracttype]
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum InsuranceEvent {
+    /// Policy was created (`create_policy`).
+    Created = 0,
+    /// Premium was paid (`pay_premium` / `batch_pay_premiums`).
+    PremiumPaid = 1,
+    /// Policy was deactivated (`deactivate_policy`).
+    Deactivated = 2,
+    /// Policy was reactivated (`reactivate_policy`).
+    Reactivated = 3,
+    /// External reference was set or cleared (`set_external_ref`).
+    ExternalRefUpdated = 4,
+    /// Recurring schedule was created.
+    ScheduleCreated = 5,
+    /// Recurring schedule was executed.
+    ScheduleExecuted = 6,
+    /// Recurring schedule was cancelled.
+    ScheduleCancelled = 7,
+    /// Recurring schedule was modified.
+    ScheduleModified = 8,
+}
+
+/// Event payload emitted when an external reference is set or cleared on a policy.
+#[contracttype]
+#[derive(Clone)]
+pub struct ExternalRefUpdatedEvent {
+    /// The policy whose external reference was changed.
+    pub policy_id: u32,
+    /// The caller (contract owner) who made the change.
+    pub caller: Address,
+    /// The new external reference value, or `None` if it was cleared.
+    pub ext_ref: core::option::Option<String>,
+    /// Ledger timestamp at the time of the update.
+    pub timestamp: u64,
+}
+
 #[contracttype]
 pub enum DataKey {
     Owner,
@@ -562,7 +608,7 @@ impl Insurance {
 
         Self::extend_instance_ttl(&env);
         env.events().publish(
-            (symbol_short!("created"), symbol_short!("policy")),
+            (symbol_short!("insurance"), InsuranceEvent::Created),
             PolicyCreatedEvent {
                 policy_id: next_id,
                 name,
@@ -606,7 +652,7 @@ impl Insurance {
         Self::extend_instance_ttl(&env);
 
         env.events().publish(
-            (symbol_short!("paid"), symbol_short!("premium")),
+            (symbol_short!("insurance"), InsuranceEvent::PremiumPaid),
             PremiumPaidEvent {
                 policy_id,
                 name: policy.name,
@@ -641,7 +687,7 @@ impl Insurance {
                 let next_payment_date = policy.next_payment_date;
                 env.storage().instance().set(&DataKey::Policy(id), &policy);
                 env.events().publish(
-                    (symbol_short!("paid"), symbol_short!("premium")),
+                    (symbol_short!("insurance"), InsuranceEvent::PremiumPaid),
                     PremiumPaidEvent {
                         policy_id: id,
                         name: policy.name.clone(),
@@ -685,10 +731,22 @@ impl Insurance {
 
         let mut policy = Self::load_policy(&env, policy_id)?;
         Self::validate_ext_ref(&ext_ref)?;
-        policy.external_ref = ext_ref;
+        policy.external_ref = ext_ref.clone();
         env.storage()
             .instance()
             .set(&DataKey::Policy(policy_id), &policy);
+        Self::extend_instance_ttl(&env);
+
+        let now = env.ledger().timestamp();
+        env.events().publish(
+            (symbol_short!("insurance"), InsuranceEvent::ExternalRefUpdated),
+            ExternalRefUpdatedEvent {
+                policy_id,
+                caller,
+                ext_ref,
+                timestamp: now,
+            },
+        );
         Ok(true)
     }
 
@@ -726,7 +784,7 @@ impl Insurance {
         let _ = Self::remove_active_policy(&env, policy_id);
 
         env.events().publish(
-            (symbol_short!("deactive"), symbol_short!("policy")),
+            (symbol_short!("insurance"), InsuranceEvent::Deactivated),
             PolicyDeactivatedEvent {
                 policy_id,
                 name: policy.name,
@@ -897,7 +955,7 @@ impl Insurance {
         Self::add_active_policy(&env, policy_id)?;
 
         env.events().publish(
-            (symbol_short!("react"), symbol_short!("policy")),
+            (symbol_short!("insurance"), InsuranceEvent::Reactivated),
             PolicyReactivatedEvent {
                 policy_id,
                 name: policy.name,
@@ -1401,7 +1459,7 @@ impl Insurance {
             .set(&DataKey::OwnerSchedules(owner), &owner_ids);
 
         env.events().publish(
-            (symbol_short!("insurance"), symbol_short!("sched_crt")),
+            (symbol_short!("insurance"), InsuranceEvent::ScheduleCreated),
             (next_id, policy_id),
         );
 
@@ -1470,7 +1528,7 @@ impl Insurance {
         Self::extend_persistent_ttl(&env, &DataKey::Schedule(schedule_id));
 
         env.events().publish(
-            (symbol_short!("insurance"), symbol_short!("sched_mod")),
+            (symbol_short!("insurance"), InsuranceEvent::ScheduleModified),
             (schedule_id,),
         );
 
@@ -1516,7 +1574,7 @@ impl Insurance {
         Self::extend_persistent_ttl(&env, &DataKey::Schedule(schedule_id));
 
         env.events().publish(
-            (symbol_short!("insurance"), symbol_short!("sched_ccl")),
+            (symbol_short!("insurance"), InsuranceEvent::ScheduleCancelled),
             (schedule_id,),
         );
 
@@ -1651,7 +1709,7 @@ impl Insurance {
                 timestamp: now,
             };
             env.events().publish(
-                (symbol_short!("insurance"), symbol_short!("sched_exe")),
+                (symbol_short!("insurance"), InsuranceEvent::ScheduleExecuted),
                 event,
             );
 

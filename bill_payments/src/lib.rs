@@ -3,10 +3,11 @@
 
 use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, require_stable_currency, EventCategory,
-    EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD,
-    CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
-    MAX_BATCH_SIZE, MAX_CURRENCY_LEN, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    check_and_increment_rate_limit, clamp_limit, require_stable_currency,
+    require_within_settlement_window, EventCategory, EventPriority, RemitwiseEvents,
+    Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
+    MAX_SETTLEMENT_WINDOW_SECS, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{
@@ -206,6 +207,8 @@ pub enum BillPaymentsError {
     EmptyPage = 29,
     /// Bill or schedule name is invalid (empty or exceeds max length)
     InvalidName = 30,
+    /// Settlement occurred outside the allowed settlement window
+    SettlementWindowExpired = 32,
 }
 
 pub type Error = BillPaymentsError;
@@ -1938,6 +1941,9 @@ impl BillPayments {
         }
 
         let current_time = env.ledger().timestamp();
+        require_within_settlement_window(current_time, bill.due_date, MAX_SETTLEMENT_WINDOW_SECS)
+            .map_err(|_| BillPaymentsError::SettlementWindowExpired)?;
+
         bill.paid = true;
         bill.paid_at = Some(current_time);
 

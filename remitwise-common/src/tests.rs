@@ -2030,9 +2030,9 @@ proptest! {
     }
 }
 
-// ─── require_valid_symbol_length ─────────────────────────────────────────────
+// ─── require_valid_symbol_name_length ─────────────────────────────────────────
 //
-// These tests lock in the boundary contract for [`require_valid_symbol_length`]:
+// These tests lock in the boundary contract for [`require_valid_symbol_name_length`]:
 //
 // - Empty input (0 bytes)  → Err(SymbolLengthError::Empty)
 // - 1-byte input           → Ok(())   (lower inclusive boundary)
