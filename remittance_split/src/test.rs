@@ -1249,6 +1249,33 @@ fn test_init_corridors_fee_too_high() {
 }
 
 #[test]
+fn test_init_corridors_fee_rounding() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let bad = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 100,
+        max_amount: 1_000_000,
+        fee_bps: 150, // 1.5% which is a fractional percent
+    };
+    let corridors = vec![&env, bad];
+
+    let result = client.try_init_corridors(&owner, &1, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::FeeRounding)));
+}
+#[test]
 fn test_init_corridors_invalid_amount_range() {
     let env = Env::default();
     env.mock_all_auths();

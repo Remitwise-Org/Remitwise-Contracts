@@ -97,6 +97,8 @@ pub enum RemittanceSplitError {
     UnsupportedTokenContract = 31,
     /// No active treasury has accepted a treasury proposal yet.
     TreasuryNotConfigured = 32,
+    /// The corridor fee has a fractional percentage, which causes rounding issues.
+    FeeRounding = 33,
 }
 
 #[derive(Clone)]
@@ -1071,7 +1073,7 @@ impl RemittanceSplit {
     /// 2. Each `fee_bps` ≤ [`params::MAX_FEE_BPS`].
     /// 3. Each `max_amount` ≥ `min_amount` and `min_amount` ≥ [`params::MIN_CORRIDOR_AMOUNT`].
     /// 4. No duplicate corridor IDs.
-    fn validate_corridors(corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
+    fn validate_corridors(env: &Env, corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
         if corridors.len() > params::MAX_CORRIDORS {
             return Err(RemittanceSplitError::CorridorCountExceeded);
         }
@@ -1079,6 +1081,15 @@ impl RemittanceSplit {
             if let Some(c) = corridors.get(i) {
                 if c.fee_bps > params::MAX_FEE_BPS {
                     return Err(RemittanceSplitError::CorridorFeeTooHigh);
+                }
+                if remitwise_common::Rate::from_bps(c.fee_bps).has_fractional_percent() {
+                    soroban_sdk::log!(
+                        env,
+                        "level=ERROR error=FeeRounding corridor_id={} fee_bps={}",
+                        c.id,
+                        c.fee_bps
+                    );
+                    return Err(RemittanceSplitError::FeeRounding);
                 }
                 if c.max_amount < c.min_amount || c.min_amount < params::MIN_CORRIDOR_AMOUNT {
                     return Err(RemittanceSplitError::InvalidCorridorAmountRange);
@@ -1341,7 +1352,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
 
-        Self::validate_corridors(&corridors)?;
+        Self::validate_corridors(&env, &corridors)?;
 
         env.storage()
             .instance()
