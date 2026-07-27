@@ -541,11 +541,19 @@ impl FamilyWallet {
             EventPriority::High,
             symbol_short!("member"),
             MemberAddedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 role,
                 spending_limit,
                 timestamp: now,
             },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("add_mem"),
+            &admin,
+            Some(member_address),
+            true,
         );
 
         Ok(true)
@@ -622,11 +630,19 @@ impl FamilyWallet {
             EventPriority::Medium,
             symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 old_limit,
                 new_limit,
                 timestamp: now,
             },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upd_lim"),
+            &caller,
+            Some(member_address),
+            true,
         );
 
         true
@@ -783,6 +799,14 @@ impl FamilyWallet {
                 spending_limit,
                 timestamp: env.ledger().timestamp(),
             },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ms_conf"),
+            &caller,
+            None,
+            true,
         );
 
         Ok(true)
@@ -1664,7 +1688,15 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::TransactionsArchived),
-            (archived_count, caller),
+            (archived_count, caller.clone()),
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("arch_tx"),
+            &caller,
+            None,
+            true,
         );
 
         archived_count
@@ -1765,7 +1797,14 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
-            (removed_count, caller),
+            (removed_count, caller.clone()),
+        );
+        Self::append_access_audit(
+            &env,
+            symbol_short!("cln_exp"),
+            &caller,
+            None,
+            true,
         );
         removed_count
     }
@@ -1880,11 +1919,19 @@ impl FamilyWallet {
                 .instance()
                 .get(&symbol_short!("SPND_TRK"))
                 .unwrap_or_else(|| Map::new(&env));
-            trackers.remove(member);
+            trackers.remove(member.clone());
             env.storage()
                 .instance()
                 .set(&symbol_short!("SPND_TRK"), &trackers);
         }
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("prec_lim"),
+            &caller,
+            Some(member),
+            true,
+        );
 
         Ok(true)
     }
@@ -2000,6 +2047,7 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &true);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }
 
@@ -2022,6 +2070,7 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &false);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
+        Self::append_access_audit(&env, symbol_short!("unpause"), &caller, None, true);
         true
     }
 
@@ -2031,6 +2080,13 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ps_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
         true
     }
 
@@ -2079,6 +2135,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PROP_EXP"), &expiry);
+        Self::append_access_audit(&env, symbol_short!("prop_exp"), &caller, None, true);
         true
     }
 
@@ -2273,6 +2330,14 @@ impl FamilyWallet {
             (current_upgrade_admin.clone(), new_admin.clone()),
         );
 
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upg_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
+
         true
     }
 
@@ -2312,6 +2377,7 @@ impl FamilyWallet {
             (symbol_short!("wallet"), symbol_short!("upgraded")),
             (prev, new_version),
         );
+        Self::append_access_audit(&env, symbol_short!("set_ver"), &caller, None, true);
         true
     }
 
