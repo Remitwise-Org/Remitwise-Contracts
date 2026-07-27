@@ -268,7 +268,7 @@ pub struct PolicyReactivatedEvent {
 /// **Do not reorder or remove variants** — that is a breaking change for downstream indexers.
 /// New variants must be appended at the end.
 #[contracttype]
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InsuranceEvent {
     /// Policy was created (`create_policy`).
     Created = 0,
@@ -1017,11 +1017,11 @@ impl Insurance {
         }
 
         let count = items.len();
-        PolicyPage {
+        Ok(PolicyPage {
             items,
             next_cursor,
             count,
-        }
+        })
     }
 
     /// Get a paginated list of deactivated policies for an owner.

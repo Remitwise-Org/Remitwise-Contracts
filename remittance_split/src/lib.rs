@@ -92,11 +92,17 @@ pub enum RemittanceSplitError {
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 30,
     /// The supplied token contract is not a supported stable ingress asset.
-    /// This is a defence-in-depth rejection for rebase/deflationary or otherwise
-    /// incompatible token contracts that would undermine the remittance invariants.
     UnsupportedTokenContract = 31,
     /// No active treasury has accepted a treasury proposal yet.
     TreasuryNotConfigured = 32,
+    /// The number of configured corridors exceeds the maximum allowed.
+    CorridorCountExceeded = 35,
+    /// A corridor's fee (in basis points) exceeds the maximum allowed.
+    CorridorFeeTooHigh = 36,
+    /// A corridor's min/max amount range is invalid.
+    InvalidCorridorAmountRange = 37,
+    /// Two or more corridors share the same ID.
+    DuplicateCorridorId = 38,
 }
 
 #[derive(Clone)]

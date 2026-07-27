@@ -71,7 +71,7 @@ impl EmergencyKillswitch {
     ///
     /// # Errors
     /// - [`Error::EpochMismatch`] if the provided epoch does not match.
-    pub fn require_matching_kill_switch_epoch(env: Env, ep: u64) -> Result<(), Error> {
+    pub fn require_killswitch_epoch(env: Env, ep: u64) -> Result<(), Error> {
         let current: u64 = env
             .storage()
             .instance()
@@ -149,7 +149,7 @@ impl EmergencyKillswitch {
     ///
     /// Emits [AdminTransferred] on successful handover.
     pub fn transfer_admin(env: Env, new_admin: Address, ep: u64) -> Result<(), Error> {
-        Self::require_matching_kill_switch_epoch(env.clone(), ep)?;
+        Self::require_killswitch_epoch(env.clone(), ep)?;
         let admin: Address = env
             .storage()
             .instance()
@@ -734,25 +734,25 @@ mod tests {
         assert_eq!(ep, 0);
     }
 
-    /// require_matching_kill_switch_epoch passes with correct epoch.
+    /// require_killswitch_epoch passes with correct epoch.
     #[test]
-    fn test_require_matching_kill_switch_epoch_ok() {
+    fn test_require_killswitch_epoch_ok() {
         let (env, client) = setup_env();
         let admin = Address::generate(&env);
         client.initialize(&admin);
 
-        let res = client.try_require_matching_kill_switch_epoch(&0);
+        let res = client.try_require_killswitch_epoch(&0);
         assert_eq!(res, Ok(Ok(())));
     }
 
-    /// require_matching_kill_switch_epoch fails with wrong epoch.
+    /// require_killswitch_epoch fails with wrong epoch.
     #[test]
-    fn test_require_matching_kill_switch_epoch_fails() {
+    fn test_require_killswitch_epoch_fails() {
         let (env, client) = setup_env();
         let admin = Address::generate(&env);
         client.initialize(&admin);
 
-        let res = client.try_require_matching_kill_switch_epoch(&42);
+        let res = client.try_require_killswitch_epoch(&42);
         assert_eq!(res, Err(Ok(Error::EpochMismatch)));
     }
 

@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol};
 pub mod tokens;
 pub use tokens::{
     SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
@@ -135,6 +135,24 @@ pub const MAX_PAGE_LIMIT: u32 = 50;
 
 /// Max items returned in Top-N reports.
 pub const MAX_ITEMS_PER_REPORT: u32 = 10;
+/// Alias for MAX_ITEMS_PER_REPORT used by reporting contract.
+pub const MAX_TOP_N: u32 = MAX_ITEMS_PER_REPORT;
+
+/// Error returned when a top-N size exceeds the hard cap.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TopNError;
+
+/// Requires that a top-N report size does not exceed the global cap.
+///
+/// This is a defence-in-depth guard that fails closed if a future
+/// code change raises `n` above `MAX_TOP_N`.
+pub fn require_bounded_top_n(n: u32, max: u32) -> Result<(), TopNError> {
+    if n > max {
+        Err(TopNError)
+    } else {
+        Ok(())
+    }
+}
 
 /// Helper to insert an item into a Top-N list (bounded).
 /// The list is maintained in sorted order based on the provided comparator.
@@ -257,8 +275,8 @@ pub enum SymbolError {
 }
 
 /// Returns [`SymbolError::SymbolTooLong`] when the symbol exceeds 9 bytes.
-pub fn require_valid_symbol_length(_env: &Env, sym: &Symbol) -> Result<(), SymbolError> {
-    let val: soroban_sdk::Val = (*sym).into();
+pub fn require_valid_symbol_length(env: &Env, sym: &Symbol) -> Result<(), SymbolError> {
+    let val: soroban_sdk::Val = sym.into_val(env);
     if val.is_object() {
         Err(SymbolError::SymbolTooLong)
     } else {
@@ -364,18 +382,6 @@ pub enum SymbolLengthError {
     Empty = 1,
     /// The symbol name exceeds [`SYMBOL_SHORT_MAX_LEN`] bytes.
     TooLong = 2,
-}
-
-/// Error returned when a [`Symbol`] value exceeds the short-symbol limit (9 bytes).
-///
-/// Short symbols are stored inline in the [`Val`] bit pattern; long symbols use
-/// the heap-allocating `SymbolObject` XDR encoding.
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum SymbolError {
-    /// The symbol exceeds 9 bytes (too large for inline `symbol_short!` encoding).
-    SymbolTooLong = 1,
 }
 
 /// Validates that a candidate symbol name is within the bounds accepted by the
@@ -561,6 +567,19 @@ pub fn get_rate_limit_status(env: &Env, caller: &Address, operation: Symbol) -> 
     });
 
     (record.count, window_id + RATE_LIMIT_WINDOW_SECONDS)
+}
+
+/// Verifies that an amount is above the dust threshold (1 stroop).
+///
+/// Returns `Ok(())` when `amount > 1`, otherwise returns an error.
+/// This is a defence-in-depth check to prevent amounts that are
+/// economically meaningless (1 stroop = 0.0000001 XLM).
+pub fn verify_no_dust(amount: i128) -> Result<(), ()> {
+    if amount <= 1 {
+        Err(())
+    } else {
+        Ok(())
+    }
 }
 
 /// Normalizes caller-supplied pagination limits for all shared paginated reads.

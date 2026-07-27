@@ -7,7 +7,7 @@ use soroban_sdk::{
 
 use remitwise_common::{
     EventCategory, EventPriority, FamilyRole, RemitwiseEvents, RoleGrantedEvent, RoleRevokedEvent,
-    CONTRACT_VERSION,
+    CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -2590,6 +2590,7 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         let mut seen_addrs: Map<Address, bool> = Map::new(&env);
+        let mut count = 0u32;
         for addr in addresses.iter() {
             if addr.clone() == owner {
                 panic!("Cannot remove owner");
@@ -2620,7 +2621,6 @@ impl FamilyWallet {
             }
         }
 
-        let mut count = 0u32;
         for addr in addresses.iter() {
             members_map.remove(addr.clone());
             // Clear all per-member state to prevent storage bloat and stale state

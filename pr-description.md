@@ -64,16 +64,32 @@ The guard performs a single instance-storage `bool` read (~250 gas units). This 
 
 ## Files changed
 
+### Initial commit (kill switch guard)
+
 | File | Change |
 |---|---|
 | `remitwise-common/src/lib.rs` | +190 lines — Kill switch infrastructure, 6 unit tests |
 | `bill_payments/src/lib.rs` | +38 lines — Guard on 19 write entry points |
-| `insurance/src/lib.rs` | +0 lines — Guard on 11 write entry points |
-| `remittance_split/src/lib.rs` | +0 lines — Guard on 7 write entry points |
 | `family_wallet/src/lib.rs` | +62 lines — Guard on 21 write entry points |
 | `savings_goals/src/lib.rs` | +48 lines — Guard on 19 write entry points |
-| `orchestrator/src/lib.rs` | +0 lines — Guard on 4 write entry points |
-| `reporting/src/lib.rs` | +0 lines — Guard on 2 write entry points |
+| `AGENTS.md`, `pr-description.md`, `commit_msg.txt` | Documentation |
+
+> **Note:** Guards for `insurance`, `remittance_split`, `orchestrator`, and `reporting` are tracked separately and not included in this PR.
+
+### CI fix commit (build & lint)
+
+Fixes all compilation errors and clippy lint violations that blocked CI:
+
+| File | Issue | Fix |
+|---|---|---|
+| `remitwise-common/src/lib.rs` | Duplicate `SymbolError` enum (E0428) | Removed unused 2nd definition |
+| `remitwise-common/src/lib.rs` | `Symbol` doesn't impl `Into<Val>` (E0277) | Used `sym.into_val(env)` + added `IntoVal` import |
+| `remitwise-common/src/lib.rs` | Missing `verify_no_dust`, `MAX_TOP_N`, `require_bounded_top_n` | Added all 3 helpers |
+| `insurance/src/lib.rs` | `InsuranceEvent` missing `Copy`; `PolicyPage` not in `Ok()` | Added `Copy` derive; wrapped return in `Ok()` |
+| `family_wallet/src/lib.rs` | Missing imports + undeclared `count` variable | Added `STROOPS_PER_XLM`, `SNAPSHOT_KEY`, `SNAPSHOT_VERSION`; fixed `count` scope |
+| `remittance_split/src/lib.rs` | Corridor discriminant conflicts (31-32) + missing variants | Used discriminants 35-38 |
+| `reporting/src/lib.rs` | Missing `TopNTooLarge` error variant | Added `TopNTooLarge = 11` |
+| `emergency_killswitch/src/lib.rs` | Entry point name 34 chars > 32 max | Renamed `require_matching_kill_switch_epoch` → `require_killswitch_epoch` |
 
 ## Out of scope
 
