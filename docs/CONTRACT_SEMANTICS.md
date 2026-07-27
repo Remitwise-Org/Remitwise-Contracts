@@ -523,6 +523,15 @@ This is an automatic recovery mechanism — a timed pause expires without operat
 
 ---
 
+### 8.3 Ledger Monotonicity Assumption
+
+Contracts that compare ledger timestamps or sequence numbers assume that these values
+advance monotonically between successful ledger closes. Time-based features such as
+scheduled unpause operations rely on this property and do not attempt to compensate
+for non-monotonic ledger values.
+
+See also: `docs/LEDGER_MONOTONICITY.md`.
+
 ## 9. no_std Compilation Discipline
 
 All contract crates compile with `#![no_std]` for the WASM target. This means:
