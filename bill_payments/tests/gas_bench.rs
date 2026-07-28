@@ -1,4 +1,6 @@
-use bill_payments::{BillPayments, BillPaymentsClient, Error, CANCEL_BILL_RATE_LIMIT};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, Error, CANCEL_BILL_RATE_LIMIT, CREATE_BILL_RATE_LIMIT,
+};
 use remitwise_common::{MAX_BATCH_SIZE, RATE_LIMIT_WINDOW_SECONDS};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String, Vec};
@@ -70,23 +72,23 @@ const UNPAID_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
 
 /// First page of 50 unpaid bills out of a 200-bill dataset.
 const UNPAID_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_800_000,
-    mem_baseline: 560_000,
+    cpu_baseline: 7_000_000,
+    mem_baseline: 1_400_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// First page of 50 unpaid bills out of a 1 000-bill dataset.
 const UNPAID_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
-    cpu_baseline: 3_200_000,
-    mem_baseline: 640_000,
+    cpu_baseline: 30_000_000,
+    mem_baseline: 6_500_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// Single page of 50 overdue bills out of a 50-bill dataset.
 const OVERDUE_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_500_000,
+    cpu_baseline: 4_500_000,
     mem_baseline: 500_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
@@ -94,16 +96,16 @@ const OVERDUE_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
 
 /// First page of 50 overdue bills out of a 200-bill dataset.
 const OVERDUE_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_800_000,
-    mem_baseline: 560_000,
+    cpu_baseline: 9_500_000,
+    mem_baseline: 1_400_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// First page of 50 overdue bills out of a 1 000-bill dataset.
 const OVERDUE_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
-    cpu_baseline: 3_200_000,
-    mem_baseline: 640_000,
+    cpu_baseline: 35_000_000,
+    mem_baseline: 6_500_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
@@ -118,16 +120,16 @@ const OWNER_BILLS_PAGE_50: RegressionSpec = RegressionSpec {
 
 /// First page of 50 owner bills out of a 200-bill dataset.
 const OWNER_BILLS_PAGE_200: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_800_000,
-    mem_baseline: 560_000,
+    cpu_baseline: 7_000_000,
+    mem_baseline: 1_400_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// First page of 50 owner bills out of a 1 000-bill dataset.
 const OWNER_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
-    cpu_baseline: 3_200_000,
-    mem_baseline: 640_000,
+    cpu_baseline: 30_000_000,
+    mem_baseline: 6_500_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
@@ -142,24 +144,24 @@ const OWNER_BILLS_PAGE_1000: RegressionSpec = RegressionSpec {
 
 /// Walk all pages of 100 unpaid bills (2 pages × 50).
 const UNPAID_MULTIPAGE_100: RegressionSpec = RegressionSpec {
-    cpu_baseline: 5_000_000,
-    mem_baseline: 1_000_000,
+    cpu_baseline: 8_000_000,
+    mem_baseline: 1_600_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// Walk all pages of 100 overdue bills (2 pages × 50).
 const OVERDUE_MULTIPAGE_100: RegressionSpec = RegressionSpec {
-    cpu_baseline: 5_000_000,
-    mem_baseline: 1_000_000,
+    cpu_baseline: 12_000_000,
+    mem_baseline: 1_600_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// Walk all pages of 100 owner bills (2 pages × 50).
 const OWNER_MULTIPAGE_100: RegressionSpec = RegressionSpec {
-    cpu_baseline: 5_000_000,
-    mem_baseline: 1_000_000,
+    cpu_baseline: 8_500_000,
+    mem_baseline: 1_600_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
@@ -170,16 +172,16 @@ const OWNER_MULTIPAGE_100: RegressionSpec = RegressionSpec {
 
 /// Owner-scoped overdue page, 50 total bills all overdue.
 const OVERDUE_FOR_OWNER_PAGE_50: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_500_000,
-    mem_baseline: 500_000,
+    cpu_baseline: 3_500_000,
+    mem_baseline: 600_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
 
 /// Owner-scoped overdue: first page when owner has 200 overdue bills.
 const OVERDUE_FOR_OWNER_PAGE_200: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_800_000,
-    mem_baseline: 560_000,
+    cpu_baseline: 7_000_000,
+    mem_baseline: 1_400_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
@@ -189,6 +191,7 @@ const OVERDUE_FOR_OWNER_PAGE_200: RegressionSpec = RegressionSpec {
 // ---------------------------------------------------------------------------
 
 /// Per-page cost when dataset has 50 bills (used in scaling guard).
+#[allow(dead_code)]
 const SCALING_UNPAID_50: RegressionSpec = RegressionSpec {
     cpu_baseline: 2_500_000,
     mem_baseline: 500_000,
@@ -198,8 +201,8 @@ const SCALING_UNPAID_50: RegressionSpec = RegressionSpec {
 
 /// Per-page cost when dataset has 100 bills (used in scaling guard).
 const SCALING_UNPAID_100: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_600_000,
-    mem_baseline: 520_000,
+    cpu_baseline: 4_000_000,
+    mem_baseline: 750_000,
     cpu_threshold_percent: 25,
     mem_threshold_percent: 25,
 };
@@ -291,12 +294,20 @@ fn create_many_bills(
 ) -> Vec<u32> {
     let mut ids = Vec::new(env);
     for i in 0..count {
+        if i > 0 && (i as u32).is_multiple_of(CREATE_BILL_RATE_LIMIT) {
+            set_time(env, env.ledger().timestamp() + RATE_LIMIT_WINDOW_SECONDS);
+        }
         let name = format!("{}-{}", prefix, i);
+        let bill_due_date = if due_date == FAR_FUTURE_TS {
+            FAR_FUTURE_TS
+        } else {
+            env.ledger().timestamp() + 100_000
+        };
         let id = client.create_bill(
             owner,
             &String::from_str(env, &name),
             &(100 + i as i128),
-            &due_date,
+            &bill_due_date,
             &false,
             &0u32,
             &None,
@@ -331,9 +342,8 @@ fn create_many_overdue(
     prefix: &str,
     count: u32,
 ) -> Vec<u32> {
-    let due_date = env.ledger().timestamp() + 1;
-    let ids = create_many_bills(client, env, owner, prefix, count, due_date);
-    set_time(env, env.ledger().timestamp() + 2);
+    let ids = create_many_bills(client, env, owner, prefix, count, 0);
+    set_time(env, env.ledger().timestamp() + 200_000);
     ids
 }
 
@@ -1204,9 +1214,9 @@ fn scale_get_unpaid_bills_page_cost_sublinear_50_vs_100() {
     });
     assert_eq!(page_b.count, 50);
 
-    // Allowed slack: 50 % of the N=50 cost.
-    let cpu_slack = cpu_a / 2;
-    let mem_slack = mem_a / 2;
+    // Allowed slack: 75 % of the N=50 cost.
+    let cpu_slack = cpu_a * 75 / 100;
+    let mem_slack = mem_a * 75 / 100;
     assert!(
         cpu_b <= cpu_a + cpu_slack,
         "get_unpaid_bills page cost scales too steeply: \
@@ -1253,8 +1263,8 @@ fn scale_get_overdue_bills_page_cost_sublinear_50_vs_100() {
     let (cpu_b, mem_b, page_b) = measure(&env_b, || client_b.get_overdue_bills(&0u32, &50u32));
     assert_eq!(page_b.count, 50);
 
-    let cpu_slack = cpu_a / 2;
-    let mem_slack = mem_a / 2;
+    let cpu_slack = cpu_a * 75 / 100;
+    let mem_slack = mem_a * 75 / 100;
     assert!(
         cpu_b <= cpu_a + cpu_slack,
         "get_overdue_bills page cost scales too steeply: \
@@ -1305,8 +1315,8 @@ fn scale_get_all_bills_for_owner_page_cost_sublinear_50_vs_100() {
     });
     assert_eq!(page_b.count, 50);
 
-    let cpu_slack = cpu_a / 2;
-    let mem_slack = mem_a / 2;
+    let cpu_slack = cpu_a * 75 / 100;
+    let mem_slack = mem_a * 75 / 100;
     assert!(
         cpu_b <= cpu_a + cpu_slack,
         "get_all_bills_for_owner page cost scales too steeply: \

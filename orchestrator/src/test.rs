@@ -185,7 +185,7 @@ fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
         ("remittance_split.wasm", 110_000),
         ("savings_goals.wasm", 112_000),
         ("bill_payments.wasm", 135_000),
-        ("insurance.wasm", 58_000), // Increased from 57_000 to 58_000 to accommodate small test coverage additions
+        ("insurance.wasm", 70_000), // Increased to accommodate kill switch guard & pagination security additions
         ("family_wallet.wasm", 130_000),
     ]
 }
