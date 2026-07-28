@@ -1124,11 +1124,7 @@ fn sample_corridor(env: &Env, id: u32) -> Corridor {
 }
 
 fn sample_corridors(env: &Env) -> Vec<Corridor> {
-    vec![
-        env,
-        sample_corridor(env, 1),
-        sample_corridor(env, 2),
-    ]
+    vec![env, sample_corridor(env, 1), sample_corridor(env, 2)]
 }
 
 #[test]

@@ -254,11 +254,5 @@ fn re_register_revoked_operator_restores_registered_state() {
     assert_eq!(client.get_role_expiry_public(&admin), Some(renewed_to));
 
     // Privileged action succeeds again.
-    assert!(client.configure_emergency(
-        &admin,
-        &1000_0000000,
-        &3600,
-        &0,
-        &10000_0000000
-    ));
+    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000));
 }

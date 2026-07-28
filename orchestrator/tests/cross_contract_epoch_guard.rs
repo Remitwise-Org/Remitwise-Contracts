@@ -387,12 +387,7 @@ fn cross_contract_non_matching_epochs_all_produce_epoch_mismatch() {
     // mid-range (50, 1000), and the maximum u64 value.
     for bad_epoch in [0u64, 1, 2, 3, 4, 6, 50, 1000, u64::MAX] {
         let result = client.try_execute_remittance_flow_signed(
-            &executor,
-            &amount,
-            &0u64,
-            &deadline,
-            &hash,
-            &bad_epoch,
+            &executor, &amount, &0u64, &deadline, &hash, &bad_epoch,
         );
         assert_eq!(
             result,
@@ -446,12 +441,7 @@ fn cross_contract_bump_makes_old_epoch_stale_and_new_epoch_valid() {
 
     // New epoch accepted.
     let fresh_result = client.try_execute_remittance_flow_signed(
-        &executor,
-        &amount,
-        &nonce,
-        &deadline,
-        &hash_new,
-        &new_epoch,
+        &executor, &amount, &nonce, &deadline, &hash_new, &new_epoch,
     );
     assert_eq!(
         fresh_result,

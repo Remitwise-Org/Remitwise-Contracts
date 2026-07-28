@@ -7,8 +7,8 @@
 /// - Any non-zero value (including 1 and `u128::MAX`) is accepted.
 /// - `get()` returns the original value unchanged.
 extern crate std;
-use std::format;
 use super::*;
+use std::format;
 
 // ─── new: happy path ──────────────────────────────────────────────────────
 

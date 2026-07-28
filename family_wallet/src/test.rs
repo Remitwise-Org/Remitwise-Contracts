@@ -7995,12 +7995,7 @@ fn setup_wallet_with_pending_proposal() -> (Env, FamilyWalletClient<'static>, Ad
 
     // Create a pending proposal — this populates PEND_TXS
     let recipient = Address::generate(&env);
-    client.propose_emergency_transfer(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &3000_0000000,
-    );
+    client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &3000_0000000);
 
     (env, client, owner)
 }
@@ -8015,9 +8010,7 @@ fn test_remove_member_blocked_by_pending_operations() {
     let result = client.try_remove_family_member(&owner, &member1);
     assert_eq!(
         result,
-        Err(Ok(soroban_sdk::Error::from(
-            Error::PendingOperationsExist
-        ))),
+        Err(Ok(soroban_sdk::Error::from(Error::PendingOperationsExist))),
         "remove_family_member must reject when pending proposals exist"
     );
 }

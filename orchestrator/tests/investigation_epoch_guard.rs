@@ -64,10 +64,10 @@ fn boot(env: &Env) -> (Address, OrchestratorClient<'_>) {
     let orch_id = env.register_contract(None, Orchestrator);
     let client = OrchestratorClient::new(env, &orch_id);
 
-    let fw  = env.register_contract(None, MockDownstream);
-    let rs  = env.register_contract(None, MockDownstream);
-    let sg  = env.register_contract(None, MockDownstream);
-    let bp  = env.register_contract(None, MockDownstream);
+    let fw = env.register_contract(None, MockDownstream);
+    let rs = env.register_contract(None, MockDownstream);
+    let sg = env.register_contract(None, MockDownstream);
+    let bp = env.register_contract(None, MockDownstream);
     let ins = env.register_contract(None, MockDownstream);
 
     client.init(&owner, &fw, &rs, &sg, &bp, &ins);
@@ -108,15 +108,14 @@ fn active_epoch_zero_token_accepted_on_fresh_contract() {
     let current = client.get_actor_epoch_public();
     assert_eq!(current, 0, "epoch must be 0 after init");
 
-    let amount   = 1_000i128;
-    let nonce    = 0u64;
+    let amount = 1_000i128;
+    let nonce = 0u64;
     let deadline = env.ledger().timestamp() + 3_600;
-    let hash     = request_hash(nonce, amount, deadline);
+    let hash = request_hash(nonce, amount, deadline);
     let executor = Address::generate(&env);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor, &amount, &nonce, &deadline, &hash, &current,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &amount, &nonce, &deadline, &hash, &current);
     assert_eq!(
         result,
         Ok(Ok(true)),
@@ -137,15 +136,14 @@ fn active_epoch_token_accepted_after_single_bump() {
     let current = client.get_actor_epoch_public();
     assert_eq!(current, 1);
 
-    let amount   = 500i128;
-    let nonce    = 0u64;
+    let amount = 500i128;
+    let nonce = 0u64;
     let deadline = env.ledger().timestamp() + 3_600;
-    let hash     = request_hash(nonce, amount, deadline);
+    let hash = request_hash(nonce, amount, deadline);
     let executor = Address::generate(&env);
 
-    let result = client.try_execute_remittance_flow_signed(
-        &executor, &amount, &nonce, &deadline, &hash, &current,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &amount, &nonce, &deadline, &hash, &current);
     assert_eq!(
         result,
         Ok(Ok(true)),
@@ -174,7 +172,7 @@ fn cleared_old_epoch_token_rejected_after_single_bump() {
     assert_eq!(new_epoch, 1);
 
     let deadline = env.ledger().timestamp() + 3_600;
-    let hash     = request_hash(0, 1_000, deadline);
+    let hash = request_hash(0, 1_000, deadline);
     let executor = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow_signed(
@@ -203,11 +201,16 @@ fn cleared_two_bumps_ago_epoch_token_rejected() {
     assert_eq!(current, 2);
 
     let deadline = env.ledger().timestamp() + 3_600;
-    let hash     = request_hash(0, 1_000, deadline);
+    let hash = request_hash(0, 1_000, deadline);
     let executor = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow_signed(
-        &executor, &1_000i128, &0u64, &deadline, &hash, &stale_epoch,
+        &executor,
+        &1_000i128,
+        &0u64,
+        &deadline,
+        &hash,
+        &stale_epoch,
     );
     assert_eq!(
         result,
@@ -233,11 +236,16 @@ fn cleared_intermediate_epoch_token_rejected_after_second_bump() {
     assert_eq!(intermediate, 1);
 
     let deadline = env.ledger().timestamp() + 3_600;
-    let hash     = request_hash(0, 1_000, deadline);
+    let hash = request_hash(0, 1_000, deadline);
     let executor = Address::generate(&env);
 
     let result = client.try_execute_remittance_flow_signed(
-        &executor, &1_000i128, &0u64, &deadline, &hash, &intermediate,
+        &executor,
+        &1_000i128,
+        &0u64,
+        &deadline,
+        &hash,
+        &intermediate,
     );
     assert_eq!(
         result,
@@ -266,8 +274,8 @@ fn boundary_only_latest_epoch_accepted_after_many_bumps() {
     let current = client.get_actor_epoch_public();
     assert_eq!(current, N);
 
-    let amount   = 750i128;
-    let nonce    = 0u64;
+    let amount = 750i128;
+    let nonce = 0u64;
     let deadline = env.ledger().timestamp() + 3_600;
     let executor = Address::generate(&env);
 
@@ -281,15 +289,15 @@ fn boundary_only_latest_epoch_accepted_after_many_bumps() {
             result,
             Err(Ok(OrchestratorError::EpochMismatch)),
             "epoch {} must be rejected; current is {}",
-            stale, N
+            stale,
+            N
         );
     }
 
     // Current epoch must be accepted.
     let hash = request_hash(nonce, amount, deadline);
-    let result = client.try_execute_remittance_flow_signed(
-        &executor, &amount, &nonce, &deadline, &hash, &current,
-    );
+    let result = client
+        .try_execute_remittance_flow_signed(&executor, &amount, &nonce, &deadline, &hash, &current);
     assert_eq!(
         result,
         Ok(Ok(true)),

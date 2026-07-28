@@ -232,8 +232,7 @@ fn premium_schedule_executed_event_payload_schema() {
     };
 
     let v: Val = evt.clone().into_val(&env);
-    let decoded =
-        PremiumScheduleExecutedEvent::try_from_val(&env, &v).expect("round-trip failed");
+    let decoded = PremiumScheduleExecutedEvent::try_from_val(&env, &v).expect("round-trip failed");
 
     assert_eq!(decoded.schedule_id, 10);
     assert_eq!(decoded.policy_id, 2);
@@ -277,11 +276,7 @@ fn setup_contract(env: &Env) -> (InsuranceClient<'_>, Address) {
 }
 
 /// Helper: create a minimal Health policy.
-fn create_health_policy(
-    env: &Env,
-    client: &InsuranceClient<'_>,
-    policy_owner: &Address,
-) -> u32 {
+fn create_health_policy(env: &Env, client: &InsuranceClient<'_>, policy_owner: &Address) -> u32 {
     client.create_policy(
         policy_owner,
         &SorobanString::from_str(env, "Test Policy"),
@@ -317,10 +312,7 @@ fn create_policy_emits_created_event() {
             let payload: PolicyCreatedEvent =
                 PolicyCreatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             assert_eq!(payload.policy_id, pid);
-            assert_eq!(
-                payload.name,
-                SorobanString::from_str(&env, "Test Policy")
-            );
+            assert_eq!(payload.name, SorobanString::from_str(&env, "Test Policy"));
             assert_eq!(payload.coverage_type, CoverageType::Health);
             assert_eq!(payload.monthly_premium, 5_000_000);
             assert_eq!(payload.coverage_amount, 50_000_000);
@@ -466,18 +458,14 @@ fn set_external_ref_emits_external_ref_updated_event() {
             InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
         {
             let payload: ExternalRefUpdatedEvent =
-                ExternalRefUpdatedEvent::try_from_val(&env, &data)
-                    .expect("payload decode failed");
+                ExternalRefUpdatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             assert_eq!(payload.policy_id, pid);
             assert_eq!(payload.caller, contract_owner);
             assert_eq!(payload.ext_ref, Some(new_ref.clone()));
             found = true;
         }
     }
-    assert!(
-        found,
-        "InsuranceEvent::ExternalRefUpdated was not emitted"
-    );
+    assert!(found, "InsuranceEvent::ExternalRefUpdated was not emitted");
 }
 
 /// Clearing (`None`) also emits `ExternalRefUpdated` with `ext_ref: None`.
@@ -515,8 +503,7 @@ fn set_external_ref_clear_emits_event_with_none() {
             InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
         {
             let payload: ExternalRefUpdatedEvent =
-                ExternalRefUpdatedEvent::try_from_val(&env, &data)
-                    .expect("payload decode failed");
+                ExternalRefUpdatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             if payload.ext_ref.is_none() {
                 assert_eq!(payload.policy_id, pid);
                 assert_eq!(payload.caller, contract_owner);
@@ -660,7 +647,10 @@ fn deactivate_policy_idempotent_emits_no_second_event() {
 
     // Count Deactivated events after the first call.
     let count_after_first = count_deactivated_events(&env, pid);
-    assert_eq!(count_after_first, 1, "expected exactly 1 Deactivated event after first deactivation");
+    assert_eq!(
+        count_after_first, 1,
+        "expected exactly 1 Deactivated event after first deactivation"
+    );
 
     // Second deactivation (idempotent) — must not add another event.
     assert!(client.deactivate_policy(&policy_owner, &pid));

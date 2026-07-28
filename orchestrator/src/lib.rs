@@ -709,10 +709,7 @@ impl Orchestrator {
     ///
     /// This is a read-only view function that does not require authorization.
     pub fn get_fee_schedule(env: Env) -> Option<(u32, u32, u32, u32)> {
-        let rs_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("RS_ADDR"))?;
+        let rs_addr: Address = env.storage().instance().get(&symbol_short!("RS_ADDR"))?;
 
         let rs_client = interface::RemittanceSplitClient::new(&env, &rs_addr);
         let split = rs_client.get_split();
@@ -721,12 +718,7 @@ impl Orchestrator {
             return None;
         }
 
-        Some((
-            split.get(0)?,
-            split.get(1)?,
-            split.get(2)?,
-            split.get(3)?,
-        ))
+        Some((split.get(0)?, split.get(1)?, split.get(2)?, split.get(3)?))
     }
 
     /// Claim accrued rewards and transfer them from the reward-token contract
