@@ -5,9 +5,9 @@ on:
     branches: ["**"]
 
 env:
+  # All contract crates that must compile to wasm32-unknown-unknown in release mode
+  WASM_CONTRACTS: "-p remittance_split -p savings_goals -p bill_payments -p insurance -p family_wallet -p data_migration -p reporting -p orchestrator -p emergency_killswitch"
   CARGO_TERM_COLOR: always
-  # We only list the known, existing on-chain contracts for the WASM compilation step
-  BATCH_B_CONTRACTS: "-p family_wallet -p orchestrator -p data_migration"
 
 jobs:
   validate:
@@ -59,6 +59,19 @@ jobs:
         # for all batch-B crates, accounting for custom paths/names automatically.
         run: bash check_ci.sh
 
-      - name: Build Contracts (WASM)
-        # Compiles the known Soroban smart contracts to WebAssembly
-        run: cargo build --release --target wasm32-unknown-unknown ${BATCH_B_CONTRACTS}
+      - name: Build All Contracts (WASM Release)
+        # Builds all workspace contract crates to wasm32-unknown-unknown in release mode
+        # to prevent drift where a crate compiles for tests but fails for deployment.
+        run: cargo build --release --target wasm32-unknown-unknown ${WASM_CONTRACTS}
+
+      - name: Verify WASM Artifacts
+        # Confirms that every contract crate produced a wasm artifact.
+        run: |
+          for contract in remittance_split savings_goals bill_payments insurance family_wallet data_migration reporting orchestrator emergency_killswitch; do
+            wasm_file="target/wasm32-unknown-unknown/release/${contract}.wasm"
+            if [ ! -f "$wasm_file" ]; then
+              echo "Error: WASM file not found: $wasm_file"
+              exit 1
+            fi
+            echo "✓ $wasm_file ($(du -h "$wasm_file" | cut -f1))"
+          done
