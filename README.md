@@ -324,6 +324,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Contributor Overview](docs/CONTRIBUTOR_OVERVIEW.md) - Onboarding guide for new contributors
 - [ADR: Ban unwrap in Release Builds](docs/adr-ban-unwrap-in-release.md) - Why unwrap and panic are forbidden in production contract code
 - [Changelog](CHANGELOG.md) - Conventional-commits-style log of every release
+- [Governance Parameters](docs/GOVERNANCE_PARAMS.md) - Reference table of every configurable parameter across contracts with min/max/default values and governance mechanisms
 - [Token Decimal Catalogue](docs/DECIMAL_CATALOGUE.md) - Reference table of decimals expected for each canonical token
 - [Authorization Matrix](docs/AUTHORIZATION_MATRIX.md) - Per-entrypoint caller authorization requirements for all contracts
 - [Pagination Handbook](docs/PAGINATION_HANDBOOK.md) - How every paginated read is structured, cursor semantics, reviewer checklist, and implementation guide
