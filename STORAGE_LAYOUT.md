@@ -75,7 +75,6 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | Key         | Type                           | Notes                                                        |
 | ----------- | ------------------------------ | ------------------------------------------------------------ |
 | `CONFIG`    | `SplitConfig`                  | Owner + percentages + initialized flag                       |
-| `SPLIT`     | `Vec<u32>`                     | Ordered percentages: `[spending, savings, bills, insurance]` |
 | `NONCES`    | `Map<Address, u64>`            | Replay protection for owner-authorized mutating calls        |
 | `AUDIT`     | `Vec<AuditEntry>`              | Rotating audit log, max `MAX_AUDIT_ENTRIES` (100)            |
 | `REM_SCH`   | `Map<u32, RemittanceSchedule>` | Remittance schedules                                         |
