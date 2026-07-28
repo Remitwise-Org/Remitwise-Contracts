@@ -280,6 +280,7 @@ If you encounter issues with a specific Soroban version:
 - **[docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md)** - Contributor procedure for loading a previous snapshot and verifying upgrade invariants
 - **[docs/SETTLEMENT_WINDOWS.md](docs/SETTLEMENT_WINDOWS.md)** - Specification of invoice settlement window rules, creation acceptance bounds, overdue semantics, and late catch-up loops
 - **[docs/SETTLEMENT_CURRENCY_POLICY.md](docs/SETTLEMENT_CURRENCY_POLICY.md)** - How settlement currencies are chosen, validated, and enforced across contracts
+- **[docs/CURRENCY_SUPPORT_POLICY.md](docs/CURRENCY_SUPPORT_POLICY.md)** - Which currencies are whitelisted, how whitelisting works, and how to add a new currency
 - **[VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md)** - Detailed compatibility matrix and testing status
 - **[COMPATIBILITY_QUICK_REFERENCE.md](COMPATIBILITY_QUICK_REFERENCE.md)** - Quick reference for common compatibility tasks
 - **[.github/SOROBAN_VERSION_CHECKLIST.md](.github/SOROBAN_VERSION_CHECKLIST.md)** - Validation checklist for new versions
