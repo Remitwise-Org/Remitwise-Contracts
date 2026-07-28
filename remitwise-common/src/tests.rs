@@ -18,10 +18,11 @@ extern crate std;
 
 use super::*;
 use crate::distribute_pro_rata;
+use crate::PeriodKind::{Day, Month, Week};
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::testutils::LedgerInfo;
-use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
+use soroban_sdk::testutils::{Ledger, LedgerInfo};
+use soroban_sdk::{contract, contractimpl, Bytes, Env, IntoVal, String, Symbol, Vec};
 
 #[allow(dead_code)]
 fn set_ledger(env: &Env, sequence_number: u32) {
@@ -861,7 +862,34 @@ fn test_canonicalise_symbols_single_element() {
     assert_eq!(symbol_str(&out.get(0).unwrap()), "mykey");
 }
 
+// ─── require_page_limit_within_bounds ───────────────────────────────────────
+
+#[test]
+fn test_require_page_limit_within_bounds_valid() {
+    assert_eq!(require_page_limit_within_bounds(0), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(1), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(DEFAULT_PAGE_LIMIT), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(MAX_PAGE_LIMIT), Ok(()));
+}
+
+#[test]
+fn test_require_page_limit_within_bounds_exceeded_negative() {
+    assert_eq!(
+        require_page_limit_within_bounds(MAX_PAGE_LIMIT + 1),
+        Err(PageLimitError::LimitExceedsMax)
+    );
+    assert_eq!(
+        require_page_limit_within_bounds(100),
+        Err(PageLimitError::LimitExceedsMax)
+    );
+    assert_eq!(
+        require_page_limit_within_bounds(u32::MAX),
+        Err(PageLimitError::LimitExceedsMax)
+    );
+}
+
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
+
 
 /// 0 is treated as "use default" and returns DEFAULT_PAGE_LIMIT.
 #[test]
@@ -1020,7 +1048,7 @@ fn test_period_key_idempotent_and_monotonic_within_bucket() {
 proptest! {
     #[test]
     fn proptest_period_key_roundtrips(t in 0u64..4660000000) { // up to year 2117
-        use remitwise_common::{PeriodKind::*};
+        use crate::PeriodKind::*;
         let day = Timestamp::to_period_key(t, Day);
         let week = Timestamp::to_period_key(t, Week);
         let month = Timestamp::to_period_key(t, Month);

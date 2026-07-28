@@ -1,10 +1,17 @@
 use crate::{EventCategory, EventPriority, RemitwiseEvents};
 use soroban_sdk::testutils::Events as _;
-use soroban_sdk::{symbol_short, Env, Vec};
+use soroban_sdk::{contract, contractimpl, symbol_short, Env, Vec};
+
+#[contract]
+pub struct EventHarness;
+
+#[contractimpl]
+impl EventHarness {}
 
 #[test]
 fn test_compact_event_passes() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, EventHarness);
     let data = 42u32;
     env.as_contract(&contract_id, || {
         RemitwiseEvents::emit(
@@ -21,6 +28,7 @@ fn test_compact_event_passes() {
 #[should_panic(expected = "exceeds 256-byte budget")]
 fn test_oversized_event_flagged() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, EventHarness);
     let mut large_data = Vec::<u32>::new(&env);
     for i in 0..100 {
         large_data.push_back(i);

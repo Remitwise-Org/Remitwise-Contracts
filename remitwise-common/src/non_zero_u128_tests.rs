@@ -6,6 +6,8 @@
 /// - Zero is rejected with `Err(ZeroNotAllowed)`.
 /// - Any non-zero value (including 1 and `u128::MAX`) is accepted.
 /// - `get()` returns the original value unchanged.
+extern crate std;
+use std::format;
 use super::*;
 
 // ─── new: happy path ──────────────────────────────────────────────────────
