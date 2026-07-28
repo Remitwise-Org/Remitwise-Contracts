@@ -314,7 +314,7 @@ fn bench_emergency_killswitch_transfer_admin() {
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let (cpu, mem, _) = measure(&env, || client.transfer_admin(&new_admin));
+    let (cpu, mem, _) = measure(&env, || client.transfer_admin(&new_admin, &0u64));
 
     emit_bench_result("transfer_admin", "admin_transfer", cpu, mem, TRANSFER_ADMIN);
     assert_regression_bounds("transfer_admin", "admin_transfer", cpu, mem, TRANSFER_ADMIN);

@@ -301,11 +301,11 @@ fn test_non_recurring_pay_spawns_no_child() {
 fn test_recurring_long_overdue_child_due_date_not_in_past() {
     let h = RecurringHarness::new(0);
     let due_date = 1_000_000u64;
-    let frequency_days = 30u32;
+    let frequency_days = 5u32;
     let parent_id = h.create_recurring("Mortgage", 250_000, due_date, frequency_days, "XLM");
 
-    // Parent is ~4 months overdue at payment time.
-    let pay_at = due_date + 120 * SECONDS_PER_DAY;
+    // Parent is 25 days overdue at payment time (within 30-day settlement window).
+    let pay_at = due_date + 25 * SECONDS_PER_DAY;
     h.pay_at(parent_id, pay_at);
 
     let child_id = h.child_id(parent_id);

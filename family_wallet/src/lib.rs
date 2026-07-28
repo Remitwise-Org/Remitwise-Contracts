@@ -414,8 +414,7 @@ impl FamilyWallet {
         if remitwise_common::require_no_active_kill_switch(&env).is_err() {
             return false;
         }
-        owner.require_auth();
-        if !Self::try_initialize(env.clone(), owner.clone(), initial_members) {
+        if !Self::try_initialize(env.clone(), owner, initial_members) {
             panic!("Wallet already initialized");
         }
         true
@@ -1114,6 +1113,10 @@ impl FamilyWallet {
 
         if !Self::check_spending_limit(env.clone(), proposer.clone(), amount) {
             panic!("Spending limit exceeded");
+        }
+
+        if let Err(e) = Self::validate_precision_spending_internal(env.clone(), proposer.clone(), amount) {
+            panic_with_error!(env, e);
         }
 
         let config: MultiSigConfig = env
