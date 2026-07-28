@@ -2100,3 +2100,108 @@ fn require_valid_symbol_length_very_long_input_returns_too_long_error() {
         "names well above the cap must also be rejected with SymbolLengthError::TooLong"
     );
 }
+
+// ---------------------------------------------------------------------------
+// require_non_zero_bytes — reject zeroed BytesN values
+// ---------------------------------------------------------------------------
+
+/// A `BytesN<32>` with non-zero bytes (a realistic Ed25519 public-key-sized
+/// value) is accepted by `require_non_zero_bytes`.
+#[test]
+fn require_non_zero_bytes_accepts_non_zero_bytesn() {
+    let env = Env::default();
+    let arr = [
+        0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+        0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+    ];
+    let bytes = BytesN::<32>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// A `BytesN<32>` that is completely zeroed is rejected with
+/// `BytesNError::AllZeros`.
+#[test]
+fn require_non_zero_bytes_rejects_all_zero_bytesn() {
+    let env = Env::default();
+    let arr = [0u8; 32];
+    let bytes = BytesN::<32>::from_array(&env, &arr);
+    assert_eq!(
+        require_non_zero_bytes(&bytes),
+        Err(BytesNError::AllZeros)
+    );
+}
+
+/// A `BytesN<1>` with a single zero byte is rejected with
+/// `BytesNError::AllZeros`. This pins the behaviour for the
+/// smallest possible `BytesN` size.
+#[test]
+fn require_non_zero_bytes_rejects_single_zero_byte() {
+    let env = Env::default();
+    let arr = [0u8; 1];
+    let bytes = BytesN::<1>::from_array(&env, &arr);
+    assert_eq!(
+        require_non_zero_bytes(&bytes),
+        Err(BytesNError::AllZeros)
+    );
+}
+
+/// A `BytesN<1>` with a single non-zero byte is accepted. This
+/// pins the behaviour for the smallest possible `BytesN` size.
+#[test]
+fn require_non_zero_bytes_accepts_single_non_zero_byte() {
+    let env = Env::default();
+    let arr = [1u8; 1];
+    let bytes = BytesN::<1>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// A `BytesN<64>` (signature-sized) with the last byte non-zero is
+/// accepted. This catches regression where only the first N-1 bytes
+/// are checked.
+#[test]
+fn require_non_zero_bytes_accepts_last_byte_non_zero() {
+    let env = Env::default();
+    let mut arr = [0u8; 64];
+    arr[63] = 0x01;
+    let bytes = BytesN::<64>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// Property test: any `BytesN<32>` that is not all-zero passes the
+/// check, and the all-zero input always fails. Covers the entire
+/// input space via random sampling.
+#[cfg(test)]
+mod non_zero_bytes_proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Pins the core invariant of `require_non_zero_bytes` across
+        /// random 32-byte inputs: the check returns `Ok(())` iff the
+        /// buffer is *not* all-zeros.
+        #[test]
+        fn proptest_non_zero_bytes_invariant(
+            a in prop::array::uniform32(0u8..=255u8),
+            b in prop::array::uniform32(0u8..=255u8),
+        ) {
+            let env = Env::default();
+            let all_zero = [0u8; 32];
+
+            // a is random; if it happens to be all-zero, use b (also random) as a fallback.
+            let test_arr = if a == all_zero { b } else { a };
+
+            // Non-zero input must be accepted
+            let bytes = BytesN::<32>::from_array(&env, &test_arr);
+            assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+
+            // All-zero input must be rejected
+            let zero_bytes = BytesN::<32>::from_array(&env, &all_zero);
+            assert_eq!(
+                require_non_zero_bytes(&zero_bytes),
+                Err(BytesNError::AllZeros)
+            );
+        }
+    }
+}
