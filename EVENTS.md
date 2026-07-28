@@ -990,6 +990,12 @@ A: Use the `caller` or `owner` address field to trace operations across contract
 
 ---
 
+## Internal Audit Logs
+
+Each contract that maintains a rotating on-chain audit log is documented separately in [Audit Event Fields](docs/audit-event-fields.md). That document covers the common `AuditEntry` field set, per-contract storage keys, rotation behaviour, and the full inventory of operation symbols.
+
+Events documented in this file are the **external** on-chain events emitted via `env.events().publish()`. Internal audit logs are complementary — they are stored in contract instance storage and queried via contract-specific `get_audit_log` functions.
+
 ## Support & Updates
 
 For questions or to report event schema issues, please open an issue in the repository with the `events` label.

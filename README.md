@@ -305,6 +305,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Family Wallet Design (as implemented)](docs/family-wallet-design.md)
 - [Frontend Integration Notes](docs/frontend-integration.md)
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
+- [Audit Event Fields](docs/audit-event-fields.md) - On-chain audit log fields and patterns
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
