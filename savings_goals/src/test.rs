@@ -2080,6 +2080,51 @@ fn test_limit_zero_uses_default() {
 }
 
 #[test]
+fn test_limit_one_passthrough() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &1);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.items.len(), 1);
+}
+
+#[test]
+fn test_limit_max_page_limit_passthrough() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &50);
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+}
+
+#[test]
+fn test_limit_above_max_clamped() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &100);
+    assert_eq!(page.count, 50); // clamped to MAX_PAGE_LIMIT
+    assert_eq!(page.items.len(), 50);
+}
+
+#[test]
 fn test_get_all_goals_backward_compat() {
     let env = Env::default();
     env.mock_all_auths();
