@@ -1395,6 +1395,11 @@ pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
 #[repr(u32)]
 pub enum LedgerError {
     LedgerMismatch = 1,
+    /// The current ledger sequence is strictly less than a previously observed
+    /// value (`prev`). The Soroban host guarantees sequence monotonicity
+    /// (`docs/LEDGER_MONOTONICITY.md`), so a regression indicates either a
+    /// replay attempt, a stale read, or a logic bug at the call site.
+    LedgerSequenceRegression = 2,
 }
 
 /// Asserts that `expected` matches the current ledger sequence number.
@@ -1413,6 +1418,155 @@ pub fn require_matching_ledger(env: &Env, expected: u32) -> Result<(), LedgerErr
         Err(LedgerError::LedgerMismatch)
     } else {
         Ok(())
+    }
+}
+
+/// Asserts that the current ledger sequence is greater than or equal to a
+/// previously observed baseline (`prev`).
+///
+/// Defence-in-depth against off-by-N replay, stale-storage baseline after a
+/// contract upgrade, and `u32`-cast underflow: ties the caller-supplied (or
+/// cached) baseline to the authoritative source `env.ledger().sequence()`
+/// and rejects any regression at the call site.
+///
+/// The Soroban host already guarantees strict sequence monotonicity across
+/// ledgers (see `docs/LEDGER_MONOTONICITY.md`), but this helper closes the
+/// gap where contract code caches a `prev` baseline across calls and later
+/// compares against it — a regression-at-rest can otherwise let an
+/// authorization captured at `prev` be replayed at a smaller `curr`
+/// (fee updates, role grants, mint caps, etc.).
+///
+/// # Errors
+/// * [`LedgerError::LedgerSequenceRegression`] when
+///   `env.ledger().sequence() < prev`.
+/// * `Ok(())` on equal or monotonic-progression cases. Equality is
+///   tolerated so a baseline captured on the same ledger does not
+///   falsely reject a re-entry on that ledger.
+///
+/// # Recommended call-site pattern
+///
+/// ```ignore
+/// require_ledger_seq_monotonic(&env, prev_seq_baseline)
+///     .unwrap_or_else(|_| panic_with_error!(&env, MyError::LedgerRegression));
+/// ```
+pub fn require_ledger_seq_monotonic(env: &Env, prev: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current < prev {
+        Err(LedgerError::LedgerSequenceRegression)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod ledger_monotonicity_tests {
+    //! Tests for [`require_ledger_seq_monotonic`] and the surrounding
+    //! [`LedgerError`] variants.
+    //!
+    //! The Soroban test host allows `env.ledger().set(...)` to mutate
+    //! both `sequence_number` and `timestamp` between calls, which lets
+    //! us write a regression scenario without depending on real
+    //! host-level sequencing behaviour.
+
+    use super::{require_ledger_seq_monotonic, LedgerError};
+    use soroban_sdk::testutils::LedgerInfo;
+    use soroban_sdk::Env;
+
+    /// Sets the ledger sequence and preserves other ledger state.
+    fn set_seq(env: &Env, sequence_number: u32) {
+        let proto = env.ledger().protocol_version();
+        env.ledger().set(LedgerInfo {
+            protocol_version: proto,
+            sequence_number,
+            timestamp: 1_700_000_000,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 3_000_000,
+        });
+    }
+
+    /// Acceptance contract: equal sequences are NOT a regression.
+    /// A baseline captured on the same ledger must re-validate cleanly.
+    #[test]
+    fn accepts_equal_baseline_and_current_sequence() {
+        let env = Env::default();
+        set_seq(&env, 100);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Positive progression: current > prev must succeed.
+    #[test]
+    fn accepts_monotonic_progression() {
+        let env = Env::default();
+        set_seq(&env, 101);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Large jump: e.g. after a network upgrade or test re-org, a much
+    /// higher current ledger must still pass.
+    #[test]
+    fn accepts_large_positive_jump() {
+        let env = Env::default();
+        set_seq(&env, 1_000_000);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Negative test (#1240): any current < prev must be rejected with
+    /// the typed error. This is the headline regression test — without
+    /// `require_ledger_seq_monotonic`, a replay at a lower ledger would
+    /// silently pass.
+    #[test]
+    fn rejects_regressed_sequence_by_one() {
+        let env = Env::default();
+        // prev = 100, current = 99 — regression by one.
+        set_seq(&env, 99);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, 100),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
+    }
+
+    /// Negative test: large regression.
+    #[test]
+    fn rejects_regressed_sequence_by_large_amount() {
+        let env = Env::default();
+        set_seq(&env, 50);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, 1_000_000),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
+    }
+
+    /// Boundary: `prev = 0` and `current = 0` is the genesis baseline —
+    /// must accept.
+    #[test]
+    fn accepts_genesis_baseline_zero() {
+        let env = Env::default();
+        set_seq(&env, 0);
+        assert_eq!(require_ledger_seq_monotonic(&env, 0), Ok(()));
+    }
+
+    /// Boundary: `prev = 0` and `current = 1` is the first legal
+    /// advancement — must accept.
+    #[test]
+    fn accepts_advancement_from_genesis() {
+        let env = Env::default();
+        set_seq(&env, 1);
+        assert_eq!(require_ledger_seq_monotonic(&env, 0), Ok(()));
+    }
+
+    /// u32 regression boundary: `prev = u32::MAX`, `current = u32::MAX - 1`.
+    /// Pins the saturation/underflow behaviour at the upper bound.
+    #[test]
+    fn rejects_regression_at_u32_max_boundary() {
+        let env = Env::default();
+        set_seq(&env, u32::MAX - 1);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, u32::MAX),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
     }
 }
 
