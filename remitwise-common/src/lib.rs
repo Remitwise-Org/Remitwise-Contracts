@@ -329,6 +329,39 @@ pub fn require_no_pending_dispute_epoch(env: &Env, ep: u64) -> Result<(), Disput
     Ok(())
 }
 
+/// Typed error returned when a caller supplies an outdated cross-contract epoch.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum CrossContractEpochError {
+    /// The supplied cross-contract epoch does not match the current contract epoch.
+    EpochMismatch = 37,
+}
+
+pub const STORAGE_CROSS_CONTRACT_EPOCH: Symbol = symbol_short!("XC_EPOCH");
+
+/// Guards against executing cross-contract operations with a stale epoch.
+///
+/// This is a defence-in-depth fix. If a cross-contract message carrying an old epoch
+/// is replayed after the epoch has been bumped, it could lead to state corruption
+/// or unauthorised actions. Rejecting stale epochs ensures only fresh cross-contract
+/// calls are processed.
+///
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `ep` - The cross-contract epoch supplied by the caller
+///
+/// # Returns
+/// * `Ok(())` if the epoch matches the current cross-contract epoch exactly
+/// * `Err(CrossContractEpochError::EpochMismatch)` if the epoch is outdated
+pub fn require_matching_cross_contract_epoch(env: &Env, ep: u64) -> Result<(), CrossContractEpochError> {
+    let current_epoch: u64 = env.storage().instance().get(&STORAGE_CROSS_CONTRACT_EPOCH).unwrap_or(0);
+    if ep != current_epoch {
+        return Err(CrossContractEpochError::EpochMismatch);
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // BytesN validation
 // ---------------------------------------------------------------------------
@@ -617,14 +650,14 @@ mod rate_limiting_tests {
 
         // First request should succeed
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Ok(())
         );
 
         // Multiple requests within limit should succeed
         for _ in 0..4 {
             assert_eq!(
-                check_and_increment_rate_limit(&env, &caller, operation, limit),
+                check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
                 Ok(())
             );
         }
@@ -647,21 +680,21 @@ mod rate_limiting_tests {
 
         // Caller1 uses up their limit
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Err(RateLimitError::RateLimitExceeded)
         );
 
         // Caller2 should still be able to make requests
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller2, operation, limit),
+            check_and_increment_rate_limit(&env, &caller2, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
@@ -680,7 +713,7 @@ mod rate_limiting_tests {
 
         // Use up limit for operation1
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation1, limit),
+            check_and_increment_rate_limit(&env, &caller, operation1.clone(), limit),
             Ok(())
         );
         assert_eq!(
@@ -709,11 +742,11 @@ mod rate_limiting_tests {
 
         // Use up the limit in the first window
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Err(RateLimitError::RateLimitExceeded)
         );
 
@@ -737,18 +770,18 @@ mod rate_limiting_tests {
         let limit = 3u32;
 
         // Initially should have 0 count
-        let (count, window_end) = get_rate_limit_status(&env, &caller, operation);
+        let (count, window_end) = get_rate_limit_status(&env, &caller, operation.clone());
         assert_eq!(count, 0);
         assert_eq!(window_end, RATE_LIMIT_WINDOW_SECONDS);
 
         // After one request, count should be 1
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
-        let (count, _) = get_rate_limit_status(&env, &caller, operation);
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
+        let (count, _) = get_rate_limit_status(&env, &caller, operation.clone());
         assert_eq!(count, 1);
 
         // After two more requests, count should be 3
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
         let (count, _) = get_rate_limit_status(&env, &caller, operation);
         assert_eq!(count, 3);
     }
@@ -904,45 +937,186 @@ impl ToI128Checked for i32 {
     }
 }
 
-/// Normalizes a `soroban_sdk::String` into a `Symbol` by stripping leading/trailing
-/// whitespace and lowercasing ASCII letters.
-pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
-    let len = input.len();
-    if len == 0 {
-        panic!("symbol input must contain between 1 and 32 characters after trimming");
-    }
-    let mut buf = [0u8; 256];
-    if len as usize > buf.len() {
-        panic!("symbol input is too long");
-    }
-    input.copy_into_slice(&mut buf[..len as usize]);
 
-    let s = core::str::from_utf8(&buf[..len as usize])
+// ---------------------------------------------------------------------------
+// Symbol canonicalisation — trim, casefold, charset validation
+// ---------------------------------------------------------------------------
+
+/// Maximum byte length of a canonicalised symbol (mirrors Soroban's limit).
+pub const SYMBOL_MAX_LEN: usize = 32;
+
+/// Error returned by [`canonicalise_symbol_checked`] and
+/// [`canonicalise_symbols`] when an input string cannot be turned into a
+/// valid canonical `Symbol`.
+///
+/// All variants carry enough context for the caller to map them to a
+/// contract-specific `#[contracterror]` without losing the error category.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum SymbolValidationError {
+    /// Input was empty or contained only ASCII whitespace after trimming.
+    Empty,
+    /// Trimmed input exceeds [`SYMBOL_MAX_LEN`] bytes.
+    TooLong,
+    /// A byte at `position` is not in the allowed charset `[a-z0-9_]` after
+    /// ASCII uppercase folding.  Internal ASCII spaces (mid-string) are caught
+    /// here rather than being silently stripped.
+    InvalidChar { position: u32 },
+}
+
+/// Allowed charset predicate after uppercase folding.
+///
+/// `[a-z0-9_]` — identical to the Soroban `Symbol` charset restriction
+/// minus the uppercase letters (which we fold away).
+#[inline(always)]
+fn is_symbol_char(b: u8) -> bool {
+    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'
+}
+
+/// Validate and canonicalise a `soroban_sdk::String` into a `Symbol`,
+/// returning a typed error instead of panicking on bad input.
+///
+/// ## Transformation rules (applied in order)
+///
+/// | Step | Rule |
+/// |---|---|
+/// | **Trim** | Strip leading and trailing ASCII whitespace (`\t \n \r`). |
+/// | **Empty check** | Trimmed length = 0 → `Err(SymbolValidationError::Empty)`. |
+/// | **Length check** | Trimmed length > 32 → `Err(SymbolValidationError::TooLong)`. |
+/// | **Casefold** | ASCII `A-Z` → `a-z`. |
+/// | **Charset check** | Every byte must be in `[a-z0-9_]`. First offending byte → `Err(SymbolValidationError::InvalidChar { position })`. |
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // Valid
+/// assert!(canonicalise_symbol_checked(&env, &String::from_str(&env, "Hello_World")).is_ok());
+/// // → Symbol("hello_world")
+///
+/// // Invalid char
+/// assert_eq!(
+///     canonicalise_symbol_checked(&env, &String::from_str(&env, "bad-char")),
+///     Err(SymbolValidationError::InvalidChar { position: 3 })
+/// );
+///
+/// // Too long
+/// assert_eq!(
+///     canonicalise_symbol_checked(&env, &String::from_str(&env, &"x".repeat(33))),
+///     Err(SymbolValidationError::TooLong)
+/// );
+/// ```
+pub fn canonicalise_symbol_checked(
+    env: &Env,
+    input: &soroban_sdk::String,
+) -> Result<Symbol, SymbolValidationError> {
+    let len = input.len() as usize;
+    if len == 0 {
+        return Err(SymbolValidationError::Empty);
+    }
+    // 256 bytes is enough: valid symbols are ≤32 bytes; anything longer is
+    // rejected by the TooLong check after trimming.
+    let mut buf = [0u8; 256];
+    let read_len = len.min(buf.len());
+    input.copy_into_slice(&mut buf[..read_len]);
+
+    // Interpret as UTF-8 (Soroban strings are always valid UTF-8).
+    let s = core::str::from_utf8(&buf[..read_len])
         .unwrap_or_else(|_| panic!("symbol input is not valid UTF-8"));
 
+    // Step 1: trim
     let trimmed = s.trim();
     let trimmed_len = trimmed.len();
     if trimmed_len == 0 {
-        panic!("symbol input must contain at least one non-whitespace character");
+        return Err(SymbolValidationError::Empty);
     }
-    if trimmed_len > 32 {
-        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    if trimmed_len > SYMBOL_MAX_LEN {
+        return Err(SymbolValidationError::TooLong);
     }
 
+    // Step 2: casefold + charset validation
     let trimmed_bytes = trimmed.as_bytes();
-    let mut canonical = [0u8; 32];
+    let mut canonical = [0u8; SYMBOL_MAX_LEN];
     for (i, &byte) in trimmed_bytes.iter().enumerate() {
-        canonical[i] = if byte.is_ascii_uppercase() {
+        let folded = if byte.is_ascii_uppercase() {
             byte.to_ascii_lowercase()
         } else {
             byte
         };
+        if !is_symbol_char(folded) {
+            return Err(SymbolValidationError::InvalidChar {
+                position: i as u32,
+            });
+        }
+        canonical[i] = folded;
     }
 
     let canonical_str = core::str::from_utf8(&canonical[..trimmed_len])
         .unwrap_or_else(|_| panic!("canonicalised symbol is not valid UTF-8"));
 
-    Symbol::new(env, canonical_str)
+    Ok(Symbol::new(env, canonical_str))
+}
+
+/// Canonicalise a `soroban_sdk::String` into a `Symbol`, panicking with a
+/// descriptive message on invalid input.
+///
+/// This is a thin panic wrapper around [`canonicalise_symbol_checked`].
+/// Prefer the checked variant when the calling contract needs a typed error
+/// for the caller (e.g. to return `InvalidSymbol` instead of aborting the
+/// transaction).  Use this variant only at trusted call sites where bad input
+/// is a programming error rather than untrusted user input.
+///
+/// ## Transformation rules
+///
+/// Identical to [`canonicalise_symbol_checked`]: trim → casefold → charset
+/// check (`[a-z0-9_]`).
+///
+/// ## Panics
+///
+/// - Empty or whitespace-only input after trimming.
+/// - Trimmed input longer than 32 bytes.
+/// - Any byte outside `[a-z0-9_]` after uppercase folding (includes hyphens,
+///   spaces, `@`, `.`, `!`, etc.).
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    match canonicalise_symbol_checked(env, input) {
+        Ok(sym) => sym,
+        Err(SymbolValidationError::Empty) => {
+            panic!("symbol input must contain at least one non-whitespace character")
+        }
+        Err(SymbolValidationError::TooLong) => {
+            panic!("symbol input must contain between 1 and 32 characters after trimming")
+        }
+        Err(SymbolValidationError::InvalidChar { position }) => {
+            panic!("invalid Symbol character at position {}", position)
+        }
+    }
+}
+
+/// Canonicalise every string in `inputs`, returning a `Vec<Symbol>` in the
+/// same order, or the first validation error encountered.
+///
+/// This batch variant is the natural companion to [`canonicalise_symbol_checked`]
+/// for entry points that accept a list of symbol keys (e.g. a list of category
+/// labels or pause-channel names).  Processing short-circuits on the first
+/// error; the `position` field inside
+/// [`SymbolValidationError::InvalidChar`] refers to the byte position
+/// within the **failing element**, not its index in the batch.
+///
+/// ## Errors
+///
+/// Returns the first [`SymbolValidationError`] encountered.  The order of
+/// validation matches the iteration order of `inputs`.
+pub fn canonicalise_symbols(
+    env: &Env,
+    inputs: &soroban_sdk::Vec<soroban_sdk::String>,
+) -> Result<soroban_sdk::Vec<Symbol>, SymbolValidationError> {
+    if inputs.is_empty() {
+        return Err(SymbolValidationError::Empty);
+    }
+    let mut out = soroban_sdk::Vec::new(env);
+    for item in inputs.iter() {
+        let sym = canonicalise_symbol_checked(env, &item)?;
+        out.push_back(sym);
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1981,7 +2155,7 @@ where
     #[cfg(test)]
     {
         use soroban_sdk::xdr::ToXdr;
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::{IntoVal, TryFromVal};
         let val: soroban_sdk::Val = data.into_val(env);
         if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
             let size = soroban_sdk::xdr::ToXdr::to_xdr(sc_val, env).len();
@@ -2004,7 +2178,7 @@ where
 #[cfg(test)]
 mod emit_audit_tests {
     use super::*;
-    use soroban_sdk::{symbol_short, testutils::Address as _, Env};
+    use soroban_sdk::{symbol_short, testutils::Address as _, testutils::Events as _, Env};
 
     // -----------------------------------------------------------------------
     // Schema / topic tests

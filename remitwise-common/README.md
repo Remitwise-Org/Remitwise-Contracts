@@ -14,7 +14,8 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 - Event taxonomy: EventCategory, EventPriority, RemitwiseEvents emitter
 - Pagination utilities: clamp_limit
 - Storage TTL constants
-- Tag canonicalization and validation
+- Tag canonicalisation and validation
+- **Symbol canonicalisation:** `canonicalise_symbol`, `canonicalise_symbol_checked`, `canonicalise_symbols` — trim, casefold, charset validation
 - Encoding stability tests
 
 ## Quickstart
@@ -155,6 +156,29 @@ Computes the future distance to `target` with saturating semantics:
 ### `canonicalize_tags_checked(env, tags)`
 
 Validates and canonicalizes tags with error handling.
+
+### Symbol canonicalisation
+
+Three functions in `remitwise-common` normalise caller-supplied strings into Soroban `Symbol` values. All three apply the same rules: **trim → casefold to lowercase → charset validation (`[a-z0-9_]`).**
+
+| Function | Behaviour on invalid input | Use when |
+|---|---|---|
+| `canonicalise_symbol(env, s)` | panics with a descriptive message | Internal/trusted call sites |
+| `canonicalise_symbol_checked(env, s)` | `Err(SymbolValidationError)` | Untrusted input, need typed error |
+| `canonicalise_symbols(env, vec)` | `Err(SymbolValidationError)` on first bad element | Batch / list entry points |
+
+```rust
+use remitwise_common::{canonicalise_symbol_checked, SymbolValidationError};
+
+match canonicalise_symbol_checked(&env, &raw_key) {
+    Ok(sym)  => { /* store/compare sym */ },
+    Err(SymbolValidationError::Empty)              => { /* reject empty */ },
+    Err(SymbolValidationError::TooLong)            => { /* reject too long */ },
+    Err(SymbolValidationError::InvalidChar { position }) => { /* reject bad char */ },
+}
+```
+
+See [`docs/CANONICALISATION.md §5`](../docs/CANONICALISATION.md) for the full specification.
 
 ### `RemitwiseEvents::emit(env, category, priority, action, data)`
 

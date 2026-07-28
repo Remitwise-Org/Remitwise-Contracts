@@ -16,10 +16,13 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
 - **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
 - **[docs/PERIOD_INVARIANTS.md](docs/PERIOD_INVARIANTS.md)**: Time-bound period invariants, ledger timestamp rules, and execution windows
+- **[docs/TIMESTAMP_CONVENTIONS.md](docs/TIMESTAMP_CONVENTIONS.md)**: Rules of the road for time — how timestamps are represented, accessed, and compared across all contracts
 - **[docs/PERIOD_KEYS.md](docs/PERIOD_KEYS.md)**: Model + consumer contract for `period_key` period identifiers and report storage
 - **[docs/AMOUNT_INVARIANTS.md](docs/AMOUNT_INVARIANTS.md)**: Amount zero-handling rules across contract entrypoints
 - **[docs/CROSS_CONTRACT_INVARIANTS.md](docs/CROSS_CONTRACT_INVARIANTS.md)**: Invariants that span multiple contracts — split conservation, replay protection, epoch guards, and reviewer checklist
+- **[docs/SIGNING_KEYS_ENV_TAGS.md](docs/SIGNING_KEYS_ENV_TAGS.md)**: How signing keys carry environment tags (network ID, domain separators, actor epoch) to prevent cross-environment replay
 - **[docs/MIGRATION_FLAGS.md](docs/MIGRATION_FLAGS.md)**: Operator runbook for migration-completion flags, replay-protection sets, and investigation-epoch write freezes
+- **[docs/OPERATOR_SIGNATURE_SCOPES.md](docs/OPERATOR_SIGNATURE_SCOPES.md)**: Operator key scopes for `verify_signature`, domain separation, and verifier registry
 
 ## Shared Components
 
@@ -352,12 +355,15 @@ To run an example, use `cargo run --example <example_name>`:
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone
 - [Settler Whitelist](docs/SETTLER_WHITELIST.md) - Operator guide: how settlers are added, rotated, and revoked
 - [Epoch Model](docs/EPOCH_MODEL.md) - How epoch counters bump, what they invalidate, and the stale-authorization replay threat they mitigate in the emergency killswitch and orchestrator contracts
+- [Dispute Epoch Model](docs/DISPUTE_EPOCH_MODEL.md) - Semantics + when dispute epochs bump
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Ledger Monotonicity](docs/LEDGER_MONOTONICITY.md) - Where and why contract code relies on ledger sequence and timestamp monotonicity
+- [Timestamp Conventions](docs/TIMESTAMP_CONVENTIONS.md) - How timestamps are represented, stored, and compared across all contracts
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
 - [Security Review Summary](SECURITY_REVIEW_SUMMARY.md)
+- [Signature Domains](docs/SIGNATURE_DOMAINS.md) - Central registry of domain separation strings used for signature verification and hash preimages
 - [Event Versioning ADR](docs/events-versioning.md) - Why contract events are versioned via a `_v2` suffix
 - [Event Versioning Discipline](docs/EVENT_VERSIONING.md) - Backward-compatibility rules, migration steps, and indexer guidelines for event schema changes
 - [Cross-Contract Epochs](docs/CROSS_CONTRACT_EPOCHS.md) - Actor-epoch semantics, the cross-contract coordination protocol, and the `EpochMismatch` guard

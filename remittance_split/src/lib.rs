@@ -910,20 +910,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        // Restore config
+        // Restore config (single source of truth — SPLIT key has been removed)
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &snapshot.config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                snapshot.config.spending_percent,
-                snapshot.config.savings_percent,
-                snapshot.config.bills_percent,
-                snapshot.config.insurance_percent,
-            ],
-        );
 
         // Restore version
         env.storage()
@@ -1077,7 +1067,7 @@ impl RemittanceSplit {
     /// 2. Each `fee_bps` ≤ [`params::MAX_FEE_BPS`].
     /// 3. Each `max_amount` ≥ `min_amount` and `min_amount` ≥ [`params::MIN_CORRIDOR_AMOUNT`].
     /// 4. No duplicate corridor IDs.
-    fn validate_corridors(corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
+    fn validate_corridors(env: &Env, corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
         if corridors.len() > params::MAX_CORRIDORS {
             return Err(RemittanceSplitError::CorridorCountExceeded);
         }
@@ -1085,6 +1075,15 @@ impl RemittanceSplit {
             if let Some(c) = corridors.get(i) {
                 if c.fee_bps > params::MAX_FEE_BPS {
                     return Err(RemittanceSplitError::CorridorFeeTooHigh);
+                }
+                if remitwise_common::Rate::from_bps(c.fee_bps).has_fractional_percent() {
+                    soroban_sdk::log!(
+                        env,
+                        "level=ERROR error=FeeRounding corridor_id={} fee_bps={}",
+                        c.id,
+                        c.fee_bps
+                    );
+                    return Err(RemittanceSplitError::FeeRounding);
                 }
                 if c.max_amount < c.min_amount || c.min_amount < params::MIN_CORRIDOR_AMOUNT {
                     return Err(RemittanceSplitError::InvalidCorridorAmountRange);
@@ -1195,16 +1194,6 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
-        );
 
         Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
@@ -1263,16 +1252,6 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
-        );
 
         let event = SplitInitializedEvent {
             spending_percent,
@@ -1293,9 +1272,21 @@ impl RemittanceSplit {
 
     pub fn get_split(env: &Env) -> Vec<u32> {
         Self::extend_instance_ttl(env);
+        // Derive split percentages from the canonical CONFIG key (single source of truth).
+        // Previously percentages were written to a separate SPLIT key, duplicating the
+        // same data and creating a desynchronisation risk.  See PR description for details.
         env.storage()
             .instance()
-            .get(&symbol_short!("SPLIT"))
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+            .map(|c| {
+                vec![
+                    &env,
+                    c.spending_percent,
+                    c.savings_percent,
+                    c.bills_percent,
+                    c.insurance_percent,
+                ]
+            })
             .unwrap_or_else(|| vec![&env, 5000, 3000, 1500, 500])
     }
 
@@ -1347,7 +1338,7 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
 
-        Self::validate_corridors(&corridors)?;
+        Self::validate_corridors(&env, &corridors)?;
 
         env.storage()
             .instance()
@@ -1943,20 +1934,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        // --- Restore config and split percentages ---
+        // --- Restore config (single source of truth) ---
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &snapshot.config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                snapshot.config.spending_percent,
-                snapshot.config.savings_percent,
-                snapshot.config.bills_percent,
-                snapshot.config.insurance_percent,
-            ],
-        );
 
         // Import schedules to new storage
         for schedule in snapshot.schedules.iter() {

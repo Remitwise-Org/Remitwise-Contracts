@@ -21,12 +21,13 @@ All storage keys follow strict naming conventions to ensure consistency and comp
 - **Format:** UPPERCASE_WITH_UNDERSCORES
 - **Valid characters:** A-Z, 0-9, \_ (underscore)
 
-These conventions are automatically validated in CI. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
+These conventions are automatically validated in CI by two complementary test suites: a hand-maintained catalogue check (`storage_key_naming_test.rs`) and a live source scan (`storage_key_source_scan_test.rs`) that parses each contract's `src/lib.rs` directly so a key added or renamed in code can't silently drift out of sync with the documented conventions. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
 
 **Run validation tests:**
 
 ```bash
-cargo test --package testutils storage_key_naming_test -- --nocapture
+# Catalogue check + live source scan
+cargo test --package testutils storage_key -- --nocapture
 ```
 
 ## Common Patterns
@@ -75,7 +76,6 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | Key         | Type                           | Notes                                                        |
 | ----------- | ------------------------------ | ------------------------------------------------------------ |
 | `CONFIG`    | `SplitConfig`                  | Owner + percentages + initialized flag                       |
-| `SPLIT`     | `Vec<u32>`                     | Ordered percentages: `[spending, savings, bills, insurance]` |
 | `NONCES`    | `Map<Address, u64>`            | Replay protection for owner-authorized mutating calls        |
 | `AUDIT`     | `Vec<AuditEntry>`              | Rotating audit log, max `MAX_AUDIT_ENTRIES` (100)            |
 | `REM_SCH`   | `Map<u32, RemittanceSchedule>` | Remittance schedules                                         |

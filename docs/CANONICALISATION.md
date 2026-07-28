@@ -15,7 +15,8 @@
 2. [Currency codes — trim, uppercase, and default](#2-currency-codes--trim-uppercase-and-default)
 3. [External references — charset validation (case-preserving)](#3-external-references--charset-validation-case-preserving)
 4. [Migration snapshot checksum — byte-order and input ordering](#4-migration-snapshot-checksum--byte-order-and-input-ordering)
-5. [What is explicitly *not* normalised](#5-what-is-explicitly-not-normalised)
+5. [Symbol keys — trim, casefold and charset validation](#5-symbol-keys--trim-casefold-and-charset-validation)
+6. [What is explicitly *not* normalised](#6-what-is-explicitly-not-normalised)
 
 ---
 
@@ -181,7 +182,77 @@ algorithm; `ChecksumAlgorithm::Sha256` is the default for new exports.
 
 ---
 
-## 5. What is explicitly *not* normalised
+## 5. Symbol keys — trim, casefold and charset validation
+
+**Where:** `remitwise-common/src/lib.rs`  
+**Functions:** `canonicalise_symbol`, `canonicalise_symbol_checked`, `canonicalise_symbols`
+
+Soroban `Symbol` values are used as storage keys, event action names, and pause-channel
+identifiers. Accepting caller-supplied strings without normalisation means two strings that
+a human would treat as the same key (`"MyKey"` and `"mykey"`) map to different storage
+slots. This section documents the shared normalisation helpers that prevent that split.
+
+### Rules
+
+| Step | Behaviour |
+|------|-----------|
+| **Trim** | Strip leading and trailing ASCII whitespace (space, tab, newline, carriage return). |
+| **Empty check** | Trimmed length = 0 → error/panic. |
+| **Length check** | Trimmed length > `SYMBOL_MAX_LEN` (32 bytes) → error/panic. |
+| **Casefold** | ASCII `A–Z` silently folded to lowercase. |
+| **Charset check** | Every byte after folding must be in `[a-z0-9_]`. Any other byte (hyphens, spaces, `@`, `.`, `!`, …) is rejected. |
+| **Idempotency** | Applying to an already-canonical string is a no-op. |
+
+### Charset comparison
+
+| Function | Charset after trim + fold | Invalid byte behaviour |
+|---|---|---|
+| `canonicalise_symbol` | `[a-z0-9_]` | panic with position |
+| `canonicalise_symbol_checked` | `[a-z0-9_]` | `Err(SymbolValidationError::InvalidChar { position })` |
+| `canonicalise_symbols` (batch) | `[a-z0-9_]` | short-circuit `Err` on first invalid element |
+
+> **Comparison with tags:** `canonicalize_tags` allows hyphens (`-`) in its charset
+> but `canonicalise_symbol` does not, because Soroban `Symbol` values disallow `-`.
+
+### Error type
+
+```rust
+pub enum SymbolValidationError {
+    Empty,                          // empty or whitespace-only after trim
+    TooLong,                        // trimmed byte length > 32
+    InvalidChar { position: u32 },  // first offending byte index (post-trim)
+}
+```
+
+### When to use each variant
+
+| Call site | Preferred function | Reason |
+|---|---|---|
+| Trusted internal call (known-good constant input) | `canonicalise_symbol` | Simple, no error plumbing needed |
+| Untrusted caller input, typed error needed | `canonicalise_symbol_checked` | Returns `Err` — caller maps it to a contract error |
+| Entry point accepting a list of symbol keys | `canonicalise_symbols` | Validates + normalises a whole batch atomically |
+
+### Example
+
+```rust
+use remitwise_common::{canonicalise_symbol_checked, canonicalise_symbols, SymbolValidationError};
+
+// Single, checked
+match canonicalise_symbol_checked(&env, &raw_key) {
+    Ok(sym)                                       => { /* use sym */ }
+    Err(SymbolValidationError::Empty)             => panic_with_error!(&env, MyError::InvalidKey),
+    Err(SymbolValidationError::TooLong)           => panic_with_error!(&env, MyError::InvalidKey),
+    Err(SymbolValidationError::InvalidChar { .. }) => panic_with_error!(&env, MyError::InvalidKey),
+}
+
+// Batch
+let syms = canonicalise_symbols(&env, &raw_keys)
+    .unwrap_or_else(|_| panic_with_error!(&env, MyError::InvalidKey));
+```
+
+---
+
+## 6. What is explicitly *not* normalised
 
 | Input | Behaviour |
 |-------|-----------|

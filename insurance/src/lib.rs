@@ -12,6 +12,14 @@ use soroban_sdk::{
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// First-topic namespace for every insurance lifecycle event.
+///
+/// All `env.events().publish(...)` calls in this contract use this as the first
+/// element of the topic tuple so indexers can subscribe with a single stable symbol.
+/// **Never rename this constant** — that is a breaking change for all downstream
+/// indexers. See `InsuranceEvent` for the second topic (event discriminant).
+pub const INSURANCE_TOPIC: &str = "insurance";
+
 const THIRTY_DAYS_SECS: u64 = 30 * 24 * 60 * 60;
 const MAX_NAME_LEN: u32 = 64;
 const MAX_EXT_REF_LEN: u32 = 128;
@@ -1736,3 +1744,4 @@ mod events_schema_test;
 mod next_payment_scheduling_tests;
 #[cfg(test)]
 mod test;
+
