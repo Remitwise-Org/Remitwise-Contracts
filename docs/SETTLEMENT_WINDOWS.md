@@ -175,6 +175,7 @@ pub fn require_matching_settlement_currency(inv: &Vec<Symbol>, sym: &Symbol) -> 
 }
 ```
 - Ensures settlement occurs in an asset whitelisted for the target invoice.
+- See [Settlement Currency Whitelist](settlement-currency-whitelist.md) for the full mutation flow (add/remove currencies) and integration guide.
 
 ### 3. Anti-Dust Guard (`verify_no_dust`)
 ```rust

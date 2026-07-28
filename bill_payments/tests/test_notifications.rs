@@ -91,5 +91,8 @@ fn test_create_bill_rejects_rebase_token_ampl() {
         &None,
     );
 
-    assert_eq!(result, Err(Ok(bill_payments::BillPaymentsError::UnsupportedCurrency)));
+    assert_eq!(
+        result,
+        Err(Ok(bill_payments::BillPaymentsError::UnsupportedCurrency))
+    );
 }

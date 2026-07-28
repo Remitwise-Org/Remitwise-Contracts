@@ -19,6 +19,7 @@ mod interface {
     #[contractclient(name = "RemittanceSplitClient")]
     pub trait RemittanceSplitInterface {
         fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
+        fn get_split(env: Env) -> Vec<u32>;
     }
 
     #[contractclient(name = "SavingsGoalsClient")]
@@ -698,6 +699,34 @@ impl Orchestrator {
     pub fn get_execution_stats(env: Env) -> Option<ExecutionStats> {
         Self::extend_instance_ttl(&env);
         env.storage().instance().get(&symbol_short!("STATS"))
+    }
+
+    /// Get the current fee schedule (split percentages) from the remittance split contract.
+    ///
+    /// Returns a tuple of (spending_percent, savings_percent, bills_percent, insurance_percent)
+    /// representing the percentage allocation for each category. The percentages are
+    /// in basis points (1% = 100 basis points).
+    ///
+    /// This is a read-only view function that does not require authorization.
+    pub fn get_fee_schedule(env: Env) -> Option<(u32, u32, u32, u32)> {
+        let rs_addr: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("RS_ADDR"))?;
+
+        let rs_client = interface::RemittanceSplitClient::new(&env, &rs_addr);
+        let split = rs_client.get_split();
+
+        if split.len() != 4 {
+            return None;
+        }
+
+        Some((
+            split.get(0)?,
+            split.get(1)?,
+            split.get(2)?,
+            split.get(3)?,
+        ))
     }
 
     /// Claim accrued rewards and transfer them from the reward-token contract

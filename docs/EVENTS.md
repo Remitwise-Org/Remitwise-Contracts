@@ -1283,6 +1283,7 @@ Per-contract:
 | `reporting`        | [reporting/src/events_schema_test.rs](reporting/src/events_schema_test.rs)               |
 | `savings_goals`    | [savings_goals/src/events_schema_test.rs](savings_goals/src/events_schema_test.rs)       |
 | `orchestrator`     | [orchestrator/src/events_schema_test.rs](orchestrator/src/events_schema_test.rs)         |
+| `insurance`        | [insurance/src/events_schema_test.rs](insurance/src/events_schema_test.rs)               |
 | `remitwise-common` | [remitwise-common/src/lib.rs](remitwise-common/src/lib.rs)                               |
 
 A failing schema test is the signal that **a change is breaking for indexers**.

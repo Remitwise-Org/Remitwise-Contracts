@@ -5,7 +5,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
     Address, Env,
 };
-use testutils::set_ledger_time;
+use testutils::{same_address, set_ledger_time};
 
 use crate::{
     Category, ContractAddresses, DataAvailability, ReportingContract, ReportingContractClient,
@@ -553,8 +553,8 @@ fn test_configure_addresses_succeeds() {
     let addresses = client.get_addresses();
     assert!(addresses.is_some());
     let addrs = addresses.unwrap();
-    assert_eq!(addrs.remittance_split, remittance_split);
-    assert_eq!(addrs.savings_goals, savings_goals);
+    assert!(same_address(&addrs.remittance_split, &remittance_split));
+    assert!(same_address(&addrs.savings_goals, &savings_goals));
 }
 
 #[test]
@@ -654,11 +654,11 @@ fn test_configure_invalid_does_not_overwrite_existing_addresses() {
     ));
 
     let stored = client.get_addresses().expect("prior config must remain");
-    assert_eq!(stored.remittance_split, a);
-    assert_eq!(stored.savings_goals, b);
-    assert_eq!(stored.bill_payments, c);
-    assert_eq!(stored.insurance, d);
-    assert_eq!(stored.family_wallet, e);
+    assert!(same_address(&stored.remittance_split, &a));
+    assert!(same_address(&stored.savings_goals, &b));
+    assert!(same_address(&stored.bill_payments, &c));
+    assert!(same_address(&stored.insurance, &d));
+    assert!(same_address(&stored.family_wallet, &e));
 }
 
 #[test]
@@ -1334,7 +1334,7 @@ fn test_get_family_spending_report_requires_user_auth() {
     let _ = client.get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(found, "family spending report must require user auth");
 }
 
@@ -2292,7 +2292,7 @@ fn test_store_report_requires_auth() {
 
     // Verify that store_report recorded a require_auth for the report owner.
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(
         found,
         "store_report must record a require_auth for the report owner"
@@ -2542,7 +2542,7 @@ fn test_archive_old_reports_records_admin_auth() {
     client.archive_old_reports(&admin, &2_000_000_000u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
     assert!(
         found,
         "archive_old_reports must record require_auth for the admin"
@@ -2606,7 +2606,7 @@ fn test_cleanup_old_reports_records_admin_auth() {
     client.cleanup_old_reports(&admin, &2_000_000_000u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
     assert!(
         found,
         "cleanup_old_reports must record require_auth for the admin"

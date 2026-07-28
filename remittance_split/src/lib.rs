@@ -1,6 +1,7 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+mod params;
 #[cfg(test)]
 mod events_schema_test;
 #[cfg(test)]
@@ -9,10 +10,11 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority,
-    RemitwiseEvents, Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority, RemitwiseEvents,
+    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
     PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
@@ -90,9 +92,17 @@ pub enum RemittanceSplitError {
     /// The pre-upgrade snapshot is older than the freshness window.
     SnapshotTooOld = 30,
     /// The supplied token contract is not a supported stable ingress asset.
-    /// This is a defence-in-depth rejection for rebase/deflationary or otherwise
-    /// incompatible token contracts that would undermine the remittance invariants.
     UnsupportedTokenContract = 31,
+    /// No active treasury has accepted a treasury proposal yet.
+    TreasuryNotConfigured = 32,
+    /// The number of configured corridors exceeds the maximum allowed.
+    CorridorCountExceeded = 35,
+    /// A corridor's fee (in basis points) exceeds the maximum allowed.
+    CorridorFeeTooHigh = 36,
+    /// A corridor's min/max amount range is invalid.
+    InvalidCorridorAmountRange = 37,
+    /// Two or more corridors share the same ID.
+    DuplicateCorridorId = 38,
 }
 
 #[derive(Clone)]
@@ -102,6 +112,25 @@ pub struct AccountGroup {
     pub savings: Address,
     pub bills: Address,
     pub insurance: Address,
+}
+
+/// A remittance payment corridor defining a supported currency route
+/// and its per-corridor limits.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Corridor {
+    /// Unique corridor identifier.
+    pub id: u32,
+    /// Source currency code (e.g., "USD").
+    pub source_currency: Symbol,
+    /// Destination currency code (e.g., "NGN").
+    pub dest_currency: Symbol,
+    /// Minimum amount per transaction in the base asset.
+    pub min_amount: i128,
+    /// Maximum amount per transaction in the base asset.
+    pub max_amount: i128,
+    /// Fee rate in basis points (1 bps = 0.01%).
+    pub fee_bps: u32,
 }
 
 /// Typed request for distribute_usdc signing.
@@ -434,6 +463,9 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -472,6 +504,7 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
+        env.storage().instance().remove(&symbol_short!("PAUSED_AT"));
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -486,6 +519,19 @@ impl RemittanceSplit {
     }
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
+    }
+    pub fn get_paused_since(env: Env) -> Option<u64> {
+        if Self::is_paused(env.clone()) {
+            env.storage().instance().get(&symbol_short!("PAUSED_AT"))
+        } else {
+            None
+        }
+    }
+    pub fn get_pause_state(env: Env) -> remitwise_common::PauseState {
+        remitwise_common::PauseState {
+            paused: Self::is_paused(env.clone()),
+            paused_since: Self::get_paused_since(env),
+        }
     }
     pub fn get_version(env: Env) -> u32 {
         Self::extend_instance_ttl(&env);
@@ -689,6 +735,26 @@ impl RemittanceSplit {
         Self::get_treasury(&env)
     }
 
+    /// Return the active treasury's balance of the split's configured USDC asset.
+    ///
+    /// This is a read-only audit view. The token is taken from the immutable
+    /// `SplitConfig`, so callers cannot substitute an arbitrary asset.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the split has not been initialized.
+    /// - `TreasuryNotConfigured` if no proposed treasury has accepted the role.
+    pub fn treasury_balance(env: Env) -> Result<i128, RemittanceSplitError> {
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        let treasury = Self::get_treasury(&env)
+            .ok_or(RemittanceSplitError::TreasuryNotConfigured)?;
+
+        Ok(TokenClient::new(&env, &config.usdc_contract).balance(&treasury))
+    }
+
     /// Get the currently proposed (pending) treasury address, if any.
     pub fn get_pending_treasury_public(env: Env) -> Option<Address> {
         Self::get_pending_treasury(&env)
@@ -844,20 +910,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        // Restore config
+        // Restore config (single source of truth — SPLIT key has been removed)
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &snapshot.config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                snapshot.config.spending_percent,
-                snapshot.config.savings_percent,
-                snapshot.config.bills_percent,
-                snapshot.config.insurance_percent,
-            ],
-        );
 
         // Restore version
         env.storage()
@@ -1004,6 +1060,46 @@ impl RemittanceSplit {
         Ok(())
     }
 
+    /// Validate a list of corridors for consistency and bound adherence.
+    ///
+    /// Checks performed:
+    /// 1. Count does not exceed [`params::MAX_CORRIDORS`].
+    /// 2. Each `fee_bps` ≤ [`params::MAX_FEE_BPS`].
+    /// 3. Each `max_amount` ≥ `min_amount` and `min_amount` ≥ [`params::MIN_CORRIDOR_AMOUNT`].
+    /// 4. No duplicate corridor IDs.
+    fn validate_corridors(env: &Env, corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
+        if corridors.len() > params::MAX_CORRIDORS {
+            return Err(RemittanceSplitError::CorridorCountExceeded);
+        }
+        for i in 0..corridors.len() {
+            if let Some(c) = corridors.get(i) {
+                if c.fee_bps > params::MAX_FEE_BPS {
+                    return Err(RemittanceSplitError::CorridorFeeTooHigh);
+                }
+                if remitwise_common::Rate::from_bps(c.fee_bps).has_fractional_percent() {
+                    soroban_sdk::log!(
+                        env,
+                        "level=ERROR error=FeeRounding corridor_id={} fee_bps={}",
+                        c.id,
+                        c.fee_bps
+                    );
+                    return Err(RemittanceSplitError::FeeRounding);
+                }
+                if c.max_amount < c.min_amount || c.min_amount < params::MIN_CORRIDOR_AMOUNT {
+                    return Err(RemittanceSplitError::InvalidCorridorAmountRange);
+                }
+                for j in (i + 1)..corridors.len() {
+                    if let Some(other) = corridors.get(j) {
+                        if c.id == other.id {
+                            return Err(RemittanceSplitError::DuplicateCorridorId);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Set or update the split percentages used to allocate remittances.
     ///
     /// # Arguments
@@ -1098,16 +1194,6 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
-        );
 
         Self::increment_nonce(&env, &owner)?;
         Self::append_audit(&env, symbol_short!("init"), &owner, true);
@@ -1166,16 +1252,6 @@ impl RemittanceSplit {
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                spending_percent,
-                savings_percent,
-                bills_percent,
-                insurance_percent,
-            ],
-        );
 
         let event = SplitInitializedEvent {
             spending_percent,
@@ -1196,15 +1272,91 @@ impl RemittanceSplit {
 
     pub fn get_split(env: &Env) -> Vec<u32> {
         Self::extend_instance_ttl(env);
+        // Derive split percentages from the canonical CONFIG key (single source of truth).
+        // Previously percentages were written to a separate SPLIT key, duplicating the
+        // same data and creating a desynchronisation risk.  See PR description for details.
         env.storage()
             .instance()
-            .get(&symbol_short!("SPLIT"))
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+            .map(|c| {
+                vec![
+                    &env,
+                    c.spending_percent,
+                    c.savings_percent,
+                    c.bills_percent,
+                    c.insurance_percent,
+                ]
+            })
             .unwrap_or_else(|| vec![&env, 5000, 3000, 1500, 500])
     }
 
     pub fn get_config(env: Env) -> Option<SplitConfig> {
         Self::extend_instance_ttl(&env);
         env.storage().instance().get(&symbol_short!("CONFIG"))
+    }
+
+    /// Configure the list of supported remittance corridors.
+    ///
+    /// Must be called after `initialize_split`. Only the contract owner may
+    /// configure corridors. Each corridor must pass validation:
+    /// - Count ≤ [`params::MAX_CORRIDORS`]
+    /// - `fee_bps` ≤ [`params::MAX_FEE_BPS`]
+    /// - `max_amount` ≥ `min_amount` ≥ [`params::MIN_CORRIDOR_AMOUNT`]
+    /// - No duplicate corridor IDs
+    ///
+    /// # Arguments
+    /// * `caller`    - Must match `config.owner`
+    /// * `nonce`     - Replay-protection nonce
+    /// * `corridors` - List of corridors to store (replaces any previous list)
+    ///
+    /// # Errors
+    /// - `NotInitialized`  if `initialize_split` has not been called
+    /// - `Unauthorized`    if `caller` is not the owner
+    /// - `CorridorCountExceeded` if corridors.len() > MAX_CORRIDORS
+    /// - `CorridorFeeTooHigh`    if any fee_bps > MAX_FEE_BPS
+    /// - `InvalidCorridorAmountRange` if min/max range is invalid
+    /// - `DuplicateCorridorId`   if corridors contain duplicate IDs
+    pub fn init_corridors(
+        env: Env,
+        caller: Address,
+        nonce: u64,
+        corridors: Vec<Corridor>,
+    ) -> Result<(), RemittanceSplitError> {
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+        Self::require_not_paused(&env)?;
+        Self::require_nonce(&env, &caller, nonce)?;
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+
+        if config.owner != caller {
+            Self::append_audit(&env, symbol_short!("init"), &caller, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        Self::validate_corridors(&env, &corridors)?;
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("CRIDORS"), &corridors);
+
+        Self::increment_nonce(&env, &caller)?;
+        Self::append_audit(&env, symbol_short!("cr_cfg"), &caller, true);
+
+        Ok(())
+    }
+
+    /// Return the stored list of corridors, or an empty vec if none were configured.
+    pub fn get_corridors(env: &Env) -> Vec<Corridor> {
+        Self::extend_instance_ttl(env);
+        env.storage()
+            .instance()
+            .get(&symbol_short!("CRIDORS"))
+            .unwrap_or_else(|| Vec::new(env))
     }
 
     pub fn calculate_split(
@@ -1782,20 +1934,10 @@ impl RemittanceSplit {
 
         Self::extend_instance_ttl(&env);
 
-        // --- Restore config and split percentages ---
+        // --- Restore config (single source of truth) ---
         env.storage()
             .instance()
             .set(&symbol_short!("CONFIG"), &snapshot.config);
-        env.storage().instance().set(
-            &symbol_short!("SPLIT"),
-            &vec![
-                &env,
-                snapshot.config.spending_percent,
-                snapshot.config.savings_percent,
-                snapshot.config.bills_percent,
-                snapshot.config.insurance_percent,
-            ],
-        );
 
         // Import schedules to new storage
         for schedule in snapshot.schedules.iter() {

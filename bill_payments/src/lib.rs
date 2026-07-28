@@ -3,11 +3,11 @@
 
 use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, require_stable_currency, EventCategory,
-    EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    check_and_increment_rate_limit, clamp_limit, require_stable_currency,
+    require_within_settlement_window, EventCategory, EventPriority, RemitwiseEvents,
+    Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
-    SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    MAX_SETTLEMENT_WINDOW_SECS, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
 use soroban_sdk::{
@@ -206,7 +206,9 @@ pub enum BillPaymentsError {
     /// The page is empty so there is no first item to return.
     EmptyPage = 29,
     /// Bill or schedule name is invalid (empty or exceeds max length)
-    InvalidName = 30
+    InvalidName = 30,
+    /// Settlement occurred outside the allowed settlement window
+    SettlementWindowExpired = 32,
 }
 
 pub type Error = BillPaymentsError;
@@ -714,8 +716,7 @@ impl BillPayments {
         // Defence-in-depth: reject rebase/deflationary tokens.
         // After normalizing to uppercase, verify the symbol is a recognized stable asset.
         let sym = Symbol::new(env, upper_str);
-        require_stable_currency(env, &sym)
-            .map_err(|_| BillPaymentsError::UnsupportedCurrency)?;
+        require_stable_currency(env, &sym).map_err(|_| BillPaymentsError::UnsupportedCurrency)?;
 
         Ok(String::from_str(env, upper_str))
     }
@@ -888,7 +889,16 @@ impl BillPayments {
         new_admin: Address,
     ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
+        
+        // Defense-in-depth: Validate admin grant TTL before allowing admin changes
+        // Prevents bypass of the 30-day admin grant expiration mechanism
         let current = Self::get_pause_admin(&env);
+        if current.is_some() {
+            // Only enforce TTL validation when there's an existing admin
+            // (first-time setup when current is None is allowed to proceed)
+            Self::require_admin_grant_valid(&env)?;
+        }
+        
         match current {
             Option::None => {
                 if caller != new_admin {
@@ -913,6 +923,8 @@ impl BillPayments {
     /// @dev Requires the pause admin to authenticate. Cancels any pending unpause schedule.
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -922,6 +934,9 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
         // Cancel any pending unpause schedule to prevent timelock bypass
         env.storage().instance().remove(&symbol_short!("UNP_AT"));
         RemitwiseEvents::emit(
@@ -941,6 +956,8 @@ impl BillPayments {
     /// @dev If `schedule_unpause` set a future timestamp, unpause is blocked until then.
     /// @return Ok(()) on success, otherwise `Error::ContractPaused` or `Error::UnauthorizedPause`.
     pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -957,6 +974,7 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
+        env.storage().instance().remove(&symbol_short!("PAUSED_AT"));
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -974,6 +992,8 @@ impl BillPayments {
     /// @dev Time-locks unpause to a future `at_timestamp` (ledger timestamp seconds).
     /// @return Ok(()) on success, otherwise `Error::InvalidAmount` or `Error::UnauthorizedPause`.
     pub fn schedule_unpause(env: Env, caller: Address, at_timestamp: u64) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -993,6 +1013,8 @@ impl BillPayments {
     /// @dev Uses `func` symbols defined in `pause_functions`.
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -1015,6 +1037,8 @@ impl BillPayments {
     /// @dev Uses `func` symbols defined in `pause_functions`.
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -1037,6 +1061,8 @@ impl BillPayments {
     /// @dev Equivalent to calling `pause` plus pausing all supported functions.
     /// @return Ok(()) on success, otherwise the underlying pause errors.
     pub fn emergency_pause_all(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_admin_grant_valid(&env)?;
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
@@ -1047,6 +1073,9 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
         env.storage().instance().remove(&symbol_short!("UNP_AT"));
         RemitwiseEvents::emit(
             &env,
@@ -1089,6 +1118,19 @@ impl BillPayments {
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
     }
+    pub fn get_paused_since(env: Env) -> Option<u64> {
+        if Self::is_paused(env.clone()) {
+            env.storage().instance().get(&symbol_short!("PAUSED_AT"))
+        } else {
+            None
+        }
+    }
+    pub fn get_pause_state(env: Env) -> remitwise_common::PauseState {
+        remitwise_common::PauseState {
+            paused: Self::is_paused(env.clone()),
+            paused_since: Self::get_paused_since(env),
+        }
+    }
     pub fn is_function_paused_public(env: Env, func: Symbol) -> bool {
         Self::is_function_paused(&env, func)
     }
@@ -1096,6 +1138,8 @@ impl BillPayments {
         Self::get_pause_admin(&env)
     }
     pub fn refresh_admin_grant(env: Env, caller: Address) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::AdminGrantExpired)?;
         if admin != caller {
@@ -1130,6 +1174,8 @@ impl BillPayments {
     /// - `Ok(())` on successful admin transfer
     /// - `Err(Error::Unauthorized)` if caller lacks permission
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
 
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
@@ -1177,6 +1223,8 @@ impl BillPayments {
         Self::get_upgrade_admin(&env)
     }
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
@@ -1211,6 +1259,8 @@ impl BillPayments {
     /// # Events
     /// Emits `snap_pre` event on success.
     pub fn pre_upgrade(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
@@ -1254,6 +1304,8 @@ impl BillPayments {
     /// # Events
     /// Emits `snap_rst` event on success.
     pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
@@ -1320,6 +1372,8 @@ impl BillPayments {
     /// # Errors
     /// - `Unauthorized` if `caller` is not the upgrade admin
     pub fn discard_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
@@ -1554,6 +1608,8 @@ impl BillPayments {
     /// # Returns
     /// Vector of executed schedule IDs.
     pub fn execute_due_bill_schedules(env: Env) -> Vec<u32> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
         Self::extend_instance_ttl(&env);
 
         if Self::get_global_paused(&env) {
@@ -1881,6 +1937,8 @@ impl BillPayments {
     /// * `InvalidDueDate` - If child due_date arithmetic overflows `u64`
     /// * `InvalidFrequency` - If period arithmetic overflows `u64`
     pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
@@ -1911,6 +1969,9 @@ impl BillPayments {
         }
 
         let current_time = env.ledger().timestamp();
+        require_within_settlement_window(current_time, bill.due_date, MAX_SETTLEMENT_WINDOW_SECS)
+            .map_err(|_| BillPaymentsError::SettlementWindowExpired)?;
+
         bill.paid = true;
         bill.paid_at = Some(current_time);
 
@@ -2020,6 +2081,8 @@ impl BillPayments {
     /// - Tags are validated and normalized (lowercase, trimmed charset).
     /// - Emits `(bill, tags_add)` with `(bill_id, caller, tags)`.
     pub fn add_tags_to_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TAGS)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
@@ -2072,6 +2135,8 @@ impl BillPayments {
     /// - Removing a tag that is not present is a no-op.
     /// - Emits `(bill, tags_rem)` with `(bill_id, caller, tags)`.
     pub fn remove_tags_from_bill(env: Env, caller: Address, bill_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::REM_TAGS)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
@@ -2732,6 +2797,8 @@ impl BillPayments {
 
     /// Emits BillEvent::Cancelled.
     pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
 
@@ -2912,6 +2979,8 @@ impl BillPayments {
     /// - Secondary topic: `(symbol_short!("bill"), BillEvent::Restored)`
     /// - Action symbol: `"restored"` via [`RemitwiseEvents::emit`]
     pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE)?;
         Self::extend_instance_ttl(&env);
@@ -3050,6 +3119,8 @@ impl BillPayments {
     /// @security Cross-owner payments are rejected per item; oversized batches are rejected
     /// before iteration.
     pub fn batch_pay_bills(env: Env, caller: Address, bill_ids: Vec<u32>) -> Result<u32, Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 

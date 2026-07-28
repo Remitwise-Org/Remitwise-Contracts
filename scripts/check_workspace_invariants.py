@@ -2,12 +2,16 @@
 """Check workspace-level invariants via grep-based analysis.
 
 Issue #1095: Add a check-workspace-invariants CI job
+Issue #1102: Add a "no dead crates" workspace check
 
 Checks performed:
   1. Every workspace crate directory has a README.md
   2. Every public entrypoint (pub fn inside #[contractimpl]) has a doc comment (///)
   3. Every #[contracterror] variant has a doc comment (///)
   4. No bare `todo!()` or `unimplemented!()` in production (non-test) source files
+  5. Every workspace crate is referenced as a path dependency by another crate
+     (including as a dev-dependency, i.e. used by another crate's tests), or has
+     tests of its own
 
 Usage:
     python scripts/check_workspace_invariants.py
@@ -207,6 +211,70 @@ def check_no_todos(workspace_root: Path, members: List[str]) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Check 5: no dead crates — every crate is referenced by another crate
+# (as a [dependencies] or [dev-dependencies] path dependency) or has its own
+# tests.
+# ---------------------------------------------------------------------------
+
+def find_crate_path_refs(cargo_toml_text: str, members: List[str]) -> set:
+    """Return the subset of `members` referenced via `path = "..."` in a
+    Cargo.toml's dependency tables (any table — [dependencies],
+    [dev-dependencies], [patch.*], etc. — a reference anywhere is enough)."""
+    members_set = set(members)
+    refs = set()
+    for m in re.finditer(r'path\s*=\s*"([^"]+)"', cargo_toml_text):
+        raw = m.group(1)
+        if raw.endswith(".rs"):
+            # e.g. `path = "src/main.rs"` on a [[bin]] target, not a crate dep.
+            continue
+        name = raw.rstrip("/").split("/")[-1]
+        if name in members_set:
+            refs.add(name)
+    return refs
+
+
+def crate_has_own_tests(workspace_root: Path, member: str) -> bool:
+    crate_dir = workspace_root / member
+    tests_dir = crate_dir / "tests"
+    if tests_dir.is_dir() and any(tests_dir.rglob("*.rs")):
+        return True
+    for rs_file in crate_dir.rglob("*.rs"):
+        if "target" in rs_file.parts:
+            continue
+        content = rs_file.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"#\[test\]|#\[cfg\(test\)\]", content):
+            return True
+    return False
+
+
+def check_no_dead_crates(workspace_root: Path, members: List[str]) -> List[str]:
+    errors: List[str] = []
+
+    referenced: set = set()
+    cargo_files = [workspace_root / "Cargo.toml"] + [
+        workspace_root / member / "Cargo.toml" for member in members
+    ]
+    for cargo_file in cargo_files:
+        if not cargo_file.exists():
+            continue
+        referenced |= find_crate_path_refs(
+            cargo_file.read_text(encoding="utf-8"), members
+        )
+
+    for member in members:
+        if member in referenced:
+            continue
+        if crate_has_own_tests(workspace_root, member):
+            continue
+        errors.append(
+            f"Crate '{member}' is not referenced as a path dependency by any "
+            f"other workspace crate and has no tests of its own "
+            f"(no tests/*.rs, no #[test]/#[cfg(test)])"
+        )
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -255,6 +323,15 @@ def main() -> int:
             print(f"  FAIL: {e}")
     else:
         print("  PASS: no bare todo!()/unimplemented!() found")
+
+    print("\n=== Check 5: no dead crates ===")
+    errors = check_no_dead_crates(workspace_root, members)
+    all_errors.extend(errors)
+    if errors:
+        for e in errors:
+            print(f"  FAIL: {e}")
+    else:
+        print(f"  PASS: all {len(members)} crates are referenced or tested")
 
     print(f"\n{'='*60}")
     if all_errors:

@@ -473,11 +473,11 @@ fn all_bills_one_currency() {
 
     let mut expected: std::vec::Vec<u32> = std::vec::Vec::new();
     for _ in 0u32..25 {
-        let id = create_bill_currency(&env, &client, &owner, "NGN");
+        let id = create_bill_currency(&env, &client, &owner, "USDC");
         expected.push(id);
     }
 
-    let (ids, _) = collect_unpaid_by_currency(&client, &owner, "NGN", 7);
+    let (ids, _) = collect_unpaid_by_currency(&client, &owner, "USDC", 7);
 
     let mut ids_sorted = ids.clone();
     ids_sorted.sort_unstable();

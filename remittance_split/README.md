@@ -125,6 +125,19 @@ pub struct AccountGroup {
 
 ### Functions
 
+#### `treasury_balance(env) -> i128`
+
+Returns the accepted treasury address's balance of the USDC token pinned during
+`initialize_split`. This read-only audit view takes no token or account argument,
+so it cannot be used to query an arbitrary asset or address.
+
+**Errors:**
+
+| Error | Condition |
+|---|---|
+| `NotInitialized` | The split has not been initialized. |
+| `TreasuryNotConfigured` | No treasury has completed the two-step treasury acceptance flow. |
+
 #### `initialize_split(env, owner, nonce, usdc_contract, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
 Initializes the split configuration and pins the trusted USDC token contract address.

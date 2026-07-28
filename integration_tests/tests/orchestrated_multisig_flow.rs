@@ -63,6 +63,7 @@ fn test_orchestrated_multisig_flow() {
     // Set low spending limit for user to force multisig/role change
     family_wallet_client
         .try_update_spending_limit(&admin, &user, &100i128)
+        .unwrap()
         .unwrap();
 
     let mock_usdc = Address::generate(&env);

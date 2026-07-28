@@ -1,3 +1,4 @@
+#![allow(unused_imports, dead_code)]
 // remitwise-common tests
 
 /// Tests for [`canonicalize_tags`], [`canonicalize_tags_checked`], and [`clamp_limit`].
@@ -19,8 +20,10 @@ use super::*;
 use crate::distribute_pro_rata;
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
+use soroban_sdk::testutils::LedgerInfo;
 use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
 
+#[allow(dead_code)]
 fn set_ledger(env: &Env, sequence_number: u32) {
     let proto = env.ledger().protocol_version();
     env.ledger().set(LedgerInfo {
@@ -28,6 +31,24 @@ fn set_ledger(env: &Env, sequence_number: u32) {
         sequence_number,
         timestamp: 1_700_000_000,
         network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 3_000_000,
+    });
+}
+
+/// Sets only `network_id` on the ledger, preserving the rest of its current
+/// state. Used to simulate the same contract instance storage being read
+/// under a different Stellar network.
+fn set_network(env: &Env, network_id: [u8; 32]) {
+    let proto = env.ledger().protocol_version();
+    let sequence_number = env.ledger().sequence();
+    env.ledger().set(LedgerInfo {
+        protocol_version: proto,
+        sequence_number,
+        timestamp: 1_700_000_000,
+        network_id,
         base_reserve: 10,
         min_temp_entry_ttl: 1,
         min_persistent_entry_ttl: 1,
@@ -57,6 +78,15 @@ fn get(_env: &Env, v: &Vec<String>, i: u32) -> std::string::String {
     let mut buf = std::vec![0u8; s.len() as usize];
     s.copy_into_slice(&mut buf);
     std::string::String::from_utf8(buf).unwrap()
+}
+
+fn prefixed_message(domain_separator: &[u8], message: &[u8]) -> std::vec::Vec<u8> {
+    let mut bytes = std::vec::Vec::new();
+    bytes.extend_from_slice(&(domain_separator.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(domain_separator);
+    bytes.extend_from_slice(&(message.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(message);
+    bytes
 }
 
 // ─── canonicalize_tags: lowercasing ──────────────────────────────────────────
@@ -396,6 +426,7 @@ fn test_checked_empty_batch_before_length_check() {
 /// A deterministic helper: get string content from a Symbol for assertions.
 /// Available only in non-WASM (test) builds via `ToString`.
 fn symbol_str(sym: &Symbol) -> std::string::String {
+    use std::string::ToString;
     sym.to_string()
 }
 
@@ -569,6 +600,267 @@ proptest! {
     }
 }
 
+// ─── canonicalise_symbol_checked ─────────────────────────────────────────────
+
+/// Lowercase–only input is returned unchanged.
+#[test]
+fn test_checked_symbol_lowercase_passthrough() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Uppercase letters are folded to lowercase.
+#[test]
+fn test_checked_symbol_uppercase_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HELLO");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Mixed-case input is fully lowercased.
+#[test]
+fn test_checked_symbol_mixed_case_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HelloWorld");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "helloworld");
+}
+
+/// Leading whitespace is stripped.
+#[test]
+fn test_checked_symbol_leading_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Trailing whitespace is stripped.
+#[test]
+fn test_checked_symbol_trailing_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello  ");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Underscore is valid.
+#[test]
+fn test_checked_symbol_underscore_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "my_symbol");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "my_symbol");
+}
+
+/// Digits are valid.
+#[test]
+fn test_checked_symbol_digits_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "goal2025");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "goal2025");
+}
+
+/// Empty string returns Err(Empty).
+#[test]
+fn test_checked_symbol_empty_returns_err() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Whitespace-only string returns Err(Empty).
+#[test]
+fn test_checked_symbol_whitespace_only_returns_err() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "   ");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Trimmed input longer than 32 bytes returns Err(TooLong).
+#[test]
+fn test_checked_symbol_too_long_returns_err() {
+    let env = Env::default();
+    // 33 lowercase letters — one over the limit
+    let input = soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::TooLong),
+    );
+}
+
+/// Exactly 32 bytes (the boundary) succeeds.
+#[test]
+fn test_checked_symbol_exactly_32_bytes_passes() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdef");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "abcdefghijklmnopqrstuvwxyzabcdef");
+}
+
+/// Hyphen at position 5 returns Err(InvalidChar { position: 5 }).
+#[test]
+fn test_checked_symbol_hyphen_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello-world");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 5 }),
+    );
+}
+
+/// Internal space (after trimming) returns Err(InvalidChar) at the correct byte position.
+#[test]
+fn test_checked_symbol_internal_space_returns_invalid_char() {
+    let env = Env::default();
+    // leading space is trimmed; remaining "hello world" has space at position 5
+    let input = soroban_sdk::String::from_str(&env, " hello world");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 5 }),
+    );
+}
+
+/// `@` at position 0 returns Err(InvalidChar { position: 0 }).
+#[test]
+fn test_checked_symbol_at_sign_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "@admin");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 0 }),
+    );
+}
+
+/// Dot (`.`) at position 4 returns Err(InvalidChar { position: 4 }).
+#[test]
+fn test_checked_symbol_dot_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "v1_0.1");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 4 }),
+    );
+}
+
+/// Short-circuits on the FIRST bad byte, not the last.
+#[test]
+fn test_checked_symbol_short_circuits_on_first_invalid_char() {
+    let env = Env::default();
+    // '!' at index 3; '@' at index 5 — only position 3 should be reported
+    let input = soroban_sdk::String::from_str(&env, "bad!xy@z");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 3 }),
+    );
+}
+
+/// Idempotence: applying checked twice yields the same Symbol.
+#[test]
+fn test_checked_symbol_idempotent() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  HeLLo_WORLD  ");
+    let once = canonicalise_symbol_checked(&env, &input).unwrap();
+    let once_str = symbol_str(&once);
+    let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+    let twice = canonicalise_symbol_checked(&env, &twice_input).unwrap();
+    assert_eq!(symbol_str(&once), symbol_str(&twice));
+}
+
+// ─── canonicalise_symbols (batch) ────────────────────────────────────────────
+
+/// Empty batch returns Err(Empty).
+#[test]
+fn test_canonicalise_symbols_empty_batch_returns_err() {
+    let env = Env::default();
+    let empty: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    assert_eq!(
+        canonicalise_symbols(&env, &empty),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Valid batch — all symbols canonicalised in order.
+#[test]
+fn test_canonicalise_symbols_valid_batch() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "Hello"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "WORLD"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "my_key"));
+
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(out.len(), 3);
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "hello");
+    assert_eq!(symbol_str(&out.get(1).unwrap()), "world");
+    assert_eq!(symbol_str(&out.get(2).unwrap()), "my_key");
+}
+
+/// Order is preserved in the batch output.
+#[test]
+fn test_canonicalise_symbols_order_preserved() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "zebra"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "apple"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "mango"));
+
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "zebra");
+    assert_eq!(symbol_str(&out.get(1).unwrap()), "apple");
+    assert_eq!(symbol_str(&out.get(2).unwrap()), "mango");
+}
+
+/// First invalid element short-circuits the batch.
+#[test]
+fn test_canonicalise_symbols_invalid_element_short_circuits() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "valid_one"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char"));  // hyphen at pos 3
+    inputs.push_back(soroban_sdk::String::from_str(&env, "valid_two"));
+
+    assert_eq!(
+        canonicalise_symbols(&env, &inputs),
+        Err(SymbolValidationError::InvalidChar { position: 3 }),
+    );
+}
+
+/// Too-long element in a batch returns Err(TooLong).
+#[test]
+fn test_canonicalise_symbols_too_long_element() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "ok"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg")); // 33 chars
+
+    assert_eq!(
+        canonicalise_symbols(&env, &inputs),
+        Err(SymbolValidationError::TooLong),
+    );
+}
+
+/// Single-element batch works end-to-end.
+#[test]
+fn test_canonicalise_symbols_single_element() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "  MyKey  "));
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "mykey");
+}
+
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
 
 /// 0 is treated as "use default" and returns DEFAULT_PAGE_LIMIT.
@@ -628,6 +920,35 @@ proptest! {
         prop_assert!((1..=MAX_PAGE_LIMIT).contains(&clamped));
         prop_assert_eq!(clamp_limit(clamped), clamped);
     }
+
+    /// Property test for cross-domain signature replay protection.
+    ///
+    /// Sign for domain A, replay against domain B — must fail.
+    #[test]
+    fn proptest_signature_signed_for_domain_a_replayed_against_domain_b_fails(
+        domain_a in proptest::collection::vec(any::<u8>(), 8),
+        domain_b in proptest::collection::vec(any::<u8>(), 8),
+        msg in proptest::collection::vec(any::<u8>(), 1..64),
+    ) {
+        prop_assume!(domain_a != domain_b);
+
+        let env = Env::default();
+        let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+        let pk = sk.verifying_key().to_bytes();
+
+        let mut prefixed = std::vec::Vec::new();
+        prefixed.extend_from_slice(&domain_a);
+        prefixed.extend_from_slice(&msg);
+        let signature = sk.sign(&prefixed).to_bytes();
+
+        let valid_res = verify_signature(&env, &domain_a, &msg, &signature, &pk);
+        prop_assert_eq!(valid_res, Ok(()));
+
+        let replay_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = verify_signature(&env, &domain_b, &msg, &signature, &pk);
+        }));
+        prop_assert!(replay_res.is_err(), "Signature signed for domain A replayed against domain B must fail");
+    }
 }
 
 /// Explicit regression pin for the largest u32 input: it must clamp without
@@ -639,6 +960,118 @@ fn test_clamp_limit_u32_max_contract_regression() {
     assert_eq!(clamped, MAX_PAGE_LIMIT);
     assert!((1..=MAX_PAGE_LIMIT).contains(&clamped));
     assert_eq!(clamp_limit(clamped), clamped);
+}
+
+// ─── Timestamp::to_period_key ────────────────────────────────────────────────
+
+#[test]
+fn test_period_key_day_and_week_buckets() {
+    // Jan 1, 1970 UTC (epoch)
+    let ts = 0u64;
+    assert_eq!(Timestamp::to_period_key(ts, PeriodKind::Day), 0);
+    assert_eq!(Timestamp::to_period_key(ts, PeriodKind::Week), 0);
+    assert_eq!(Timestamp::to_period_key(ts + 86399, PeriodKind::Day), 0);
+    assert_eq!(Timestamp::to_period_key(ts + 86400, PeriodKind::Day), 1);
+    assert_eq!(Timestamp::to_period_key(ts + 604799, PeriodKind::Week), 0);
+    assert_eq!(Timestamp::to_period_key(ts + 604800, PeriodKind::Week), 1);
+}
+
+#[test]
+fn test_period_key_month_bucket_epoch_and_dec_2023() {
+    // Epoch (Jan 1970)
+    assert_eq!(Timestamp::to_period_key(0, PeriodKind::Month), 197001);
+    // Dec 31, 2023 23:59:59 UTC
+    let ts = 1704067199;
+    assert_eq!(Timestamp::to_period_key(ts, PeriodKind::Month), 202312);
+    // Jan 1, 2024 00:00:00 UTC
+    let jan1_2024 = 1704067200;
+    assert_eq!(Timestamp::to_period_key(jan1_2024, PeriodKind::Month), 202401);
+}
+
+#[test]
+fn test_period_key_exact_rollover_edges() {
+    // Midnight UTC at 2021-02-28 to Mar 1st transition, and leap-year
+    let feb_28_2020 = 1582848000; // 2020-02-28 00:00:00 UTC
+    let feb_29_2020 = 1582934400; // 2020-02-29 00:00:00 UTC (leap)
+    let mar_1_2020  = 1583020800; // 2020-03-01 00:00:00 UTC
+    assert_eq!(Timestamp::to_period_key(feb_28_2020, PeriodKind::Month), 202002);
+    assert_eq!(Timestamp::to_period_key(feb_29_2020, PeriodKind::Month), 202002);
+    assert_eq!(Timestamp::to_period_key(mar_1_2020, PeriodKind::Month), 202003);
+}
+
+#[test]
+fn test_period_key_idempotent_and_monotonic_within_bucket() {
+    // For any t in the same day/week/month, key is identical and monotonic within that bucket
+    for period in [PeriodKind::Day, PeriodKind::Week, PeriodKind::Month] {
+        let mut prev = None;
+        for t in (1_700_000_000..1_700_010_000).step_by(101) {
+            let key = Timestamp::to_period_key(t, period);
+            if let Some(pkey) = prev {
+                // Monotonic: never decreases
+                assert!(key >= pkey);
+                // Idempotent: next t in same bucket, key stays same or bumps by 1
+                assert!(key == pkey || key == pkey + 1 || key == pkey); // Week/month boundaries are much further
+            }
+            prev = Some(key);
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn proptest_period_key_roundtrips(t in 0u64..4660000000) { // up to year 2117
+        use remitwise_common::{PeriodKind::*};
+        let day = Timestamp::to_period_key(t, Day);
+        let week = Timestamp::to_period_key(t, Week);
+        let month = Timestamp::to_period_key(t, Month);
+        // Day bucket reconstructs the day-start timestamp
+        let day_start = day * 86400;
+        assert!(t >= day_start);
+        assert!(t < day_start + 86400);
+        // Week bucket reconstructs week-start timestamp
+        let week_start = week * 604800;
+        assert!(t >= week_start);
+        assert!(t < week_start + 604800);
+        // Month bucket is always >= 197001, never < 197001
+        assert!(month >= 197001);
+        let y = month / 100;
+        let m = month % 100;
+        assert!(y >= 1970 && m >= 1 && m <= 12);
+    }
+}
+
+// Pins the "no Result, no panic" contract of `Timestamp::to_period_key`
+// at the practical `u64::MAX` corner of the input domain.
+//
+// Day and Week are simple floor divisions and round-trip exactly. For Month
+// we only assert well-formed YYYYMM (month component in `1..=12`); the
+// numeric magnitude of the year component is implementation-defined and is
+// not pinned here.
+#[test]
+fn test_period_key_u64_max_does_not_panic() {
+    let ts = u64::MAX;
+
+    // Day: timestamp / SECONDS_PER_DAY (floor).
+    assert_eq!(
+        Timestamp::to_period_key(ts, PeriodKind::Day),
+        ts / SECONDS_PER_DAY
+    );
+
+    // Week: timestamp / SECONDS_PER_WEEK (floor).
+    assert_eq!(
+        Timestamp::to_period_key(ts, PeriodKind::Week),
+        ts / SECONDS_PER_WEEK
+    );
+
+    // Month: YYYYMM must contain a valid calendar month component.
+    let key = Timestamp::to_period_key(ts, PeriodKind::Month);
+    let month = key % 100;
+    assert!(
+        (1..=12).contains(&month),
+        "month component out of range ({}) for key={} at ts=u64::MAX",
+        month,
+        key
+    );
 }
 
 // ─── Timestamp::seconds_until ────────────────────────────────────────────────
@@ -667,32 +1100,158 @@ fn test_timestamp_seconds_until_u64_max_boundary() {
     assert_eq!(Timestamp::seconds_until(u64::MAX - 1, u64::MAX), 1);
 }
 
+/// Maximum possible distance: now at 0, target at `u64::MAX`.
+/// Pins that the return value can represent the full `u64` range.
+#[test]
+fn test_timestamp_seconds_until_max_distance_zero_to_u64_max() {
+    assert_eq!(Timestamp::seconds_until(0, u64::MAX), u64::MAX);
+}
+
+/// Max past: now at `u64::MAX`, target at 0 saturates at zero.
+#[test]
+fn test_timestamp_seconds_until_max_past_u64_max_to_zero_saturates() {
+    assert_eq!(Timestamp::seconds_until(u64::MAX, 0), 0);
+}
+
+/// Equal timestamps at the maximum boundary return zero.
+#[test]
+fn test_timestamp_seconds_until_equal_at_u64_max_returns_zero() {
+    assert_eq!(Timestamp::seconds_until(u64::MAX, u64::MAX), 0);
+}
+
+/// Base case: both now and target at epoch zero return zero.
+#[test]
+fn test_timestamp_seconds_until_zero_now_zero_target_returns_zero() {
+    assert_eq!(Timestamp::seconds_until(0, 0), 0);
+}
+
+/// Near-max distance: now at 1, target at `u64::MAX`.
+#[test]
+fn test_timestamp_seconds_until_near_max_distance_from_one_to_u64_max() {
+    assert_eq!(Timestamp::seconds_until(1, u64::MAX), u64::MAX - 1);
+}
+
+// ─── Current, Future, Past Temporal Tests (Timestamp & validate_period) ──────
+
+/// validate_period returns Ok when start equals end (current/same timestamp).
+#[test]
+fn test_validate_period_returns_ok_for_current_timestamp_equal_start_end() {
+    assert_eq!(validate_period(1_700_000_000, 1_700_000_000), Ok(()));
+}
+
+/// validate_period returns Ok when start is before end (future end timestamp).
+#[test]
+fn test_validate_period_returns_ok_for_future_end_timestamp() {
+    assert_eq!(validate_period(1_700_000_000, 1_700_000_500), Ok(()));
+}
+
+/// validate_period returns Err(TimeError::InvalidPeriod) when start is after end (past end timestamp).
+#[test]
+fn test_validate_period_returns_err_invalid_period_for_past_end_timestamp() {
+    assert_eq!(
+        validate_period(1_700_000_500, 1_700_000_000),
+        Err(TimeError::InvalidPeriod)
+    );
+}
+
+/// validate_period boundary checks for 1 second difference (future vs past).
+#[test]
+fn test_validate_period_boundary_one_second_future_and_past() {
+    let now = 1_700_000_000;
+    // 1 second in the future is valid
+    assert_eq!(validate_period(now, now + 1), Ok(()));
+    // 1 second in the past relative to start is invalid
+    assert_eq!(validate_period(now + 1, now), Err(TimeError::InvalidPeriod));
+}
+
+/// Timestamp::seconds_until explicit classification across current, future, and past.
+#[test]
+fn test_timestamp_seconds_until_current_future_past_boundaries() {
+    let now = 1_700_000_000;
+    // Current (now == target)
+    assert_eq!(Timestamp::seconds_until(now, now), 0);
+    // Future (now < target)
+    assert_eq!(Timestamp::seconds_until(now, now + 100), 100);
+    // Past (now > target)
+    assert_eq!(Timestamp::seconds_until(now + 100, now), 0);
+}
+
+proptest! {
+    /// Property test pinning `Timestamp::seconds_until` behavior across current, future, and past targets.
+    #[test]
+    fn proptest_timestamp_seconds_until_current_future_past(
+        now in any::<u64>(),
+        target in any::<u64>(),
+    ) {
+        let result = Timestamp::seconds_until(now, target);
+        if target > now {
+            // Future target: returns exact positive distance
+            prop_assert_eq!(result, target - now);
+            prop_assert!(result > 0);
+        } else if target == now {
+            // Current target: returns zero
+            prop_assert_eq!(result, 0);
+        } else {
+            // Past target: saturates at zero
+            prop_assert_eq!(result, 0);
+        }
+    }
+
+    /// Property test pinning `validate_period` behavior across current, future, and past ordering.
+    #[test]
+    fn proptest_validate_period_current_future_past(
+        start in any::<u64>(),
+        end in any::<u64>(),
+    ) {
+        let res = validate_period(start, end);
+        if start <= end {
+            // Current (start == end) or Future (start < end) range: valid
+            prop_assert_eq!(res, Ok(()));
+        } else {
+            // Past (start > end) range: invalid period error
+            prop_assert_eq!(res, Err(TimeError::InvalidPeriod));
+        }
+    }
+}
+
 // ─── verify_signature tests ──────────────────────────────────────────────────
+
+// `register_verifier`/`require_registered_verifier` read and write instance
+// storage, which the Soroban host only allows inside a contract's execution
+// context. Tests exercising them run their storage-touching calls inside
+// `env.as_contract(&contract_id, || { .. })` against this no-op contract,
+// mirroring the pattern already used in `orchestrator/src/test.rs`.
+#[contract]
+struct VerifierTestContract;
+
+#[contractimpl]
+impl VerifierTestContract {}
 
 #[test]
 fn test_verify_signature_valid() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let domain = b"test-domain";
     let message = b"hello world";
 
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
 
-    // Sign the prefixed message
-    let mut prefixed = std::vec::Vec::new();
-    prefixed.extend_from_slice(domain);
-    prefixed.extend_from_slice(message);
+    let prefixed = prefixed_message(domain, message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
 
-    let result = verify_signature(&env, domain, message, &signature, &pk);
-    assert_eq!(result, Ok(()));
+        let result = verify_signature(&env, domain, message, &signature, &pk);
+        assert_eq!(result, Ok(()));
+    });
 }
 
 #[test]
 fn test_verify_signature_rejects_unregistered_verifier() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let domain = b"test-domain";
     let message = b"hello world";
 
@@ -703,14 +1262,17 @@ fn test_verify_signature_rejects_unregistered_verifier() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    let result = verify_signature(&env, domain, message, &signature, &pk);
-    assert_eq!(result, Err(SignatureError::UnregisteredVerifier));
+    env.as_contract(&contract_id, || {
+        let result = verify_signature(&env, domain, message, &signature, &pk);
+        assert_eq!(result, Err(SignatureError::UnregisteredVerifier));
+    });
 }
 
 #[test]
 #[should_panic]
 fn test_verify_signature_invalid_signature() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let domain = b"test-domain";
     let message = b"hello world";
 
@@ -718,14 +1280,17 @@ fn test_verify_signature_invalid_signature() {
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64];
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
 
-    let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
+        let _ = verify_signature(&env, domain, message, &invalid_signature, &pk);
+    });
 }
 
 #[test]
 fn test_verify_signature_invalid_signature_length() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let domain = b"test-domain";
     let message = b"hello world";
 
@@ -733,10 +1298,12 @@ fn test_verify_signature_invalid_signature_length() {
     let pk = sk.verifying_key().to_bytes();
     let short_signature = [0u8; 32];
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
 
-    let result = verify_signature(&env, domain, message, &short_signature, &pk);
-    assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
+        let result = verify_signature(&env, domain, message, &short_signature, &pk);
+        assert_eq!(result, Err(SignatureError::InvalidSignatureLength));
+    });
 }
 
 #[test]
@@ -748,6 +1315,8 @@ fn test_verify_signature_invalid_public_key_length() {
     let short_pk = [0u8; 16];
     let signature = [0u8; 64];
 
+    // Invalid key length is rejected before any storage access, so this
+    // does not need a contract context.
     let result = verify_signature(&env, domain, message, &signature, &short_pk);
     assert_eq!(result, Err(SignatureError::InvalidPublicKeyLength));
 }
@@ -756,6 +1325,7 @@ fn test_verify_signature_invalid_public_key_length() {
 #[should_panic]
 fn test_verify_signature_wrong_domain() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let domain1 = b"domain1";
     let domain2 = b"domain2";
     let message = b"hello world";
@@ -763,19 +1333,107 @@ fn test_verify_signature_wrong_domain() {
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
 
+    let prefixed = prefixed_message(domain1, message);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
+
+        let _ = verify_signature(&env, domain2, message, &signature, &pk);
+    });
+}
+
+/// Regression test for the "test signer on prod" gap: a verifier public key
+/// registered while the contract instance observed one network (e.g. Testnet)
+/// must NOT be accepted once the same storage is read under a different
+/// network (e.g. Public/Mainnet), even though the key itself is unchanged.
+///
+/// This simulates a verifier registry entry that ended up on the wrong
+/// deployment (e.g. via a copy-pasted `REMITWISE_ACTIVE_VERIFIERS` config, or
+/// a snapshot import) by registering under one `network_id` and then mutating
+/// the ledger's `network_id` before verifying, all against the same
+/// underlying instance storage.
+///
+/// Before the fix: `require_registered_verifier` only tracked `bool`
+/// membership, so this passed regardless of network. This test fails against
+/// that behavior and passes once registration is bound to `network_id`.
+#[test]
+fn test_verify_signature_rejects_verifier_from_different_network() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let domain = b"test-domain";
+    let message = b"hello world";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+
     let mut prefixed = std::vec::Vec::new();
-    prefixed.extend_from_slice(domain1);
+    prefixed.extend_from_slice(domain);
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        // Register the verifier while the contract instance observes "testnet".
+        set_network(&env, [7u8; 32]);
+        register_verifier(&env, &pk).unwrap();
 
-    let _ = verify_signature(&env, domain2, message, &signature, &pk);
+        // Same storage, but the instance is now running on a different
+        // network ("mainnet") — the registration above must no longer be
+        // honored.
+        set_network(&env, [9u8; 32]);
+        let result = require_registered_verifier(&env, &pk);
+        assert_eq!(result, Err(SignatureError::VerifierNetworkMismatch));
+
+        let result = verify_signature(&env, domain, message, &signature, &pk);
+        assert_eq!(result, Err(SignatureError::VerifierNetworkMismatch));
+    });
+}
+
+/// Sign for domain A, replay against domain B — must fail.
+#[test]
+#[should_panic]
+fn test_sign_for_domain_a_replay_against_domain_b_fails() {
+    let env = Env::default();
+    let domain_a = b"domain-A-auth-v1";
+    let domain_b = b"domain-B-auth-v1";
+    let message = b"transfer 1000 USDC to account X";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+
+    let mut prefixed = std::vec::Vec::new();
+    prefixed.extend_from_slice(domain_a);
+    prefixed.extend_from_slice(message);
+    let signature = sk.sign(&prefixed).to_bytes();
+
+    assert_eq!(verify_signature(&env, domain_a, message, &signature, &pk), Ok(()));
+    let _ = verify_signature(&env, domain_b, message, &signature, &pk);
+}
+
+#[test]
+fn test_verify_signature_rejects_adjacent_domain_message_collision() {
+    let env = Env::default();
+    let domain1 = b"abc";
+    let message1 = b"def";
+    let domain2 = b"ab";
+    let message2 = b"cdef";
+
+    let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
+    let pk = sk.verifying_key().to_bytes();
+
+    let signature = sk.sign(&prefixed_message(domain1, message1)).to_bytes();
+
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = verify_signature(&env, domain2, message2, &signature, &pk);
+    }));
+
+    assert!(outcome.is_err(), "adjacent payload bytes must not verify");
 }
 
 #[test]
 fn test_verify_slash_signature_valid() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let message = b"slash payload";
 
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
@@ -786,11 +1444,13 @@ fn test_verify_slash_signature_valid() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
 
-    // Verify the slash signature
-    let result = verify_slash_signature(&env, message, Some(&signature), &pk);
-    assert_eq!(result, Ok(()));
+        // Verify the slash signature
+        let result = verify_slash_signature(&env, message, Some(&signature), &pk);
+        assert_eq!(result, Ok(()));
+    });
 }
 
 #[test]
@@ -799,7 +1459,8 @@ fn test_verify_slash_signature_optional_none() {
     let message = b"slash payload";
     let pk = [0u8; 32];
 
-    // Verify when signature is None (should succeed as it's optional)
+    // Optional-signature short-circuit never touches storage, so this does
+    // not need a contract context.
     let result = verify_slash_signature(&env, message, None, &pk);
     assert_eq!(result, Ok(()));
 }
@@ -808,17 +1469,48 @@ fn test_verify_slash_signature_optional_none() {
 #[should_panic]
 fn test_verify_slash_signature_invalid() {
     let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
     let message = b"slash payload";
 
     let sk = ed25519_dalek::SigningKey::generate(&mut rand::rngs::OsRng);
     let pk = sk.verifying_key().to_bytes();
     let invalid_signature = [0u8; 64]; // Invalid
 
-    register_verifier(&env, &pk).unwrap();
+    env.as_contract(&contract_id, || {
+        register_verifier(&env, &pk).unwrap();
 
-    // Verify the invalid slash signature
-    let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
-    assert_eq!(result, Err(SlashError::InvalidSignature));
+        // Verify the invalid slash signature
+        let result = verify_slash_signature(&env, message, Some(&invalid_signature), &pk);
+        assert_eq!(result, Err(SlashError::InvalidSignature));
+    });
+}
+
+// ─── cross_contract_epoch tests ──────────────────────────────────────────
+
+#[test]
+fn test_require_matching_cross_contract_epoch() {
+    let env = Env::default();
+    
+    // Default is 0, so epoch 0 matches
+    assert_eq!(require_matching_cross_contract_epoch(&env, 0), Ok(()));
+    
+    // Set epoch to 5
+    env.storage().instance().set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
+    
+    // Exact match is accepted
+    assert_eq!(require_matching_cross_contract_epoch(&env, 5), Ok(()));
+    
+    // Stale epoch (less than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 4),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
+    
+    // Future epoch (greater than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 6),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
 }
 
 // ─── distribute_pro_rata tests (#1085) ───────────────────────────────────────
@@ -833,7 +1525,7 @@ fn distributes_indivisible_total_with_remainder_to_last_bucket() {
     assert_eq!(out[0], 50); // 100 * 50 / 100 = 50
     assert_eq!(out[1], 30); // 100 * 30 / 100 = 30
     assert_eq!(out[2], 15); // 100 * 15 / 100 = 15
-    assert_eq!(out[3], 5);  // 100 * 5 / 100 = 5, plus remainder 0
+    assert_eq!(out[3], 5); // 100 * 5 / 100 = 5, plus remainder 0
 
     // Conservation: sum equals input total
     assert_eq!(out.iter().sum::<i128>(), 100);
@@ -847,9 +1539,9 @@ fn distributes_amount_with_non_zero_remainder_to_last_bucket() {
     // Allocated: 3 + 3 = 6, remainder: 10 - 6 = 4 goes to last bucket
     distribute_pro_rata(10, &[3333, 3333, 3334], 10_000, &mut out);
 
-    assert_eq!(out[0], 3);  // floor(10 * 3333 / 10000) = 3
-    assert_eq!(out[1], 3);  // floor(10 * 3333 / 10000) = 3
-    assert_eq!(out[2], 4);  // 10 - 3 - 3 = 4 (includes remainder)
+    assert_eq!(out[0], 3); // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[1], 3); // floor(10 * 3333 / 10000) = 3
+    assert_eq!(out[2], 4); // 10 - 3 - 3 = 4 (includes remainder)
 
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 10);
@@ -884,7 +1576,7 @@ fn distributes_evenly_divisible_total_exactly() {
     assert_eq!(out[0], 500_000); // 1M * 5000 / 10000
     assert_eq!(out[1], 300_000); // 1M * 3000 / 10000
     assert_eq!(out[2], 150_000); // 1M * 1500 / 10000
-    assert_eq!(out[3], 50_000);  // 1M * 500 / 10000
+    assert_eq!(out[3], 50_000); // 1M * 500 / 10000
 
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 1_000_000);
@@ -926,7 +1618,7 @@ fn distributes_with_zero_weight_recipient() {
     assert_eq!(out[0], 50);
     assert_eq!(out[1], 30);
     assert_eq!(out[2], 20);
-    assert_eq!(out[3], 0);  // zero weight → receives only remainder (0 in this case)
+    assert_eq!(out[3], 0); // zero weight → receives only remainder (0 in this case)
 
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 100);
@@ -955,10 +1647,10 @@ fn distributes_using_basis_points_denomination() {
     // 5% = 500 bps, 3% = 300 bps, 1.5% = 150 bps, 0.5% = 50 bps
     distribute_pro_rata(1_000_000, &[500, 300, 150, 50], 10_000, &mut out);
 
-    assert_eq!(out[0], 50_000);  // 5%
-    assert_eq!(out[1], 30_000);  // 3%
-    assert_eq!(out[2], 15_000);  // 1.5%
-    assert_eq!(out[3], 5_000);   // 0.5%
+    assert_eq!(out[0], 50_000); // 5%
+    assert_eq!(out[1], 30_000); // 3%
+    assert_eq!(out[2], 15_000); // 1.5%
+    assert_eq!(out[3], 5_000); // 0.5%
 
     // Conservation
     assert_eq!(out.iter().sum::<i128>(), 100_000); // only 10% of total distributed
@@ -998,7 +1690,7 @@ proptest! {
         total in 0i128..=i128::MAX / 1_000_000, // Avoid overflow in intermediate products
         weights in proptest::collection::vec(1u32..=1000u32, 1..=10),
     ) {
-        let total_weight: u32 = weights.iter().map(|&w| w as u32).sum();
+        let total_weight: u32 = weights.iter().copied().sum();
         if total_weight == 0 {
             return Ok(()); // Skip invalid input
         }
@@ -1016,7 +1708,7 @@ proptest! {
 
         // Property 3: Last bucket receives at least its floor share (absorbs remainder)
         let last_idx = weights.len() - 1;
-        let last_floor = (total as i128)
+        let last_floor = total
             .saturating_mul(weights[last_idx] as i128)
             .saturating_div(total_weight as i128);
         prop_assert!(
@@ -1035,14 +1727,8 @@ proptest! {
 
 #[test]
 fn test_require_supported_rate_unit_accepts_basis_points() {
-    assert_eq!(
-        require_supported_rate_unit(1),
-        Ok(RateUnit::BasisPoints)
-    );
-    assert_eq!(
-        Rate::try_from_input(500, 1),
-        Ok(Rate::from_bps(500))
-    );
+    assert_eq!(require_supported_rate_unit(1), Ok(RateUnit::BasisPoints));
+    assert_eq!(Rate::try_from_input(500, 1), Ok(Rate::from_bps(500)));
 }
 
 #[test]
@@ -1212,21 +1898,21 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
 fn test_require_active_pause_channel_uninitialized() {
     let env = Env::default();
     // Map doesn't exist yet, should not panic
-    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+    crate::require_active_pause_channel(&env, symbol_short!("PAYMENTS"));
 }
 
 #[test]
 fn test_require_active_pause_channel_active() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
-    map.set(soroban_sdk::Symbol::short("PAYMENTS"), false);
+    map.set(symbol_short!("PAYMENTS"), false);
     env.storage().instance().set(
         &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
         &map,
     );
 
     // Channel is active (false), should not panic
-    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+    crate::require_active_pause_channel(&env, symbol_short!("PAYMENTS"));
 }
 
 #[test]
@@ -1234,14 +1920,14 @@ fn test_require_active_pause_channel_active() {
 fn test_require_active_pause_channel_paused() {
     let env = Env::default();
     let mut map = soroban_sdk::Map::<soroban_sdk::Symbol, bool>::new(&env);
-    map.set(soroban_sdk::Symbol::short("PAYMENTS"), true);
+    map.set(symbol_short!("PAYMENTS"), true);
     env.storage().instance().set(
         &soroban_sdk::Symbol::new(&env, crate::STORAGE_PAUSE_CHANNELS),
         &map,
     );
 
     // Channel is paused (true), should panic
-    crate::require_active_pause_channel(&env, soroban_sdk::Symbol::short("PAYMENTS"));
+    crate::require_active_pause_channel(&env, symbol_short!("PAYMENTS"));
 }
 
 // ============================================================================
@@ -1273,6 +1959,26 @@ fn test_rate_from_percent() {
         Err(RateError::Overflow)
     );
     assert_eq!(Rate::from_percent(u32::MAX), Err(RateError::Overflow));
+}
+
+#[test]
+fn test_rate_from_percent_boundaries() {
+    // 0%
+    assert_eq!(Rate::from_percent(0), Ok(Rate::from_bps(0)));
+
+    // 0.01% is 1 basis point. `from_percent` only takes whole percentages,
+    // so fractional percentages must be constructed via `from_bps`.
+    let point_zero_one = Rate::from_bps(1);
+    assert!(point_zero_one.has_fractional_percent());
+    assert_eq!(point_zero_one.to_percent(), 0);
+
+    // 100%
+    assert_eq!(Rate::from_percent(100), Ok(Rate::from_bps(10_000)));
+
+    // 100.01% is 10,001 basis points.
+    let hundred_point_zero_one = Rate::from_bps(10_001);
+    assert!(hundred_point_zero_one.has_fractional_percent());
+    assert_eq!(hundred_point_zero_one.to_percent(), 100);
 }
 
 #[test]
@@ -1322,6 +2028,22 @@ fn test_percent_type_conversions() {
     assert_eq!(p_overflow.to_bps(), Err(RateError::Overflow));
 }
 
+#[test]
+fn test_verify_config_migration() {
+    use super::{verify_config_migration, MigrationError, CONTRACT_VERSION};
+    // Current version and newer versions must pass
+    assert_eq!(verify_config_migration(CONTRACT_VERSION), Ok(()));
+    assert_eq!(verify_config_migration(CONTRACT_VERSION + 1), Ok(()));
+
+    // Older versions must return an error (negative test)
+    if CONTRACT_VERSION > 0 {
+        assert_eq!(
+            verify_config_migration(CONTRACT_VERSION - 1),
+            Err(MigrationError::OutdatedVersion)
+        );
+    }
+}
+
 proptest! {
     #[test]
     fn proptest_percent_rate_roundtrip(pct in 0u32..=(u32::MAX / 100)) {
@@ -1333,5 +2055,181 @@ proptest! {
         let p = Percent::from_percentage(pct);
         prop_assert_eq!(p.to_rate(), Ok(rate));
         prop_assert_eq!(p.to_bps(), Ok(pct * 100));
+    }
+}
+
+// ─── require_valid_symbol_name_length ─────────────────────────────────────────
+//
+// These tests lock in the boundary contract for [`require_valid_symbol_name_length`]:
+//
+// - Empty input (0 bytes)  → Err(SymbolLengthError::Empty)
+// - 1-byte input           → Ok(())   (lower inclusive boundary)
+// - 9-byte input           → Ok(())   (upper inclusive boundary for symbol_short!)
+// - 10-byte input          → Err(SymbolLengthError::TooLong)  (one past the cap)
+//
+// The 9-byte cap matches the Soroban SDK `symbol_short!` macro constraint that
+// is enforced across all storage keys in this workspace (see STORAGE_LAYOUT.md
+// and `testutils/tests/storage_key_naming_test.rs`).  These tests are purely
+// concerned with the project-level validation function, not with the SDK macro
+// itself (which has its own coverage in symbol_length_boundary_test.rs).
+
+/// Empty byte slice is rejected with Empty.
+#[test]
+fn require_valid_symbol_length_empty_input_returns_empty_error() {
+    assert_eq!(
+        require_valid_symbol_length_bytes(b""),
+        Err(SymbolLengthError::Empty),
+        "empty name must be rejected with SymbolLengthError::Empty"
+    );
+}
+
+/// A single-byte name is the smallest valid symbol and must be accepted.
+#[test]
+fn require_valid_symbol_length_one_char_returns_ok() {
+    assert_eq!(
+        require_valid_symbol_length_bytes(b"A"),
+        Ok(()),
+        "1-byte name is the lower boundary and must be accepted"
+    );
+}
+
+/// A 9-byte name is the upper boundary accepted by `symbol_short!` and must pass.
+#[test]
+fn require_valid_symbol_length_nine_chars_returns_ok() {
+    // Exactly SYMBOL_SHORT_MAX_LEN bytes.
+    const NAME: &[u8] = b"NINE_BYTE"; // 9 bytes
+    const _: () = assert!(NAME.len() == 9);
+    assert_eq!(
+        require_valid_symbol_length_bytes(NAME),
+        Ok(()),
+        "9-byte name is exactly at the symbol_short! cap and must be accepted"
+    );
+}
+
+/// A 10-byte name is one past the `symbol_short!` cap and must be rejected.
+#[test]
+fn require_valid_symbol_length_ten_chars_returns_too_long_error() {
+    const NAME: &[u8] = b"TEN_BYTES_"; // 10 bytes
+    const _: () = assert!(NAME.len() == 10);
+    assert_eq!(
+        require_valid_symbol_length_bytes(NAME),
+        Err(SymbolLengthError::TooLong),
+        "10-byte name exceeds the symbol_short! cap and must be rejected with SymbolLengthError::TooLong"
+    );
+}
+
+/// Additional boundary: names much longer than the cap are also rejected.
+#[test]
+fn require_valid_symbol_length_very_long_input_returns_too_long_error() {
+    let name = b"TOOLONGKEYNAME"; // 14 bytes
+    assert_eq!(
+        require_valid_symbol_length_bytes(name),
+        Err(SymbolLengthError::TooLong),
+        "names well above the cap must also be rejected with SymbolLengthError::TooLong"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// require_non_zero_bytes — reject zeroed BytesN values
+// ---------------------------------------------------------------------------
+
+/// A `BytesN<32>` with non-zero bytes (a realistic Ed25519 public-key-sized
+/// value) is accepted by `require_non_zero_bytes`.
+#[test]
+fn require_non_zero_bytes_accepts_non_zero_bytesn() {
+    let env = Env::default();
+    let arr = [
+        0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+        0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+    ];
+    let bytes = BytesN::<32>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// A `BytesN<32>` that is completely zeroed is rejected with
+/// `BytesNError::AllZeros`.
+#[test]
+fn require_non_zero_bytes_rejects_all_zero_bytesn() {
+    let env = Env::default();
+    let arr = [0u8; 32];
+    let bytes = BytesN::<32>::from_array(&env, &arr);
+    assert_eq!(
+        require_non_zero_bytes(&bytes),
+        Err(BytesNError::AllZeros)
+    );
+}
+
+/// A `BytesN<1>` with a single zero byte is rejected with
+/// `BytesNError::AllZeros`. This pins the behaviour for the
+/// smallest possible `BytesN` size.
+#[test]
+fn require_non_zero_bytes_rejects_single_zero_byte() {
+    let env = Env::default();
+    let arr = [0u8; 1];
+    let bytes = BytesN::<1>::from_array(&env, &arr);
+    assert_eq!(
+        require_non_zero_bytes(&bytes),
+        Err(BytesNError::AllZeros)
+    );
+}
+
+/// A `BytesN<1>` with a single non-zero byte is accepted. This
+/// pins the behaviour for the smallest possible `BytesN` size.
+#[test]
+fn require_non_zero_bytes_accepts_single_non_zero_byte() {
+    let env = Env::default();
+    let arr = [1u8; 1];
+    let bytes = BytesN::<1>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// A `BytesN<64>` (signature-sized) with the last byte non-zero is
+/// accepted. This catches regression where only the first N-1 bytes
+/// are checked.
+#[test]
+fn require_non_zero_bytes_accepts_last_byte_non_zero() {
+    let env = Env::default();
+    let mut arr = [0u8; 64];
+    arr[63] = 0x01;
+    let bytes = BytesN::<64>::from_array(&env, &arr);
+    assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+}
+
+/// Property test: any `BytesN<32>` that is not all-zero passes the
+/// check, and the all-zero input always fails. Covers the entire
+/// input space via random sampling.
+#[cfg(test)]
+mod non_zero_bytes_proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Pins the core invariant of `require_non_zero_bytes` across
+        /// random 32-byte inputs: the check returns `Ok(())` iff the
+        /// buffer is *not* all-zeros.
+        #[test]
+        fn proptest_non_zero_bytes_invariant(
+            a in prop::array::uniform32(0u8..=255u8),
+            b in prop::array::uniform32(0u8..=255u8),
+        ) {
+            let env = Env::default();
+            let all_zero = [0u8; 32];
+
+            // a is random; if it happens to be all-zero, use b (also random) as a fallback.
+            let test_arr = if a == all_zero { b } else { a };
+
+            // Non-zero input must be accepted
+            let bytes = BytesN::<32>::from_array(&env, &test_arr);
+            assert_eq!(require_non_zero_bytes(&bytes), Ok(()));
+
+            // All-zero input must be rejected
+            let zero_bytes = BytesN::<32>::from_array(&env, &all_zero);
+            assert_eq!(
+                require_non_zero_bytes(&zero_bytes),
+                Err(BytesNError::AllZeros)
+            );
+        }
     }
 }

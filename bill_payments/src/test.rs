@@ -215,6 +215,37 @@ mod testsuit {
     }
 
     #[test]
+    fn test_pay_bill_settlement_window_expired() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        let creation_time = 1_000_000;
+        set_ledger_time(&env, 1, creation_time);
+
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water"),
+            &500,
+            &creation_time,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Advance time well beyond MAX_SETTLEMENT_WINDOW_SECS (30 days = 2_592_000 seconds)
+        set_ledger_time(&env, 2, creation_time + 3_000_000);
+
+        env.mock_all_auths();
+        let result = client.try_pay_bill(&owner, &bill_id);
+        assert_eq!(result, Err(Ok(Error::SettlementWindowExpired)));
+    }
+
+    #[test]
     fn test_pay_bill() {
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -1355,7 +1386,7 @@ mod testsuit {
         create_n_bills(&client, &env, &alice, 3);
         create_n_bills(&client, &env, &bob, 3);
 
-        let page = client.get_all_bills_page(&admin, &0, &5);
+        let page = client.get_all_bills_page(&admin, &0, &6);
         assert_eq!(
             page.items.len(),
             6,
@@ -2515,74 +2546,46 @@ mod testsuit {
         );
     }
 
-    // Mix of past-due, exactly-due, and future bills: only past-due appears.
-    //     #[test]
-    //     fn test_time_drift_overdue_boundary_mixed_bills() {
-    //     let env = Env::default();
-    //     let contract_id = env.register_contract(None, BillPayments);
-    //     let client = BillPaymentsClient::new(&env, &contract_id);
-    //     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-    //     env.mock_all_auths();
+    // ══════════════════════════════════════════════════════════════════════
+    // Settlement Window Guard Tests
+    //
+    // A bill is overdue iff `!bill.paid && bill.due_date < current_time`
+    // (strict less-than).  The three boundary conditions are covered:
+    //   • Inside window  – due_date > now  →  NOT overdue
+    //   • Exact boundary  – due_date == now → NOT overdue
+    //   • Outside window  – due_date < now  →  IS overdue
+    // ══════════════════════════════════════════════════════════════════════
 
-    //     // 1. Set time to a starting point
-    //     let start_time = 2_000_000u64;
-    //     env.ledger().set_ledger_timestamp(start_time);
+    /// Bill is NOT overdue when `due_date > current_time` (inside the settlement window).
+    #[test]
+    fn test_settlement_window_guard_bill_not_overdue_when_inside_window() {
+        let due_date = 3_000_000u64;
+        let env = Env::default();
+        set_ledger_time(&env, 1, 1_000_000);
 
-    //     // 2. Create bills with relative due dates
-    //     // All these due dates are >= current_time (2,000,000), so validation passes.
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
-    //     // This will become overdue later
-    //     client.create_bill(
-    //         &owner,
-    //         &String::from_str(&env, "Overdue"),
-    //         &100,
-    //         &2000001, // T+1
-    //         &false,
-    //         &0,
-    //         &String::from_str(&env, "XLM"),
-    //     );
+        env.mock_all_auths();
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "InsideWindow"),
+            &100,
+            &due_date,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    //     // This will be exactly due later
-    //     client.create_bill(
-    //         &owner,
-    //         &String::from_str(&env, "DueNow"),
-    //         &200,
-    //         &2000005, // T+5
-    //         &false,
-    //         &0,
-    //         &String::from_str(&env, "XLM"),
-    //     );
-
-    //     // This will stay in the future
-    //     client.create_bill(
-    //         &owner,
-    //         &String::from_str(&env, "Future"),
-    //         &300,
-    //         &2000010, // T+10
-    //         &false,
-    //         &0,
-    //         &String::from_str(&env, "XLM"),
-    //     );
-
-    //     // 3. WARP TIME forward to 2,000,005
-    //     // Now:
-    //     // - Bill 1 (2000001) is < 2000005 (OVERDUE)
-    //     // - Bill 2 (2000005) is == 2000005 (NOT OVERDUE)
-    //     // - Bill 3 (2000010) is > 2000005 (NOT OVERDUE)
-    //     env.ledger().set_ledger_timestamp(2000005);
-
-    //     let page = client.get_overdue_bills(&0, &100);
-
-    //     assert_eq!(
-    //         page.count, 1,
-    //         "Only the bill with due_date < current_time must appear overdue"
-    //     );
-    //     assert_eq!(
-    //         page.items.items.get(0).unwrap().amount,
-    //         100,
-    //         "Overdue bill must be the one with due_date < current_time"
-    //     );
-    // }
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 0,
+            "Bill with due_date > now must not appear overdue (inside window)"
+        );
+    }
 
     /// Full-day boundary: bill created at due_date, queried one day later, is overdue.
     #[test]
@@ -2620,6 +2623,104 @@ mod testsuit {
             page.count, 1,
             "Bill must be overdue one full day past due_date"
         );
+    }
+
+    /// Mixed boundary: only the bill with `due_date < now` is overdue;
+    /// the bill with `due_date == now` and the bill with `due_date > now`
+    /// are both NOT overdue.
+    #[test]
+    fn test_settlement_window_guard_mixed_boundaries() {
+        let start = 2_000_000u64;
+        let env = Env::default();
+        set_ledger_time(&env, 1, start);
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        // Bill 1: due_date = start + 1 → will be overdue when time reaches start + 5
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Past"),
+            &100,
+            &(start + 1),
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        // Bill 2: due_date = start + 5 → exact boundary, NOT overdue at start + 5
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Exact"),
+            &200,
+            &(start + 5),
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        // Bill 3: due_date = start + 10 → inside window, NOT overdue at start + 5
+        client.create_bill(
+            &owner,
+            &String::from_str(&env, "Future"),
+            &300,
+            &(start + 10),
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        set_ledger_time(&env, 1, start + 5);
+        let page = client.get_overdue_bills(&0, &100);
+        assert_eq!(
+            page.count, 1,
+            "Only the bill with due_date < now must be overdue"
+        );
+        assert_eq!(
+            page.items.get(0).unwrap().amount,
+            100,
+            "Overdue bill must be the one with due_date < now"
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn prop_settlement_window_guard_inside_window_not_overdue(
+            due_date in 2_000_000u64..10_000_000u64,
+            now in 1_000_000u64..2_000_000u64
+        ) {
+            // Ensure now is strictly less than due_date (inside the window).
+            prop_assume!(now < due_date);
+            let env = Env::default();
+            set_ledger_time(&env, 1, now);
+            let contract_id = env.register_contract(None, BillPayments);
+            let client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            env.mock_all_auths();
+            client.create_bill(
+                &owner,
+                &String::from_str(&env, "Inside"),
+                &100,
+                &due_date,
+                &false,
+                &0,
+                &None,
+                &String::from_str(&env, "XLM"),
+                &None,
+            );
+            let page = client.get_overdue_bills(&0, &100);
+            assert_eq!(
+                page.count, 0,
+                "Bill with due_date ({}) > now ({}) must not be overdue",
+                due_date, now
+            );
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -3378,7 +3479,7 @@ mod testsuit {
     #[test]
     fn test_pause_and_unpause_emit_ordered_audit_events() {
         use soroban_sdk::testutils::Events as _;
-        use soroban_sdk::{symbol_short, Symbol};
+        use soroban_sdk::Symbol;
 
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
@@ -3403,7 +3504,7 @@ mod testsuit {
 
         assert_eq!(
             emitted_actions,
-            [symbol_short!("paused"), symbol_short!("unpaused")]
+            [Symbol::new(&env, "paused_v2"), Symbol::new(&env, "unpaused_v2")]
         );
     }
 
@@ -3433,7 +3534,7 @@ mod testsuit {
         let topics = events.last().unwrap().1;
         let action: soroban_sdk::Symbol =
             soroban_sdk::FromVal::from_val(&env, &topics.get(3).unwrap());
-        assert_eq!(action, symbol_short!("paused"));
+        assert_eq!(action, symbol_short!("paused_v2"));
     }
 
     #[test]
@@ -3803,5 +3904,373 @@ mod testsuit {
 
         // Soroban SDK no longer exposes `cost_estimate` on Env in this test context.
         // The test remains as a placeholder for future cost estimate support.
+    }
+
+    #[test]
+    fn test_paused_since_and_pause_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        client.set_pause_admin(&admin, &admin);
+
+        assert_eq!(client.get_paused_since(), None);
+        let initial_state = client.get_pause_state();
+        assert!(!initial_state.paused);
+        assert_eq!(initial_state.paused_since, None);
+
+        let now = 12_345_678u64;
+        env.ledger().set_timestamp(now);
+        client.pause(&admin);
+
+        assert_eq!(client.get_paused_since(), Some(now));
+        let paused_state = client.get_pause_state();
+        assert!(paused_state.paused);
+        assert_eq!(paused_state.paused_since, Some(now));
+
+        client.unpause(&admin);
+
+        assert_eq!(client.get_paused_since(), None);
+        let unpaused_state = client.get_pause_state();
+        assert!(!unpaused_state.paused);
+        assert_eq!(unpaused_state.paused_since, None);
+    }
+}
+
+    // ========================================================================
+    // Tests for set_external_ref authorization and index cleanup (Issue #1410)
+    // ========================================================================
+
+    #[test]
+    fn test_set_external_ref_owner_can_set() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create a bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Owner should be able to set external_ref
+        env.mock_all_auths();
+        let ext_ref = Some(String::from_str(&env, "EXT-123"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref);
+
+        // Verify the external_ref was set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_some());
+        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "EXT-123"));
+    }
+
+    #[test]
+    fn test_set_external_ref_non_owner_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create a bill owned by owner
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water Bill"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Try to set external_ref as a different user
+        let other_user = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let ext_ref = Some(String::from_str(&env, "EXT-456"));
+        let result = client.try_set_external_ref(&other_user, &bill_id, &ext_ref);
+
+        // Should fail with Unauthorized
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+        // Verify external_ref was not set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_none());
+    }
+
+    #[test]
+    fn test_set_external_ref_clear_removes_index() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create a bill with an external_ref
+        let ext_ref = Some(String::from_str(&env, "EXT-789"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Gas Bill"),
+            &750,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Verify external_ref is set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_some());
+
+        // Clear the external_ref
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &None);
+
+        // Verify external_ref was cleared
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_none());
+
+        // The same external_ref should now be available for reuse
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet Bill"),
+            &800,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "EXT-789")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "EXT-789"));
+    }
+
+    #[test]
+    fn test_set_external_ref_no_stale_index_entries() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create a bill with external_ref
+        let ext_ref1 = Some(String::from_str(&env, "REF-001"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Phone Bill"),
+            &600,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Change to a different external_ref
+        env.mock_all_auths();
+        let ext_ref2 = Some(String::from_str(&env, "REF-002"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref2);
+
+        // The old ref should be available for a new bill (no stale index)
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Cable Bill"),
+            &550,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "REF-001")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "REF-001"));
+
+        // Verify the first bill has the new ref
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "REF-002"));
+    }
+
+    #[test]
+    fn test_set_external_ref_duplicate_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create first bill with external_ref
+        let ext_ref = Some(String::from_str(&env, "DUP-REF"));
+        let bill_id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill 1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Create second bill without external_ref
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill 2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Try to set the same external_ref on the second bill
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &bill_id2,
+            &Some(String::from_str(&env, "DUP-REF")),
+        );
+
+        // Should fail with DuplicateExternalRef
+        assert_eq!(result, Err(Ok(Error::DuplicateExternalRef)));
+
+        // Verify second bill still has no external_ref
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert!(bill2.external_ref.is_none());
+
+        // Verify first bill still has the external_ref
+        let bill1 = client.get_bill(&bill_id1).unwrap();
+        assert_eq!(bill1.external_ref.unwrap(), String::from_str(&env, "DUP-REF"));
+    }
+
+    #[test]
+    fn test_set_external_ref_clear_and_reuse_succeeds() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create bill with external_ref
+        let ext_ref = Some(String::from_str(&env, "REUSE-REF"));
+        let bill_id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "First Bill"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Clear the external_ref from first bill
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id1, &None);
+
+        // Create another bill with the same external_ref (should succeed)
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Second Bill"),
+            &400,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "REUSE-REF")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Verify first bill has no external_ref
+        let bill1 = client.get_bill(&bill_id1).unwrap();
+        assert!(bill1.external_ref.is_none());
+
+        // Verify second bill has the external_ref
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "REUSE-REF"));
+    }
+
+    #[test]
+    fn test_set_external_ref_invalid_ref_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create a bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test Bill"),
+            &250,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Try to set an empty external_ref (should fail)
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &bill_id,
+            &Some(String::from_str(&env, "")),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
+
+        // Try to set an external_ref with invalid characters
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &bill_id,
+            &Some(String::from_str(&env, "REF@INVALID!")),
+        );
+
+        assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
+    }
+
+    #[test]
+    fn test_set_external_ref_nonexistent_bill_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Try to set external_ref on a non-existent bill
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &999,
+            &Some(String::from_str(&env, "REF-999")),
+        );
+
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
+
+    #[test]
+    fn test_set_external_ref_owner_can_overwrite_own_ref() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        // Create bill with external_ref
+        let ext_ref1 = Some(String::from_str(&env, "REF-OLD"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Updatable Bill"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        // Owner updates to a new external_ref
+        env.mock_all_auths();
+        let ext_ref2 = Some(String::from_str(&env, "REF-NEW"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref2);
+
+        // Verify the external_ref was updated
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "REF-NEW"));
     }
 }

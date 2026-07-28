@@ -618,6 +618,7 @@ version = "0.1.0"
 dependencies = [
  "remitwise-common",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -1962,6 +1963,7 @@ dependencies = [
 name = "testutils"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
