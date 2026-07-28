@@ -16,6 +16,7 @@ This workspace contains the core smart contracts that power RemitWise's post-rem
 - **[emergency_killswitch](emergency_killswitch/README.md)**: Centralized emergency pause controls across contracts
 - **[remitwise-common](remitwise-common/README.md)**: Shared types and utilities used across contracts
 - **[docs/PERIOD_INVARIANTS.md](docs/PERIOD_INVARIANTS.md)**: Time-bound period invariants, ledger timestamp rules, and execution windows
+- **[docs/TIMESTAMP_CONVENTIONS.md](docs/TIMESTAMP_CONVENTIONS.md)**: Rules of the road for time — how timestamps are represented, accessed, and compared across all contracts
 - **[docs/PERIOD_KEYS.md](docs/PERIOD_KEYS.md)**: Model + consumer contract for `period_key` period identifiers and report storage
 - **[docs/AMOUNT_INVARIANTS.md](docs/AMOUNT_INVARIANTS.md)**: Amount zero-handling rules across contract entrypoints
 - **[docs/CROSS_CONTRACT_INVARIANTS.md](docs/CROSS_CONTRACT_INVARIANTS.md)**: Invariants that span multiple contracts — split conservation, replay protection, epoch guards, and reviewer checklist
@@ -354,6 +355,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Epoch Model](docs/EPOCH_MODEL.md) - How epoch counters bump, what they invalidate, and the stale-authorization replay threat they mitigate in the emergency killswitch and orchestrator contracts
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Ledger Monotonicity](docs/LEDGER_MONOTONICITY.md) - Where and why contract code relies on ledger sequence and timestamp monotonicity
+- [Timestamp Conventions](docs/TIMESTAMP_CONVENTIONS.md) - How timestamps are represented, stored, and compared across all contracts
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
 - [Threat Model](THREAT_MODEL.md) - Security analysis and mitigations
 - [Entrypoint Threat Breakdown](docs/THREAT_MODEL.md) - STRIDE-style threat analysis per contract entrypoint (contributor-focused)
