@@ -1112,6 +1112,45 @@ fn test_request_hash_hashed_path_rejects_self_transfer() {
 // Corridor configuration tests
 // ---------------------------------------------------------------------------
 
+#[test]
+fn test_min_deposit_returns_corridor_minimum() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    assert_eq!(client.min_deposit(), params::MIN_CORRIDOR_AMOUNT);
+}
+
+#[test]
+fn test_corridor_below_min_deposit_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let minimum = client.min_deposit();
+    let invalid = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: minimum - 1,
+        max_amount: minimum,
+        fee_bps: 50,
+    };
+
+    let result = client.try_init_corridors(&owner, &1, &vec![&env, invalid]);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidCorridorAmountRange))
+    );
+}
+
 fn sample_corridor(env: &Env, id: u32) -> Corridor {
     Corridor {
         id,

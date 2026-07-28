@@ -1359,6 +1359,14 @@ impl RemittanceSplit {
             .unwrap_or_else(|| Vec::new(env))
     }
 
+    /// Return the minimum amount accepted for a remittance deposit.
+    ///
+    /// The value is shared with corridor validation so callers can discover
+    /// the active lower bound without duplicating contract configuration.
+    pub fn min_deposit(_env: Env) -> i128 {
+        params::MIN_CORRIDOR_AMOUNT
+    }
+
     pub fn calculate_split(
         env: Env,
         total_amount: i128,

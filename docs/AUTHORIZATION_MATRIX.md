@@ -34,6 +34,7 @@ requires the expected caller authorization and that the intent matches the code.
 | `update_split` | `caller.require_auth()` | `config.owner == caller` | yes |
 | `get_split` | read-only | — | no |
 | `get_config` | read-only | — | no |
+| `min_deposit` | read-only | — | no |
 | `calculate_split` | read-only | — | no |
 | `distribute_usdc` | `from.require_auth()` | `config.owner == from` + token contract pin | yes |
 | `distribute_usdc_hashed` | `request.from.require_auth()` | hash-verified request integrity | no |

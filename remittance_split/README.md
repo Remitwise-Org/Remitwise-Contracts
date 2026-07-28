@@ -138,6 +138,12 @@ so it cannot be used to query an arbitrary asset or address.
 | `NotInitialized` | The split has not been initialized. |
 | `TreasuryNotConfigured` | No treasury has completed the two-step treasury acceptance flow. |
 
+#### `min_deposit(env) -> i128`
+
+Returns the minimum amount accepted for a remittance deposit. The value is the
+same lower bound used to validate every configured corridor's `min_amount` and
+is available before initialization.
+
 #### `initialize_split(env, owner, nonce, usdc_contract, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
 Initializes the split configuration and pins the trusted USDC token contract address.

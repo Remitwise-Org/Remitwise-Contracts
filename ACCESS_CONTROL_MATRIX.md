@@ -165,6 +165,7 @@ This document provides a comprehensive access-control matrix mapping each public
 | `update_split` | Owner | Owner must authorize. Validates nonce. |
 | `get_split` | Anyone | No auth. Returns default [50,30,15,5] if not initialized. |
 | `get_config` | Anyone | No auth. Returns SplitConfig if exists. |
+| `min_deposit` | Anyone | No auth. Returns the minimum corridor amount. |
 | `calculate_split` | Anyone | No auth. Returns Vec<i128> of allocations. |
 | `distribute_usdc` | Owner | Owner must authorize. Transfers tokens to accounts. |
 | `get_usdc_balance` | Anyone | No auth. Queries token balance. |
