@@ -413,6 +413,8 @@ impl SavingsGoalContract {
     /// overwrite existing goals or reset NEXT_ID, to avoid ID collisions and
     /// data loss.
     pub fn init(env: Env) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         Self::extend_instance_ttl(&env);
         let storage = env.storage().instance();
         if !storage.has(&DataKey::NextId) {
@@ -424,6 +426,8 @@ impl SavingsGoalContract {
     }
 
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
@@ -441,6 +445,8 @@ impl SavingsGoalContract {
     }
 
     pub fn pause(env: Env, caller: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -463,6 +469,8 @@ impl SavingsGoalContract {
     }
 
     pub fn unpause(env: Env, caller: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -490,6 +498,8 @@ impl SavingsGoalContract {
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -505,6 +515,8 @@ impl SavingsGoalContract {
     }
 
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -644,6 +656,9 @@ impl SavingsGoalContract {
     /// # Events
     /// Emits `(symbol_short!("savings"), symbol_short!("snap_pre"))`.
     pub fn pre_upgrade(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
         caller.require_auth();
         Self::extend_instance_ttl(&env);
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
@@ -690,6 +705,9 @@ impl SavingsGoalContract {
     /// # Events
     /// Emits `(symbol_short!("savings"), symbol_short!("snap_rst"))`.
     pub fn restore_from_snapshot(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
         if admin != caller {
@@ -750,6 +768,9 @@ impl SavingsGoalContract {
     /// - If `caller` is not the upgrade admin
     /// - If no upgrade admin is set
     pub fn discard_snapshot(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
         caller.require_auth();
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
         if admin != caller {
@@ -854,6 +875,8 @@ impl SavingsGoalContract {
     /// - Maintains canonicalized tag index; each (owner, tag) maps to goal IDs.
     /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
     pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -916,6 +939,8 @@ impl SavingsGoalContract {
     /// - Removes goal ID from tag index for each removed tag.
     /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
     pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -1500,6 +1525,9 @@ impl SavingsGoalContract {
     /// # Events
     /// - Emits `SavingsEvent::GoalLocked`.
     pub fn lock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::LOCK);
         Self::extend_instance_ttl(&env);
@@ -1553,6 +1581,9 @@ impl SavingsGoalContract {
     /// # Events
     /// - Emits `SavingsEvent::GoalUnlocked`.
     pub fn unlock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::UNLOCK);
         Self::extend_instance_ttl(&env);
@@ -1806,6 +1837,9 @@ impl SavingsGoalContract {
     /// - Archived pagination order is deterministic: ascending goal ID for that owner.
     /// - Removes goal ID from all tag indexes it was associated with.
     pub fn archive_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE);
         Self::extend_instance_ttl(&env);
@@ -1869,6 +1903,9 @@ impl SavingsGoalContract {
     /// - `caller` must authorize the invocation.
     /// - Only the archived goal owner can restore.
     pub fn restore_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE);
         Self::extend_instance_ttl(&env);
@@ -2048,6 +2085,8 @@ impl SavingsGoalContract {
     // -----------------------------------------------------------------------
 
     pub fn export_snapshot(env: Env, caller: Address) -> GoalsExportSnapshot {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let next_id = env
             .storage()
@@ -2482,6 +2521,9 @@ impl SavingsGoalContract {
     /// # Panics
     /// - If caller is not the owner or goal not found.
     pub fn set_time_lock(env: Env, caller: Address, goal_id: u32, unlock_date: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::extend_instance_ttl(&env);
 
@@ -2681,6 +2723,9 @@ impl SavingsGoalContract {
     }
 
     pub fn cancel_savings_schedule(env: Env, caller: Address, schedule_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
 
         Self::extend_instance_ttl(&env);
@@ -2755,6 +2800,9 @@ impl SavingsGoalContract {
     ///   supplied by the owner.  A new `next_due > last_executed` correctly
     ///   re-enables execution for the updated due date.
     pub fn execute_due_savings_schedules(env: Env) -> Vec<u32> {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return Vec::new(&env);
+        }
         Self::extend_instance_ttl(&env);
 
         let current_time = env.ledger().timestamp();

@@ -38,3 +38,7 @@ path = "src/tests_bill_schedule_exec.rs"
 [[test]]
 name = "unpaid_by_currency_pagination"
 path = "tests/unpaid_by_currency_pagination.rs"
+
+[[test]]
+name = "gas_bench"
+path = "tests/gas_bench.rs"

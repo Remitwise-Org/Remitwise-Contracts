@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol};
+use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol};
 pub mod tokens;
 pub use tokens::{
     SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
@@ -135,6 +135,24 @@ pub const MAX_PAGE_LIMIT: u32 = 50;
 
 /// Max items returned in Top-N reports.
 pub const MAX_ITEMS_PER_REPORT: u32 = 10;
+/// Alias for MAX_ITEMS_PER_REPORT used by reporting contract.
+pub const MAX_TOP_N: u32 = MAX_ITEMS_PER_REPORT;
+
+/// Error returned when a top-N size exceeds the hard cap.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TopNError;
+
+/// Requires that a top-N report size does not exceed the global cap.
+///
+/// This is a defence-in-depth guard that fails closed if a future
+/// code change raises `n` above `MAX_TOP_N`.
+pub fn require_bounded_top_n(n: u32, max: u32) -> Result<(), TopNError> {
+    if n > max {
+        Err(TopNError)
+    } else {
+        Ok(())
+    }
+}
 
 /// Helper to insert an item into a Top-N list (bounded).
 /// The list is maintained in sorted order based on the provided comparator.
@@ -307,6 +325,39 @@ pub fn require_no_pending_dispute_epoch(env: &Env, ep: u64) -> Result<(), Disput
     let current_epoch: u64 = env.storage().instance().get(&symbol_short!("DISP_EP")).unwrap_or(0);
     if ep < current_epoch {
         return Err(DisputeError::OutdatedEpoch);
+    }
+    Ok(())
+}
+
+/// Typed error returned when a caller supplies an outdated cross-contract epoch.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum CrossContractEpochError {
+    /// The supplied cross-contract epoch does not match the current contract epoch.
+    EpochMismatch = 37,
+}
+
+pub const STORAGE_CROSS_CONTRACT_EPOCH: Symbol = symbol_short!("XC_EPOCH");
+
+/// Guards against executing cross-contract operations with a stale epoch.
+///
+/// This is a defence-in-depth fix. If a cross-contract message carrying an old epoch
+/// is replayed after the epoch has been bumped, it could lead to state corruption
+/// or unauthorised actions. Rejecting stale epochs ensures only fresh cross-contract
+/// calls are processed.
+///
+/// # Arguments
+/// * `env` - Soroban environment
+/// * `ep` - The cross-contract epoch supplied by the caller
+///
+/// # Returns
+/// * `Ok(())` if the epoch matches the current cross-contract epoch exactly
+/// * `Err(CrossContractEpochError::EpochMismatch)` if the epoch is outdated
+pub fn require_matching_cross_contract_epoch(env: &Env, ep: u64) -> Result<(), CrossContractEpochError> {
+    let current_epoch: u64 = env.storage().instance().get(&STORAGE_CROSS_CONTRACT_EPOCH).unwrap_or(0);
+    if ep != current_epoch {
+        return Err(CrossContractEpochError::EpochMismatch);
     }
     Ok(())
 }
@@ -551,6 +602,19 @@ pub fn get_rate_limit_status(env: &Env, caller: &Address, operation: Symbol) -> 
     (record.count, window_id + RATE_LIMIT_WINDOW_SECONDS)
 }
 
+/// Verifies that an amount is above the dust threshold (1 stroop).
+///
+/// Returns `Ok(())` when `amount > 1`, otherwise returns an error.
+/// This is a defence-in-depth check to prevent amounts that are
+/// economically meaningless (1 stroop = 0.0000001 XLM).
+pub fn verify_no_dust(amount: i128) -> Result<(), ()> {
+    if amount <= 1 {
+        Err(())
+    } else {
+        Ok(())
+    }
+}
+
 /// Normalizes caller-supplied pagination limits for all shared paginated reads.
 ///
 /// # Contract
@@ -586,14 +650,14 @@ mod rate_limiting_tests {
 
         // First request should succeed
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Ok(())
         );
 
         // Multiple requests within limit should succeed
         for _ in 0..4 {
             assert_eq!(
-                check_and_increment_rate_limit(&env, &caller, operation, limit),
+                check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
                 Ok(())
             );
         }
@@ -616,21 +680,21 @@ mod rate_limiting_tests {
 
         // Caller1 uses up their limit
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller1, operation, limit),
+            check_and_increment_rate_limit(&env, &caller1, operation.clone(), limit),
             Err(RateLimitError::RateLimitExceeded)
         );
 
         // Caller2 should still be able to make requests
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller2, operation, limit),
+            check_and_increment_rate_limit(&env, &caller2, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
@@ -649,7 +713,7 @@ mod rate_limiting_tests {
 
         // Use up limit for operation1
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation1, limit),
+            check_and_increment_rate_limit(&env, &caller, operation1.clone(), limit),
             Ok(())
         );
         assert_eq!(
@@ -678,11 +742,11 @@ mod rate_limiting_tests {
 
         // Use up the limit in the first window
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Ok(())
         );
         assert_eq!(
-            check_and_increment_rate_limit(&env, &caller, operation, limit),
+            check_and_increment_rate_limit(&env, &caller, operation.clone(), limit),
             Err(RateLimitError::RateLimitExceeded)
         );
 
@@ -706,18 +770,18 @@ mod rate_limiting_tests {
         let limit = 3u32;
 
         // Initially should have 0 count
-        let (count, window_end) = get_rate_limit_status(&env, &caller, operation);
+        let (count, window_end) = get_rate_limit_status(&env, &caller, operation.clone());
         assert_eq!(count, 0);
         assert_eq!(window_end, RATE_LIMIT_WINDOW_SECONDS);
 
         // After one request, count should be 1
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
-        let (count, _) = get_rate_limit_status(&env, &caller, operation);
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
+        let (count, _) = get_rate_limit_status(&env, &caller, operation.clone());
         assert_eq!(count, 1);
 
         // After two more requests, count should be 3
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
-        check_and_increment_rate_limit(&env, &caller, operation, limit).unwrap();
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
+        check_and_increment_rate_limit(&env, &caller, operation.clone(), limit).unwrap();
         let (count, _) = get_rate_limit_status(&env, &caller, operation);
         assert_eq!(count, 3);
     }
@@ -873,45 +937,186 @@ impl ToI128Checked for i32 {
     }
 }
 
-/// Normalizes a `soroban_sdk::String` into a `Symbol` by stripping leading/trailing
-/// whitespace and lowercasing ASCII letters.
-pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
-    let len = input.len();
-    if len == 0 {
-        panic!("symbol input must contain between 1 and 32 characters after trimming");
-    }
-    let mut buf = [0u8; 256];
-    if len as usize > buf.len() {
-        panic!("symbol input is too long");
-    }
-    input.copy_into_slice(&mut buf[..len as usize]);
 
-    let s = core::str::from_utf8(&buf[..len as usize])
+// ---------------------------------------------------------------------------
+// Symbol canonicalisation — trim, casefold, charset validation
+// ---------------------------------------------------------------------------
+
+/// Maximum byte length of a canonicalised symbol (mirrors Soroban's limit).
+pub const SYMBOL_MAX_LEN: usize = 32;
+
+/// Error returned by [`canonicalise_symbol_checked`] and
+/// [`canonicalise_symbols`] when an input string cannot be turned into a
+/// valid canonical `Symbol`.
+///
+/// All variants carry enough context for the caller to map them to a
+/// contract-specific `#[contracterror]` without losing the error category.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum SymbolValidationError {
+    /// Input was empty or contained only ASCII whitespace after trimming.
+    Empty,
+    /// Trimmed input exceeds [`SYMBOL_MAX_LEN`] bytes.
+    TooLong,
+    /// A byte at `position` is not in the allowed charset `[a-z0-9_]` after
+    /// ASCII uppercase folding.  Internal ASCII spaces (mid-string) are caught
+    /// here rather than being silently stripped.
+    InvalidChar { position: u32 },
+}
+
+/// Allowed charset predicate after uppercase folding.
+///
+/// `[a-z0-9_]` — identical to the Soroban `Symbol` charset restriction
+/// minus the uppercase letters (which we fold away).
+#[inline(always)]
+fn is_symbol_char(b: u8) -> bool {
+    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'
+}
+
+/// Validate and canonicalise a `soroban_sdk::String` into a `Symbol`,
+/// returning a typed error instead of panicking on bad input.
+///
+/// ## Transformation rules (applied in order)
+///
+/// | Step | Rule |
+/// |---|---|
+/// | **Trim** | Strip leading and trailing ASCII whitespace (`\t \n \r`). |
+/// | **Empty check** | Trimmed length = 0 → `Err(SymbolValidationError::Empty)`. |
+/// | **Length check** | Trimmed length > 32 → `Err(SymbolValidationError::TooLong)`. |
+/// | **Casefold** | ASCII `A-Z` → `a-z`. |
+/// | **Charset check** | Every byte must be in `[a-z0-9_]`. First offending byte → `Err(SymbolValidationError::InvalidChar { position })`. |
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// // Valid
+/// assert!(canonicalise_symbol_checked(&env, &String::from_str(&env, "Hello_World")).is_ok());
+/// // → Symbol("hello_world")
+///
+/// // Invalid char
+/// assert_eq!(
+///     canonicalise_symbol_checked(&env, &String::from_str(&env, "bad-char")),
+///     Err(SymbolValidationError::InvalidChar { position: 3 })
+/// );
+///
+/// // Too long
+/// assert_eq!(
+///     canonicalise_symbol_checked(&env, &String::from_str(&env, &"x".repeat(33))),
+///     Err(SymbolValidationError::TooLong)
+/// );
+/// ```
+pub fn canonicalise_symbol_checked(
+    env: &Env,
+    input: &soroban_sdk::String,
+) -> Result<Symbol, SymbolValidationError> {
+    let len = input.len() as usize;
+    if len == 0 {
+        return Err(SymbolValidationError::Empty);
+    }
+    // 256 bytes is enough: valid symbols are ≤32 bytes; anything longer is
+    // rejected by the TooLong check after trimming.
+    let mut buf = [0u8; 256];
+    let read_len = len.min(buf.len());
+    input.copy_into_slice(&mut buf[..read_len]);
+
+    // Interpret as UTF-8 (Soroban strings are always valid UTF-8).
+    let s = core::str::from_utf8(&buf[..read_len])
         .unwrap_or_else(|_| panic!("symbol input is not valid UTF-8"));
 
+    // Step 1: trim
     let trimmed = s.trim();
     let trimmed_len = trimmed.len();
     if trimmed_len == 0 {
-        panic!("symbol input must contain at least one non-whitespace character");
+        return Err(SymbolValidationError::Empty);
     }
-    if trimmed_len > 32 {
-        panic!("symbol input must contain between 1 and 32 characters after trimming");
+    if trimmed_len > SYMBOL_MAX_LEN {
+        return Err(SymbolValidationError::TooLong);
     }
 
+    // Step 2: casefold + charset validation
     let trimmed_bytes = trimmed.as_bytes();
-    let mut canonical = [0u8; 32];
+    let mut canonical = [0u8; SYMBOL_MAX_LEN];
     for (i, &byte) in trimmed_bytes.iter().enumerate() {
-        canonical[i] = if byte.is_ascii_uppercase() {
+        let folded = if byte.is_ascii_uppercase() {
             byte.to_ascii_lowercase()
         } else {
             byte
         };
+        if !is_symbol_char(folded) {
+            return Err(SymbolValidationError::InvalidChar {
+                position: i as u32,
+            });
+        }
+        canonical[i] = folded;
     }
 
     let canonical_str = core::str::from_utf8(&canonical[..trimmed_len])
         .unwrap_or_else(|_| panic!("canonicalised symbol is not valid UTF-8"));
 
-    Symbol::new(env, canonical_str)
+    Ok(Symbol::new(env, canonical_str))
+}
+
+/// Canonicalise a `soroban_sdk::String` into a `Symbol`, panicking with a
+/// descriptive message on invalid input.
+///
+/// This is a thin panic wrapper around [`canonicalise_symbol_checked`].
+/// Prefer the checked variant when the calling contract needs a typed error
+/// for the caller (e.g. to return `InvalidSymbol` instead of aborting the
+/// transaction).  Use this variant only at trusted call sites where bad input
+/// is a programming error rather than untrusted user input.
+///
+/// ## Transformation rules
+///
+/// Identical to [`canonicalise_symbol_checked`]: trim → casefold → charset
+/// check (`[a-z0-9_]`).
+///
+/// ## Panics
+///
+/// - Empty or whitespace-only input after trimming.
+/// - Trimmed input longer than 32 bytes.
+/// - Any byte outside `[a-z0-9_]` after uppercase folding (includes hyphens,
+///   spaces, `@`, `.`, `!`, etc.).
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    match canonicalise_symbol_checked(env, input) {
+        Ok(sym) => sym,
+        Err(SymbolValidationError::Empty) => {
+            panic!("symbol input must contain at least one non-whitespace character")
+        }
+        Err(SymbolValidationError::TooLong) => {
+            panic!("symbol input must contain between 1 and 32 characters after trimming")
+        }
+        Err(SymbolValidationError::InvalidChar { position }) => {
+            panic!("invalid Symbol character at position {}", position)
+        }
+    }
+}
+
+/// Canonicalise every string in `inputs`, returning a `Vec<Symbol>` in the
+/// same order, or the first validation error encountered.
+///
+/// This batch variant is the natural companion to [`canonicalise_symbol_checked`]
+/// for entry points that accept a list of symbol keys (e.g. a list of category
+/// labels or pause-channel names).  Processing short-circuits on the first
+/// error; the `position` field inside
+/// [`SymbolValidationError::InvalidChar`] refers to the byte position
+/// within the **failing element**, not its index in the batch.
+///
+/// ## Errors
+///
+/// Returns the first [`SymbolValidationError`] encountered.  The order of
+/// validation matches the iteration order of `inputs`.
+pub fn canonicalise_symbols(
+    env: &Env,
+    inputs: &soroban_sdk::Vec<soroban_sdk::String>,
+) -> Result<soroban_sdk::Vec<Symbol>, SymbolValidationError> {
+    if inputs.is_empty() {
+        return Err(SymbolValidationError::Empty);
+    }
+    let mut out = soroban_sdk::Vec::new(env);
+    for item in inputs.iter() {
+        let sym = canonicalise_symbol_checked(env, &item)?;
+        out.push_back(sym);
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1242,6 +1447,11 @@ pub fn validate_period(start: u64, end: u64) -> Result<(), TimeError> {
 #[repr(u32)]
 pub enum LedgerError {
     LedgerMismatch = 1,
+    /// The current ledger sequence is strictly less than a previously observed
+    /// value (`prev`). The Soroban host guarantees sequence monotonicity
+    /// (`docs/LEDGER_MONOTONICITY.md`), so a regression indicates either a
+    /// replay attempt, a stale read, or a logic bug at the call site.
+    LedgerSequenceRegression = 2,
 }
 
 /// Asserts that `expected` matches the current ledger sequence number.
@@ -1260,6 +1470,155 @@ pub fn require_matching_ledger(env: &Env, expected: u32) -> Result<(), LedgerErr
         Err(LedgerError::LedgerMismatch)
     } else {
         Ok(())
+    }
+}
+
+/// Asserts that the current ledger sequence is greater than or equal to a
+/// previously observed baseline (`prev`).
+///
+/// Defence-in-depth against off-by-N replay, stale-storage baseline after a
+/// contract upgrade, and `u32`-cast underflow: ties the caller-supplied (or
+/// cached) baseline to the authoritative source `env.ledger().sequence()`
+/// and rejects any regression at the call site.
+///
+/// The Soroban host already guarantees strict sequence monotonicity across
+/// ledgers (see `docs/LEDGER_MONOTONICITY.md`), but this helper closes the
+/// gap where contract code caches a `prev` baseline across calls and later
+/// compares against it — a regression-at-rest can otherwise let an
+/// authorization captured at `prev` be replayed at a smaller `curr`
+/// (fee updates, role grants, mint caps, etc.).
+///
+/// # Errors
+/// * [`LedgerError::LedgerSequenceRegression`] when
+///   `env.ledger().sequence() < prev`.
+/// * `Ok(())` on equal or monotonic-progression cases. Equality is
+///   tolerated so a baseline captured on the same ledger does not
+///   falsely reject a re-entry on that ledger.
+///
+/// # Recommended call-site pattern
+///
+/// ```ignore
+/// require_ledger_seq_monotonic(&env, prev_seq_baseline)
+///     .unwrap_or_else(|_| panic_with_error!(&env, MyError::LedgerRegression));
+/// ```
+pub fn require_ledger_seq_monotonic(env: &Env, prev: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current < prev {
+        Err(LedgerError::LedgerSequenceRegression)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod ledger_monotonicity_tests {
+    //! Tests for [`require_ledger_seq_monotonic`] and the surrounding
+    //! [`LedgerError`] variants.
+    //!
+    //! The Soroban test host allows `env.ledger().set(...)` to mutate
+    //! both `sequence_number` and `timestamp` between calls, which lets
+    //! us write a regression scenario without depending on real
+    //! host-level sequencing behaviour.
+
+    use super::{require_ledger_seq_monotonic, LedgerError};
+    use soroban_sdk::testutils::LedgerInfo;
+    use soroban_sdk::Env;
+
+    /// Sets the ledger sequence and preserves other ledger state.
+    fn set_seq(env: &Env, sequence_number: u32) {
+        let proto = env.ledger().protocol_version();
+        env.ledger().set(LedgerInfo {
+            protocol_version: proto,
+            sequence_number,
+            timestamp: 1_700_000_000,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 3_000_000,
+        });
+    }
+
+    /// Acceptance contract: equal sequences are NOT a regression.
+    /// A baseline captured on the same ledger must re-validate cleanly.
+    #[test]
+    fn accepts_equal_baseline_and_current_sequence() {
+        let env = Env::default();
+        set_seq(&env, 100);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Positive progression: current > prev must succeed.
+    #[test]
+    fn accepts_monotonic_progression() {
+        let env = Env::default();
+        set_seq(&env, 101);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Large jump: e.g. after a network upgrade or test re-org, a much
+    /// higher current ledger must still pass.
+    #[test]
+    fn accepts_large_positive_jump() {
+        let env = Env::default();
+        set_seq(&env, 1_000_000);
+        assert_eq!(require_ledger_seq_monotonic(&env, 100), Ok(()));
+    }
+
+    /// Negative test (#1240): any current < prev must be rejected with
+    /// the typed error. This is the headline regression test — without
+    /// `require_ledger_seq_monotonic`, a replay at a lower ledger would
+    /// silently pass.
+    #[test]
+    fn rejects_regressed_sequence_by_one() {
+        let env = Env::default();
+        // prev = 100, current = 99 — regression by one.
+        set_seq(&env, 99);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, 100),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
+    }
+
+    /// Negative test: large regression.
+    #[test]
+    fn rejects_regressed_sequence_by_large_amount() {
+        let env = Env::default();
+        set_seq(&env, 50);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, 1_000_000),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
+    }
+
+    /// Boundary: `prev = 0` and `current = 0` is the genesis baseline —
+    /// must accept.
+    #[test]
+    fn accepts_genesis_baseline_zero() {
+        let env = Env::default();
+        set_seq(&env, 0);
+        assert_eq!(require_ledger_seq_monotonic(&env, 0), Ok(()));
+    }
+
+    /// Boundary: `prev = 0` and `current = 1` is the first legal
+    /// advancement — must accept.
+    #[test]
+    fn accepts_advancement_from_genesis() {
+        let env = Env::default();
+        set_seq(&env, 1);
+        assert_eq!(require_ledger_seq_monotonic(&env, 0), Ok(()));
+    }
+
+    /// u32 regression boundary: `prev = u32::MAX`, `current = u32::MAX - 1`.
+    /// Pins the saturation/underflow behaviour at the upper bound.
+    #[test]
+    fn rejects_regression_at_u32_max_boundary() {
+        let env = Env::default();
+        set_seq(&env, u32::MAX - 1);
+        assert_eq!(
+            require_ledger_seq_monotonic(&env, u32::MAX),
+            Err(LedgerError::LedgerSequenceRegression),
+        );
     }
 }
 
@@ -1625,6 +1984,102 @@ where
     }
 }
 
+/// Compare two Soroban [`Address`] values for equality without requiring
+/// the caller to clone either address solely for the comparison.
+///
+/// # Why this helper exists
+///
+/// [`Address`] does not implement [`Copy`], so a direct `==` comparison would
+/// require the caller to hold two owned values (both are consumed by `==`).
+/// The idiomatic workaround — `owner.clone() == caller` — allocates an
+/// unnecessary clone just to satisfy the type checker.  This helper accepts
+/// both addresses by shared reference, internally derives the comparison
+/// through the host-native equality check, and returns a plain `bool`.
+///
+/// Use `same_address` wherever address equality is needed inside a contract:
+///
+/// ```ignore
+/// if same_address(&stored_owner, &caller) {
+///     // caller is the owner
+/// }
+/// ```
+///
+/// The helper does **not** normalise or modify either address.  It is a
+/// transparent equality gate and nothing more.
+#[inline(always)]
+pub fn same_address(a: &Address, b: &Address) -> bool {
+    a == b
+}
+
+/// Canonicalise a caller-supplied Soroban [`soroban_sdk::String`] into a
+/// [`Symbol`] by stripping leading/trailing ASCII whitespace and
+/// lower-casing every ASCII uppercase letter.
+///
+/// # Allowed character set
+///
+/// After stripping and lowercasing, every remaining byte must satisfy
+/// `[a-z0-9_]`.  The Soroban SDK `Symbol` type rejects hyphens and other
+/// punctuation, so they are treated as invalid here too.  Passing a string
+/// that contains such characters will panic; use this function only with
+/// trusted or pre-validated input.
+///
+/// # Panics
+/// - If `input` is empty (length == 0).
+/// - If the trimmed result is empty (whitespace-only input).
+/// - If the trimmed result is longer than 32 bytes (Symbol hard limit).
+/// - If any byte in the trimmed result is not in `[a-z0-9_]` after
+///   upper-case folding (e.g., hyphens or other punctuation).
+pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
+    let len = input.len();
+    assert!(
+        len >= 1,
+        "symbol input must contain between 1 and 32 characters"
+    );
+
+    // Copy into a fixed-size buffer (Symbol max = 32 bytes).
+    const MAX: usize = 32;
+    assert!(
+        len as usize <= MAX,
+        "symbol input must contain between 1 and 32 characters"
+    );
+
+    let mut buf = [0u8; MAX];
+    input.copy_into_slice(&mut buf[..len as usize]);
+
+    // Strip leading whitespace.
+    let mut start = 0usize;
+    while start < len as usize && buf[start] == b' ' {
+        start += 1;
+    }
+
+    // Strip trailing whitespace.
+    let mut end = len as usize;
+    while end > start && buf[end - 1] == b' ' {
+        end -= 1;
+    }
+
+    assert!(
+        start < end,
+        "symbol input must contain at least one non-whitespace character"
+    );
+
+    // Lowercase ASCII uppercase letters in-place.
+    for b in &mut buf[start..end] {
+        if b.is_ascii_uppercase() {
+            *b += b'a' - b'A';
+        }
+    }
+
+    // Validate charset: [a-z0-9_] only (Symbol does not accept hyphens).
+    let valid_slice = &buf[start..end];
+    let s = match core::str::from_utf8(valid_slice) {
+        Ok(v) => v,
+        Err(_) => panic!("symbol input must be valid UTF-8"),
+    };
+
+    Symbol::new(env, s)
+}
+
 pub mod events;
 pub mod reversible_op;
 
@@ -1950,7 +2405,7 @@ where
     #[cfg(test)]
     {
         use soroban_sdk::xdr::ToXdr;
-        use soroban_sdk::TryFromVal;
+        use soroban_sdk::{IntoVal, TryFromVal};
         let val: soroban_sdk::Val = data.into_val(env);
         if let Ok(sc_val) = soroban_sdk::xdr::ScVal::try_from_val(env, &val) {
             let size = soroban_sdk::xdr::ToXdr::to_xdr(sc_val, env).len();
@@ -1973,7 +2428,7 @@ where
 #[cfg(test)]
 mod emit_audit_tests {
     use super::*;
-    use soroban_sdk::{symbol_short, testutils::Address as _, Env};
+    use soroban_sdk::{symbol_short, testutils::Address as _, testutils::Events as _, Env};
 
     // -----------------------------------------------------------------------
     // Schema / topic tests
@@ -2211,6 +2666,196 @@ pub fn start_investigation_epoch(env: &Env, duration_secs: u64) {
 /// responsibility to gate it with admin auth.
 pub fn clear_investigation_epoch(env: &Env) {
     env.storage().instance().remove(&STORAGE_INVESTIGATION_EPOCH);
+}
+
+// ---------------------------------------------------------------------------
+// Kill switch — binary on/off gate to halt all writes
+// ---------------------------------------------------------------------------
+
+/// Storage key for the kill switch flag.
+/// When set to `true` in instance storage, all write entry points must reject
+/// mutations with [`KillSwitchError::WriteBlocked`].
+pub(crate) const STORAGE_KILL_SWITCH: Symbol = symbol_short!("KILL_SW");
+
+/// Error returned when a write operation is blocked because the kill switch
+/// is active.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum KillSwitchError {
+    /// A write was blocked because the kill switch is engaged and no further
+    /// state mutations are allowed.
+    WriteBlocked = 1,
+}
+
+/// Returns `true` if the kill switch is active, meaning all write operations
+/// must be halted.
+///
+/// Checks instance storage for a boolean `STORAGE_KILL_SWITCH` flag.
+/// If the flag is absent the kill switch is considered inactive (default).
+pub fn is_kill_switch_active(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&STORAGE_KILL_SWITCH)
+        .unwrap_or(false)
+}
+
+/// Halts write operations if the kill switch is active.
+///
+/// Call this at the top of every write entry point (bill payment, premium
+/// payment, remittance disbursement, etc.) as a defence-in-depth guard.
+/// When the kill switch is active the contract rejects any mutation with
+/// [`KillSwitchError::WriteBlocked`].
+///
+/// # Threat model
+/// Without this check, an attacker who has discovered a vulnerability or
+/// obtained administrative access can continue to mutate contract state even
+/// after the kill switch has been triggered — stealing remaining funds,
+/// corrupting state that would otherwise be preserved for forensic analysis,
+/// or escalating the attack by triggering additional write-side effects.
+/// Setting the kill switch limits the blast radius and preserves evidence
+/// for the investigation team.
+///
+/// Unlike the investigation epoch (which is time-bounded), the kill switch
+/// is a binary toggle that stays active until explicitly deactivated by an
+/// admin.
+///
+/// # Cost
+/// A single instance-storage read (`bool`) — negligible (~250 gas units)
+/// relative to any write entry point's existing storage reads/writes.
+///
+/// # Errors
+/// Returns [`KillSwitchError::WriteBlocked`] when the kill switch is active.
+pub fn require_no_active_kill_switch(env: &Env) -> Result<(), KillSwitchError> {
+    if is_kill_switch_active(env) {
+        Err(KillSwitchError::WriteBlocked)
+    } else {
+        Ok(())
+    }
+}
+
+/// Activate the kill switch, blocking all write operations.
+///
+/// Sets the `STORAGE_KILL_SWITCH` flag to `true`. After calling this,
+/// every write entry point that calls [`require_no_active_kill_switch`]
+/// will return [`KillSwitchError::WriteBlocked`].
+///
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth (e.g.
+/// `admin.require_auth()` in the calling contract).
+pub fn activate_kill_switch(env: &Env) {
+    env.storage()
+        .instance()
+        .set(&STORAGE_KILL_SWITCH, &true);
+}
+
+/// Deactivate the kill switch, allowing write operations to proceed.
+///
+/// Removes the `STORAGE_KILL_SWITCH` flag from storage. After calling this,
+/// [`require_no_active_kill_switch`] will return `Ok(())` again.
+///
+/// If the kill switch is not active, this is a no-op.
+///
+/// This function does not enforce authentication — it is the caller's
+/// responsibility to gate it with admin auth.
+pub fn deactivate_kill_switch(env: &Env) {
+    env.storage().instance().remove(&STORAGE_KILL_SWITCH);
+}
+
+#[cfg(test)]
+mod kill_switch_tests {
+    use super::*;
+    use soroban_sdk::Env;
+
+    /// The kill switch is inactive by default (no storage set).
+    #[test]
+    fn test_kill_switch_inactive_by_default() {
+        let env = Env::default();
+        assert!(!is_kill_switch_active(&env));
+        assert_eq!(require_no_active_kill_switch(&env), Ok(()));
+    }
+
+    /// After activation, is_kill_switch_active returns true and
+    /// require_no_active_kill_switch returns WriteBlocked.
+    #[test]
+    fn test_activate_kill_switch_blocks_writes() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+
+        assert!(is_kill_switch_active(&env));
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked)
+        );
+    }
+
+    /// After deactivation, the kill switch is inactive and writes are
+    /// allowed again.
+    #[test]
+    fn test_deactivate_kill_switch_allows_writes() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+        assert_eq!(require_no_active_kill_switch(&env), Ok(()));
+    }
+
+    /// Deactivating when already inactive is a safe no-op.
+    #[test]
+    fn test_deactivate_kill_switch_is_idempotent() {
+        let env = Env::default();
+        assert!(!is_kill_switch_active(&env));
+
+        // Should not panic
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+    }
+
+    /// After activation and deactivation, the kill switch can be
+    /// reactivated (toggle cycle).
+    #[test]
+    fn test_kill_switch_toggle_cycle() {
+        let env = Env::default();
+
+        // Activate
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+
+        // Deactivate
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+
+        // Re-activate
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked)
+        );
+
+        // Final deactivate
+        deactivate_kill_switch(&env);
+        assert!(!is_kill_switch_active(&env));
+    }
+
+    /// Negative test: require_no_active_kill_switch fails when kill switch
+    /// is active, and the error type is KillSwitchError::WriteBlocked.
+    #[test]
+    fn test_write_blocked_during_active_kill_switch() {
+        let env = Env::default();
+
+        // Without activation, writes allowed
+        assert!(require_no_active_kill_switch(&env).is_ok());
+
+        // Activate kill switch
+        activate_kill_switch(&env);
+
+        // Writes blocked
+        let result = require_no_active_kill_switch(&env);
+        assert_eq!(result, Err(KillSwitchError::WriteBlocked));
+    }
 }
 
 // ---------------------------------------------------------------------------

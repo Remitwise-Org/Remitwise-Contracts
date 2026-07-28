@@ -140,3 +140,23 @@ When adding or modifying period-tied logic:
 - [ ] Expresses all durations in seconds ($u64$).
 - [ ] Returns explicit, named error variants (`ScheduleNotDue`, `DeadlineExceeded`, `PaymentNotDue`, `RoleExpired`).
 - [ ] Covers boundary conditions ($T - 1\text{s}$, $T$, $T + 1\text{s}$) in unit tests using `env.ledger().set_timestamp(...)`.
+
+## Shared Period-Active Guard
+
+`remitwise-common::verify_period_active(period_start, now, is_archived)` is
+the canonical helper for rejecting writes against periods that are either
+**future** (`period_start > now`) or **archived** (`is_archived == true`). Call
+it at the top of any write entry point that takes a `(user, period_key)`
+composite key or any storage layout that partitions by period, before the
+write mutates storage. It returns
+`Err(remitwise_common::PeriodKeyError::PeriodNotActive)` on any rejection,
+which the call site maps to its own contract-specific `#[contracterror]`.
+
+**Rationale.** Without this guard, a buggy or compromised caller could
+pre-load a future period with self-serving state (gaming month-end scoring
+reports), or resurrect state under a `(user, pk)` composite whose period
+has already been sealed into the archive map — breaking the invariant that
+the archive map is immutable once sealed. The helper is pure and
+stateless; the caller supplies `is_archived` from its own archive
+tracking. See [`remitwise-common/src/period.rs`](../remitwise-common/src/period.rs)
+and [`docs/PERIOD_KEYS.md`](PERIOD_KEYS.md) for the full specification.

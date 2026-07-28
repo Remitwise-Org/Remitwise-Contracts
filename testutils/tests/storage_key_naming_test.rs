@@ -31,11 +31,7 @@ fn get_all_storage_keys() -> Vec<StorageKey> {
             contract: "remittance_split",
             description: "Owner + percentages + initialized flag",
         },
-        StorageKey {
-            key: "SPLIT",
-            contract: "remittance_split",
-            description: "Ordered percentages",
-        },
+        // SPLIT key has been removed (percentages are now derived from CONFIG).
         StorageKey {
             key: "NONCES",
             contract: "remittance_split",

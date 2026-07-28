@@ -600,6 +600,267 @@ proptest! {
     }
 }
 
+// ─── canonicalise_symbol_checked ─────────────────────────────────────────────
+
+/// Lowercase–only input is returned unchanged.
+#[test]
+fn test_checked_symbol_lowercase_passthrough() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Uppercase letters are folded to lowercase.
+#[test]
+fn test_checked_symbol_uppercase_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HELLO");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Mixed-case input is fully lowercased.
+#[test]
+fn test_checked_symbol_mixed_case_folded() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "HelloWorld");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "helloworld");
+}
+
+/// Leading whitespace is stripped.
+#[test]
+fn test_checked_symbol_leading_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  hello");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Trailing whitespace is stripped.
+#[test]
+fn test_checked_symbol_trailing_whitespace_stripped() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello  ");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "hello");
+}
+
+/// Underscore is valid.
+#[test]
+fn test_checked_symbol_underscore_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "my_symbol");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "my_symbol");
+}
+
+/// Digits are valid.
+#[test]
+fn test_checked_symbol_digits_allowed() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "goal2025");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "goal2025");
+}
+
+/// Empty string returns Err(Empty).
+#[test]
+fn test_checked_symbol_empty_returns_err() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Whitespace-only string returns Err(Empty).
+#[test]
+fn test_checked_symbol_whitespace_only_returns_err() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "   ");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Trimmed input longer than 32 bytes returns Err(TooLong).
+#[test]
+fn test_checked_symbol_too_long_returns_err() {
+    let env = Env::default();
+    // 33 lowercase letters — one over the limit
+    let input = soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::TooLong),
+    );
+}
+
+/// Exactly 32 bytes (the boundary) succeeds.
+#[test]
+fn test_checked_symbol_exactly_32_bytes_passes() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdef");
+    let out = canonicalise_symbol_checked(&env, &input).unwrap();
+    assert_eq!(symbol_str(&out), "abcdefghijklmnopqrstuvwxyzabcdef");
+}
+
+/// Hyphen at position 5 returns Err(InvalidChar { position: 5 }).
+#[test]
+fn test_checked_symbol_hyphen_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "hello-world");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 5 }),
+    );
+}
+
+/// Internal space (after trimming) returns Err(InvalidChar) at the correct byte position.
+#[test]
+fn test_checked_symbol_internal_space_returns_invalid_char() {
+    let env = Env::default();
+    // leading space is trimmed; remaining "hello world" has space at position 5
+    let input = soroban_sdk::String::from_str(&env, " hello world");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 5 }),
+    );
+}
+
+/// `@` at position 0 returns Err(InvalidChar { position: 0 }).
+#[test]
+fn test_checked_symbol_at_sign_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "@admin");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 0 }),
+    );
+}
+
+/// Dot (`.`) at position 4 returns Err(InvalidChar { position: 4 }).
+#[test]
+fn test_checked_symbol_dot_returns_invalid_char() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "v1_0.1");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 4 }),
+    );
+}
+
+/// Short-circuits on the FIRST bad byte, not the last.
+#[test]
+fn test_checked_symbol_short_circuits_on_first_invalid_char() {
+    let env = Env::default();
+    // '!' at index 3; '@' at index 5 — only position 3 should be reported
+    let input = soroban_sdk::String::from_str(&env, "bad!xy@z");
+    assert_eq!(
+        canonicalise_symbol_checked(&env, &input),
+        Err(SymbolValidationError::InvalidChar { position: 3 }),
+    );
+}
+
+/// Idempotence: applying checked twice yields the same Symbol.
+#[test]
+fn test_checked_symbol_idempotent() {
+    let env = Env::default();
+    let input = soroban_sdk::String::from_str(&env, "  HeLLo_WORLD  ");
+    let once = canonicalise_symbol_checked(&env, &input).unwrap();
+    let once_str = symbol_str(&once);
+    let twice_input = soroban_sdk::String::from_str(&env, &once_str);
+    let twice = canonicalise_symbol_checked(&env, &twice_input).unwrap();
+    assert_eq!(symbol_str(&once), symbol_str(&twice));
+}
+
+// ─── canonicalise_symbols (batch) ────────────────────────────────────────────
+
+/// Empty batch returns Err(Empty).
+#[test]
+fn test_canonicalise_symbols_empty_batch_returns_err() {
+    let env = Env::default();
+    let empty: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    assert_eq!(
+        canonicalise_symbols(&env, &empty),
+        Err(SymbolValidationError::Empty),
+    );
+}
+
+/// Valid batch — all symbols canonicalised in order.
+#[test]
+fn test_canonicalise_symbols_valid_batch() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "Hello"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "WORLD"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "my_key"));
+
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(out.len(), 3);
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "hello");
+    assert_eq!(symbol_str(&out.get(1).unwrap()), "world");
+    assert_eq!(symbol_str(&out.get(2).unwrap()), "my_key");
+}
+
+/// Order is preserved in the batch output.
+#[test]
+fn test_canonicalise_symbols_order_preserved() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "zebra"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "apple"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "mango"));
+
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "zebra");
+    assert_eq!(symbol_str(&out.get(1).unwrap()), "apple");
+    assert_eq!(symbol_str(&out.get(2).unwrap()), "mango");
+}
+
+/// First invalid element short-circuits the batch.
+#[test]
+fn test_canonicalise_symbols_invalid_element_short_circuits() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "valid_one"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char"));  // hyphen at pos 3
+    inputs.push_back(soroban_sdk::String::from_str(&env, "valid_two"));
+
+    assert_eq!(
+        canonicalise_symbols(&env, &inputs),
+        Err(SymbolValidationError::InvalidChar { position: 3 }),
+    );
+}
+
+/// Too-long element in a batch returns Err(TooLong).
+#[test]
+fn test_canonicalise_symbols_too_long_element() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "ok"));
+    inputs.push_back(soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg")); // 33 chars
+
+    assert_eq!(
+        canonicalise_symbols(&env, &inputs),
+        Err(SymbolValidationError::TooLong),
+    );
+}
+
+/// Single-element batch works end-to-end.
+#[test]
+fn test_canonicalise_symbols_single_element() {
+    let env = Env::default();
+    let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
+    inputs.push_back(soroban_sdk::String::from_str(&env, "  MyKey  "));
+    let out = canonicalise_symbols(&env, &inputs).unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(symbol_str(&out.get(0).unwrap()), "mykey");
+}
+
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
 
 /// 0 is treated as "use default" and returns DEFAULT_PAGE_LIMIT.
@@ -1224,6 +1485,34 @@ fn test_verify_slash_signature_invalid() {
     });
 }
 
+// ─── cross_contract_epoch tests ──────────────────────────────────────────
+
+#[test]
+fn test_require_matching_cross_contract_epoch() {
+    let env = Env::default();
+    
+    // Default is 0, so epoch 0 matches
+    assert_eq!(require_matching_cross_contract_epoch(&env, 0), Ok(()));
+    
+    // Set epoch to 5
+    env.storage().instance().set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
+    
+    // Exact match is accepted
+    assert_eq!(require_matching_cross_contract_epoch(&env, 5), Ok(()));
+    
+    // Stale epoch (less than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 4),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
+    
+    // Future epoch (greater than current) is rejected
+    assert_eq!(
+        require_matching_cross_contract_epoch(&env, 6),
+        Err(CrossContractEpochError::EpochMismatch)
+    );
+}
+
 // ─── distribute_pro_rata tests (#1085) ───────────────────────────────────────
 
 /// Distributes an indivisible total across unequal weights — remainder benefits smallest recipient.
@@ -1788,7 +2077,7 @@ proptest! {
 #[test]
 fn require_valid_symbol_length_empty_input_returns_empty_error() {
     assert_eq!(
-        require_valid_symbol_name_length(b""),
+        require_valid_symbol_length_bytes(b""),
         Err(SymbolLengthError::Empty),
         "empty name must be rejected with SymbolLengthError::Empty"
     );
@@ -1798,7 +2087,7 @@ fn require_valid_symbol_length_empty_input_returns_empty_error() {
 #[test]
 fn require_valid_symbol_length_one_char_returns_ok() {
     assert_eq!(
-        require_valid_symbol_name_length(b"A"),
+        require_valid_symbol_length_bytes(b"A"),
         Ok(()),
         "1-byte name is the lower boundary and must be accepted"
     );
@@ -1811,7 +2100,7 @@ fn require_valid_symbol_length_nine_chars_returns_ok() {
     const NAME: &[u8] = b"NINE_BYTE"; // 9 bytes
     const _: () = assert!(NAME.len() == 9);
     assert_eq!(
-        require_valid_symbol_name_length(NAME),
+        require_valid_symbol_length_bytes(NAME),
         Ok(()),
         "9-byte name is exactly at the symbol_short! cap and must be accepted"
     );
@@ -1823,7 +2112,7 @@ fn require_valid_symbol_length_ten_chars_returns_too_long_error() {
     const NAME: &[u8] = b"TEN_BYTES_"; // 10 bytes
     const _: () = assert!(NAME.len() == 10);
     assert_eq!(
-        require_valid_symbol_name_length(NAME),
+        require_valid_symbol_length_bytes(NAME),
         Err(SymbolLengthError::TooLong),
         "10-byte name exceeds the symbol_short! cap and must be rejected with SymbolLengthError::TooLong"
     );
@@ -1834,8 +2123,68 @@ fn require_valid_symbol_length_ten_chars_returns_too_long_error() {
 fn require_valid_symbol_length_very_long_input_returns_too_long_error() {
     let name = b"TOOLONGKEYNAME"; // 14 bytes
     assert_eq!(
-        require_valid_symbol_name_length(name),
+        require_valid_symbol_length_bytes(name),
         Err(SymbolLengthError::TooLong),
         "names well above the cap must also be rejected with SymbolLengthError::TooLong"
     );
 }
+
+// ─── same_address tests (#1141) ───────────────────────────────────────────────
+
+/// Two references to the same address value return `true`.
+#[test]
+fn test_same_address_equal_returns_true() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let a = soroban_sdk::Address::generate(&env);
+    // b is a clone of a — they must compare equal.
+    let b = a.clone();
+    assert!(crate::same_address(&a, &b));
+}
+
+/// Two different address values return `false`.
+#[test]
+fn test_same_address_different_returns_false() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let a = soroban_sdk::Address::generate(&env);
+    let b = soroban_sdk::Address::generate(&env);
+    // generate produces unique addresses each call.
+    assert!(!crate::same_address(&a, &b));
+}
+
+/// `same_address` does not consume either address — both remain usable after the call.
+#[test]
+fn test_same_address_does_not_consume_arguments() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let owner = soroban_sdk::Address::generate(&env);
+    let caller = owner.clone();
+    // Call same_address — neither address should be moved.
+    let result = crate::same_address(&owner, &caller);
+    // Both addresses are still accessible here (no clone required by same_address itself).
+    assert!(result);
+    // Reuse the addresses to prove they were not consumed.
+    let _ = &owner;
+    let _ = &caller;
+}
+
+/// A single address is equal to itself (reflexivity).
+#[test]
+fn test_same_address_reflexive() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let a = soroban_sdk::Address::generate(&env);
+    assert!(crate::same_address(&a, &a));
+}
+
+/// Symmetry: `same_address(a, b) == same_address(b, a)`.
+#[test]
+fn test_same_address_symmetric() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let a = soroban_sdk::Address::generate(&env);
+    let b = soroban_sdk::Address::generate(&env);
+    assert_eq!(crate::same_address(&a, &b), crate::same_address(&b, &a));
+}
+

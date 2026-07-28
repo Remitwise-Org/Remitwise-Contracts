@@ -265,6 +265,8 @@ pub enum ReportingError {
     Overflow = 9,
     /// Proposed new admin is the same as the current admin.
     SameAdmin = 10,
+    /// The requested top-N size exceeds the global cap.
+    TopNTooLarge = 11,
 }
 
 #[contracttype]

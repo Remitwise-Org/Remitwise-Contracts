@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, Env, String, TryFromVal, Val, Vec as SorobanVec,
+    Address, Env, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 extern crate alloc;
 use alloc::vec::Vec as StdVec;
@@ -33,19 +33,28 @@ fn create_policy_at(env: &Env, client: &InsuranceClient, owner: &Address, t: u64
     )
 }
 
+/// Collect all `(insurance, InsuranceEvent::PremiumPaid)` events from the
+/// environment, returning them as a `Vec` of raw event tuples for inspection.
+///
+/// Uses the canonical two-topic format — `symbol_short!("insurance")` as the
+/// namespace and `InsuranceEvent::PremiumPaid` as the discriminant — which
+/// matches the actual `env.events().publish(...)` call sites in `lib.rs`.
 fn paid_events_for(env: &Env) -> SorobanVec<(Address, SorobanVec<Val>, Val)> {
+    let ns = symbol_short!("insurance");
     let mut out = SorobanVec::new(env);
     for event in env.events().all().iter() {
         let topics = &event.1;
         if topics.len() < 2 {
             continue;
         }
-        let top0 = soroban_sdk::Symbol::try_from_val(env, &topics.get(0).unwrap());
-        let top1 = soroban_sdk::Symbol::try_from_val(env, &topics.get(1).unwrap());
-        if top0.is_ok()
-            && top1.is_ok()
-            && top0.unwrap() == symbol_short!("paid")
-            && top1.unwrap() == symbol_short!("premium")
+        let Ok(top0) = Symbol::try_from_val(env, &topics.get(0).unwrap()) else {
+            continue;
+        };
+        if top0 != ns {
+            continue;
+        }
+        if let Ok(InsuranceEvent::PremiumPaid) =
+            InsuranceEvent::try_from_val(env, &topics.get(1).unwrap())
         {
             out.push_back(event);
         }

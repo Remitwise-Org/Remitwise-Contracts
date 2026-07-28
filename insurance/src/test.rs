@@ -861,6 +861,84 @@ mod tests {
         assert_eq!(p.external_ref, core::option::Option::None);
     }
 
+    /// Clearing a policy's external_ref (owner-only) must free the ref so a
+    /// different policy can immediately take it — proves no stale index entry
+    /// survives the clear.
+    #[test]
+    fn test_set_external_ref_clear_allows_reuse_by_another_policy() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, contract_owner) = setup_with_owner(&env);
+        let policy_owner = Address::generate(&env);
+        let ref_id = core::option::Option::Some(n(&env, "REUSE-REF"));
+
+        let pid_a = c.create_policy(
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        c.set_external_ref(&contract_owner, &pid_a, &ref_id);
+
+        // Free the ref from policy A.
+        c.set_external_ref(&contract_owner, &pid_a, &core::option::Option::None);
+
+        // A second, unrelated policy must be able to take the freed ref.
+        let pid_b = c.create_policy(
+            &policy_owner,
+            &n(&env, "P2"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        assert!(
+            c.set_external_ref(&contract_owner, &pid_b, &ref_id),
+            "clearing policy A's external_ref must allow policy B to reuse it"
+        );
+
+        let policy_a = c.get_policy(&pid_a).unwrap();
+        let policy_b = c.get_policy(&pid_b).unwrap();
+        assert_eq!(policy_a.external_ref, core::option::Option::None);
+        assert_eq!(policy_b.external_ref, ref_id);
+    }
+
+    /// A non-owner (policy owner or stranger) must not be able to clear an
+    /// existing external_ref — the ref must remain untouched after the
+    /// rejected call.
+    #[test]
+    fn test_set_external_ref_unauthorized_clear_leaves_ref_intact() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (c, contract_owner) = setup_with_owner(&env);
+        let policy_owner = Address::generate(&env);
+        let ref_id = core::option::Option::Some(n(&env, "keep-me"));
+        let pid = c.create_policy(
+            &policy_owner,
+            &n(&env, "P"),
+            &CoverageType::Health,
+            &5_000_000i128,
+            &50_000_000i128,
+            &None,
+        );
+        c.set_external_ref(&contract_owner, &pid, &ref_id);
+
+        assert_eq!(
+            c.try_set_external_ref(&policy_owner, &pid, &core::option::Option::None)
+                .unwrap_err()
+                .unwrap(),
+            InsuranceError::Unauthorized,
+        );
+
+        let policy = c.get_policy(&pid).unwrap();
+        assert_eq!(
+            policy.external_ref, ref_id,
+            "external_ref must be unchanged after a rejected clear attempt"
+        );
+    }
+
     /// Policy owner (non-contract-owner) calling set_external_ref must get Unauthorized.
     #[test]
     fn test_set_external_ref_unauthorized_policy_owner() {

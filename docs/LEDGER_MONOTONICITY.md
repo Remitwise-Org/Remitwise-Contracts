@@ -281,7 +281,53 @@ consider using this helper rather than reimplementing a ledger-sequence check.
 
 ---
 
-### 9. Cursor Monotonicity (`reporting`)
+### 9. Ledger Sequence Monotonicity (`remitwise-common` — `require_ledger_seq_monotonic`)
+
+The `require_ledger_seq_monotonic` helper is the defence-in-depth companion
+to `require_matching_ledger`. Where `require_matching_ledger` enforces
+**exact equality** (useful for replay-bound signed operations that commit
+to a specific ledger), `require_ledger_seq_monotonic` enforces a **lower
+bound** (`current >= prev`). The two together cover the full ledger-
+sequence trust model.
+
+| | |
+|---|---|
+| **File** | `remitwise-common/src/lib.rs` |
+| **Function** | `require_ledger_seq_monotonic` |
+| **Guard** | `current < prev` |
+| **Error** | `LedgerError::LedgerSequenceRegression` |
+
+```rust
+/// Asserts that the current ledger sequence is greater than or equal to a
+/// previously observed baseline (`prev`).
+///
+/// This is a defence-in-depth monotonicity guard. Returned regression is the
+/// canonical signal that an off-by-N replay, a stale-storage baseline, or a
+/// `u32` cast underflow has reached a write entry point.
+pub fn require_ledger_seq_monotonic(env: &Env, prev: u32) -> Result<(), LedgerError> {
+    let current = env.ledger().sequence();
+    if current < prev {
+        Err(LedgerError::LedgerSequenceRegression)
+    } else {
+        Ok(())
+    }
+}
+```
+
+**Threat model.** Without this guard, a caller-supplied (or
+stale-storage) baseline that walks backwards past the host sequence
+allows replay of any operation committed to `prev` (fee updates, role
+grants, mint caps, etc.) at a lower observed ledger. Returns
+`Err(LedgerError::LedgerSequenceRegression)` so that the entry point can
+map it to a contract-specific `#[contracterror]` rather than panicking.
+
+**Why it matters:** Tying the cached baseline to `env.ledger().sequence()`
+catches both replay attacks and any logic bug where a `u32` cast would
+otherwise allow storage-baseline underflow to bypass the host invariant.
+
+---
+
+### 10. Cursor Monotonicity (`reporting`)
 
 The reporting crate's dependent-query pagination loop guarantees termination
 via a page counter bound, implicitly relying on cursor monotonicity.
