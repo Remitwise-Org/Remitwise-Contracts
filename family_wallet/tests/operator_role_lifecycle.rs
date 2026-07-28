@@ -22,7 +22,7 @@
 
 #![cfg(test)]
 
-use family_wallet::{Client as FamilyWalletClient, FamilyWallet};
+use family_wallet::{FamilyWallet, FamilyWalletClient};
 use remitwise_common::FamilyRole;
 use soroban_sdk::{testutils::Address as _, vec, Address, Env};
 use testutils::set_ledger_time;

@@ -3941,349 +3941,353 @@ mod testsuit {
         assert!(!unpaused_state.paused);
         assert_eq!(unpaused_state.paused_since, None);
     }
-}
 
-// ========================================================================
-// Tests for set_external_ref authorization and index cleanup (Issue #1410)
-// ========================================================================
+    // ========================================================================
+    // Tests for set_external_ref authorization and index cleanup (Issue #1410)
+    // ========================================================================
 
-#[test]
-fn test_set_external_ref_owner_can_set() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_owner_can_set() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create a bill
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Electricity"),
-        &1000,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create a bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &1000,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Owner should be able to set external_ref
-    env.mock_all_auths();
-    let ext_ref = Some(String::from_str(&env, "EXT-123"));
-    client.set_external_ref(&owner, &bill_id, &ext_ref);
+        // Owner should be able to set external_ref
+        env.mock_all_auths();
+        let ext_ref = Some(String::from_str(&env, "EXT-123"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref);
 
-    // Verify the external_ref was set
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert!(bill.external_ref.is_some());
-    assert_eq!(
-        bill.external_ref.unwrap(),
-        String::from_str(&env, "EXT-123")
-    );
-}
+        // Verify the external_ref was set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_some());
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "EXT-123")
+        );
+    }
 
-#[test]
-fn test_set_external_ref_non_owner_fails() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_non_owner_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create a bill owned by owner
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Water Bill"),
-        &500,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create a bill owned by owner
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Water Bill"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Try to set external_ref as a different user
-    let other_user = <soroban_sdk::Address as AddressTrait>::generate(&env);
-    env.mock_all_auths();
-    let ext_ref = Some(String::from_str(&env, "EXT-456"));
-    let result = client.try_set_external_ref(&other_user, &bill_id, &ext_ref);
+        // Try to set external_ref as a different user
+        let other_user = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let ext_ref = Some(String::from_str(&env, "EXT-456"));
+        let result = client.try_set_external_ref(&other_user, &bill_id, &ext_ref);
 
-    // Should fail with Unauthorized
-    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+        // Should fail with Unauthorized
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
 
-    // Verify external_ref was not set
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert!(bill.external_ref.is_none());
-}
+        // Verify external_ref was not set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_none());
+    }
 
-#[test]
-fn test_set_external_ref_clear_removes_index() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_clear_removes_index() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create a bill with an external_ref
-    let ext_ref = Some(String::from_str(&env, "EXT-789"));
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Gas Bill"),
-        &750,
-        &1000000,
-        &false,
-        &0,
-        &ext_ref,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create a bill with an external_ref
+        let ext_ref = Some(String::from_str(&env, "EXT-789"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Gas Bill"),
+            &750,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Verify external_ref is set
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert!(bill.external_ref.is_some());
+        // Verify external_ref is set
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_some());
 
-    // Clear the external_ref
-    env.mock_all_auths();
-    client.set_external_ref(&owner, &bill_id, &None);
+        // Clear the external_ref
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id, &None);
 
-    // Verify external_ref was cleared
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert!(bill.external_ref.is_none());
+        // Verify external_ref was cleared
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert!(bill.external_ref.is_none());
 
-    // The same external_ref should now be available for reuse
-    env.mock_all_auths();
-    let bill_id2 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Internet Bill"),
-        &800,
-        &1000000,
-        &false,
-        &0,
-        &Some(String::from_str(&env, "EXT-789")),
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // The same external_ref should now be available for reuse
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Internet Bill"),
+            &800,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "EXT-789")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    let bill2 = client.get_bill(&bill_id2).unwrap();
-    assert_eq!(
-        bill2.external_ref.unwrap(),
-        String::from_str(&env, "EXT-789")
-    );
-}
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "EXT-789")
+        );
+    }
 
-#[test]
-fn test_set_external_ref_no_stale_index_entries() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_no_stale_index_entries() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create a bill with external_ref
-    let ext_ref1 = Some(String::from_str(&env, "REF-001"));
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Phone Bill"),
-        &600,
-        &1000000,
-        &false,
-        &0,
-        &ext_ref1,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create a bill with external_ref
+        let ext_ref1 = Some(String::from_str(&env, "REF-001"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Phone Bill"),
+            &600,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Change to a different external_ref
-    env.mock_all_auths();
-    let ext_ref2 = Some(String::from_str(&env, "REF-002"));
-    client.set_external_ref(&owner, &bill_id, &ext_ref2);
+        // Change to a different external_ref
+        env.mock_all_auths();
+        let ext_ref2 = Some(String::from_str(&env, "REF-002"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref2);
 
-    // The old ref should be available for a new bill (no stale index)
-    env.mock_all_auths();
-    let bill_id2 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Cable Bill"),
-        &550,
-        &1000000,
-        &false,
-        &0,
-        &Some(String::from_str(&env, "REF-001")),
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // The old ref should be available for a new bill (no stale index)
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Cable Bill"),
+            &550,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "REF-001")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    let bill2 = client.get_bill(&bill_id2).unwrap();
-    assert_eq!(
-        bill2.external_ref.unwrap(),
-        String::from_str(&env, "REF-001")
-    );
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "REF-001")
+        );
 
-    // Verify the first bill has the new ref
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert_eq!(
-        bill.external_ref.unwrap(),
-        String::from_str(&env, "REF-002")
-    );
-}
+        // Verify the first bill has the new ref
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "REF-002")
+        );
+    }
 
-#[test]
-fn test_set_external_ref_duplicate_fails() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_duplicate_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create first bill with external_ref
-    let ext_ref = Some(String::from_str(&env, "DUP-REF"));
-    let bill_id1 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Bill 1"),
-        &100,
-        &1000000,
-        &false,
-        &0,
-        &ext_ref,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create first bill with external_ref
+        let ext_ref = Some(String::from_str(&env, "DUP-REF"));
+        let bill_id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill 1"),
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Create second bill without external_ref
-    env.mock_all_auths();
-    let bill_id2 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Bill 2"),
-        &200,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create second bill without external_ref
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Bill 2"),
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Try to set the same external_ref on the second bill
-    env.mock_all_auths();
-    let result =
-        client.try_set_external_ref(&owner, &bill_id2, &Some(String::from_str(&env, "DUP-REF")));
+        // Try to set the same external_ref on the second bill
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &bill_id2,
+            &Some(String::from_str(&env, "DUP-REF")),
+        );
 
-    // Should fail with DuplicateExternalRef
-    assert_eq!(result, Err(Ok(Error::DuplicateExternalRef)));
+        // Should fail with DuplicateExternalRef
+        assert_eq!(result, Err(Ok(Error::DuplicateExternalRef)));
 
-    // Verify second bill still has no external_ref
-    let bill2 = client.get_bill(&bill_id2).unwrap();
-    assert!(bill2.external_ref.is_none());
+        // Verify second bill still has no external_ref
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert!(bill2.external_ref.is_none());
 
-    // Verify first bill still has the external_ref
-    let bill1 = client.get_bill(&bill_id1).unwrap();
-    assert_eq!(
-        bill1.external_ref.unwrap(),
-        String::from_str(&env, "DUP-REF")
-    );
-}
+        // Verify first bill still has the external_ref
+        let bill1 = client.get_bill(&bill_id1).unwrap();
+        assert_eq!(
+            bill1.external_ref.unwrap(),
+            String::from_str(&env, "DUP-REF")
+        );
+    }
 
-#[test]
-fn test_set_external_ref_clear_and_reuse_succeeds() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_clear_and_reuse_succeeds() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create bill with external_ref
-    let ext_ref = Some(String::from_str(&env, "REUSE-REF"));
-    let bill_id1 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "First Bill"),
-        &300,
-        &1000000,
-        &false,
-        &0,
-        &ext_ref,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create bill with external_ref
+        let ext_ref = Some(String::from_str(&env, "REUSE-REF"));
+        let bill_id1 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "First Bill"),
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Clear the external_ref from first bill
-    env.mock_all_auths();
-    client.set_external_ref(&owner, &bill_id1, &None);
+        // Clear the external_ref from first bill
+        env.mock_all_auths();
+        client.set_external_ref(&owner, &bill_id1, &None);
 
-    // Create another bill with the same external_ref (should succeed)
-    env.mock_all_auths();
-    let bill_id2 = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Second Bill"),
-        &400,
-        &1000000,
-        &false,
-        &0,
-        &Some(String::from_str(&env, "REUSE-REF")),
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create another bill with the same external_ref (should succeed)
+        env.mock_all_auths();
+        let bill_id2 = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Second Bill"),
+            &400,
+            &1000000,
+            &false,
+            &0,
+            &Some(String::from_str(&env, "REUSE-REF")),
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Verify first bill has no external_ref
-    let bill1 = client.get_bill(&bill_id1).unwrap();
-    assert!(bill1.external_ref.is_none());
+        // Verify first bill has no external_ref
+        let bill1 = client.get_bill(&bill_id1).unwrap();
+        assert!(bill1.external_ref.is_none());
 
-    // Verify second bill has the external_ref
-    let bill2 = client.get_bill(&bill_id2).unwrap();
-    assert_eq!(
-        bill2.external_ref.unwrap(),
-        String::from_str(&env, "REUSE-REF")
-    );
-}
+        // Verify second bill has the external_ref
+        let bill2 = client.get_bill(&bill_id2).unwrap();
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "REUSE-REF")
+        );
+    }
 
-#[test]
-fn test_set_external_ref_invalid_ref_fails() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_invalid_ref_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create a bill
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Test Bill"),
-        &250,
-        &1000000,
-        &false,
-        &0,
-        &None,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create a bill
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Test Bill"),
+            &250,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Try to set an empty external_ref (should fail)
-    env.mock_all_auths();
-    let result = client.try_set_external_ref(&owner, &bill_id, &Some(String::from_str(&env, "")));
+        // Try to set an empty external_ref (should fail)
+        env.mock_all_auths();
+        let result =
+            client.try_set_external_ref(&owner, &bill_id, &Some(String::from_str(&env, "")));
 
-    assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
+        assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
 
-    // Try to set an external_ref with invalid characters
-    env.mock_all_auths();
-    let result = client.try_set_external_ref(
-        &owner,
-        &bill_id,
-        &Some(String::from_str(&env, "REF@INVALID!")),
-    );
+        // Try to set an external_ref with invalid characters
+        env.mock_all_auths();
+        let result = client.try_set_external_ref(
+            &owner,
+            &bill_id,
+            &Some(String::from_str(&env, "REF@INVALID!")),
+        );
 
-    assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
-}
+        assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
+    }
 
-#[test]
-fn test_set_external_ref_nonexistent_bill_fails() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_nonexistent_bill_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Try to set external_ref on a non-existent bill
-    env.mock_all_auths();
-    let result =
-        client.try_set_external_ref(&owner, &999, &Some(String::from_str(&env, "REF-999")));
+        // Try to set external_ref on a non-existent bill
+        env.mock_all_auths();
+        let result =
+            client.try_set_external_ref(&owner, &999, &Some(String::from_str(&env, "REF-999")));
 
-    assert_eq!(result, Err(Ok(Error::BillNotFound)));
-}
+        assert_eq!(result, Err(Ok(Error::BillNotFound)));
+    }
 
-#[test]
-fn test_set_external_ref_owner_can_overwrite_own_ref() {
-    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+    #[test]
+    fn test_set_external_ref_owner_can_overwrite_own_ref() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-    // Create bill with external_ref
-    let ext_ref1 = Some(String::from_str(&env, "REF-OLD"));
-    let bill_id = client.create_bill(
-        &owner,
-        &String::from_str(&env, "Updatable Bill"),
-        &500,
-        &1000000,
-        &false,
-        &0,
-        &ext_ref1,
-        &String::from_str(&env, "XLM"),
-        &None,
-    );
+        // Create bill with external_ref
+        let ext_ref1 = Some(String::from_str(&env, "REF-OLD"));
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Updatable Bill"),
+            &500,
+            &1000000,
+            &false,
+            &0,
+            &ext_ref1,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
 
-    // Owner updates to a new external_ref
-    env.mock_all_auths();
-    let ext_ref2 = Some(String::from_str(&env, "REF-NEW"));
-    client.set_external_ref(&owner, &bill_id, &ext_ref2);
+        // Owner updates to a new external_ref
+        env.mock_all_auths();
+        let ext_ref2 = Some(String::from_str(&env, "REF-NEW"));
+        client.set_external_ref(&owner, &bill_id, &ext_ref2);
 
-    // Verify the external_ref was updated
-    let bill = client.get_bill(&bill_id).unwrap();
-    assert_eq!(
-        bill.external_ref.unwrap(),
-        String::from_str(&env, "REF-NEW")
-    );
+        // Verify the external_ref was updated
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "REF-NEW")
+        );
+    }
 }
