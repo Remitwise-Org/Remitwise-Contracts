@@ -17,8 +17,9 @@
 use super::*;
 use remitwise_common::CoverageType;
 use soroban_sdk::{
-    symbol_short, testutils::Address as _, Address, Env, IntoVal, String as SorobanString, Symbol,
-    TryFromVal, Val,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, IntoVal, String as SorobanString, Symbol, TryFromVal, Val,
 };
 
 // ---------------------------------------------------------------------------
@@ -406,7 +407,7 @@ fn reactivate_policy_emits_reactivated_event() {
     // Advance past the 24-hour cooldown (MAX_TENURE_SECS = 86_400).
     env.ledger().with_mut(|l| l.timestamp += 86_401);
 
-    client.reactivate_policy(&policy_owner, &pid).unwrap();
+    client.reactivate_policy(&policy_owner, &pid);
 
     let mut found = false;
     for (_cid, topics, data) in env.events().all() {
@@ -441,9 +442,7 @@ fn set_external_ref_emits_external_ref_updated_event() {
     let pid = create_health_policy(&env, &client, &policy_owner);
 
     let new_ref = SorobanString::from_str(&env, "EXTREF-42");
-    client
-        .set_external_ref(&contract_owner, &pid, &Some(new_ref.clone()))
-        .unwrap();
+    client.set_external_ref(&contract_owner, &pid, &Some(new_ref.clone()));
 
     let mut found = false;
     for (_cid, topics, data) in env.events().all() {
@@ -479,16 +478,12 @@ fn set_external_ref_clear_emits_event_with_none() {
     let pid = create_health_policy(&env, &client, &policy_owner);
 
     // Set first, then clear.
-    client
-        .set_external_ref(
-            &contract_owner,
-            &pid,
-            &Some(SorobanString::from_str(&env, "INITIAL")),
-        )
-        .unwrap();
-    client
-        .set_external_ref(&contract_owner, &pid, &None)
-        .unwrap();
+    client.set_external_ref(
+        &contract_owner,
+        &pid,
+        &Some(SorobanString::from_str(&env, "INITIAL")),
+    );
+    client.set_external_ref(&contract_owner, &pid, &None);
 
     let mut found_clear = false;
     for (_cid, topics, data) in env.events().all() {
@@ -578,14 +573,12 @@ fn all_lifecycle_events_use_insurance_namespace() {
     client.pay_premium(&policy_owner, &pid);
     client.deactivate_policy(&policy_owner, &pid);
     env.ledger().with_mut(|l| l.timestamp += 86_401);
-    client.reactivate_policy(&policy_owner, &pid).unwrap();
-    client
-        .set_external_ref(
-            &contract_owner,
-            &pid,
-            &Some(SorobanString::from_str(&env, "REF")),
-        )
-        .unwrap();
+    client.reactivate_policy(&policy_owner, &pid);
+    client.set_external_ref(
+        &contract_owner,
+        &pid,
+        &Some(SorobanString::from_str(&env, "REF")),
+    );
 
     let insurance_ns = symbol_short!("insurance");
     let mut lifecycle_variants_seen: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);

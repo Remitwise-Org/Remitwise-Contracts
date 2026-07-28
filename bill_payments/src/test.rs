@@ -3918,6 +3918,8 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
 
+        let now = 12_345_678u64;
+        env.ledger().set_timestamp(now);
         client.set_pause_admin(&admin, &admin);
 
         assert_eq!(client.get_paused_since(), None);
@@ -3925,8 +3927,6 @@ mod testsuit {
         assert!(!initial_state.paused);
         assert_eq!(initial_state.paused_since, None);
 
-        let now = 12_345_678u64;
-        env.ledger().set_timestamp(now);
         client.pause(&admin);
 
         assert_eq!(client.get_paused_since(), Some(now));

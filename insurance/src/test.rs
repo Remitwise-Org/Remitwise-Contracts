@@ -5,9 +5,6 @@ mod tests {
     use std::format;
 
     use crate::*;
-    use alloc::format;
-    use alloc::string::String as StdString;
-    use core::fmt::Write;
     use remitwise_common::CoverageType;
     use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env, String, Vec};
 
@@ -1467,6 +1464,7 @@ mod tests {
             &CoverageType::Health,
             &5_000_000i128,
             &50_000_000i128,
+            &None,
         );
         assert!(id > 0, "first policy creation from zero must succeed");
     }
@@ -1499,6 +1497,7 @@ mod tests {
                 &CoverageType::Health,
                 &5_000_000i128,
                 &50_000_000i128,
+                &None,
             )
             .unwrap_err()
             .unwrap(),
@@ -1535,6 +1534,7 @@ mod tests {
                 &CoverageType::Health,
                 &5_000_000i128,
                 &50_000_000i128,
+                &None,
             )
             .unwrap_err()
             .unwrap(),
@@ -1559,6 +1559,7 @@ mod tests {
             &CoverageType::Health,
             &5_000_000i128,
             &50_000_000i128,
+            &None,
         );
         assert_eq!(pid, 1);
 
@@ -1584,6 +1585,7 @@ mod tests {
                 &CoverageType::Health,
                 &5_000_000i128,
                 &50_000_000i128,
+                &None,
             )
             .unwrap_err()
             .unwrap(),
@@ -1601,6 +1603,7 @@ mod tests {
             &CoverageType::Health,
             &5_000_000i128,
             &50_000_000i128,
+            &None,
         );
         assert!(
             new_id > pid,
@@ -1629,6 +1632,7 @@ mod tests {
                 &CoverageType::Health,
                 &premium,
                 &10_000i128,
+                &None,
             );
         }
 
@@ -1659,6 +1663,7 @@ mod tests {
             &CoverageType::Health,
             &5_000_000i128,
             &50_000_000i128,
+            &None,
         );
 
         // Pre-fill the rest of the global active index to MAX_POLICIES.
@@ -1684,6 +1689,7 @@ mod tests {
                 &CoverageType::Health,
                 &5_000_000i128,
                 &50_000_000i128,
+                &None,
             )
             .unwrap_err()
             .unwrap(),
