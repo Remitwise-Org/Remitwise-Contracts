@@ -17,6 +17,7 @@ Shared types, constants, and utilities used across all Remitwise Soroban smart c
 - Tag canonicalisation and validation
 - **Symbol canonicalisation:** `canonicalise_symbol`, `canonicalise_symbol_checked`, `canonicalise_symbols` — trim, casefold, charset validation
 - Encoding stability tests
+- **Required config:** `require_env_var` — read required instance-storage config with a clear `EnvVarError::Missing`
 
 ## Quickstart
 
@@ -111,6 +112,24 @@ require_ledger_seq_monotonic(&env, prev_seq_baseline)
 See [`docs/PERIOD_INVARIANTS.md`](../docs/PERIOD_INVARIANTS.md) and
 [`docs/LEDGER_MONOTONICITY.md`](../docs/LEDGER_MONOTONICITY.md) for the
 full specifications and recommended call-site patterns.
+
+### Required config (`require_env_var`)
+
+Generic helper for reading a **required** per-contract configuration value from
+instance storage. Returns `Err(EnvVarError::Missing)` when the key is absent
+instead of silently defaulting. Accepts any Soroban-storable type
+(`bool`, `u32`, `i128`, `Address`, …). Closes `#1143`.
+
+```rust,ignore
+use remitwise_common::{require_env_var, EnvVarError};
+use soroban_sdk::{symbol_short, panic_with_error};
+
+let max: i128 = require_env_var(&env, &symbol_short!("MAX_AMNT"))
+    .unwrap_or_else(|e| panic_with_error!(&env, e));
+```
+
+See [`docs/require-env-var.md`](../docs/require-env-var.md) for the full
+API, usage patterns, and test coverage.
 
 ### Category
 
