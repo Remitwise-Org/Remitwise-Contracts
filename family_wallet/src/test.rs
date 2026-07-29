@@ -3525,7 +3525,8 @@ fn test_too_many_signers_rejected() {
 
     let owner = Address::generate(&env);
 
-    // Create 101 members (exceeds MAX_SIGNERS = 100)
+    // Create 101 members — far beyond MAX_SIGNERS (= 20; the boundary
+    // itself is pinned by test_signer_cap_boundary_* below).
     let mut members = Vec::new(&env);
     let mut signers = Vec::new(&env);
     for _ in 0..101 {
@@ -8079,4 +8080,64 @@ fn test_archive_integrity_rejects_mismatched_tx_id() {
     // Archive with a cutoff well after executed_at so the corrupted entry
     // would be eligible for archiving — triggering the integrity check.
     client.archive_old_transactions(&owner, &10_000);
+}
+
+// ─── Issue #1615 – pin the signer cap at its exact boundary ──────────────────
+
+/// Exactly MAX_SIGNERS (20) signers is permitted: the cap is inclusive.
+#[test]
+fn test_signer_cap_boundary_at_max_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let mut members = Vec::new(&env);
+    let mut signers = Vec::new(&env);
+    for _ in 0..20 {
+        let addr = Address::generate(&env);
+        members.push_back(addr.clone());
+        signers.push_back(addr);
+    }
+    client.init(&owner, &members);
+
+    let result = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+    assert_eq!(result, Ok(Ok(true)), "exactly MAX_SIGNERS must be accepted");
+}
+
+/// MAX_SIGNERS + 1 (21) signers is rejected with the typed `TooManySigners`
+/// error — the explicit failure mode one past the boundary, not just the
+/// far-past case covered by `test_too_many_signers_rejected`.
+#[test]
+fn test_signer_cap_boundary_one_over_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let mut members = Vec::new(&env);
+    let mut signers = Vec::new(&env);
+    for _ in 0..21 {
+        let addr = Address::generate(&env);
+        members.push_back(addr.clone());
+        signers.push_back(addr);
+    }
+    client.init(&owner, &members);
+
+    let result = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &1000_0000000,
+    );
+    assert_eq!(result, Err(Ok(Error::TooManySigners)));
 }
