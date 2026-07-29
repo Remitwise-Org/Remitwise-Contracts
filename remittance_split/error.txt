@@ -1,0 +1,30 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/zeus/projects/Remitwise-Contracts-man/orchestrator/Cargo.toml
+workspace: /home/zeus/projects/Remitwise-Contracts-man/Cargo.toml
+warning: unused imports: `IntoVal`, `Val`, and `Vec`
+ --> remittance_split/src/test.rs:6:19
+  |
+6 | ...v, IntoVal, Symbol, TryFromVal, Val, Vec,
+  |       ^^^^^^^                      ^^^  ^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `remittance_split` (lib test) generated 1 warning (run `cargo fix --lib -p remittance_split --tests` to apply 1 suggestion)
+    Checking remittance_split v0.1.0 (/home/zeus/projects/Remitwise-Contracts-man/remittance_split)
+error[E0425]: cannot find value `nonce` in this scope
+  --> remittance_split/tests/gas_bench.rs:62:68
+   |
+60 |     let _nonce = 0u64;
+   |         ------ `_nonce` defined here
+61 |     let (cpu, mem, distributed) = measure(&env, || {
+62 |         client.distribute_usdc(&token_contract.address(), &payer, &nonce, &accounts, &amount)
+   |                                                                    ^^^^^
+   |
+help: the leading underscore in `_nonce` marks it as unused, consider renaming it to `nonce`
+   |
+60 -     let _nonce = 0u64;
+60 +     let nonce = 0u64;
+   |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `remittance_split` (test "gas_bench") due to 1 previous error
