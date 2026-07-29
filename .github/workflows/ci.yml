@@ -198,6 +198,17 @@ jobs:
 
         '
       continue-on-error: true
+  cross-contract-invariants:
+    name: Cross-Contract Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+    - name: Verify cross-contract invariants
+      run: 'python3 scripts/verify_cross_contract_invariants.py
+        '
+      continue-on-error: true
   storage-key-validation:
     name: Storage Key Naming Convention Validation
     runs-on: macos-latest
