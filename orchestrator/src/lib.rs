@@ -1358,6 +1358,24 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Guard that rejects calls while any operation is in progress.
+    ///
+    /// Returns `ExecutionLocked` when the execution lock (`EXEC_LOCK`) is held,
+    /// indicating a pending operation has not yet completed.  Callers should use
+    /// this as a pre-condition before entering mutating logic that must not
+    /// overlap with an in-flight remittance or reward-claim flow.
+    ///
+    /// This is a read-only check that does **not** acquire the lock — it mirrors
+    /// the pre-lock check already performed by the public entrypoints and lets
+    /// internal helpers and future callers express the same constraint uniformly.
+    fn require_no_pending_ops(env: &Env) -> Result<(), OrchestratorError> {
+        let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
+        if is_locked {
+            return Err(OrchestratorError::ExecutionLocked);
+        }
+        Ok(())
+    }
+
     fn acquire_execution_lock(env: &Env) -> Result<LockGuard, OrchestratorError> {
         let is_locked: bool = env.storage().instance().get(&EXEC_LOCK).unwrap_or(false);
         if is_locked {

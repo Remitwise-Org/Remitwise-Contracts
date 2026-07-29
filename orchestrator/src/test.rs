@@ -1862,3 +1862,63 @@ fn test_split_negative_allocation_returns_invalid_amount_and_releases_lock() {
     // the lock is released, confirming we exited cleanly before execution.
     assert!(!client.get_execution_state());
 }
+
+// ---------------------------------------------------------------------------
+// `require_no_pending_ops` guard tests (Issue #1108)
+// ---------------------------------------------------------------------------
+
+/// When no execution lock is held, `require_no_pending_ops` returns `Ok(())`
+/// and does not mutate any storage.
+#[test]
+fn test_require_no_pending_ops_succeeds_when_no_pending_ops() {
+    let (env, owner) = setup_test();
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Before the call, the lock must not be held.
+    assert!(!client.get_execution_state());
+
+    // Invoke the guard directly on the contract.
+    let result = env.as_contract(&orchestrator_id, || {
+        Orchestrator::require_no_pending_ops(&env)
+    });
+
+    assert_eq!(
+        result,
+        Ok(()),
+        "require_no_pending_ops must return Ok when no ops are pending"
+    );
+
+    // Lock state remains unchanged — this is a read-only guard.
+    assert!(!client.get_execution_state());
+}
+
+/// When the execution lock IS held (a pending op is in flight),
+/// `require_no_pending_ops` returns `ExecutionLocked` without mutating
+/// storage.
+#[test]
+fn test_require_no_pending_ops_rejects_when_pending_ops_exist() {
+    let (env, owner) = setup_test();
+    let (orchestrator_id, client) = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    // Manually set the execution lock to simulate a pending operation.
+    env.as_contract(&orchestrator_id, || {
+        env.storage().instance().set(&EXEC_LOCK, &true);
+    });
+    assert!(client.get_execution_state());
+
+    // The guard must reject when a pending op is in flight.
+    let result = env.as_contract(&orchestrator_id, || {
+        Orchestrator::require_no_pending_ops(&env)
+    });
+
+    assert_eq!(
+        result,
+        Err(OrchestratorError::ExecutionLocked),
+        "require_no_pending_ops must return ExecutionLocked when ops are pending"
+    );
+
+    // Lock is still held — the guard is read-only.
+    assert!(client.get_execution_state());
+}
