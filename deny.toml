@@ -1,0 +1,79 @@
+[graph]
+targets = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "Apache-2.0 WITH LLVM-exception",
+    "Unicode-3.0",
+]
+
+[licenses.private]
+ignore = true
+
+[[licenses.clarify]]
+crate = "bill_payments"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "data_migration"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "family_wallet"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "insurance"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "orchestrator"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "remittance_split"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "remitwise-common"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "remitwise-contracts"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "reporting"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "savings_goals"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "testutils"
+expression = "MIT"
+license-files = []
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+yanked = "deny"
+ignore = [
+    "RUSTSEC-2025-0141", # bincode unmaintained
+    "RUSTSEC-2024-0436", # paste unmaintained
+]

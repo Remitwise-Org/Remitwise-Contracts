@@ -1,0 +1,8 @@
+[package]
+name = "yanked_fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "=1.0.95", features = ["derive"] }

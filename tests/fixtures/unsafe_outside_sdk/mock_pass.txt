@@ -1,0 +1,9 @@
+Functions  Expressions  Impls  Traits  Methods  Dependency
+
+0/0        0/0          0/0    0/0     0/0      [ ] remittance_split
+0/0        0/0          0/0    0/0     0/0      [ ] savings_goals
+0/0        0/0          0/0    0/0     0/0      [ ] bill_payments
+0/0        0/0          0/0    0/0     0/0      [ ] insurance
+0/0        0/0          0/0    0/0     0/0      [ ] family_wallet
+0/0        0/0          0/0    0/0     0/0      [ ] orchestrator
+10/10      5/5          0/0    0/0     0/0      [!] soroban-sdk
