@@ -1,0 +1,683 @@
+# Architecture Overview
+
+## System Architecture
+
+The Remitwise Contracts suite implements a comprehensive financial management system on the Stellar network using Soroban smart contracts. The architecture follows a modular design with clear separation of concerns and integrated data flow.
+
+## Contract Relationships
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   Remittance   │────│   Bill Payments │
+│     Split      │    │                 │
+│                 │    └─────────────────┘
+└─────────┬───────┘             │
+          │                     │
+          │                     │
+          v                     v
+┌─────────────────┐    ┌─────────────────┐
+│  Savings Goals  │    │    Insurance    │
+│                 │    │                 │
+└─────────────────┘    └─────────────────┘
+          │                     │
+          │                     │
+          └──────────┬──────────┘
+                     │
+                     v
+            ┌─────────────────┐
+            │    Reporting    │
+            │   (Aggregator)  │
+            └─────────────────┘
+                     │
+                     ▼
+            ┌─────────────────┐
+            │ remitwise-common│
+            │   (Shared Lib)  │
+            └─────────────────┘
+```
+
+## Shared Components
+
+The `remitwise-common` crate provides shared types, enums, and utilities used across multiple contracts:
+
+- **Category**: Financial allocation categories (Spending, Savings, Bills, Insurance)
+- **FamilyRole**: Access control roles for family wallet management
+- **CoverageType**: Insurance policy coverage types
+- **EventCategory/EventPriority**: Standardized event logging
+- **Constants**: Pagination limits, storage TTL values, batch sizes
+- **Utilities**: Event emission helpers, limit validation functions
+
+## Data Flow Architecture
+
+### Remittance Processing Flow
+
+```
+Incoming Remittance
+        │
+        ▼
+┌─────────────────┐
+│ Remittance Split│  Calculate allocation percentages
+│   Contract      │  [spending, savings, bills, insurance]
+└───────┬─────────┘
+        │
+        ├─────────────┐
+        │             │
+        ▼             ▼
+┌─────────────┐ ┌─────────────┐
+│Savings Goals│ │Bill Payments│
+│             │ │             │
+└─────────────┘ └──────┬──────┘
+                       │
+                       ▼
+              ┌─────────────┐
+              │  Insurance  │
+              │             │
+              └─────────────┘
+```
+
+## Contract Details
+
+### 1. Remittance Split Contract
+
+**Purpose:** Central allocation engine for incoming remittances
+
+**Key Features:**
+
+- Percentage-based fund allocation
+- Owner-controlled configuration
+- Backward-compatible storage
+- Event-driven audit trail
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── CONFIG: SplitConfig { owner, percentages, initialized }
+├── SPLIT: Vec<u32> [spending, savings, bills, insurance]
+```
+
+**Relationships:**
+
+- **Provides:** Allocation ratios to other contracts
+- **Consumes:** None (entry point for remittances)
+
+### 2. Bill Payments Contract
+
+**Purpose:** Manage recurring and one-time bill payments
+
+**Key Features:**
+
+- Bill creation with due dates
+- Payment tracking and status
+- Recurring bill automation
+- Overdue bill identification
+- Optional external reference IDs for off-chain linkage
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── BILLS: Map<u32, Bill>
+├── NEXT_ID: u32
+├── ARCH_BILL: Map<u32, ArchivedBill>
+├── STOR_STAT: StorageStats
+```
+
+**Relationships:**
+
+- **Provides:** Bill payment tracking
+- **Consumes:** Allocation amounts from Remittance Split
+- **Integrates:** With Insurance for premium bills
+
+### 3. Insurance Contract
+
+**Purpose:** Insurance policy management and premium tracking
+
+**Key Features:**
+
+- Policy creation and activation
+- Monthly premium scheduling
+- Payment tracking
+- Policy deactivation
+- Optional external reference IDs for off-chain linkage
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── POLICIES: Map<u32, InsurancePolicy>
+├── NEXT_ID: u32
+├── ARCH_POL: Map<u32, ArchivedPolicy>
+├── STOR_STAT: StorageStats
+```
+
+**Relationships:**
+
+- **Provides:** Insurance premium amounts
+- **Consumes:** Allocation amounts from Remittance Split
+- **Integrates:** With Bill Payments for premium tracking
+
+### 4. Savings Goals Contract
+
+**Purpose:** Goal-based savings management
+
+**Key Features:**
+
+- Goal creation with targets
+- Fund addition/withdrawal
+- Goal locking mechanism
+- Progress tracking
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── GOALS: Map<u32, SavingsGoal>
+├── NEXT_ID: u32
+├── ARCH_GOAL: Map<u32, ArchivedGoal>
+├── STOR_STAT: StorageStats
+```
+
+**Relationships:**
+
+- **Provides:** Savings allocation management
+- **Consumes:** Allocation amounts from Remittance Split
+
+### 5. Reporting Contract
+
+**Purpose:** Cross-contract data aggregation and comprehensive financial reporting
+
+**Key Features:**
+
+- Cross-contract data queries
+- Financial health score calculation
+- Multiple report types (remittance, savings, bills, insurance)
+- Trend analysis and period comparisons
+- Report storage and retrieval
+- Category-wise breakdowns
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── ADMIN: Address
+├── ADDRS: ContractAddresses
+├── REPORTS: Map<(Address, u64), FinancialHealthReport>
+├── ARCH_RPT: Map<(Address, u64), ArchivedReport>
+├── STOR_STAT: StorageStats
+```
+
+**Relationships:**
+
+- **Provides:** Aggregated financial insights and reports
+- **Consumes:** Data from all other contracts via cross-contract calls
+- **Integrates:** With remittance_split, savings_goals, bill_payments, insurance, family_wallet
+
+### 6. Orchestrator Contract
+
+**Purpose:** Cross-contract remittance coordinator with signed (meta-transaction) and unsigned entrypoints
+
+**Key Features:**
+
+- Atomic multi-contract fan-out (spending check → split → savings/bills/insurance)
+- Signed flow with nonce replay protection, deadline window, and request-hash binding
+- `EXEC_LOCK` reentrancy guard held across the entire fan-out
+- Best-effort compensation on partial failure in the signed path
+
+**Signed payload and request hash:**
+
+The signed entrypoint `execute_remittance_flow_signed(executor, amount, nonce, deadline, request_hash)` binds these fields into `compute_request_hash`:
+
+| Field | Source |
+|-------|--------|
+| `operation` | Fixed symbol `flow` |
+| `nonce` | Caller-supplied sequential counter |
+| `amount` | Caller-supplied remittance total |
+| `deadline` | Caller-supplied ledger timestamp upper bound |
+| `goal_id` | Instance storage `GOAL_ID` (default `1` at init) |
+| `bill_id` | Instance storage `BILL_ID` (default `1` at init) |
+| `policy_id` | Instance storage `POL_ID` (default `1` at init) |
+
+Relayers must read the current execution parameter IDs from contract storage before signing. If an owner updates these IDs, previously signed authorizations become invalid (`InvalidNonce`) unless re-signed with the new IDs.
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── OWNER: Address
+├── FW_ADDR / RS_ADDR / SG_ADDR / BP_ADDR / INS_ADDR: dependency addresses
+├── GOAL_ID / BILL_ID / POL_ID: execution parameter defaults for signed flow
+├── EXEC_LOCK: bool
+├── NONCES: Map<Address, u64>
+├── USED_N: Map<Address, Vec<u64>>
+├── STATS: ExecutionStats
+└── AUDIT: Vec<AuditEntry>
+```
+
+**Relationships:**
+
+- **Provides:** Unified remittance execution for automation/relayers
+- **Consumes:** family_wallet, remittance_split, savings_goals, bill_payments, insurance
+
+## Integration Patterns
+
+### Automated Remittance Processing
+
+```rust
+fn process_remittance(env: Env, user: Address, amount: i128) {
+    // 1. Calculate allocations
+    let allocations = remittance_split::calculate_split(env, amount);
+
+    // 2. Allocate to savings
+    savings_goals::add_to_goal(env, user, primary_goal, allocations[1]);
+
+    // 3. Create bill payments
+    bill_payments::create_bill(env, user, "Monthly Bills", allocations[2], due_date, false, 0, None);
+
+    // 4. Pay insurance premiums
+    insurance::pay_premium(env, user, active_policy);
+}
+```
+
+### Cross-Contract Queries
+
+```rust
+fn get_financial_overview(env: Env, user: Address) -> FinancialOverview {
+    let unpaid_bills = bill_payments::get_total_unpaid(env, user);
+    let monthly_premium = insurance::get_total_monthly_premium(env, user);
+    let savings_goals = savings_goals::get_all_goals(env, user);
+    let split_config = remittance_split::get_config(env);
+
+    FinancialOverview {
+        unpaid_bills,
+        monthly_premium,
+        savings_goals,
+        split_config,
+    }
+}
+```
+
+### Reporting Integration
+
+The Reporting contract aggregates data from all contracts:
+
+```rust
+fn generate_financial_health_report(env: Env, user: Address) -> FinancialHealthReport {
+    // Query remittance split configuration
+    let split_client = RemittanceSplitClient::new(&env, &split_address);
+    let split_config = split_client.get_split(&env);
+
+    // Query savings progress
+    let savings_client = SavingsGoalsClient::new(&env, &savings_address);
+    let goals = savings_client.get_all_goals(user.clone());
+
+    // Query bill compliance
+    let bill_client = BillPaymentsClient::new(&env, &bills_address);
+    let unpaid_bills = bill_client.get_unpaid_bills(user.clone());
+
+    // Query insurance coverage
+    let insurance_client = InsuranceClient::new(&env, &insurance_address);
+    let policies = insurance_client.get_active_policies(user);
+
+    // Calculate health score and generate report
+    calculate_health_score_and_report(split_config, goals, unpaid_bills, policies)
+}
+```
+
+## Security Architecture
+
+### Access Control
+
+- **Owner Authorization:** All operations require owner signature
+- **Contract Isolation:** Each user has isolated data
+- **Input Validation:** Comprehensive parameter validation
+- **State Consistency:** Atomic operations prevent inconsistent states
+
+### Storage Security
+
+- **TTL Management:** Automatic storage cleanup
+- **Instance Storage:** Efficient data organization
+- **Event Logging:** Complete audit trail
+- **Panic Handling:** Fail-fast on invalid operations
+
+### Migration Payload Guardrails
+
+The `data_migration` crate applies bounded import/export rules so migration endpoints fail fast on oversized requests instead of spending unbounded CPU or memory on serialization work.
+
+- `MAX_MIGRATION_PAYLOAD_BYTES = 65,536` bytes for canonical payload JSON, CSV exports, and decrypted payload bodies
+- `MAX_MIGRATION_RECORDS = 1,024` logical records per migration payload
+- `MAX_MIGRATION_SNAPSHOT_BYTES = 98,304` bytes for serialized JSON and binary snapshot envelopes before deserialization
+- `MAX_ENCRYPTED_PAYLOAD_BYTES = 87,384` bytes for base64-encoded encrypted payload imports
+
+Record counting is payload-specific:
+
+- `RemittanceSplit` snapshots count as `1` record
+- `SavingsGoals` snapshots count `goals.len()`
+- `Generic` snapshots count top-level map entries
+
+Security assumptions:
+
+1. Import handlers reject oversized JSON and binary envelopes before `serde_json` or `bincode` deserialization, reducing denial-of-service exposure from large request bodies.
+2. CSV imports are bounded by both total byte size and row count, so large tabular migrations must be chunked across multiple requests.
+3. Checksum validation uses canonical JSON bytes, with generic map keys sorted before hashing, so checksum verification stays deterministic across export/import cycles.
+4. Operators needing larger migrations should split them off-chain into multiple bounded snapshots rather than increasing on-chain limits.
+
+## Event Architecture
+
+### Event Naming Conventions
+
+All event topics and storage keys follow standardized naming conventions documented in:
+
+- **Full Conventions**: [`docs/naming-conventions.md`](docs/naming-conventions.md)
+- **Quick Reference**: [`docs/naming-quick-reference.md`](docs/naming-quick-reference.md)
+- **Audit & Action Plan**: [`docs/naming-audit-action-plan.md`](docs/naming-audit-action-plan.md)
+
+**Key Principles**:
+
+- Event topics: lowercase, max 8 characters, past tense for actions
+- Storage keys: UPPERCASE, underscores for multi-word, max 8 characters
+- Event enums: PascalCase, descriptive names
+
+### Event Types
+
+```
+Bill Payments Events:
+├── Namespace: "bills"
+├── BillEvent::Created
+├── BillEvent::Paid
+├── BillEvent::ExternalRefUpdated
+
+Insurance Events:
+├── Namespace: "insure"
+├── InsuranceEvent::PolicyCreated
+├── InsuranceEvent::PremiumPaid
+├── InsuranceEvent::PolicyDeactivated
+├── InsuranceEvent::ExternalRefUpdated
+
+Remittance Split Events:
+├── Namespace: "split"
+├── SplitEvent::Initialized
+├── SplitEvent::Updated
+├── SplitEvent::Calculated
+
+Savings Goals Events:
+├── Namespace: "savings"
+├── SavingsEvent::GoalCreated
+├── SavingsEvent::FundsAdded
+├── SavingsEvent::FundsWithdrawn
+├── SavingsEvent::GoalCompleted
+├── SavingsEvent::GoalLocked
+├── SavingsEvent::GoalUnlocked
+
+Reporting Events:
+├── Namespace: "report"
+├── ReportEvent::ReportGenerated
+├── ReportEvent::ReportStored
+├── ReportEvent::AddressesConfigured
+```
+
+### Event Flow
+
+```
+User Action → Contract Function → State Change → Event Emission → Off-chain Processing
+```
+
+### Event Publication Pattern
+
+```rust
+// Standard pattern used across all contracts
+env.events().publish(
+    (symbol_short!("<namespace>"), EventEnum::Variant),
+    event_data
+);
+
+// Example from Savings Goals
+env.events().publish(
+    (symbol_short!("savings"), SavingsEvent::GoalCreated),
+    (goal_id, owner)
+);
+```
+
+## Scalability Considerations
+
+### Storage Optimization
+
+- **Instance Storage:** Used for frequently accessed data
+- **TTL Extension:** Prevents storage bloat
+- **Efficient Maps:** O(1) access patterns
+- **Minimal Data Duplication:** Shared storage keys
+- **Tiered TTL Strategy:** Active data (~30 days), archived data (~180 days)
+- **Data Archival:** Completed/inactive records moved to compressed archive storage
+- **Bulk Cleanup:** Functions to permanently delete old archives
+- **Storage Monitoring:** `StorageStats` struct tracks active/archived counts in all contracts
+
+### Data Archival System
+
+Each contract implements a comprehensive archival system:
+
+```
+Active Storage                    Archive Storage
+├── GOALS (Map<u32, SavingsGoal>)  → ARCH_GOAL (Map<u32, ArchivedGoal>)
+├── BILLS (Map<u32, Bill>)         → ARCH_BILL (Map<u32, ArchivedBill>)
+├── POLICIES (Map<u32, Policy>)    → ARCH_POL (Map<u32, ArchivedPolicy>)
+├── PEND_TXS (Map<u64, PendingTx>) → ARCH_TX (Map<u64, ArchivedTransaction>)
+└── REPORTS (Map<(Addr,u64), Rpt>) → ARCH_RPT (Map<(Addr,u64), ArchivedReport>)
+```
+
+**Archival Flow:**
+
+1. Archive functions move completed/inactive records to archive storage
+2. Archived records use compressed structs with essential fields only
+3. Archive storage uses longer TTL (6 months) for cost efficiency
+4. Cleanup functions permanently delete old archives when no longer needed
+5. Restore functions can move archived records back to active storage
+
+**Archived Data Compression:**
+
+- `ArchivedGoal`: Removes `locked`, `target_date` (no longer relevant)
+- `ArchivedBill`: Removes `due_date`, `recurring`, `frequency_days`, `created_at`
+- `ArchivedPolicy`: Removes `monthly_premium`, `coverage_amount`, `next_payment_date`
+- `ArchivedTransaction`: Stores only `tx_id`, `tx_type`, `proposer`, timestamps
+- `ArchivedReport`: Stores only `user`, `period_key`, `health_score`, timestamps
+
+### Performance Patterns
+
+- **Batch Operations:** Minimize cross-contract calls
+- **Caching:** Client-side caching of configurations
+- **Pagination:** For large result sets
+- **Async Processing:** Event-driven architecture
+
+## Operational Limits and Monitoring
+
+### `u32` ID Usage and Overflow Analysis
+
+Contracts using monotonic `u32` IDs:
+
+- `bill_payments`: `BILLS` map + `NEXT_ID`
+- `insurance`: `POLICIES` map + `NEXT_ID`
+- `savings_goals`: `GOALS` map + `NEXT_ID`
+
+Current create paths use `NEXT_ID + 1`. At `u32::MAX` (`4,294,967,295`), the next create attempt overflows and reverts.
+
+Overflow behavior rationale:
+
+- Repository release profile sets `overflow-checks = true` in root `Cargo.toml`.
+- With overflow checks enabled, increment overflow traps/reverts rather than silently wrapping.
+- Operationally, this is safer than wraparound, but still creates a hard stop for new records once max ID is reached.
+
+### Practical Count Limits (Recommended)
+
+Although `u32` allows billions of IDs, practical limits are much lower because several read methods scan `1..=NEXT_ID`:
+
+- `bill_payments`: `get_unpaid_bills`, `get_overdue_bills`, `get_all_bills`
+- `insurance`: `get_active_policies`
+- `savings_goals`: `get_all_goals`
+
+Recommended operational caps:
+
+| Contract          |   Per-user recommended max | Per-contract recommended max (`NEXT_ID`) | Rationale                                                                                    |
+| ----------------- | -------------------------: | ---------------------------------------: | -------------------------------------------------------------------------------------------- |
+| `bill_payments`   |          2,000 bills/owner |                                   20,000 | Multiple scan-heavy reads; canceled bills leave ID gaps so scan cost still tracks `NEXT_ID`. |
+| `insurance`       |         500 policies/owner |                                   15,000 | Active-policy queries scan full ID range; deactivated policies still consume IDs.            |
+| `savings_goals`   |          1,000 goals/owner |                                   20,000 | Owner list path scans full ID range.                                                         |
+| `family_wallet`\* | 50 members, 500 pending tx |                       N/A (`u64` tx IDs) | Numeric overflow is not a practical concern; cap to control operational complexity.          |
+
+\* `family_wallet` transaction IDs are `u64` (`NEXT_TX`), not `u32`.
+
+### Monitoring Recommendations
+
+Track per deployed contract:
+
+1. `NEXT_ID` value and growth rate.
+2. `NEXT_ID` vs active records (gap ratio), especially where cancellations/removals exist.
+3. Per-owner record distribution (top-N owners) from off-chain indexing.
+4. Failure/latency trends for scan-heavy read methods.
+5. Create-path revert rates, especially near caps.
+
+Alert thresholds:
+
+- Warning: 70% of recommended contract max.
+- Critical: 90% of recommended contract max.
+- Absolute overflow safety warning: `NEXT_ID >= 3,500,000,000`.
+
+### Operational Response When Limits Are Approaching
+
+1. Apply off-chain admission control for new creates (global and per-owner caps).
+2. Route new records to a fresh deployment shard before query performance degrades.
+3. Prioritize migration of highest-volume owners.
+4. Plan API/storage evolution (pagination and owner-indexed iteration) before raising caps.
+
+## Error Handling
+
+### Error Propagation
+
+```
+Contract Function
+    ├── Success → Return Result
+    ├── Validation Error → Panic with message
+    ├── Access Error → Panic with message
+    └── Storage Error → Panic with message
+```
+
+### Standardized Error Codes (issue #336)
+
+All contracts use `#[contracterror]` enums with sequential integer codes starting at 1. This enables
+consistent error handling for indexers, frontends, and cross-contract calls.
+
+#### InsuranceError
+
+| Code | Variant            | Description                       |
+| ---- | ------------------ | --------------------------------- |
+| 1    | `PolicyNotFound`   | Policy ID does not exist          |
+| 2    | `Unauthorized`     | Caller is not the policy owner    |
+| 3    | `InvalidAmount`    | Premium or coverage amount ≤ 0    |
+| 4    | `PolicyInactive`   | Policy has been deactivated       |
+| 5    | `ContractPaused`   | Contract-wide pause is active     |
+| 6    | `FunctionPaused`   | Specific function is paused       |
+| 7    | `InvalidTimestamp` | Provided timestamp is invalid     |
+| 8    | `BatchTooLarge`    | Batch exceeds MAX_BATCH_SIZE (50) |
+
+#### BillPaymentsError
+
+| Code | Variant                 | Description                                  |
+| ---- | ----------------------- | -------------------------------------------- |
+| 1    | `BillNotFound`          | Bill ID does not exist                       |
+| 2    | `BillAlreadyPaid`       | Bill has already been paid                   |
+| 3    | `InvalidAmount`         | Amount ≤ 0                                   |
+| 4    | `InvalidFrequency`      | Recurring frequency is invalid               |
+| 5    | `Unauthorized`          | Caller is not the bill owner                 |
+| 6    | `ContractPaused`        | Contract-wide pause is active                |
+| 7    | `UnauthorizedPause`     | Caller cannot pause contract                 |
+| 8    | `FunctionPaused`        | Specific function is paused                  |
+| 9    | `BatchTooLarge`         | Batch exceeds MAX_BATCH_SIZE (50)            |
+| 10   | `BatchValidationFailed` | One or more bills in batch failed validation |
+| 11   | `InvalidLimit`          | Page limit out of range                      |
+| 12   | `InvalidDueDate`        | Due date is 0 or in the past                 |
+| 13   | `InvalidTag`            | Tag string is empty or invalid               |
+| 14   | `EmptyTags`             | Tag filter list is empty                     |
+
+#### SavingsGoalsError
+
+| Code | Variant               | Description                        |
+| ---- | --------------------- | ---------------------------------- |
+| 1    | `InvalidAmount`       | Amount ≤ 0                         |
+| 2    | `GoalNotFound`        | Goal ID does not exist             |
+| 3    | `Unauthorized`        | Caller is not the goal owner       |
+| 4    | `GoalLocked`          | Goal is locked or time-locked      |
+| 5    | `InsufficientBalance` | Withdrawal exceeds current balance |
+| 6    | `Overflow`            | Arithmetic overflow detected       |
+
+#### RemittanceSplitError
+
+| Code | Variant                    | Description                           |
+| ---- | -------------------------- | ------------------------------------- |
+| 1    | `AlreadyInitialized`       | Contract has already been initialized |
+| 2    | `NotInitialized`           | Contract CONFIG has not been set      |
+| 3    | `PercentagesDoNotSumTo100` | Split percentages must sum to 100     |
+| 4    | `InvalidAmount`            | Amount ≤ 0                            |
+| 5    | `Overflow`                 | Arithmetic overflow detected          |
+| 6    | `Unauthorized`             | Caller is not the contract owner      |
+| 7    | `InvalidNonce`             | Nonce has already been used           |
+| 8    | `UnsupportedVersion`       | Contract version mismatch             |
+| 9    | `ChecksumMismatch`         | Snapshot checksum verification failed |
+| 10   | `InvalidDueDate`           | Schedule due date is 0 or invalid     |
+| 11   | `ScheduleNotFound`         | Schedule ID does not exist            |
+
+## Testing Architecture
+
+### Unit Tests
+
+Each contract includes comprehensive unit tests covering:
+
+- Happy path scenarios
+- Error conditions
+- Edge cases
+- Integration scenarios
+
+### Integration Tests
+
+Cross-contract functionality testing:
+
+- Remittance processing workflows
+- Multi-contract state consistency
+- Event emission verification
+- Access control validation
+
+## Deployment Architecture
+
+### Network Deployment
+
+```
+Development → Testnet → Mainnet
+     │           │         │
+     ├── Unit Tests       │
+     └── Integration Tests└── Production Monitoring
+```
+
+### Contract Dependencies
+
+```
+Remittance Split ← Bill Payments
+Remittance Split ← Insurance
+Remittance Split ← Savings Goals
+All Contracts ← Reporting (read-only queries)
+```
+
+No circular dependencies ensure clean deployment order. The Reporting contract should be deployed last after all other contracts are deployed and their addresses are known.
+
+## Future Extensibility
+
+### Contract Extensions
+
+- **Multi-currency support**
+- **Advanced scheduling**
+- **Automated payments**
+- **Reporting dashboards**
+- **Third-party integrations**
+
+### Architecture Evolution
+
+- **Plugin system** for custom allocation rules
+- **Sub-contracts** for specialized functionality
+- **Cross-chain bridges** for multi-network support
+- **Governance mechanisms** for protocol upgrades
