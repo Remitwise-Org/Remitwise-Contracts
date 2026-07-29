@@ -9,7 +9,6 @@ Cargo.lock
 ci-test.ps1
 test-ci-local.ps1
 test-ci-local.sh
-Makefile
 
 # Documentation files
 *.md
