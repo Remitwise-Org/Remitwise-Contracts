@@ -3,6 +3,7 @@
 
 use soroban_sdk::{
     contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol,
+    TryFromVal, Val,
 };
 pub mod tokens;
 pub use tokens::{
@@ -599,6 +600,48 @@ pub fn require_registered_operator(env: &Env, caller: &Address) -> Result<(), Op
         return Err(OperatorError::NotRegistered);
     }
     Ok(())
+}
+
+/// Error for missing required environment/configuration variable.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum EnvVarError {
+    /// The requested configuration value is not set in instance storage.
+    Missing = 100,
+}
+
+/// Reads a required configuration value from the contract's instance storage.
+///
+/// This is the generic counterpart to the typed `require_*` helpers and is
+/// intended for per-contract optional configuration values that are set
+/// once at initialisation and read via the Soroban environment. If the key
+/// is absent a clear `EnvVarError::Missing` is returned instead of silently
+/// defaulting.
+///
+/// # Type Parameters
+///
+/// * `T` — The expected value type. Must implement `TryFromVal<Env, Val>` so
+///   that any Soroban-storable type (bool, u32, i128, Address, etc.) works.
+///
+/// # Arguments
+///
+/// * `env` - The Soroban environment.
+/// * `key` - The storage key to look up (typically a `Symbol` from
+///   `symbol_short!` or a `Symbol::new`).
+///
+/// # Returns
+///
+/// * `Ok(T)` if the value exists in instance storage.
+/// * `Err(EnvVarError::Missing)` if the key is absent.
+pub fn require_env_var<T>(env: &Env, key: &Symbol) -> Result<T, EnvVarError>
+where
+    T: TryFromVal<Env, Val>,
+{
+    env.storage()
+        .instance()
+        .get::<Symbol, T>(key)
+        .ok_or(EnvVarError::Missing)
 }
 
 /// Rate limit error
@@ -2074,7 +2117,6 @@ where
 pub fn same_address(a: &Address, b: &Address) -> bool {
     a == b
 }
-
 
 pub mod events;
 pub mod reversible_op;

@@ -2241,22 +2241,122 @@ fn test_same_address_symmetric() {
 
 #[test]
 fn test_require_registered_operator_success() {
+    use soroban_sdk::testutils::Address as _;
     let env = Env::default();
-    let caller = Address::generate(&env);
-    
-    // Register the operator
-    env.storage().instance().set(&symbol_short!("OPERATOR"), &true);
-    
-    let result = require_registered_operator(&env, &caller);
-    assert_eq!(result, Ok(()));
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let caller = soroban_sdk::Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&symbol_short!("OPERATOR"), &true);
+
+        let result = require_registered_operator(&env, &caller);
+        assert_eq!(result, Ok(()));
+    });
 }
 
 #[test]
 fn test_require_registered_operator_fails_if_missing() {
+    use soroban_sdk::testutils::Address as _;
     let env = Env::default();
-    let caller = Address::generate(&env);
-    
-    // Missing operator registration
-    let result = require_registered_operator(&env, &caller);
-    assert_eq!(result, Err(OperatorError::NotRegistered));
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let caller = soroban_sdk::Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        // Missing operator registration - no storage has been set
+        let result = require_registered_operator(&env, &caller);
+        assert_eq!(result, Err(OperatorError::NotRegistered));
+    });
+}
+
+// ============================================================================
+// require_env_var tests
+// ============================================================================
+
+#[test]
+fn test_require_env_var_u32_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key = symbol_short!("VERSION");
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&key, &42u32);
+
+        let result: Result<u32, EnvVarError> = require_env_var(&env, &key);
+        assert_eq!(result, Ok(42u32));
+    });
+}
+
+#[test]
+fn test_require_env_var_bool_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key = symbol_short!("IS_ACTV");
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&key, &true);
+
+        let result: Result<bool, EnvVarError> = require_env_var(&env, &key);
+        assert_eq!(result, Ok(true));
+    });
+}
+
+#[test]
+fn test_require_env_var_missing() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key = symbol_short!("NOKEY");
+
+    env.as_contract(&contract_id, || {
+        // No storage set for key - should be missing
+        let result: Result<bool, EnvVarError> = require_env_var(&env, &key);
+        assert_eq!(result, Err(EnvVarError::Missing));
+    });
+}
+
+#[test]
+fn test_require_env_var_i128_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key = symbol_short!("MAX_AMNT");
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&key, &1000i128);
+
+        let result: Result<i128, EnvVarError> = require_env_var(&env, &key);
+        assert_eq!(result, Ok(1000i128));
+    });
+}
+
+#[test]
+fn test_require_env_var_address_success() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key = symbol_short!("CONTRACT");
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&key, &contract_id);
+
+        let result: Result<Address, EnvVarError> = require_env_var(&env, &key);
+        assert_eq!(result, Ok(contract_id.clone()));
+    });
+}
+
+#[test]
+fn test_require_env_var_different_key_same_env() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let key_a = symbol_short!("KEY_A");
+    let key_b = symbol_short!("KEY_B");
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&key_a, &10u32);
+
+        let result_a: Result<u32, EnvVarError> = require_env_var(&env, &key_a);
+        assert_eq!(result_a, Ok(10u32));
+
+        let result_b: Result<u32, EnvVarError> = require_env_var(&env, &key_b);
+        assert_eq!(result_b, Err(EnvVarError::Missing));
+    });
 }
