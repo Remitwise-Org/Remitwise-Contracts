@@ -1683,7 +1683,7 @@ impl RemittanceSplit {
         Self::require_nonce_hardened(&env, &from, nonce, deadline, request_hash, expected_hash)?;
 
         // 9. Calculate split amounts and execute transfers.
-        let amounts = Self::calculate_split_amounts(&env, total_amount, false)?;
+        let amounts = Self::calculate_split_amounts(&env, &config, total_amount, false)?;
         let token = TokenClient::new(&env, &usdc_contract);
 
         if amounts[0] > 0 {
@@ -1826,7 +1826,7 @@ impl RemittanceSplit {
         Self::require_nonce(&env, &request.from, request.nonce)?;
 
         // Calculate split amounts
-        let amounts = Self::calculate_split_amounts(&env, request.total_amount, false)?;
+        let amounts = Self::calculate_split_amounts(&env, &config, request.total_amount, false)?;
         let token = TokenClient::new(&env, &request.usdc_contract);
 
         // Execute transfers
@@ -2552,8 +2552,14 @@ impl RemittanceSplit {
     ///   allocation is computed.
     /// - [`RemittanceSplitError::Overflow`] — any `checked_mul` or `checked_sub` step fails;
     ///   returned immediately before any partial allocation value is produced.
+    /// Takes `config` by reference rather than re-reading `CONFIG` from
+    /// storage (as `Self::get_split(env)` would) -- every caller already
+    /// has it loaded for owner/token validation, so re-fetching the same
+    /// instance-storage entry a second time within the same call was a
+    /// redundant read of the fee/split table for no reason.
     fn calculate_split_amounts(
         env: &Env,
+        config: &SplitConfig,
         total_amount: i128,
         emit_events: bool,
     ) -> Result<[i128; 4], RemittanceSplitError> {
@@ -2561,25 +2567,18 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        let split = Self::get_split(env);
-        let s0 = match split.get(0) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s1 = match split.get(1) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s2 = match split.get(2) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
+        let s0 = config
+            .spending_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
+        let s1 = config
+            .savings_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
+        let s2 = config
+            .bills_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
 
         let spending = total_amount
             .checked_mul(s0)
@@ -3328,6 +3327,35 @@ mod tests {
             client.get_usdc_balance(&token_contract.address(), &spending),
             500
         );
+    }
+
+    #[test]
+    fn calculate_split_amounts_does_not_re_read_config_from_storage() {
+        // calculate_split_amounts takes `config` by parameter instead of
+        // calling Self::get_split(env) (which re-reads CONFIG from instance
+        // storage) -- distribute_usdc / distribute_usdc_hashed already have
+        // it loaded for owner/token validation before calling this, and the
+        // old internal re-fetch cost an extra storage read per call for no
+        // reason. Proof: this contract is never initialized (no CONFIG
+        // entry exists in storage at all here), yet the calculation still
+        // produces the correct split purely from the config passed in.
+        let env = Env::default();
+        let owner = Address::generate(&env);
+        let usdc_contract = Address::generate(&env);
+        let config = SplitConfig {
+            owner,
+            spending_percent: 5000,
+            savings_percent: 3000,
+            bills_percent: 1500,
+            insurance_percent: 500,
+            timestamp: 0,
+            initialized: true,
+            usdc_contract,
+        };
+
+        let amounts = RemittanceSplit::calculate_split_amounts(&env, &config, 1000, false).unwrap();
+
+        assert_eq!(amounts, [500, 300, 150, 50]);
     }
 
     /// Returns the `Symbol` topic prefix (the first element of the topic
