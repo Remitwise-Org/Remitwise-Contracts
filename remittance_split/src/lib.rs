@@ -24,7 +24,29 @@ pub struct AccountGroup {
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
-/// Split configuration with owner tracking for access control
+/// Split configuration with owner tracking for access control.
+///
+/// ## How the split is computed
+///
+/// There is no separate platform "fee" charged on top of a remittance --
+/// the four percentages below (which must sum to exactly 100, enforced in
+/// both `initialize_split` and `update_split`) *are* the fee schedule: each
+/// category's share of `total_amount` is computed in `calculate_split` as
+/// `total_amount * percent / 100`, using integer (truncating) division for
+/// `spending`, `savings`, and `bills`. `insurance` deliberately does **not**
+/// use that same formula -- it takes whatever is left over
+/// (`total_amount - spending - savings - bills`) so the four amounts always
+/// sum back to exactly `total_amount` with no stroop lost to truncation.
+///
+/// ## Where it's stored
+///
+/// Persisted in **instance storage** under two keys, both written together
+/// on every `initialize_split`/`update_split` call and sharing one TTL:
+/// - `CONFIG: SplitConfig` -- the source of truth, including `owner`.
+/// - `SPLIT: Vec<u32>` -- just the four percentages, kept in sync with
+///   `CONFIG` for callers that only need `get_split`'s cheaper read. It
+///   predates `CONFIG` and is retained for backward compatibility; new
+///   code should prefer `get_config` when it needs the owner too.
 #[derive(Clone)]
 #[contracttype]
 pub struct SplitConfig {
@@ -302,7 +324,7 @@ impl RemittanceSplit {
         ];
 
         let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
+        for (category, amount) in categories.into_iter().zip(amounts) {
             result.push_back(Allocation { category, amount });
         }
         result
