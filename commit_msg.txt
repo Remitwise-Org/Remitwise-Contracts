@@ -1,0 +1,27 @@
+fix: resolve all CI build and lint failures
+
+Fixes 3 failing CI checks (Build and Test, Validate and Build,
+Lint unwrap/expect ban):
+
+remitwise-common:
+- Remove duplicate `SymbolError` enum definition (E0428)
+- Fix `require_valid_symbol_length` to use `sym.into_val(env)`
+- Add missing `verify_no_dust`, `MAX_TOP_N`, `require_bounded_top_n`
+
+insurance:
+- Add `Copy` derive to `InsuranceEvent` (required by #[contracttype])
+- Wrap `PolicyPage` return in `Ok()` for `get_active_policies`
+
+family_wallet:
+- Add missing imports: STROOPS_PER_XLM, SNAPSHOT_KEY, SNAPSHOT_VERSION
+- Fix undeclared `count` variable in `batch_remove_family_members`
+
+remittance_split:
+- Fix corridor error discriminant conflicts (use 35-38 not 31-34)
+
+reporting:
+- Add `TopNTooLarge = 11` variant to `ReportingError`
+
+emergency_killswitch:
+- Rename `require_matching_kill_switch_epoch` → `require_killswitch_epoch`
+  (34 chars exceeds Soroban's 32-char entry point name limit)

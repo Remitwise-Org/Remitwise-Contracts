@@ -67,3 +67,32 @@ fn test_notification_flow() {
 
     std::println!("✅ Payment Event Verified");
 }
+
+#[test]
+fn test_create_bill_rejects_rebase_token_ampl() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let contract_id = e.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&e, &contract_id);
+
+    let user = Address::generate(&e);
+
+    // Attempting to create a bill with a rebase token (AMPL) must be rejected.
+    let result = client.try_create_bill(
+        &user,
+        &soroban_sdk::String::from_str(&e, "Electricity"),
+        &1000,
+        &1234567890,
+        &false,
+        &0,
+        &None,
+        &soroban_sdk::String::from_str(&e, "AMPL"),
+        &None,
+    );
+
+    assert_eq!(
+        result,
+        Err(Ok(bill_payments::BillPaymentsError::UnsupportedCurrency))
+    );
+}

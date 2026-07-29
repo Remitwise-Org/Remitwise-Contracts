@@ -1,4 +1,4 @@
-﻿#![no_std]
+#![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
 };
@@ -13,6 +13,7 @@ pub enum Error {
     LimitExceeded = 4,
     InvalidSchedule = 5,
     InvalidAdmin = 6,
+    EpochMismatch = 7,
 }
 
 #[contracttype]
@@ -20,9 +21,11 @@ pub enum Error {
 enum DataKey {
     Admin,
     GlobalPaused,
+    PausedSince,
     ModulePaused(Symbol),
     PausedFunctions(Symbol),
     UnpauseSchedule,
+    KillSwitchEpoch,
 }
 
 pub const MAX_PAUSED_FUNCTIONS: u32 = 10;
@@ -52,7 +55,87 @@ impl EmergencyKillswitch {
             return Err(Error::InvalidAdmin);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::KillSwitchEpoch, &0u64);
         Ok(())
+    }
+
+    /// Verify that the caller-supplied kill-switch epoch matches the current
+    /// epoch stored in the contract.
+    ///
+    /// This is a defence-in-depth check against replay of stale authorizations.
+    /// Without this guard, an actor who obtains a signed `transfer_admin`
+    /// payload from a previous epoch can replay it after the epoch has been
+    /// bumped by the contract admin, effectively holding on to stale authority.
+    ///
+    /// # Errors
+    /// - [`Error::EpochMismatch`] if the provided epoch does not match.
+    pub fn require_killswitch_epoch(env: Env, ep: u64) -> Result<(), Error> {
+        let current: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::KillSwitchEpoch)
+            .unwrap_or(0);
+        if ep != current {
+            return Err(Error::EpochMismatch);
+        }
+        Ok(())
+    }
+
+    /// Bump the kill-switch epoch to invalidate all prior authorizations.
+    ///
+    /// Only the current kill-switch admin may bump the epoch. After a bump,
+    /// any call to [`transfer_admin`] with an epoch value captured before
+    /// the bump will fail with [`Error::EpochMismatch`].
+    ///
+    /// # Threat mitigated
+    /// An attacker who obtains a stale signed authorization payload can replay
+    /// it indefinitely without an epoch check. Bumping the epoch atomically
+    /// invalidates every authorization created at or before the old epoch.
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("emergency"), symbol_short!("epch_bump"))` with
+    /// `(old_epoch, new_epoch)`.
+    ///
+    /// # Errors
+    /// - [`Error::NotInitialized`] if the contract has no admin.
+    /// - [`Error::Unauthorized`] if `caller` is not the admin.
+    /// - [`Error::Overflow`] if the epoch counter wraps (practically unreachable).
+    pub fn bump_kill_switch_epoch(env: Env, caller: Address) -> Result<u64, Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+        let old_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::KillSwitchEpoch)
+            .unwrap_or(0);
+        let new_epoch = old_epoch.checked_add(1).ok_or(Error::InvalidAdmin)?; // Overflow guard — saturate on wrap
+        env.storage()
+            .instance()
+            .set(&DataKey::KillSwitchEpoch, &new_epoch);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("epch_bump")),
+            (old_epoch, new_epoch),
+        );
+        Ok(new_epoch)
+    }
+
+    /// Return the current kill-switch epoch.
+    ///
+    /// No authentication required — the epoch is observable on-chain.
+    pub fn get_kill_switch_epoch(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::KillSwitchEpoch)
+            .unwrap_or(0)
     }
 
     /// Transfers admin authority to a new address.
@@ -60,9 +143,11 @@ impl EmergencyKillswitch {
     /// # Rejects
     /// - `new_admin` == contract own address (unrecoverable brick)
     /// - `new_admin` == current admin (no-op, to prevent accidental re-auth)
+    /// - `ep` does not match the current kill-switch epoch (stale authorization)
     ///
     /// Emits [AdminTransferred] on successful handover.
-    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+    pub fn transfer_admin(env: Env, new_admin: Address, ep: u64) -> Result<(), Error> {
+        Self::require_killswitch_epoch(env.clone(), ep)?;
         let admin: Address = env
             .storage()
             .instance()
@@ -99,10 +184,19 @@ impl EmergencyKillswitch {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::GlobalPaused, &true);
+        env.storage()
+            .instance()
+            .set(&DataKey::PausedSince, &env.ledger().timestamp());
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("paused")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -123,10 +217,17 @@ impl EmergencyKillswitch {
             return Err(Error::Unauthorized);
         }
         env.storage().instance().set(&DataKey::GlobalPaused, &false);
+        env.storage().instance().remove(&DataKey::PausedSince);
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("unpaused")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -157,10 +258,17 @@ impl EmergencyKillswitch {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::GlobalPaused, &false);
+        env.storage().instance().remove(&DataKey::PausedSince);
         env.storage().instance().remove(&DataKey::UnpauseSchedule);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("cleared")),
-            (symbol_short!("GLOBAL"), env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -186,6 +294,21 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::GlobalPaused)
             .unwrap_or(false)
+    }
+
+    pub fn get_paused_since(env: Env) -> Option<u64> {
+        if Self::is_paused(env.clone()) {
+            env.storage().instance().get(&DataKey::PausedSince)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_pause_state(env: Env) -> remitwise_common::PauseState {
+        remitwise_common::PauseState {
+            paused: Self::is_paused(env.clone()),
+            paused_since: Self::get_paused_since(env),
+        }
     }
 
     /// Returns the pending unpause timestamp set by `schedule_unpause`, or `None` if no unpause
@@ -246,8 +369,16 @@ impl EmergencyKillswitch {
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
             env.events().publish(
-                (symbol_short!("emergency"), symbol_short!("f_paused")),
-                (module_id, func, env.ledger().timestamp()),
+                (
+                    symbol_short!("emergency"),
+                    soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_F_PAUSED_V2),
+                ),
+                remitwise_common::events::FunctionPauseEvent {
+                    module_id: module_id.clone(),
+                    func: func.clone(),
+                    paused_at: env.ledger().timestamp(),
+                    paused_by: admin.clone(),
+                },
             );
         }
         Ok(())
@@ -271,8 +402,16 @@ impl EmergencyKillswitch {
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
             env.events().publish(
-                (symbol_short!("emergency"), symbol_short!("f_unpause")),
-                (module_id, func, env.ledger().timestamp()),
+                (
+                    symbol_short!("emergency"),
+                    soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_F_UNPAUSED_V2),
+                ),
+                remitwise_common::events::FunctionUnpauseEvent {
+                    module_id: module_id.clone(),
+                    func: func.clone(),
+                    unpaused_at: env.ledger().timestamp(),
+                    unpaused_by: admin.clone(),
+                },
             );
         }
         Ok(())
@@ -314,8 +453,15 @@ impl EmergencyKillswitch {
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &true);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("m_paused")),
-            (module_id, env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_M_PAUSED_V2),
+            ),
+            remitwise_common::events::ModulePauseEvent {
+                module_id: module_id.clone(),
+                paused_at: env.ledger().timestamp(),
+                paused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -331,8 +477,15 @@ impl EmergencyKillswitch {
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &false);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("m_unpause")),
-            (module_id, env.ledger().timestamp()),
+            (
+                symbol_short!("emergency"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_M_UNPAUSED_V2),
+            ),
+            remitwise_common::events::ModuleUnpauseEvent {
+                module_id: module_id.clone(),
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: admin.clone(),
+            },
         );
         Ok(())
     }
@@ -355,6 +508,27 @@ mod tests {
         (env, client)
     }
 
+    /// Assert that a `transfer_admin` call with the correct epoch succeeds.
+    fn assert_transfer_admin_succeeds(
+        client: &EmergencyKillswitchClient<'_>,
+        new_admin: &Address,
+        ep: u64,
+    ) {
+        let res = client.try_transfer_admin(new_admin, &ep);
+        assert_eq!(res, Ok(Ok(())));
+    }
+
+    /// Assert that a `transfer_admin` call fails with the expected error.
+    fn assert_transfer_admin_fails(
+        client: &EmergencyKillswitchClient<'_>,
+        new_admin: &Address,
+        ep: u64,
+        expected: Error,
+    ) {
+        let res = client.try_transfer_admin(new_admin, &ep);
+        assert_eq!(res, Err(Ok(expected)));
+    }
+
     /// transfer_admin before initialize returns NotInitialized.
     #[test]
     fn test_transfer_admin_before_init_returns_not_initialized() {
@@ -364,7 +538,7 @@ mod tests {
         let client = EmergencyKillswitchClient::new(&env, &contract_id);
         let new_admin = Address::generate(&env);
 
-        let res = client.try_transfer_admin(&new_admin);
+        let res = client.try_transfer_admin(&new_admin, &0);
         assert_eq!(res, Err(Ok(Error::NotInitialized)));
     }
 
@@ -376,8 +550,7 @@ mod tests {
 
         client.initialize(&admin);
 
-        let res = client.try_transfer_admin(&admin);
-        assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+        assert_transfer_admin_fails(&client, &admin, 0, Error::InvalidAdmin);
     }
 
     /// After a successful transfer, the new admin can pause and unpause,
@@ -389,7 +562,7 @@ mod tests {
         let new_admin = Address::generate(&env);
 
         client.initialize(&admin);
-        client.transfer_admin(&new_admin);
+        assert_transfer_admin_succeeds(&client, &new_admin, 0);
 
         // New admin can pause
         client.pause();
@@ -411,7 +584,7 @@ mod tests {
         let new_admin = Address::generate(&env);
 
         client.initialize(&admin);
-        client.transfer_admin(&new_admin);
+        assert_transfer_admin_succeeds(&client, &new_admin, 0);
 
         client.pause_module(&symbol_short!("insurance"));
         assert!(client.is_module_paused(&symbol_short!("insurance")));
@@ -430,8 +603,8 @@ mod tests {
         let admin_c = Address::generate(&env);
 
         client.initialize(&admin_a);
-        client.transfer_admin(&admin_b);
-        client.transfer_admin(&admin_c);
+        assert_transfer_admin_succeeds(&client, &admin_b, 0);
+        assert_transfer_admin_succeeds(&client, &admin_c, 0);
 
         // Admin C can pause
         client.pause();
@@ -450,8 +623,38 @@ mod tests {
         client.initialize(&admin);
 
         // transfer_admin to the contract's own address
-        let res = client.try_transfer_admin(&contract_id);
+        let res = client.try_transfer_admin(&contract_id, &0);
         assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+    }
+
+    #[test]
+    fn test_paused_since_and_pause_state() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        assert_eq!(client.get_paused_since(), None);
+        let initial_state = client.get_pause_state();
+        assert!(!initial_state.paused);
+        assert_eq!(initial_state.paused_since, None);
+
+        let now = 1_000_000u64;
+        env.ledger().with_mut(|li| li.timestamp = now);
+        client.pause();
+
+        assert_eq!(client.get_paused_since(), Some(now));
+        let paused_state = client.get_pause_state();
+        assert!(paused_state.paused);
+        assert_eq!(paused_state.paused_since, Some(now));
+
+        client.schedule_unpause(&(now + 100));
+        env.ledger().with_mut(|li| li.timestamp = now + 200);
+        client.unpause();
+
+        assert_eq!(client.get_paused_since(), None);
+        let unpaused_state = client.get_pause_state();
+        assert!(!unpaused_state.paused);
+        assert_eq!(unpaused_state.paused_since, None);
     }
 
     /// Verify DataKey::Admin value is updated by checking a second transfer
@@ -464,11 +667,121 @@ mod tests {
         let admin_c = Address::generate(&env);
 
         client.initialize(&admin);
-        client.transfer_admin(&admin_b);
+        assert_transfer_admin_succeeds(&client, &admin_b, 0);
         // A→B succeeded. Now B→C should also succeed, proving B is stored.
-        client.transfer_admin(&admin_c);
+        assert_transfer_admin_succeeds(&client, &admin_c, 0);
         // C can pause, proving C is now admin
         client.pause();
         assert!(client.is_paused());
+    }
+
+    // ── Kill-switch epoch guard tests ─────────────────────────────────────
+
+    /// A transfer with a wrong epoch returns EpochMismatch.
+    #[test]
+    fn test_transfer_admin_wrong_epoch_rejected() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        // Epoch 0 is the default, so providing epoch 1 should fail.
+        assert_transfer_admin_fails(&client, &new_admin, 1, Error::EpochMismatch);
+    }
+
+    /// After bumping the epoch, a transfer with the old epoch is rejected.
+    #[test]
+    fn test_stale_epoch_rejected_after_bump() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        // Bump the epoch to 1
+        let new_epoch = client.bump_kill_switch_epoch(&admin);
+        assert_eq!(new_epoch, 1);
+
+        // Transfer with old epoch 0 should now fail
+        assert_transfer_admin_fails(&client, &new_admin, 0, Error::EpochMismatch);
+
+        // Transfer with new epoch 1 should succeed
+        assert_transfer_admin_succeeds(&client, &new_admin, 1);
+    }
+
+    /// get_kill_switch_epoch returns the current epoch.
+    #[test]
+    fn test_get_kill_switch_epoch_after_initialize() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // After init the epoch must be 0
+        let ep = client.get_kill_switch_epoch();
+        assert_eq!(ep, 0);
+    }
+
+    /// get_kill_switch_epoch returns 0 before initialize (default, no storage).
+    #[test]
+    fn test_get_kill_switch_epoch_before_initialize() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let ep = client.get_kill_switch_epoch();
+        assert_eq!(ep, 0);
+    }
+
+    /// require_killswitch_epoch passes with correct epoch.
+    #[test]
+    fn test_require_killswitch_epoch_ok() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let res = client.try_require_killswitch_epoch(&0);
+        assert_eq!(res, Ok(Ok(())));
+    }
+
+    /// require_killswitch_epoch fails with wrong epoch.
+    #[test]
+    fn test_require_killswitch_epoch_fails() {
+        let (env, client) = setup_env();
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let res = client.try_require_killswitch_epoch(&42);
+        assert_eq!(res, Err(Ok(Error::EpochMismatch)));
+    }
+
+    /// bump_kill_switch_epoch requires initialization.
+    #[test]
+    fn test_bump_kill_switch_epoch_not_initialized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let caller = Address::generate(&env);
+
+        let res = client.try_bump_kill_switch_epoch(&caller);
+        assert_eq!(res, Err(Ok(Error::NotInitialized)));
+    }
+
+    /// bump_kill_switch_epoch requires the admin caller argument to match the stored admin.
+    #[test]
+    fn test_bump_kill_switch_epoch_unauthorized_caller() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let stranger = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        // Authorize the stranger to pass require_auth, but it should still fail
+        // because caller != admin
+        let res = client.try_bump_kill_switch_epoch(&stranger);
+        assert_eq!(res, Err(Ok(Error::Unauthorized)));
     }
 }

@@ -1,5 +1,5 @@
 use soroban_sdk::xdr::LedgerInfo;
-use testutils::set_ledger_time;
+use testutils::{same_address, set_ledger_time};
 
 // Mock contracts for testing
 mod remittance_split {
@@ -256,8 +256,8 @@ fn test_configure_addresses_succeeds() {
     let addresses = client.get_addresses();
     assert!(addresses.is_some());
     let addrs = addresses.unwrap();
-    assert_eq!(addrs.remittance_split, remittance_split);
-    assert_eq!(addrs.savings_goals, savings_goals);
+    assert!(same_address(&addrs.remittance_split, &remittance_split));
+    assert!(same_address(&addrs.savings_goals, &savings_goals));
 }
 
 #[test]

@@ -61,6 +61,7 @@ use std::collections::{BTreeMap, HashMap};
 const ENCRYPTED_PAYLOAD_PREFIX_V1: &str = "enc:v1:";
 
 /// Format: `enc:v2:<base64>` — future version placeholder with stricter size cap.
+#[cfg(test)]
 const ENCRYPTED_PAYLOAD_PREFIX_V2: &str = "enc:v2:";
 
 /// Current encrypted payload schema version.
@@ -407,7 +408,7 @@ impl ExportSnapshot {
 
     /// Check if snapshot version is supported for import.
     pub fn is_version_compatible(&self) -> bool {
-        self.header.version >= MIN_SUPPORTED_VERSION && self.header.version <= SCHEMA_VERSION
+        (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&self.header.version)
     }
 
     /// Validate payload size and logical record bounds.
@@ -568,17 +569,38 @@ fn validate_encrypted_payload_size(encoded_len: usize) -> Result<(), MigrationEr
 /// Migration/import errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
-    IncompatibleVersion { found: u32, min: u32, max: u32 },
-    UnsupportedEncryptedVersion { found: u32, max: u32 },
+    IncompatibleVersion {
+        found: u32,
+        min: u32,
+        max: u32,
+    },
+    UnsupportedEncryptedVersion {
+        found: u32,
+        max: u32,
+    },
     ChecksumMismatch,
     UnknownHashAlgorithm,
-    PayloadTooLarge { size: usize, max: usize },
-    SnapshotTooLarge { size: usize, max: usize },
-    TooManyRecords { count: usize, max: usize },
+    PayloadTooLarge {
+        size: usize,
+        max: usize,
+    },
+    SnapshotTooLarge {
+        size: usize,
+        max: usize,
+    },
+    TooManyRecords {
+        count: usize,
+        max: usize,
+    },
     InvalidFormat(String),
     ValidationFailed(String),
     DeserializeError(String),
     DuplicateImport,
+    /// Returned by [`verify_migration_completed`] when the caller attempts a write
+    /// operation before the migration has been explicitly marked complete via
+    /// [`MigrationTracker::mark_completed`]. This guard prevents partially-applied
+    /// migrations from being overwritten with live writes before they are finished.
+    MigrationNotCompleted,
 }
 
 impl std::fmt::Display for MigrationError {
@@ -623,6 +645,10 @@ impl std::fmt::Display for MigrationError {
             MigrationError::ValidationFailed(s) => write!(f, "validation failed: {}", s),
             MigrationError::DeserializeError(s) => write!(f, "deserialize error: {}", s),
             MigrationError::DuplicateImport => write!(f, "duplicate payload import detected"),
+            MigrationError::MigrationNotCompleted => write!(
+                f,
+                "migration not completed: write operations are not permitted until the migration is marked complete"
+            ),
         }
     }
 }
@@ -633,13 +659,36 @@ impl std::error::Error for MigrationError {}
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MigrationTracker {
     imported_payloads: HashMap<(String, u32), u64>,
+    /// Set to `true` after the operator explicitly calls `mark_completed`.
+    /// [`verify_migration_completed`] checks this flag and returns
+    /// [`MigrationError::MigrationNotCompleted`] until it is set.
+    pub completed: bool,
 }
 
 impl MigrationTracker {
     pub fn new() -> Self {
         Self {
             imported_payloads: HashMap::new(),
+            completed: false,
         }
+    }
+
+    /// Mark the migration as fully applied and ready for live writes.
+    ///
+    /// Call this only after every import step has succeeded and the contract
+    /// state is in a coherent, fully-migrated condition. After this call,
+    /// [`verify_migration_completed`] will no longer return an error.
+    ///
+    /// This is intentionally separate from the last `mark_imported` call so
+    /// that multi-step migrations can import several snapshots before signalling
+    /// completion.
+    pub fn mark_completed(&mut self) {
+        self.completed = true;
+    }
+
+    /// Returns `true` if the migration has been marked complete.
+    pub fn is_completed(&self) -> bool {
+        self.completed
     }
 
     /// Mark a payload as imported.
@@ -669,6 +718,43 @@ impl MigrationTracker {
     pub fn unmark_imported_by_identity(&mut self, checksum: &str, version: u32) {
         let identity = (checksum.to_string(), version);
         self.imported_payloads.remove(&identity);
+    }
+}
+
+/// Check that a migration has been explicitly marked complete before allowing writes.
+///
+/// # Threat mitigated
+///
+/// Without this gate a contract could begin accepting live writes over a
+/// partially-applied migration, producing an inconsistent mix of migrated and
+/// un-migrated data. This is especially dangerous during a batched or
+/// multi-step migration that is interrupted mid-way: subsequent writes would
+/// silently land on top of an incomplete on-chain state, and the corruption
+/// would only surface when the missing records are referenced.
+///
+/// # Usage
+///
+/// Call this function at the top of every write entrypoint that operates on
+/// data that may be in the process of being migrated. If the `tracker` has not
+/// had [`MigrationTracker::mark_completed`] called on it, this function returns
+/// [`MigrationError::MigrationNotCompleted`] and the caller should propagate
+/// that error without performing any state mutation.
+///
+/// ```rust
+/// use data_migration::{MigrationTracker, verify_migration_completed};
+///
+/// fn some_write_entrypoint(tracker: &MigrationTracker, value: u32) -> Result<(), data_migration::MigrationError> {
+///     // Defence-in-depth: refuse writes until migration is marked complete.
+///     verify_migration_completed(tracker)?;
+///     // ... perform write ...
+///     Ok(())
+/// }
+/// ```
+pub fn verify_migration_completed(tracker: &MigrationTracker) -> Result<(), MigrationError> {
+    if tracker.is_completed() {
+        Ok(())
+    } else {
+        Err(MigrationError::MigrationNotCompleted)
     }
 }
 
@@ -879,7 +965,7 @@ pub fn import_from_encrypted_payload(encoded: &str) -> Result<Vec<u8>, Migration
     })?;
 
     // Check version compatibility
-    if version < MIN_SUPPORTED_ENCRYPTED_VERSION || version > MAX_SUPPORTED_ENCRYPTED_VERSION {
+    if !(MIN_SUPPORTED_ENCRYPTED_VERSION..=MAX_SUPPORTED_ENCRYPTED_VERSION).contains(&version) {
         return Err(MigrationError::UnsupportedEncryptedVersion {
             found: version,
             max: MAX_SUPPORTED_ENCRYPTED_VERSION,
@@ -1159,7 +1245,7 @@ struct CsvGoalRow {
 
 /// Version compatibility check for migration scripts.
 pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
-    if version >= MIN_SUPPORTED_VERSION && version <= SCHEMA_VERSION {
+    if (MIN_SUPPORTED_VERSION..=SCHEMA_VERSION).contains(&version) {
         Ok(())
     } else {
         Err(MigrationError::IncompatibleVersion {
@@ -1424,6 +1510,26 @@ mod tests {
         SavingsGoalsExport {
             next_id: count as u32,
             goals: (1..=count as u32).map(sample_goal).collect(),
+        }
+    }
+
+    /// Build a SavingsGoalsExport with minimal 1-char fields to keep JSON small.
+    /// Use this for record-count boundary tests where the goal is to hit the
+    /// record limit rather than the byte limit.
+    fn compact_goals_export(count: usize) -> SavingsGoalsExport {
+        SavingsGoalsExport {
+            next_id: count as u32,
+            goals: (1..=count as u32)
+                .map(|id| SavingsGoalExport {
+                    id,
+                    owner: "A".into(),
+                    name: "B".into(),
+                    target_amount: 1_000,
+                    current_amount: 100,
+                    target_date: 9_999_999,
+                    locked: false,
+                })
+                .collect(),
         }
     }
 
@@ -2121,11 +2227,11 @@ mod tests {
     fn test_encrypted_payload_unsupported_future_version_rejected() {
         let plain = b"test payload";
         let b64 = base64::engine::general_purpose::STANDARD.encode(plain);
-        let encoded = format!("enc:v2:{}", b64);
+        let encoded = format!("enc:v3:{}", b64);
         let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 2, max: 1 })
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 3, max: 2 })
         ));
     }
 
@@ -2137,7 +2243,7 @@ mod tests {
         let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 999, max: 1 })
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 999, max: 2 })
         ));
     }
 
@@ -2149,7 +2255,7 @@ mod tests {
         let result = import_from_encrypted_payload(&encoded);
         assert!(matches!(
             result,
-            Err(MigrationError::UnsupportedEncryptedVersion { found: 0, max: 1 })
+            Err(MigrationError::UnsupportedEncryptedVersion { found: 0, max: 2 })
         ));
     }
 
@@ -2306,7 +2412,10 @@ mod tests {
         let rb = RollbackMetadata::capture(Some(&prev), &attempted, 12_345);
 
         let description = rb.describe();
-        assert!(description.contains("12345"), "timestamp should appear: {description}");
+        assert!(
+            description.contains("12345"),
+            "timestamp should appear: {description}"
+        );
         assert!(
             description.contains(&prev.header.version.to_string()),
             "previous version should appear: {description}"
@@ -4308,5 +4417,663 @@ mod tests {
 
         assert_eq!(first.payload, second.payload);
         assert_eq!(first.header.checksum, second.header.checksum);
+    }
+
+    // --- RemittanceSplitExport specific migration tests ---
+
+    #[test]
+    fn test_remittance_split_export_import_happy_path() {
+        let payload = SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+            owner: "GABC...".into(),
+            spending_percent: 5000,
+            savings_percent: 3000,
+            bills_percent: 1500,
+            insurance_percent: 500,
+        });
+
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        assert!(snapshot.verify_checksum());
+
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let imported = import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+
+        assert_eq!(snapshot.payload, imported.payload);
+        assert!(tracker.is_imported(&imported));
+    }
+
+    #[test]
+    fn test_remittance_split_export_import_invalid_percentages() {
+        // Percentages sum to 9900 (invalid)
+        let payload = SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+            owner: "GABC...".into(),
+            spending_percent: 5000,
+            savings_percent: 3000,
+            bills_percent: 1400, // changed
+            insurance_percent: 500,
+        });
+
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        let result = import_from_json(&bytes, &mut tracker, 1_000);
+        assert!(matches!(result, Err(MigrationError::ValidationFailed(_))));
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn test_remittance_split_export_import_property_test(
+            owner in "\\PC*",
+            spending in 0..10000u32,
+            savings in 0..10000u32,
+            bills in 0..10000u32,
+        ) {
+            // Ensure sum <= 10000
+            let sum = spending as u64 + savings as u64 + bills as u64;
+            if sum > 10000 { return Ok(()); }
+            let insurance = 10000 - sum as u32;
+
+            let payload = SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
+                owner,
+                spending_percent: spending,
+                savings_percent: savings,
+                bills_percent: bills,
+                insurance_percent: insurance,
+            });
+
+            let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+            let bytes = export_to_json(&snapshot).unwrap();
+            let mut tracker = MigrationTracker::new();
+
+            let imported = import_from_json(&bytes, &mut tracker, 1_000).unwrap();
+            assert_eq!(snapshot.payload, imported.payload);
+        }
+    }
+
+    // ====================================================================
+    // SC-013: Pre-deserialization payload size / record bounds (DoS hardening)
+    //
+    // Every import entrypoint must reject oversized envelopes *before*
+    // calling serde_json, bincode, or csv. The tests below exercise each
+    // bound at its exact boundary value, one byte/record over, and one
+    // byte/record under, for every supported format and payload type.
+    //
+    // Constants under test
+    //   MAX_MIGRATION_SNAPSHOT_BYTES = 98,304  (JSON / binary envelope cap)
+    //   MAX_MIGRATION_PAYLOAD_BYTES  = 65,536  (canonical payload / CSV / enc plain cap)
+    //   MAX_MIGRATION_RECORDS        = 1,024   (logical record count per payload)
+    //   MAX_ENCRYPTED_PAYLOAD_BYTES  = prefix_len + base64(65,536) (enc envelope cap)
+    // ====================================================================
+
+    // ------------------------------------------------------------------
+    // JSON snapshot envelope: MAX_MIGRATION_SNAPSHOT_BYTES
+    // ------------------------------------------------------------------
+
+    /// Exactly at the limit is accepted (data may still fail deserialization,
+    /// but the size guard itself must not fire).
+    #[test]
+    fn test_json_import_at_snapshot_limit_passes_size_guard() {
+        // Build a buffer exactly MAX_MIGRATION_SNAPSHOT_BYTES. It won't be
+        // valid JSON, but the size guard runs first and must not reject it;
+        // the error variant must be DeserializeError, not SnapshotTooLarge.
+        let at_limit = vec![b' '; MAX_MIGRATION_SNAPSHOT_BYTES];
+        let result = import_from_json_untracked(&at_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::SnapshotTooLarge { .. })),
+            "size guard must not fire at the exact limit; got {result:?}"
+        );
+    }
+
+    /// One byte over the limit is rejected before deserialization.
+    #[test]
+    fn test_json_import_one_byte_over_snapshot_limit_rejected() {
+        let over_limit = vec![b' '; MAX_MIGRATION_SNAPSHOT_BYTES + 1];
+        let result = import_from_json_untracked(&over_limit);
+        assert!(
+            matches!(
+                result,
+                Err(MigrationError::SnapshotTooLarge {
+                    size,
+                    max: MAX_MIGRATION_SNAPSHOT_BYTES,
+                }) if size == MAX_MIGRATION_SNAPSHOT_BYTES + 1
+            ),
+            "one byte over the snapshot limit must be rejected with SnapshotTooLarge; got {result:?}"
+        );
+    }
+
+    /// One byte under the limit is accepted by the size guard.
+    #[test]
+    fn test_json_import_one_byte_under_snapshot_limit_passes_size_guard() {
+        let under_limit = vec![b' '; MAX_MIGRATION_SNAPSHOT_BYTES - 1];
+        let result = import_from_json_untracked(&under_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::SnapshotTooLarge { .. })),
+            "size guard must not fire one byte under the limit; got {result:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Binary snapshot envelope: MAX_MIGRATION_SNAPSHOT_BYTES
+    // ------------------------------------------------------------------
+
+    /// Exactly at the limit: size guard must not fire.
+    #[test]
+    fn test_binary_import_at_snapshot_limit_passes_size_guard() {
+        let at_limit = vec![0u8; MAX_MIGRATION_SNAPSHOT_BYTES];
+        let result = import_from_binary_untracked(&at_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::SnapshotTooLarge { .. })),
+            "size guard must not fire at the exact limit; got {result:?}"
+        );
+    }
+
+    /// One byte over: must be rejected before deserialization.
+    #[test]
+    fn test_binary_import_one_byte_over_snapshot_limit_rejected() {
+        let over_limit = vec![0u8; MAX_MIGRATION_SNAPSHOT_BYTES + 1];
+        let result = import_from_binary_untracked(&over_limit);
+        assert!(
+            matches!(
+                result,
+                Err(MigrationError::SnapshotTooLarge {
+                    size,
+                    max: MAX_MIGRATION_SNAPSHOT_BYTES,
+                }) if size == MAX_MIGRATION_SNAPSHOT_BYTES + 1
+            ),
+            "one byte over the snapshot limit must be rejected with SnapshotTooLarge; got {result:?}"
+        );
+    }
+
+    /// One byte under the limit: size guard must not fire.
+    #[test]
+    fn test_binary_import_one_byte_under_snapshot_limit_passes_size_guard() {
+        let under_limit = vec![0u8; MAX_MIGRATION_SNAPSHOT_BYTES - 1];
+        let result = import_from_binary_untracked(&under_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::SnapshotTooLarge { .. })),
+            "size guard must not fire one byte under the limit; got {result:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // CSV import: MAX_MIGRATION_PAYLOAD_BYTES (byte cap)
+    // ------------------------------------------------------------------
+
+    /// Exactly at the byte cap: size guard must not fire.
+    #[test]
+    fn test_csv_import_at_payload_byte_limit_passes_size_guard() {
+        let at_limit = vec![b'x'; MAX_MIGRATION_PAYLOAD_BYTES];
+        let result = import_goals_from_csv(&at_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::PayloadTooLarge { .. })),
+            "CSV size guard must not fire at the exact limit; got {result:?}"
+        );
+    }
+
+    /// One byte over the byte cap: must be rejected before parsing.
+    #[test]
+    fn test_csv_import_one_byte_over_payload_limit_rejected() {
+        let over_limit = vec![b'x'; MAX_MIGRATION_PAYLOAD_BYTES + 1];
+        assert_eq!(
+            import_goals_from_csv(&over_limit),
+            Err(MigrationError::PayloadTooLarge {
+                size: MAX_MIGRATION_PAYLOAD_BYTES + 1,
+                max: MAX_MIGRATION_PAYLOAD_BYTES,
+            }),
+            "one byte over the CSV payload limit must be rejected with PayloadTooLarge"
+        );
+    }
+
+    /// One byte under the byte cap: size guard must not fire.
+    #[test]
+    fn test_csv_import_one_byte_under_payload_limit_passes_size_guard() {
+        let under_limit = vec![b'x'; MAX_MIGRATION_PAYLOAD_BYTES - 1];
+        let result = import_goals_from_csv(&under_limit);
+        assert!(
+            !matches!(result, Err(MigrationError::PayloadTooLarge { .. })),
+            "CSV size guard must not fire one byte under the limit; got {result:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // CSV import: MAX_MIGRATION_RECORDS (record count cap)
+    // ------------------------------------------------------------------
+
+    /// Exactly at the record cap: import must succeed.
+    /// We use minimal 1-char fields to stay well within the byte cap.
+    #[test]
+    fn test_csv_import_exactly_at_record_limit_succeeds() {
+        // Build minimal CSV rows (each ~30 bytes) so that MAX_MIGRATION_RECORDS
+        // rows fit within MAX_MIGRATION_PAYLOAD_BYTES.
+        let mut csv =
+            String::from("id,owner,name,target_amount,current_amount,target_date,locked\n");
+        for i in 1..=(MAX_MIGRATION_RECORDS as u32) {
+            csv.push_str(&format!("{i},A,B,1000,100,9999999,false\n"));
+        }
+        // Verify this stays within the byte cap (sanity check for the test itself).
+        assert!(
+            csv.len() <= MAX_MIGRATION_PAYLOAD_BYTES,
+            "test CSV ({} bytes) must fit within payload cap ({}) — adjust fields if this trips",
+            csv.len(),
+            MAX_MIGRATION_PAYLOAD_BYTES,
+        );
+        let goals = import_goals_from_csv(csv.as_bytes()).unwrap();
+        assert_eq!(
+            goals.len(),
+            MAX_MIGRATION_RECORDS,
+            "exactly MAX_MIGRATION_RECORDS goals must be imported successfully"
+        );
+    }
+
+    /// One record over the cap: must be rejected with TooManyRecords.
+    #[test]
+    fn test_csv_import_one_record_over_limit_rejected() {
+        // Build raw CSV manually because export_to_csv enforces the same limit.
+        let mut csv =
+            String::from("id,owner,name,target_amount,current_amount,target_date,locked\n");
+        for i in 1..=(MAX_MIGRATION_RECORDS + 1) as u32 {
+            csv.push_str(&format!("{i},A,B,1000,100,9999999,false\n"));
+        }
+        assert!(
+            matches!(
+                import_goals_from_csv(csv.as_bytes()),
+                Err(MigrationError::TooManyRecords {
+                    count,
+                    max,
+                }) if count == MAX_MIGRATION_RECORDS + 1 && max == MAX_MIGRATION_RECORDS
+            ),
+            "one record over the cap must be rejected with TooManyRecords"
+        );
+    }
+
+    /// One record under the cap: import must succeed.
+    /// We use minimal 1-char fields to stay well within the byte cap.
+    #[test]
+    fn test_csv_import_one_record_under_limit_succeeds() {
+        let mut csv =
+            String::from("id,owner,name,target_amount,current_amount,target_date,locked\n");
+        for i in 1..=((MAX_MIGRATION_RECORDS - 1) as u32) {
+            csv.push_str(&format!("{i},A,B,1000,100,9999999,false\n"));
+        }
+        assert!(
+            csv.len() <= MAX_MIGRATION_PAYLOAD_BYTES,
+            "test CSV ({} bytes) must fit within payload cap ({})",
+            csv.len(),
+            MAX_MIGRATION_PAYLOAD_BYTES,
+        );
+        let goals = import_goals_from_csv(csv.as_bytes()).unwrap();
+        assert_eq!(
+            goals.len(),
+            MAX_MIGRATION_RECORDS - 1,
+            "one fewer than MAX_MIGRATION_RECORDS must be imported successfully"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Payload bounds via validate_payload_constraints:
+    // record count (SavingsGoals) — boundary testing
+    //
+    // MAX_MIGRATION_RECORDS and MAX_MIGRATION_PAYLOAD_BYTES are INDEPENDENT
+    // constraints. With compact goals (~110 bytes each as JSON) the byte limit
+    // fires before 1,024 records are reached. These tests therefore use a
+    // count that sits at the record boundary while confirming that:
+    //   (a) the TooManyRecords error fires for count > MAX_MIGRATION_RECORDS
+    //   (b) payloads with count < MAX_MIGRATION_RECORDS but large bytes fire
+    //       PayloadTooLarge instead
+    // ------------------------------------------------------------------
+
+    /// SavingsGoals with count one over MAX_MIGRATION_RECORDS must be rejected
+    /// with TooManyRecords regardless of byte size.
+    #[test]
+    fn test_savings_goals_one_over_record_limit_rejected_by_constraints() {
+        let payload =
+            SnapshotPayload::SavingsGoals(compact_goals_export(MAX_MIGRATION_RECORDS + 1));
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        assert!(
+            matches!(
+                snapshot.validate_payload_constraints(),
+                Err(MigrationError::TooManyRecords {
+                    count,
+                    max,
+                }) if count == MAX_MIGRATION_RECORDS + 1 && max == MAX_MIGRATION_RECORDS
+            ),
+            "one record over MAX_MIGRATION_RECORDS must be rejected by validate_payload_constraints"
+        );
+    }
+
+    /// Record count check fires first — before the byte check — when count is
+    /// over the limit even if each record is small enough to fit individually.
+    #[test]
+    fn test_savings_goals_record_count_check_fires_before_byte_check() {
+        // Construct a payload with count = MAX_MIGRATION_RECORDS + 1.
+        // With 1-char fields, the JSON will still exceed the byte cap as well,
+        // but the record check must fire FIRST because validate_payload_bounds
+        // checks record count before payload bytes.
+        let payload =
+            SnapshotPayload::SavingsGoals(compact_goals_export(MAX_MIGRATION_RECORDS + 1));
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        let err = snapshot.validate_payload_constraints().unwrap_err();
+        assert!(
+            matches!(err, MigrationError::TooManyRecords { .. }),
+            "TooManyRecords must fire before PayloadTooLarge when count exceeds limit; got {err:?}"
+        );
+    }
+
+    /// A small record set (well under both limits) must pass.
+    #[test]
+    fn test_savings_goals_small_count_under_both_limits_accepted() {
+        // 10 goals: trivially within both MAX_MIGRATION_RECORDS and MAX_MIGRATION_PAYLOAD_BYTES.
+        let payload = SnapshotPayload::SavingsGoals(compact_goals_export(10));
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        assert!(
+            snapshot.validate_payload_constraints().is_ok(),
+            "10 compact goals must pass both record-count and byte-size constraints"
+        );
+    }
+
+    /// A payload whose byte size exceeds the limit is rejected with PayloadTooLarge
+    /// even when its record count is well under MAX_MIGRATION_RECORDS.
+    #[test]
+    fn test_savings_goals_byte_limit_fires_independently_of_record_count() {
+        // Build one goal with a very large name that pushes the JSON over 64 KiB.
+        let large_goal = SavingsGoalExport {
+            id: 1,
+            owner: "A".into(),
+            name: "x".repeat(MAX_MIGRATION_PAYLOAD_BYTES), // single bloated field
+            target_amount: 1_000,
+            current_amount: 100,
+            target_date: 9_999_999,
+            locked: false,
+        };
+        let payload = SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+            next_id: 1,
+            goals: vec![large_goal],
+        });
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+        assert!(
+            matches!(
+                snapshot.validate_payload_constraints(),
+                Err(MigrationError::PayloadTooLarge { .. })
+            ),
+            "a single oversized goal must trigger PayloadTooLarge (record count is 1, not the issue)"
+        );
+    }
+
+    /// Generic snapshot at exactly MAX_MIGRATION_RECORDS entries must pass.
+    #[test]
+    fn test_generic_exactly_at_record_limit_accepted() {
+        let mut entries = BTreeMap::new();
+        for i in 0..MAX_MIGRATION_RECORDS {
+            entries.insert(format!("k{i}"), serde_json::json!(i).into());
+        }
+        let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+        assert!(
+            snapshot.validate_payload_constraints().is_ok(),
+            "exactly MAX_MIGRATION_RECORDS Generic entries must pass constraints"
+        );
+    }
+
+    /// Generic snapshot one entry over MAX_MIGRATION_RECORDS must be rejected.
+    #[test]
+    fn test_generic_one_over_record_limit_rejected() {
+        let mut entries = BTreeMap::new();
+        for i in 0..=(MAX_MIGRATION_RECORDS) {
+            entries.insert(format!("k{i}"), serde_json::json!(i).into());
+        }
+        let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+        assert_eq!(
+            snapshot.validate_payload_constraints(),
+            Err(MigrationError::TooManyRecords {
+                count: MAX_MIGRATION_RECORDS + 1,
+                max: MAX_MIGRATION_RECORDS,
+            }),
+            "one entry over MAX_MIGRATION_RECORDS in Generic must be rejected"
+        );
+    }
+
+    /// RemittanceSplit always counts as 1 record — must never hit record limit.
+    #[test]
+    fn test_remittance_split_record_count_is_always_one() {
+        let payload = sample_remittance_payload();
+        assert_eq!(
+            payload.record_count(),
+            1,
+            "RemittanceSplit payload must always report a record count of 1"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Encrypted payload: MAX_ENCRYPTED_PAYLOAD_BYTES (pre-decode check)
+    // and MAX_MIGRATION_PAYLOAD_BYTES (post-decode check)
+    // ------------------------------------------------------------------
+
+    /// Exactly at MAX_ENCRYPTED_PAYLOAD_BYTES: the pre-decode guard must not fire.
+    /// (The input is not valid base64, but that is a later check.)
+    #[test]
+    fn test_encrypted_import_at_encoded_limit_passes_size_guard() {
+        // Build a string exactly MAX_ENCRYPTED_PAYLOAD_BYTES long starting with enc:v1:
+        // so the marker check passes; the rest can be arbitrary (will fail base64 decode).
+        let prefix_len = ENCRYPTED_PAYLOAD_PREFIX_V1.len();
+        let padding_len = MAX_ENCRYPTED_PAYLOAD_BYTES - prefix_len;
+        let input = format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, "A".repeat(padding_len));
+        assert_eq!(input.len(), MAX_ENCRYPTED_PAYLOAD_BYTES);
+        let result = import_from_encrypted_payload(&input);
+        assert!(
+            !matches!(result, Err(MigrationError::PayloadTooLarge { size, .. }) if size == MAX_ENCRYPTED_PAYLOAD_BYTES),
+            "pre-decode size guard must not fire at exact limit; got {result:?}"
+        );
+    }
+
+    /// One byte over MAX_ENCRYPTED_PAYLOAD_BYTES: must be rejected before base64 decode.
+    #[test]
+    fn test_encrypted_import_one_byte_over_encoded_limit_rejected() {
+        let over_limit = "A".repeat(MAX_ENCRYPTED_PAYLOAD_BYTES + 1);
+        assert_eq!(
+            import_from_encrypted_payload(&over_limit),
+            Err(MigrationError::PayloadTooLarge {
+                size: MAX_ENCRYPTED_PAYLOAD_BYTES + 1,
+                max: MAX_ENCRYPTED_PAYLOAD_BYTES,
+            }),
+            "one byte over the encoded limit must be rejected with PayloadTooLarge"
+        );
+    }
+
+    /// One byte under MAX_ENCRYPTED_PAYLOAD_BYTES: the pre-decode guard must not fire.
+    #[test]
+    fn test_encrypted_import_one_byte_under_encoded_limit_passes_size_guard() {
+        let under = "A".repeat(MAX_ENCRYPTED_PAYLOAD_BYTES - 1);
+        let result = import_from_encrypted_payload(&under);
+        assert!(
+            !matches!(result, Err(MigrationError::PayloadTooLarge { size, .. }) if size == MAX_ENCRYPTED_PAYLOAD_BYTES - 1),
+            "pre-decode size guard must not fire one byte under the limit; got {result:?}"
+        );
+    }
+
+    /// Exactly at MAX_MIGRATION_PAYLOAD_BYTES decoded: must be accepted.
+    #[test]
+    fn test_encrypted_import_at_decoded_limit_accepted() {
+        let plain = vec![0u8; MAX_MIGRATION_PAYLOAD_BYTES];
+        let encoded = export_to_encrypted_payload(&plain).unwrap();
+        let result = import_from_encrypted_payload(&encoded);
+        assert!(
+            result.is_ok(),
+            "decoded payload at exact MAX_MIGRATION_PAYLOAD_BYTES must be accepted; got {result:?}"
+        );
+        assert_eq!(result.unwrap(), plain);
+    }
+
+    /// One byte over MAX_MIGRATION_PAYLOAD_BYTES decoded: must be rejected with PayloadTooLarge.
+    ///
+    /// This test constructs the oversized base64 manually without going through
+    /// export_to_encrypted_payload (which enforces the plain-bytes cap pre-encoding).
+    #[test]
+    fn test_encrypted_import_one_byte_over_decoded_limit_rejected() {
+        let plain = vec![0u8; MAX_MIGRATION_PAYLOAD_BYTES + 1];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&plain);
+        let encoded = format!("{}{}", ENCRYPTED_PAYLOAD_PREFIX_V1, b64);
+        // Sanity: the encoded form should still be within the pre-decode cap.
+        assert!(
+            encoded.len() <= MAX_ENCRYPTED_PAYLOAD_BYTES,
+            "sanity: encoded len {} must not exceed pre-decode cap {} for this test to be meaningful",
+            encoded.len(),
+            MAX_ENCRYPTED_PAYLOAD_BYTES,
+        );
+        assert_eq!(
+            import_from_encrypted_payload(&encoded),
+            Err(MigrationError::PayloadTooLarge {
+                size: MAX_MIGRATION_PAYLOAD_BYTES + 1,
+                max: MAX_MIGRATION_PAYLOAD_BYTES,
+            }),
+            "one byte over the decoded limit must be rejected with PayloadTooLarge"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Cross-format pre-deser check: TrackedImport helpers delegate to the
+    // same size guards as the untracked variants.
+    // ------------------------------------------------------------------
+
+    /// Tracked JSON import also enforces snapshot size pre-deserialization.
+    #[test]
+    fn test_tracked_json_import_rejects_oversized_snapshot() {
+        let over_limit = vec![b' '; MAX_MIGRATION_SNAPSHOT_BYTES + 1];
+        let mut tracker = MigrationTracker::new();
+        let result = import_from_json(&over_limit, &mut tracker, 0);
+        assert!(
+            matches!(
+                result,
+                Err(MigrationError::SnapshotTooLarge {
+                    size,
+                    max: MAX_MIGRATION_SNAPSHOT_BYTES,
+                }) if size == MAX_MIGRATION_SNAPSHOT_BYTES + 1
+            ),
+            "tracked import_from_json must enforce snapshot size before deserializing; got {result:?}"
+        );
+    }
+
+    /// Tracked binary import also enforces snapshot size pre-deserialization.
+    #[test]
+    fn test_tracked_binary_import_rejects_oversized_snapshot() {
+        let over_limit = vec![0u8; MAX_MIGRATION_SNAPSHOT_BYTES + 1];
+        let mut tracker = MigrationTracker::new();
+        let result = import_from_binary(&over_limit, &mut tracker, 0);
+        assert!(
+            matches!(
+                result,
+                Err(MigrationError::SnapshotTooLarge {
+                    size,
+                    max: MAX_MIGRATION_SNAPSHOT_BYTES,
+                }) if size == MAX_MIGRATION_SNAPSHOT_BYTES + 1
+            ),
+            "tracked import_from_binary must enforce snapshot size before deserializing; got {result:?}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Export-side bounds: export functions also enforce payload limits.
+    // ------------------------------------------------------------------
+
+    /// JSON export with a payload that is too large is rejected.
+    #[test]
+    fn test_json_export_rejects_oversized_payload() {
+        let mut entries = BTreeMap::new();
+        // A single value large enough to push payload bytes over the limit.
+        entries.insert(
+            "blob".into(),
+            serde_json::Value::String("x".repeat(MAX_MIGRATION_PAYLOAD_BYTES + 1)).into(),
+        );
+        let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+        assert!(
+            matches!(
+                export_to_json(&snapshot),
+                Err(MigrationError::PayloadTooLarge { .. })
+            ),
+            "JSON export must reject payloads exceeding MAX_MIGRATION_PAYLOAD_BYTES"
+        );
+    }
+
+    /// Binary export with too many records is rejected.
+    #[test]
+    fn test_binary_export_rejects_too_many_records() {
+        let payload = SnapshotPayload::SavingsGoals(sample_goals_export(MAX_MIGRATION_RECORDS + 1));
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Binary);
+        assert_eq!(
+            export_to_binary(&snapshot),
+            Err(MigrationError::TooManyRecords {
+                count: MAX_MIGRATION_RECORDS + 1,
+                max: MAX_MIGRATION_RECORDS,
+            }),
+            "binary export must reject payloads exceeding MAX_MIGRATION_RECORDS"
+        );
+    }
+
+    /// Encrypted export rejects plain bytes over MAX_MIGRATION_PAYLOAD_BYTES.
+    #[test]
+    fn test_encrypted_export_rejects_oversized_plain_bytes() {
+        let oversized = vec![0u8; MAX_MIGRATION_PAYLOAD_BYTES + 1];
+        assert_eq!(
+            export_to_encrypted_payload(&oversized),
+            Err(MigrationError::PayloadTooLarge {
+                size: MAX_MIGRATION_PAYLOAD_BYTES + 1,
+                max: MAX_MIGRATION_PAYLOAD_BYTES,
+            }),
+            "encrypted export must reject plain bytes exceeding MAX_MIGRATION_PAYLOAD_BYTES"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Error message quality: ensure error Display is informative.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_snapshot_too_large_error_display_contains_sizes() {
+        let msg = MigrationError::SnapshotTooLarge {
+            size: 200_000,
+            max: MAX_MIGRATION_SNAPSHOT_BYTES,
+        }
+        .to_string();
+        assert!(
+            msg.contains("200000"),
+            "Display must include actual size: {msg}"
+        );
+        assert!(
+            msg.contains(&MAX_MIGRATION_SNAPSHOT_BYTES.to_string()),
+            "Display must include max size: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_payload_too_large_error_display_contains_sizes() {
+        let msg = MigrationError::PayloadTooLarge {
+            size: 100_000,
+            max: MAX_MIGRATION_PAYLOAD_BYTES,
+        }
+        .to_string();
+        assert!(
+            msg.contains("100000"),
+            "Display must include actual size: {msg}"
+        );
+        assert!(
+            msg.contains(&MAX_MIGRATION_PAYLOAD_BYTES.to_string()),
+            "Display must include max size: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_too_many_records_error_display_contains_counts() {
+        let msg = MigrationError::TooManyRecords {
+            count: 2048,
+            max: MAX_MIGRATION_RECORDS,
+        }
+        .to_string();
+        assert!(
+            msg.contains("2048"),
+            "Display must include actual count: {msg}"
+        );
+        assert!(
+            msg.contains(&MAX_MIGRATION_RECORDS.to_string()),
+            "Display must include max count: {msg}"
+        );
     }
 }
