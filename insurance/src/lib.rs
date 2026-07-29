@@ -3,6 +3,8 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Vec,
 };
 
+mod fee_math;
+
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
@@ -236,6 +238,28 @@ impl Insurance {
         total
     }
 
+    /// Preview a policy's monthly premium after a loyalty/volume discount
+    /// and cap are applied to it. Does not change any stored state -- the
+    /// policy's own `monthly_premium` is untouched; this is a read-only
+    /// projection for a caller deciding what discount/cap terms to offer.
+    ///
+    /// # Arguments
+    /// * `policy_id` - ID of the policy whose premium is the base fee
+    /// * `discount_bps` - Discount in basis points (e.g. `500` = 5%)
+    /// * `fee_cap` - Maximum fee after the discount is applied
+    ///
+    /// # Panics
+    /// - If policy is not found
+    pub fn calculate_discounted_premium(
+        env: Env,
+        policy_id: u32,
+        discount_bps: u32,
+        fee_cap: i128,
+    ) -> i128 {
+        let policy = Self::get_policy(env, policy_id).expect("Policy not found");
+        fee_math::apply_discount_then_cap(policy.monthly_premium, discount_bps, fee_cap)
+    }
+
     /// Deactivate a policy
     ///
     /// # Arguments
@@ -288,5 +312,35 @@ impl Insurance {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    #[test]
+    fn calculate_discounted_premium_discounts_before_capping() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, Insurance);
+        let client = InsuranceClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let policy_id = client.create_policy(
+            &owner,
+            &String::from_str(&env, "Health"),
+            &String::from_str(&env, "health"),
+            &1000,
+            &10_000,
+        );
+
+        // 10% off a 1000 premium is 900, under the 920 cap -- the cap
+        // must not bind here (see fee_math's tests for the case where a
+        // wrong cap-first order would instead yield 828).
+        let discounted = client.calculate_discounted_premium(&policy_id, &1_000, &920);
+
+        assert_eq!(discounted, 900);
     }
 }
