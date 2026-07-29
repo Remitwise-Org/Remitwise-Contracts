@@ -417,4 +417,79 @@ mod testsuit {
         let all = client.get_all_bills();
         assert_eq!(all.len(), 3);
     }
+
+    #[test]
+    fn test_admin_rotation_completes_after_the_timelock() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let new_admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        set_time(&env, 1_000);
+        env.mock_all_auths();
+        client.init_admin(&admin);
+        client.propose_admin_rotation(&admin, &new_admin);
+
+        // Still before the timelock elapses.
+        set_time(&env, 1_000 + ADMIN_ROTATION_TIMELOCK_SECONDS - 1);
+        let too_early = client.try_finalize_admin_rotation();
+        assert_eq!(too_early, Err(Ok(Error::TimelockNotElapsed)));
+        assert_eq!(client.get_admin(), Some(admin.clone()));
+
+        // Timelock has now elapsed.
+        set_time(&env, 1_000 + ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.finalize_admin_rotation();
+
+        assert_eq!(client.get_admin(), Some(new_admin));
+        assert_eq!(client.get_pending_admin_rotation(), None);
+    }
+
+    #[test]
+    fn test_only_the_current_admin_can_propose_a_rotation() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let stranger = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let new_admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.init_admin(&admin);
+
+        let result = client.try_propose_admin_rotation(&stranger, &new_admin);
+
+        assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    }
+
+    #[test]
+    fn test_finalize_without_a_pending_rotation_fails() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.init_admin(&admin);
+
+        let result = client.try_finalize_admin_rotation();
+
+        assert_eq!(result, Err(Ok(Error::NoPendingRotation)));
+    }
+
+    #[test]
+    fn test_admin_cannot_be_initialized_twice() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+        env.mock_all_auths();
+        client.init_admin(&admin);
+
+        let result = client.try_init_admin(&other);
+
+        assert_eq!(result, Err(Ok(Error::AdminAlreadyInitialized)));
+    }
 }

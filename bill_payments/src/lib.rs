@@ -33,6 +33,10 @@ pub enum Error {
     InvalidAmount = 3,
     InvalidFrequency = 4,
     Unauthorized = 5,
+    AdminNotInitialized = 6,
+    AdminAlreadyInitialized = 7,
+    NoPendingRotation = 8,
+    TimelockNotElapsed = 9,
 }
 
 /// Events emitted by the contract for audit trail
@@ -41,6 +45,39 @@ pub enum Error {
 pub enum BillEvent {
     Created,
     Paid,
+}
+
+/// Seconds an admin rotation must sit proposed before it can be finalized.
+///
+/// ## Why a timelock
+///
+/// Admin rotation is a two-step, delayed process (`propose_admin_rotation`
+/// then, once the timelock has elapsed, `finalize_admin_rotation`) rather
+/// than an instant one-step handoff. If the current admin's key is ever
+/// compromised, an attacker who calls `propose_admin_rotation` does not
+/// walk away with control -- the rotation just sits pending, publicly
+/// visible via `get_pending_admin_rotation`, for this many seconds before
+/// it can take effect. That window gives the legitimate admin (or anyone
+/// watching `AdminEvent::RotationProposed`) time to notice the proposal
+/// and respond, rather than a single signature being an irreversible,
+/// instant takeover.
+const ADMIN_ROTATION_TIMELOCK_SECONDS: u64 = 2 * 86400; // 2 days
+
+/// A rotation that has been proposed but not yet finalized.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct PendingAdminRotation {
+    pub new_admin: Address,
+    /// Ledger timestamp at/after which `finalize_admin_rotation` may run.
+    pub executable_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub enum AdminEvent {
+    Initialized,
+    RotationProposed,
+    RotationFinalized,
 }
 
 #[contract]
@@ -358,6 +395,111 @@ impl BillPayments {
             }
         }
         result
+    }
+
+    /// One-time admin setup.
+    ///
+    /// # Errors
+    /// * `AdminAlreadyInitialized` - If an admin has already been set
+    pub fn init_admin(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        if env.storage().instance().has(&symbol_short!("ADMIN")) {
+            return Err(Error::AdminAlreadyInitialized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ADMIN"), &admin);
+        env.events()
+            .publish((symbol_short!("admin"), AdminEvent::Initialized), admin);
+
+        Ok(())
+    }
+
+    /// Propose rotating the admin to `new_admin`. Does not take effect
+    /// immediately -- see `ADMIN_ROTATION_TIMELOCK_SECONDS`. Call
+    /// `finalize_admin_rotation` after the timelock elapses to complete it.
+    /// A second call before finalization overwrites the still-pending
+    /// proposal (and restarts its timelock) rather than stacking.
+    ///
+    /// # Errors
+    /// * `AdminNotInitialized` - If no admin has been set yet
+    /// * `Unauthorized` - If caller is not the current admin
+    pub fn propose_admin_rotation(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(Error::AdminNotInitialized)?;
+
+        if admin != caller {
+            return Err(Error::Unauthorized);
+        }
+
+        let executable_at = env.ledger().timestamp() + ADMIN_ROTATION_TIMELOCK_SECONDS;
+        let pending = PendingAdminRotation {
+            new_admin: new_admin.clone(),
+            executable_at,
+        };
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PENDROT"), &pending);
+
+        env.events().publish(
+            (symbol_short!("admin"), AdminEvent::RotationProposed),
+            (new_admin, executable_at),
+        );
+
+        Ok(())
+    }
+
+    /// Finalize a previously proposed admin rotation, once its timelock
+    /// has elapsed. Callable by anyone -- the timelock, not the caller
+    /// identity, is what gates this taking effect.
+    ///
+    /// # Errors
+    /// * `NoPendingRotation` - If no rotation has been proposed
+    /// * `TimelockNotElapsed` - If called before `executable_at`
+    pub fn finalize_admin_rotation(env: Env) -> Result<(), Error> {
+        let pending: PendingAdminRotation = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PENDROT"))
+            .ok_or(Error::NoPendingRotation)?;
+
+        if env.ledger().timestamp() < pending.executable_at {
+            return Err(Error::TimelockNotElapsed);
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ADMIN"), &pending.new_admin);
+        env.storage().instance().remove(&symbol_short!("PENDROT"));
+
+        env.events().publish(
+            (symbol_short!("admin"), AdminEvent::RotationFinalized),
+            pending.new_admin,
+        );
+
+        Ok(())
+    }
+
+    /// Get the current admin, or `None` if `init_admin` hasn't run yet.
+    pub fn get_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&symbol_short!("ADMIN"))
+    }
+
+    /// Get the pending rotation, if one has been proposed and not yet
+    /// finalized.
+    pub fn get_pending_admin_rotation(env: Env) -> Option<PendingAdminRotation> {
+        env.storage().instance().get(&symbol_short!("PENDROT"))
     }
 
     /// Extend the TTL of instance storage
