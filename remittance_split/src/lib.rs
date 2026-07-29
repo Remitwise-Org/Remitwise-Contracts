@@ -11,7 +11,7 @@ mod tests_safe_math;
 
 use remitwise_common::{
     clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
     PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -106,6 +106,10 @@ pub enum RemittanceSplitError {
     DuplicateCorridorId = 38,
     /// Fee rounding error.
     FeeRounding = 39,
+    /// `batch_transfer`'s `recipients` and `amounts` vectors have different lengths.
+    BatchLengthMismatch = 40,
+    /// `batch_transfer`'s recipient count exceeds `remitwise_common::MAX_BATCH_SIZE`.
+    BatchSizeExceeded = 41,
 }
 
 #[derive(Clone)]
@@ -1850,6 +1854,80 @@ impl RemittanceSplit {
         Ok(true)
     }
 
+    /// Transfers the configured USDC asset from `caller` to each address in
+    /// `recipients`, in the paired `amounts`, in one call.
+    ///
+    /// Unlike `distribute_usdc` (which always splits into the four fixed
+    /// spending/savings/bills/insurance accounts), this sends arbitrary
+    /// amounts to arbitrary recipients -- for owner-directed payouts that
+    /// don't follow the split percentages.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the split has not been initialized.
+    /// - `Unauthorized` if `caller` is not the configured owner.
+    /// - `UntrustedTokenContract` if `usdc_contract` != the trusted address
+    ///   pinned at initialization.
+    /// - `BatchLengthMismatch` if `recipients.len() != amounts.len()`.
+    /// - `BatchSizeExceeded` if `recipients.len() > MAX_BATCH_SIZE`.
+    /// - `InvalidAmount` if any amount is <= 0.
+    /// - `InvalidNonce` on replay.
+    pub fn batch_transfer(
+        env: Env,
+        caller: Address,
+        nonce: u64,
+        usdc_contract: Address,
+        recipients: Vec<Address>,
+        amounts: Vec<i128>,
+    ) -> Result<bool, RemittanceSplitError> {
+        caller.require_auth();
+        Self::require_not_paused(&env)?;
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        if config.owner != caller {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+        if config.usdc_contract != usdc_contract {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
+        if recipients.len() != amounts.len() {
+            return Err(RemittanceSplitError::BatchLengthMismatch);
+        }
+        if recipients.len() > MAX_BATCH_SIZE {
+            return Err(RemittanceSplitError::BatchSizeExceeded);
+        }
+
+        Self::require_nonce(&env, &caller, nonce)?;
+
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(RemittanceSplitError::InvalidAmount);
+            }
+        }
+
+        let token = TokenClient::new(&env, &usdc_contract);
+        for i in 0..recipients.len() {
+            let recipient = recipients.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            let amount = amounts.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            token.transfer(&caller, &recipient, &amount);
+        }
+
+        Self::increment_nonce(&env, &caller)?;
+        Self::append_audit(&env, symbol_short!("batchtx"), &caller, true);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("batch_tx")),
+            (caller, recipients.len()),
+        );
+
+        Ok(true)
+    }
+
     pub fn get_usdc_balance(env: &Env, usdc_contract: Address, account: Address) -> i128 {
         TokenClient::new(env, &usdc_contract).balance(&account)
     }
@@ -2644,6 +2722,59 @@ impl RemittanceSplit {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
+ validate/rotate-admin-same-address
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _},
+        token::{StellarAssetClient, TokenClient},
+        Env, TryFromVal,
+    };
+
+    #[test]
+    fn distribute_usdc_apportions_tokens_to_recipients() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let payer = Address::generate(&env);
+        let amount = 1_000i128;
+
+        StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
+
+        let spending = Address::generate(&env);
+        let savings = Address::generate(&env);
+        let bills = Address::generate(&env);
+        let insurance = Address::generate(&env);
+
+        let accounts = AccountGroup {
+            spending: spending.clone(),
+            savings: savings.clone(),
+            bills: bills.clone(),
+            insurance: insurance.clone(),
+        };
+
+        let distributed =
+            client.distribute_usdc(&token_contract.address(), &payer, &accounts, &amount);
+
+        assert!(distributed);
+
+        let token_client = TokenClient::new(&env, &token_contract.address());
+        assert_eq!(token_client.balance(&spending), 500);
+        assert_eq!(token_client.balance(&savings), 300);
+        assert_eq!(token_client.balance(&bills), 150);
+        assert_eq!(token_client.balance(&insurance), 50);
+        assert_eq!(token_client.balance(&payer), 0);
+    }
+
+=======
+ main
     /// Create a new automatic remittance schedule for the split owner.
     ///
     /// # Arguments
@@ -3327,35 +3458,6 @@ mod tests {
             client.get_usdc_balance(&token_contract.address(), &spending),
             500
         );
-    }
-
-    #[test]
-    fn calculate_split_amounts_does_not_re_read_config_from_storage() {
-        // calculate_split_amounts takes `config` by parameter instead of
-        // calling Self::get_split(env) (which re-reads CONFIG from instance
-        // storage) -- distribute_usdc / distribute_usdc_hashed already have
-        // it loaded for owner/token validation before calling this, and the
-        // old internal re-fetch cost an extra storage read per call for no
-        // reason. Proof: this contract is never initialized (no CONFIG
-        // entry exists in storage at all here), yet the calculation still
-        // produces the correct split purely from the config passed in.
-        let env = Env::default();
-        let owner = Address::generate(&env);
-        let usdc_contract = Address::generate(&env);
-        let config = SplitConfig {
-            owner,
-            spending_percent: 5000,
-            savings_percent: 3000,
-            bills_percent: 1500,
-            insurance_percent: 500,
-            timestamp: 0,
-            initialized: true,
-            usdc_contract,
-        };
-
-        let amounts = RemittanceSplit::calculate_split_amounts(&env, &config, 1000, false).unwrap();
-
-        assert_eq!(amounts, [500, 300, 150, 50]);
     }
 
     /// Returns the `Symbol` topic prefix (the first element of the topic

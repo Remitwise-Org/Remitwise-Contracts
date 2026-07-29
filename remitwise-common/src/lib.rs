@@ -591,12 +591,50 @@ pub enum OperatorError {
     NotRegistered = 99,
 }
 
-/// Helper to enforce that the caller is a registered operator.
-/// This provides central enforcement for operator-only operations.
+const STORAGE_OPERATORS: Symbol = symbol_short!("OPERATOR");
+
+fn load_operators(env: &Env) -> Map<Address, bool> {
+    env.storage()
+        .instance()
+        .get(&STORAGE_OPERATORS)
+        .unwrap_or_else(|| Map::new(env))
+}
+
+/// Registers `operator` as an authorized caller for [`require_registered_operator`].
+///
+/// Does not enforce authentication — the calling contract is responsible for
+/// gating this with its own admin check before calling it.
+pub fn register_operator(env: &Env, operator: &Address) {
+    let mut operators = load_operators(env);
+    operators.set(operator.clone(), true);
+    env.storage().instance().set(&STORAGE_OPERATORS, &operators);
+}
+
+/// Removes `operator` from the registered-operator set.
+///
+/// Does not enforce authentication — the calling contract is responsible for
+/// gating this with its own admin check before calling it.
+pub fn deregister_operator(env: &Env, operator: &Address) {
+    let mut operators = load_operators(env);
+    operators.remove(operator.clone());
+    env.storage().instance().set(&STORAGE_OPERATORS, &operators);
+}
+
+/// Helper to enforce that `caller` specifically is a registered operator.
+///
+/// This provides central enforcement for operator-only operations, rejecting
+/// external calls from any contract or account ID that hasn't been registered
+/// via [`register_operator`].
+///
+/// # Security
+/// Prior to this fix, the registry was a single shared on/off flag with no
+/// per-address tracking: once *any* operator had ever been registered, this
+/// check passed for *every* caller, regardless of identity — `caller` was
+/// accepted but never actually consulted. This now checks the specific
+/// address against the registered set.
 pub fn require_registered_operator(env: &Env, caller: &Address) -> Result<(), OperatorError> {
-    let key = symbol_short!("OPERATOR");
-    let is_registered = env.storage().instance().get(&key).unwrap_or(false);
-    if !is_registered {
+    let operators = load_operators(env);
+    if !operators.get(caller.clone()).unwrap_or(false) {
         return Err(OperatorError::NotRegistered);
     }
     Ok(())

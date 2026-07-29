@@ -327,9 +327,15 @@ impl Insurance {
 
     /// Initialize the insurance contract with the given owner.
     ///
+    /// Requires `owner`'s signature — without it, anyone could front-run
+    /// deployment and call `init` with themselves (or any address they
+    /// control) as `owner` before the intended owner does, permanently
+    /// seizing control of the contract.
+    ///
     /// # Errors
     /// - `AlreadyInitialized` if the contract has already been initialized
     pub fn init(env: Env, owner: Address) -> Result<(), InsuranceError> {
+        owner.require_auth();
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(InsuranceError::AlreadyInitialized);
         }

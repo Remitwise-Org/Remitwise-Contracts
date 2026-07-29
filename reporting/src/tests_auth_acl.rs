@@ -560,6 +560,30 @@ fn test_admin_rotation_reject_propose_current_admin() {
     );
 }
 
+/// Proposing the contract's own address as the new admin must be rejected —
+/// accepting it would brick admin control forever, since the contract can
+/// never produce a `require_auth()` signature for itself as an external
+/// caller to complete `accept_admin_rotation`.
+#[test]
+fn test_admin_rotation_reject_propose_self_contract_as_admin() {
+    let env = create_test_env();
+    let (client, admin) = setup_reporting(&env);
+
+    assert_eq!(
+        client.try_propose_new_admin(&admin, &client.address),
+        Err(Ok(ReportingError::InvalidAdmin)),
+        "proposing the contract's own address must be rejected"
+    );
+
+    // Admin is unchanged, no pending proposal exists.
+    assert_eq!(client.get_admin(), Some(admin.clone()));
+    assert_eq!(
+        client.try_accept_admin_rotation(&admin),
+        Err(Ok(ReportingError::NotAdminProposed)),
+        "no pending proposal after rejected self-contract proposal"
+    );
+}
+
 /// Aggregate invariant: NO rejected path changes the admin. After exercising
 /// every negative path in sequence, the admin is still the original, and a
 /// legitimate rotation still succeeds afterwards (the state machine is intact).
