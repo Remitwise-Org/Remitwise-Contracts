@@ -1,7 +1,23 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, Map, String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
+    Symbol, Vec,
 };
+
+/// Mirrors `bill_payments::Error`'s naming convention (`*NotFound`,
+/// `InvalidAmount`, `Unauthorized`) so the two neighbouring contracts
+/// report failures the same way instead of one panicking with a string
+/// and the other returning a typed error.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    GoalNotFound = 1,
+    GoalLocked = 2,
+    InvalidAmount = 3,
+    InsufficientBalance = 4,
+    Unauthorized = 5,
+}
 
 // Storage TTL constants
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
@@ -203,21 +219,26 @@ impl SavingsGoalContract {
     /// * `amount` - Amount to withdraw (must be positive and <= current_amount)
     ///
     /// # Returns
-    /// Updated current amount
+    /// Ok(updated current amount)
     ///
-    /// # Panics
-    /// - If caller is not the goal owner
-    /// - If goal is not found
-    /// - If goal is locked
-    /// - If amount is not positive
-    /// - If amount exceeds current balance
-    pub fn withdraw_from_goal(env: Env, caller: Address, goal_id: u32, amount: i128) -> i128 {
+    /// # Errors
+    /// * `InvalidAmount` - If amount is not positive
+    /// * `GoalNotFound` - If goal with given ID doesn't exist
+    /// * `Unauthorized` - If caller is not the goal owner
+    /// * `GoalLocked` - If the goal is locked
+    /// * `InsufficientBalance` - If amount exceeds the current balance
+    pub fn withdraw_from_goal(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<i128, Error> {
         // Access control: require caller authorization
         caller.require_auth();
 
         // Input validation
         if amount <= 0 {
-            panic!("Amount must be positive");
+            return Err(Error::InvalidAmount);
         }
 
         // Extend storage TTL
@@ -229,21 +250,21 @@ impl SavingsGoalContract {
             .get(&symbol_short!("GOALS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+        let mut goal = goals.get(goal_id).ok_or(Error::GoalNotFound)?;
 
         // Access control: verify caller is the owner
         if goal.owner != caller {
-            panic!("Only the goal owner can withdraw funds");
+            return Err(Error::Unauthorized);
         }
 
         // Check if goal is locked
         if goal.locked {
-            panic!("Cannot withdraw from a locked goal");
+            return Err(Error::GoalLocked);
         }
 
         // Check sufficient balance
         if amount > goal.current_amount {
-            panic!("Insufficient balance");
+            return Err(Error::InsufficientBalance);
         }
 
         goal.current_amount -= amount;
@@ -260,7 +281,7 @@ impl SavingsGoalContract {
             (goal_id, caller, amount),
         );
 
-        new_amount
+        Ok(new_amount)
     }
 
     /// Lock a savings goal (prevent withdrawals)
