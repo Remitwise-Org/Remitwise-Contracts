@@ -1,5 +1,8 @@
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env, String,
+};
 
 #[test]
 fn test_create_goal_unique_ids() {
@@ -182,4 +185,64 @@ fn test_multiple_goals_management() {
 
     assert_eq!(g1.current_amount, 500);
     assert_eq!(g2.current_amount, 1500);
+}
+
+// A realistic "now" for these tests, comfortably close enough to the
+// goals' 2000000000 target_date that the 5-year ledger cap (measured from
+// this timestamp) sits just past it -- the default test-env timestamp of
+// 0 would make even the fixture's own target_date unreachable.
+const NOW: u64 = 1_900_000_000;
+
+#[test]
+fn test_extend_goal_deadline_within_cap() {
+    let env = Env::default();
+    env.ledger().set_timestamp(NOW);
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+
+    let new_target = 2000000000 + 86400; // one day past the current target
+    let updated = client.extend_goal_deadline(&user, &id, &new_target);
+
+    assert_eq!(updated, new_target);
+    assert_eq!(client.get_goal(&id).unwrap().target_date, new_target);
+}
+
+#[test]
+#[should_panic(expected = "exceeds the maximum extension")]
+fn test_extend_goal_deadline_past_ledger_cap() {
+    let env = Env::default();
+    env.ledger().set_timestamp(NOW);
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+
+    // MAX_EXTENSION_SECONDS is 5 years from NOW; ask for 5 years and a day
+    // to land just past the cap (and still past the current target_date,
+    // so it's the cap -- not the forward-move check -- that rejects it).
+    let past_cap = NOW + (5 * 365 * 86400) + 86400;
+    client.extend_goal_deadline(&user, &id, &past_cap);
+}
+
+#[test]
+#[should_panic(expected = "must be later than the current target date")]
+fn test_extend_goal_deadline_rejects_non_forward_move() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    client.init();
+    env.mock_all_auths();
+    let id = client.create_goal(&user, &String::from_str(&env, "Trip"), &1000, &2000000000);
+
+    client.extend_goal_deadline(&user, &id, &2000000000);
 }

@@ -7,6 +7,13 @@ use soroban_sdk::{
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
+/// Furthest into the future (from the current ledger time) a goal's
+/// `target_date` may be pushed in a single `extend_goal_deadline` call.
+/// This is the "ledger cap": it bounds the extension relative to
+/// `env.ledger().timestamp()` at call time, not to the goal's existing
+/// `target_date`, so repeated extensions can't be chained to sidestep it.
+const MAX_EXTENSION_SECONDS: u64 = 5 * 365 * 86400; // ~5 years
+
 /// Savings goal data structure with owner tracking for access control
 #[contract]
 pub struct SavingsGoalContract;
@@ -349,6 +356,65 @@ impl SavingsGoalContract {
         );
 
         true
+    }
+
+    /// Push a savings goal's target date further into the future.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the caller (must be the goal owner)
+    /// * `goal_id` - ID of the goal
+    /// * `new_target_date` - The new target date as a Unix timestamp
+    ///
+    /// # Returns
+    /// The goal's updated target date
+    ///
+    /// # Panics
+    /// - If caller is not the goal owner
+    /// - If goal is not found
+    /// - If `new_target_date` is not later than the current target date
+    /// - If `new_target_date` is further than `MAX_EXTENSION_SECONDS` past
+    ///   the current ledger time (the "ledger cap")
+    pub fn extend_goal_deadline(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        new_target_date: u64,
+    ) -> u64 {
+        // Access control: require caller authorization
+        caller.require_auth();
+
+        // Extend storage TTL
+        Self::extend_instance_ttl(&env);
+
+        let mut goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut goal = goals.get(goal_id).expect("Goal not found");
+
+        // Access control: verify caller is the owner
+        if goal.owner != caller {
+            panic!("Only the goal owner can extend this goal's deadline");
+        }
+
+        if new_target_date <= goal.target_date {
+            panic!("New target date must be later than the current target date");
+        }
+
+        let max_target_date = env.ledger().timestamp() + MAX_EXTENSION_SECONDS;
+        if new_target_date > max_target_date {
+            panic!("New target date exceeds the maximum extension allowed from the current ledger time");
+        }
+
+        goal.target_date = new_target_date;
+        goals.set(goal_id, goal);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+
+        new_target_date
     }
 
     /// Get a savings goal by ID
