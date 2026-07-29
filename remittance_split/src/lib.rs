@@ -36,7 +36,14 @@ pub struct SplitConfig {
     pub initialized: bool,
 }
 
-/// Events emitted by the contract for audit trail
+/// Events emitted by the contract for audit trail.
+///
+/// `Initialized` and `Updated` only ever fire from an owner-authorized
+/// call, so they publish under the `"admin"` topic prefix, distinct from
+/// `Calculated`'s `"split"` prefix (`calculate_split` has no access
+/// control -- anyone can call it). Separating the prefixes lets a log
+/// consumer/indexer filter for privileged, config-changing activity
+/// without also matching every routine read-triggered event.
 #[contracttype]
 #[derive(Clone)]
 pub enum SplitEvent {
@@ -120,7 +127,7 @@ impl RemittanceSplit {
 
         // Emit event for audit trail
         env.events()
-            .publish((symbol_short!("split"), SplitEvent::Initialized), owner);
+            .publish((symbol_short!("admin"), SplitEvent::Initialized), owner);
 
         true
     }
@@ -197,7 +204,7 @@ impl RemittanceSplit {
 
         // Emit event for audit trail
         env.events()
-            .publish((symbol_short!("split"), SplitEvent::Updated), caller);
+            .publish((symbol_short!("admin"), SplitEvent::Updated), caller);
 
         true
     }
@@ -302,7 +309,7 @@ impl RemittanceSplit {
         ];
 
         let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
+        for (category, amount) in categories.into_iter().zip(amounts) {
             result.push_back(Allocation { category, amount });
         }
         result
@@ -320,9 +327,9 @@ impl RemittanceSplit {
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::Address as _,
+        testutils::{Address as _, Events as _},
         token::{StellarAssetClient, TokenClient},
-        Env,
+        Env, TryFromVal,
     };
 
     #[test]
@@ -389,5 +396,40 @@ mod tests {
             assert_eq!(allocation.amount, expected_amounts[idx]);
             assert_eq!(allocation.category, categories[idx]);
         }
+    }
+
+    /// Returns the `Symbol` topic prefix (the first element of the topic
+    /// tuple) of the most recently published event.
+    fn last_event_topic_prefix(env: &Env) -> Symbol {
+        let events = env.events().all();
+        let (_, topics, _) = events.last().expect("no events were published");
+        Symbol::try_from_val(env, &topics.get(0).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn owner_gated_events_publish_under_the_admin_topic() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        client.initialize_split(&owner, &50, &30, &15, &5);
+        assert_eq!(last_event_topic_prefix(&env), symbol_short!("admin"));
+
+        client.update_split(&owner, &40, &30, &20, &10);
+        assert_eq!(last_event_topic_prefix(&env), symbol_short!("admin"));
+    }
+
+    #[test]
+    fn calculated_event_still_publishes_under_the_split_topic() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        client.calculate_split(&1000);
+
+        assert_eq!(last_event_topic_prefix(&env), symbol_short!("split"));
     }
 }
