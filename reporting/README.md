@@ -164,6 +164,20 @@ Retrieves a stored report. Returns `None` if not found.
 #### `get_admin() -> Option<Address>`
 #### `get_storage_stats() -> StorageStats`
 
+### Admin Rotation
+
+#### `propose_new_admin(caller: Address, new_admin: Address) -> Result<(), ReportingError>`
+Step 1 of a two-step admin rotation. Current-admin only.
+
+- Errors: `NotInitialized`, `Unauthorized`, `SameAdmin`
+
+#### `accept_admin_rotation(caller: Address) -> Result<(), ReportingError>`
+Step 2. Only the address proposed via `propose_new_admin` can call this — and can do so immediately, with no minimum wait.
+
+- Errors: `NotAdminProposed`, `Unauthorized`
+
+See [docs/ADMIN_ROTATION.md](../docs/ADMIN_ROTATION.md) for why this two-step flow is not a timelock, and how it differs from the unrelated pause-admin grant TTL in `bill_payments`/`family_wallet`.
+
 ### Admin Maintenance
 
 #### `archive_old_reports(caller: Address, before_timestamp: u64) -> u32`

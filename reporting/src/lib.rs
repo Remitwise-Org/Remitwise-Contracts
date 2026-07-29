@@ -267,6 +267,11 @@ pub enum ReportingError {
     SameAdmin = 10,
     /// The requested top-N size exceeds the global cap.
     TopNTooLarge = 11,
+    /// Proposed new admin is this contract's own address — accepting it would
+    /// brick admin control, since the contract cannot sign `require_auth()`
+    /// for itself as an external caller. Mirrors `emergency_killswitch`'s
+    /// `InvalidAdmin` guard on `transfer_admin`.
+    InvalidAdmin = 12,
 }
 
 #[contracttype]
@@ -694,6 +699,7 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the current admin
+    /// * `InvalidAdmin` - If `new_admin` is this contract's own address
     /// * `SameAdmin` - If `new_admin` is the same as the current admin
     pub fn propose_new_admin(
         env: Env,
@@ -710,6 +716,14 @@ impl ReportingContract {
 
         if caller != admin {
             return Err(ReportingError::Unauthorized);
+        }
+
+        // Rejecting the contract's own address prevents an unrecoverable brick:
+        // this contract can never produce a `require_auth()` signature for
+        // itself as an external caller, so `accept_admin_rotation` could never
+        // be completed and admin control would be permanently lost.
+        if new_admin == env.current_contract_address() {
+            return Err(ReportingError::InvalidAdmin);
         }
 
         if new_admin == admin {

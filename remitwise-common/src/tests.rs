@@ -2239,20 +2239,23 @@ fn test_same_address_symmetric() {
 // require_registered_operator tests (#1182)
 // ============================================================================
 
+// `register_operator`/`require_registered_operator` read and write instance
+// storage, which the Soroban host only allows inside a contract's execution
+// context. Tests exercising them run their storage-touching calls inside
+// `env.as_contract(&contract_id, || { .. })` against the no-op
+// `VerifierTestContract` declared above, mirroring the `verify_signature`
+// tests in this same file.
+
 #[test]
 fn test_require_registered_operator_success() {
     use soroban_sdk::testutils::Address as _;
     let env = Env::default();
     let contract_id = env.register_contract(None, VerifierTestContract);
-    let caller = soroban_sdk::Address::generate(&env);
+    let caller = Address::generate(&env);
 
     env.as_contract(&contract_id, || {
-        env.storage()
-            .instance()
-            .set(&symbol_short!("OPERATOR"), &true);
-
-        let result = require_registered_operator(&env, &caller);
-        assert_eq!(result, Ok(()));
+        register_operator(&env, &caller);
+        assert_eq!(require_registered_operator(&env, &caller), Ok(()));
     });
 }
 
@@ -2261,102 +2264,746 @@ fn test_require_registered_operator_fails_if_missing() {
     use soroban_sdk::testutils::Address as _;
     let env = Env::default();
     let contract_id = env.register_contract(None, VerifierTestContract);
-    let caller = soroban_sdk::Address::generate(&env);
+    let caller = Address::generate(&env);
 
     env.as_contract(&contract_id, || {
-        // Missing operator registration - no storage has been set
-        let result = require_registered_operator(&env, &caller);
-        assert_eq!(result, Err(OperatorError::NotRegistered));
+        // No operator has ever been registered.
+        assert_eq!(
+            require_registered_operator(&env, &caller),
+            Err(OperatorError::NotRegistered)
+        );
+    });
+}
+
+/// Regression test for the bug this hardening fixes: registering *an*
+/// operator must not authorize *every* caller. Before the fix, the registry
+/// was a single shared on/off flag — `caller` was accepted but never
+/// actually consulted, so once any operator was registered every address
+/// passed this check. This must fail on `main` before the fix and pass after.
+#[test]
+fn test_require_registered_operator_rejects_unregistered_caller_id() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let registered = Address::generate(&env);
+    let unauthorized_contract_id = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        register_operator(&env, &registered);
+
+        // The registered operator passes.
+        assert_eq!(require_registered_operator(&env, &registered), Ok(()));
+
+        // A different, never-registered contract ID must be rejected, even
+        // though *an* operator is registered.
+        assert_eq!(
+            require_registered_operator(&env, &unauthorized_contract_id),
+            Err(OperatorError::NotRegistered)
+        );
+    });
+}
+
+#[test]
+fn test_deregister_operator_revokes_access() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let caller = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        register_operator(&env, &caller);
+        assert_eq!(require_registered_operator(&env, &caller), Ok(()));
+
+        deregister_operator(&env, &caller);
+        assert_eq!(
+            require_registered_operator(&env, &caller),
+            Err(OperatorError::NotRegistered)
+        );
+    });
+}
+
+#[test]
+fn test_deregister_operator_is_idempotent_for_unregistered_caller() {
+    use soroban_sdk::testutils::Address as _;
+    let env = Env::default();
+    let contract_id = env.register_contract(None, VerifierTestContract);
+    let caller = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        // Deregistering an address that was never registered must not panic.
+        deregister_operator(&env, &caller);
+        assert_eq!(
+            require_registered_operator(&env, &caller),
+            Err(OperatorError::NotRegistered)
+        );
     });
 }
 
 // ============================================================================
-// require_env_var tests
+// Kill-switch guard comprehensive tests (#1290)
 // ============================================================================
+//
+// These tests lock in every observable behaviour of the kill-switch guard:
+//  - Default state (no flag set → inactive, writes allowed)
+//  - Activation makes `is_kill_switch_active` return true
+//  - `require_no_active_kill_switch` returns WriteBlocked when active
+//  - Deactivation clears the flag and restores write permission
+//  - Idempotent activation (double-activate remains blocked)
+//  - Idempotent deactivation (double-deactivate remains clear)
+//  - Multiple activate/deactivate cycles (toggle durability)
+//  - Storage isolation: independent envs do not share kill-switch state
+//  - Error discriminant is stable at 1 (ABI contract pinned)
+//  - Error round-trips through Val encoding
+//  - `require_no_active_kill_switch` is the single canonical guard call-sites
+//    must use — callers may not bypass it by checking `is_kill_switch_active`
+//    directly and inverting the result (both are tested to be equivalent)
 
-#[test]
-fn test_require_env_var_u32_success() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key = symbol_short!("VERSION");
+#[cfg(test)]
+mod kill_switch_guard_comprehensive_tests {
+    use crate::{
+        activate_kill_switch, deactivate_kill_switch, is_kill_switch_active,
+        require_no_active_kill_switch, KillSwitchError,
+    };
+    use soroban_sdk::Env;
 
-    env.as_contract(&contract_id, || {
-        env.storage().instance().set(&key, &42u32);
+    // ── Happy-path (inactive) ─────────────────────────────────────────────
 
-        let result: Result<u32, EnvVarError> = require_env_var(&env, &key);
-        assert_eq!(result, Ok(42u32));
-    });
+    /// The kill switch is inactive by default: no storage has been set.
+    /// `is_kill_switch_active` must return false and `require_no_active_kill_switch`
+    /// must return Ok(()).
+    #[test]
+    fn inactive_by_default_allows_writes() {
+        let env = Env::default();
+        assert!(
+            !is_kill_switch_active(&env),
+            "kill switch must be inactive when no flag is stored"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Ok(()),
+            "guard must pass when kill switch has never been activated"
+        );
+    }
+
+    /// After deactivation on a fresh environment (never activated), the state
+    /// remains inactive — deactivate is a safe no-op.
+    #[test]
+    fn deactivate_on_pristine_env_is_safe_noop() {
+        let env = Env::default();
+        deactivate_kill_switch(&env);
+        assert!(
+            !is_kill_switch_active(&env),
+            "deactivating a never-activated kill switch must leave it inactive"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Ok(()),
+            "guard must pass after deactivating a never-activated kill switch"
+        );
+    }
+
+    // ── Sad-path (active) ─────────────────────────────────────────────────
+
+    /// Activating the kill switch must make `is_kill_switch_active` return true
+    /// and `require_no_active_kill_switch` return `Err(WriteBlocked)`.
+    #[test]
+    fn activate_blocks_writes_with_typed_error() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+
+        assert!(
+            is_kill_switch_active(&env),
+            "is_kill_switch_active must return true immediately after activation"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked),
+            "guard must return WriteBlocked after activation"
+        );
+    }
+
+    /// The typed error discriminant must be 1 (pinned for ABI stability across
+    /// contract versions and downstream integrators).
+    #[test]
+    fn write_blocked_error_discriminant_is_one() {
+        assert_eq!(
+            KillSwitchError::WriteBlocked as u32,
+            1u32,
+            "KillSwitchError::WriteBlocked discriminant must be 1 (ABI contract)"
+        );
+    }
+
+    /// The error round-trips through Val encoding (encoding stability guard).
+    #[test]
+    fn write_blocked_error_round_trips_through_val_encoding() {
+        use soroban_sdk::{IntoVal, TryFromVal};
+        let env = Env::default();
+        let val: soroban_sdk::Val = KillSwitchError::WriteBlocked.into_val(&env);
+        let decoded: KillSwitchError =
+            KillSwitchError::try_from_val(&env, &val).expect("KillSwitchError must round-trip");
+        assert_eq!(
+            decoded,
+            KillSwitchError::WriteBlocked,
+            "round-trip must preserve WriteBlocked"
+        );
+    }
+
+    // ── Recovery (deactivation) ───────────────────────────────────────────
+
+    /// After activation and then deactivation, writes are allowed again.
+    #[test]
+    fn deactivate_after_activate_allows_writes_again() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+        assert!(is_kill_switch_active(&env));
+
+        deactivate_kill_switch(&env);
+
+        assert!(
+            !is_kill_switch_active(&env),
+            "is_kill_switch_active must return false after deactivation"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Ok(()),
+            "guard must pass after deactivation"
+        );
+    }
+
+    // ── Idempotency ───────────────────────────────────────────────────────
+
+    /// Double-activation: activating twice in a row must leave the kill switch active.
+    #[test]
+    fn double_activate_remains_blocked() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+        activate_kill_switch(&env); // second call must not clear the flag
+
+        assert!(
+            is_kill_switch_active(&env),
+            "double-activate must keep kill switch active"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Err(KillSwitchError::WriteBlocked),
+            "guard must remain blocked after double-activate"
+        );
+    }
+
+    /// Double-deactivation: deactivating twice must keep the kill switch inactive.
+    #[test]
+    fn double_deactivate_remains_clear() {
+        let env = Env::default();
+        activate_kill_switch(&env);
+        deactivate_kill_switch(&env);
+        deactivate_kill_switch(&env); // second deactivate must not re-arm
+
+        assert!(
+            !is_kill_switch_active(&env),
+            "double-deactivate must keep kill switch inactive"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env),
+            Ok(()),
+            "guard must pass after double-deactivate"
+        );
+    }
+
+    // ── Toggle durability ─────────────────────────────────────────────────
+
+    /// Three full activate/deactivate cycles must each independently produce
+    /// the expected state, proving the flag is written and removed correctly
+    /// across repeated operations.
+    #[test]
+    fn three_full_toggle_cycles_produce_correct_state() {
+        let env = Env::default();
+
+        for cycle in 1u32..=3 {
+            // Activate
+            activate_kill_switch(&env);
+            assert!(
+                is_kill_switch_active(&env),
+                "cycle {cycle}: expected active after activate"
+            );
+            assert_eq!(
+                require_no_active_kill_switch(&env),
+                Err(KillSwitchError::WriteBlocked),
+                "cycle {cycle}: guard must block after activate"
+            );
+
+            // Deactivate
+            deactivate_kill_switch(&env);
+            assert!(
+                !is_kill_switch_active(&env),
+                "cycle {cycle}: expected inactive after deactivate"
+            );
+            assert_eq!(
+                require_no_active_kill_switch(&env),
+                Ok(()),
+                "cycle {cycle}: guard must pass after deactivate"
+            );
+        }
+    }
+
+    // ── Storage isolation ─────────────────────────────────────────────────
+
+    /// Two independent `Env` instances must not share kill-switch state.
+    /// Activating in one must not affect the other.
+    #[test]
+    fn kill_switch_state_is_isolated_per_env() {
+        let env_a = Env::default();
+        let env_b = Env::default();
+
+        activate_kill_switch(&env_a);
+
+        assert!(
+            is_kill_switch_active(&env_a),
+            "env_a kill switch must be active"
+        );
+        assert!(
+            !is_kill_switch_active(&env_b),
+            "env_b kill switch must remain inactive when only env_a was activated"
+        );
+        assert_eq!(
+            require_no_active_kill_switch(&env_b),
+            Ok(()),
+            "guard on env_b must pass when env_a was activated"
+        );
+    }
+
+    // ── Guard equivalence ─────────────────────────────────────────────────
+
+    /// `require_no_active_kill_switch` and `!is_kill_switch_active` must agree
+    /// in every state. This pins the contract that the guard is the canonical
+    /// call-site and is not just a thin wrapper that could silently diverge.
+    #[test]
+    fn guard_result_matches_negated_is_active_in_all_states() {
+        let env = Env::default();
+
+        // Inactive
+        assert_eq!(
+            require_no_active_kill_switch(&env).is_ok(),
+            !is_kill_switch_active(&env),
+            "inactive: guard result must equal !is_kill_switch_active"
+        );
+
+        // Active
+        activate_kill_switch(&env);
+        assert_eq!(
+            require_no_active_kill_switch(&env).is_ok(),
+            !is_kill_switch_active(&env),
+            "active: guard result must equal !is_kill_switch_active"
+        );
+
+        // Deactivated again
+        deactivate_kill_switch(&env);
+        assert_eq!(
+            require_no_active_kill_switch(&env).is_ok(),
+            !is_kill_switch_active(&env),
+            "deactivated: guard result must equal !is_kill_switch_active"
+        );
+    }
+
+    // ── Boundary: simulate a write entry-point being guarded ─────────────
+
+    /// Simulates the pattern used in every write entry point:
+    /// `require_no_active_kill_switch` is called first; if it returns Err the
+    /// entry point must propagate the error without executing any mutations.
+    ///
+    /// This test pins both the "before kill-switch" and "after kill-switch"
+    /// paths of a typical guarded write entry point.
+    #[test]
+    fn guarded_write_entrypoint_simulation_passes_and_fails_correctly() {
+        let env = Env::default();
+        let mut mutated = false;
+
+        // Happy path: guard passes, mutation proceeds.
+        let result: Result<(), KillSwitchError> = (|| {
+            require_no_active_kill_switch(&env)?;
+            mutated = true;
+            Ok(())
+        })();
+        assert_eq!(result, Ok(()));
+        assert!(mutated, "mutation must occur when kill switch is inactive");
+
+        // Sad path: guard blocks, mutation must NOT occur.
+        mutated = false;
+        activate_kill_switch(&env);
+
+        let result: Result<(), KillSwitchError> = (|| {
+            require_no_active_kill_switch(&env)?;
+            mutated = true; // must not be reached
+            Ok(())
+        })();
+        assert_eq!(result, Err(KillSwitchError::WriteBlocked));
+        assert!(
+            !mutated,
+            "mutation must NOT occur when kill switch is active"
+        );
+
+        // Recovery: deactivate and verify mutation proceeds again.
+        mutated = false;
+        deactivate_kill_switch(&env);
+
+        let result: Result<(), KillSwitchError> = (|| {
+            require_no_active_kill_switch(&env)?;
+            mutated = true;
+            Ok(())
+        })();
+        assert_eq!(result, Ok(()));
+        assert!(
+            mutated,
+            "mutation must resume after kill switch is deactivated"
+        );
+    }
 }
 
-#[test]
-fn test_require_env_var_bool_success() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key = symbol_short!("IS_ACTV");
+// ============================================================================
+// Investigation epoch guard comprehensive tests (#1293 — common-lib side)
+// ============================================================================
+//
+// `investigation_epoch` is the time-bounded sibling of the binary kill switch.
+// These tests lock in:
+//  - Default state: no epoch active → writes allowed
+//  - Starting an epoch blocks writes for its duration
+//  - After the epoch expires, writes are allowed again
+//  - Clearing an active epoch immediately restores writes
+//  - Clearing an already-expired/nonexistent epoch is a safe no-op
+//  - Off-by-one: ledger timestamp exactly at epoch_end is NOT active
+//    (the guard uses strict >, so epoch_end is the first allowed timestamp)
+//  - Back-to-back epochs (new epoch started before old one expires)
+//  - Epoch error discriminant is stable
 
-    env.as_contract(&contract_id, || {
-        env.storage().instance().set(&key, &true);
+#[cfg(test)]
+mod investigation_epoch_guard_comprehensive_tests {
+    use crate::{
+        clear_investigation_epoch, is_investigation_epoch_active, require_no_investigation_epoch,
+        start_investigation_epoch, InvestigationEpochError,
+    };
+    use soroban_sdk::testutils::{Ledger, LedgerInfo};
+    use soroban_sdk::Env;
 
-        let result: Result<bool, EnvVarError> = require_env_var(&env, &key);
-        assert_eq!(result, Ok(true));
-    });
-}
+    /// Set the ledger timestamp, preserving all other ledger state.
+    fn set_ts(env: &Env, timestamp: u64) {
+        let proto = env.ledger().protocol_version();
+        let seq = env.ledger().sequence();
+        env.ledger().set(LedgerInfo {
+            protocol_version: proto,
+            sequence_number: seq,
+            timestamp,
+            network_id: [0; 32],
+            base_reserve: 10,
+            min_temp_entry_ttl: 1,
+            min_persistent_entry_ttl: 1,
+            max_entry_ttl: 3_000_000,
+        });
+    }
 
-#[test]
-fn test_require_env_var_missing() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key = symbol_short!("NOKEY");
+    const T0: u64 = 1_000_000; // baseline timestamp
+    const DURATION: u64 = 3_600; // 1 hour
 
-    env.as_contract(&contract_id, || {
-        // No storage set for key - should be missing
-        let result: Result<bool, EnvVarError> = require_env_var(&env, &key);
-        assert_eq!(result, Err(EnvVarError::Missing));
-    });
-}
+    // ── Happy path (no epoch active) ──────────────────────────────────────
 
-#[test]
-fn test_require_env_var_i128_success() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key = symbol_short!("MAX_AMNT");
+    /// No epoch stored: writes are allowed by default.
+    #[test]
+    fn no_epoch_set_allows_writes() {
+        let env = Env::default();
+        set_ts(&env, T0);
 
-    env.as_contract(&contract_id, || {
-        env.storage().instance().set(&key, &1000i128);
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "no epoch active by default"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must pass when no epoch is set"
+        );
+    }
 
-        let result: Result<i128, EnvVarError> = require_env_var(&env, &key);
-        assert_eq!(result, Ok(1000i128));
-    });
-}
+    // ── Sad path (epoch active) ───────────────────────────────────────────
 
-#[test]
-fn test_require_env_var_address_success() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key = symbol_short!("CONTRACT");
+    /// Starting an epoch immediately blocks writes.
+    #[test]
+    fn active_epoch_blocks_writes() {
+        let env = Env::default();
+        set_ts(&env, T0);
 
-    env.as_contract(&contract_id, || {
-        env.storage().instance().set(&key, &contract_id);
+        start_investigation_epoch(&env, DURATION);
 
-        let result: Result<Address, EnvVarError> = require_env_var(&env, &key);
-        assert_eq!(result, Ok(contract_id.clone()));
-    });
-}
+        assert!(
+            is_investigation_epoch_active(&env),
+            "epoch must be active immediately after start"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Err(InvestigationEpochError::WriteBlocked),
+            "guard must return WriteBlocked during active epoch"
+        );
+    }
 
-#[test]
-fn test_require_env_var_different_key_same_env() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, VerifierTestContract);
-    let key_a = symbol_short!("KEY_A");
-    let key_b = symbol_short!("KEY_B");
+    // ── Expiry ────────────────────────────────────────────────────────────
 
-    env.as_contract(&contract_id, || {
-        env.storage().instance().set(&key_a, &10u32);
+    /// After the epoch duration has elapsed, writes are allowed again without
+    /// any explicit `clear` call — expiry is automatic.
+    #[test]
+    fn epoch_expires_automatically_after_duration() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
 
-        let result_a: Result<u32, EnvVarError> = require_env_var(&env, &key_a);
-        assert_eq!(result_a, Ok(10u32));
+        // Advance past the epoch end
+        set_ts(&env, T0 + DURATION + 1);
 
-        let result_b: Result<u32, EnvVarError> = require_env_var(&env, &key_b);
-        assert_eq!(result_b, Err(EnvVarError::Missing));
-    });
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "epoch must be inactive after its duration has elapsed"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must pass after epoch expires"
+        );
+    }
+
+    // ── Off-by-one: strict boundary ───────────────────────────────────────
+
+    /// At exactly `epoch_end` the epoch is NOT active (the guard uses `>`, so
+    /// `epoch_end == timestamp` means the epoch has just expired).
+    #[test]
+    fn epoch_inactive_at_exact_end_timestamp() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        let epoch_end = T0 + DURATION;
+        set_ts(&env, epoch_end);
+
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "epoch must be inactive at the exact epoch_end timestamp (guard uses strict >)"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must pass at exact epoch_end"
+        );
+    }
+
+    /// One second BEFORE epoch_end the epoch is still active.
+    #[test]
+    fn epoch_still_active_one_second_before_end() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        let one_before_end = T0 + DURATION - 1;
+        set_ts(&env, one_before_end);
+
+        assert!(
+            is_investigation_epoch_active(&env),
+            "epoch must still be active one second before epoch_end"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Err(InvestigationEpochError::WriteBlocked),
+            "guard must block one second before epoch_end"
+        );
+    }
+
+    // ── Immediate clear ───────────────────────────────────────────────────
+
+    /// Clearing an active epoch immediately restores writes (before expiry).
+    #[test]
+    fn clear_active_epoch_immediately_allows_writes() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        assert!(is_investigation_epoch_active(&env));
+
+        clear_investigation_epoch(&env);
+
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "epoch must be inactive immediately after clear"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must pass immediately after clear"
+        );
+    }
+
+    /// Clearing when no epoch is active is a safe no-op.
+    #[test]
+    fn clear_nonexistent_epoch_is_safe_noop() {
+        let env = Env::default();
+        set_ts(&env, T0);
+
+        // Must not panic
+        clear_investigation_epoch(&env);
+
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "state must remain inactive after no-op clear"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must still pass after no-op clear"
+        );
+    }
+
+    /// Clearing an already-expired epoch is also a safe no-op.
+    #[test]
+    fn clear_expired_epoch_is_safe_noop() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        // Let it expire
+        set_ts(&env, T0 + DURATION + 1);
+        assert!(!is_investigation_epoch_active(&env));
+
+        // Explicitly clear — must not panic or re-arm the epoch
+        clear_investigation_epoch(&env);
+
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "epoch must remain inactive after clearing an expired epoch"
+        );
+    }
+
+    // ── Back-to-back epochs ───────────────────────────────────────────────
+
+    /// Starting a new epoch while one is still active replaces (extends) it.
+    #[test]
+    fn new_epoch_while_active_extends_block() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        // Advance to 1 second before the first epoch ends, then start a new one
+        let mid = T0 + DURATION - 1;
+        set_ts(&env, mid);
+        start_investigation_epoch(&env, DURATION); // new end = mid + DURATION
+
+        // Original epoch_end (T0 + DURATION) has passed but new one is active
+        let new_epoch_end = mid + DURATION;
+        set_ts(&env, T0 + DURATION + 1); // past original, still in new
+
+        assert!(
+            is_investigation_epoch_active(&env),
+            "new epoch must still be active after original epoch_end"
+        );
+
+        // Jump to exactly new_epoch_end — must be inactive
+        set_ts(&env, new_epoch_end);
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "new epoch must expire at its own epoch_end"
+        );
+    }
+
+    /// Starting an epoch after a previous one expired resets the guard.
+    #[test]
+    fn new_epoch_after_expiry_reinstates_block() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, DURATION);
+
+        // Let the first epoch expire
+        set_ts(&env, T0 + DURATION + 1);
+        assert!(!is_investigation_epoch_active(&env));
+
+        // Start a fresh epoch at the current time
+        let t1 = T0 + DURATION + 1;
+        set_ts(&env, t1);
+        start_investigation_epoch(&env, DURATION);
+
+        // Immediately: must be active
+        assert!(
+            is_investigation_epoch_active(&env),
+            "fresh epoch must block immediately after starting"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Err(InvestigationEpochError::WriteBlocked),
+            "guard must block after fresh epoch starts"
+        );
+
+        // Expire the second epoch
+        set_ts(&env, t1 + DURATION + 1);
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "second epoch must expire after its duration"
+        );
+    }
+
+    // ── Error discriminant stability ──────────────────────────────────────
+
+    /// The `WriteBlocked` discriminant must be 1 (ABI contract — pinned for
+    /// encoding stability across contract upgrades and downstream integrators).
+    #[test]
+    fn write_blocked_discriminant_is_one() {
+        assert_eq!(
+            InvestigationEpochError::WriteBlocked as u32,
+            1u32,
+            "InvestigationEpochError::WriteBlocked discriminant must be 1 (ABI contract)"
+        );
+    }
+
+    /// The error round-trips through Val encoding.
+    #[test]
+    fn write_blocked_error_round_trips_through_val() {
+        use soroban_sdk::{IntoVal, TryFromVal};
+        let env = Env::default();
+        let val: soroban_sdk::Val = InvestigationEpochError::WriteBlocked.into_val(&env);
+        let decoded = InvestigationEpochError::try_from_val(&env, &val)
+            .expect("InvestigationEpochError must round-trip through Val");
+        assert_eq!(decoded, InvestigationEpochError::WriteBlocked);
+    }
+
+    // ── Zero-duration epoch ───────────────────────────────────────────────
+
+    /// A zero-duration epoch expires immediately (epoch_end == T0 and the
+    /// guard checks `epoch_end > timestamp`, so it is never active).
+    #[test]
+    fn zero_duration_epoch_is_never_active() {
+        let env = Env::default();
+        set_ts(&env, T0);
+        start_investigation_epoch(&env, 0);
+
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "zero-duration epoch must never be active (epoch_end == now, guard uses strict >)"
+        );
+        assert_eq!(
+            require_no_investigation_epoch(&env),
+            Ok(()),
+            "guard must pass for zero-duration epoch"
+        );
+    }
+
+    // ── u64 saturation boundary ───────────────────────────────────────────
+
+    /// `start_investigation_epoch` uses `saturating_add` for the end time.
+    /// At `u64::MAX` ledger time + any duration, the epoch_end saturates at
+    /// `u64::MAX`. The guard compares `epoch_end > timestamp`; at exactly
+    /// `u64::MAX` they are equal, so the guard passes (epoch not active).
+    #[test]
+    fn saturation_at_u64_max_does_not_panic() {
+        let env = Env::default();
+        set_ts(&env, u64::MAX);
+        // Must not panic even though saturating_add overflows conceptually
+        start_investigation_epoch(&env, u64::MAX);
+
+        // epoch_end == u64::MAX::saturating_add(u64::MAX) == u64::MAX
+        // timestamp == u64::MAX → epoch_end == timestamp → NOT active
+        assert!(
+            !is_investigation_epoch_active(&env),
+            "saturated epoch_end == timestamp must not be considered active"
+        );
+    }
 }

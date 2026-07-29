@@ -101,6 +101,22 @@ mod tests {
         );
     }
 
+    /// `init` must require `owner`'s signature. Without this, anyone could
+    /// front-run deployment and call `init` with themselves (or any address
+    /// they control) as `owner` before the intended owner does, permanently
+    /// seizing control of the contract. No auth is mocked here — on `main`
+    /// (before this fix) this call succeeds with zero authorization; after
+    /// the fix it must panic on the missing signature.
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_init_requires_owner_signature() {
+        let env = Env::default();
+        let id = env.register_contract(None, Insurance);
+        let c = InsuranceClient::new(&env, &id);
+        let owner = Address::generate(&env);
+        c.init(&owner);
+    }
+
     #[test]
     fn test_create_policy_success() {
         let env = Env::default();

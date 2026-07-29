@@ -17,6 +17,7 @@ fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
 #[test]
 fn initialize_rejects_self_address() {
     let env = Env::default();
+    env.mock_all_auths();
     let (contract_id, client) = setup(&env);
     assert_eq!(
         client.try_initialize(&contract_id),
@@ -27,14 +28,31 @@ fn initialize_rejects_self_address() {
 #[test]
 fn initialize_succeeds_with_valid_address() {
     let env = Env::default();
+    env.mock_all_auths();
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
 }
 
+/// `initialize` must require `admin`'s signature. Without this, anyone could
+/// front-run deployment and call `initialize` with themselves (or any
+/// address they control) as `admin` before the intended admin does,
+/// permanently seizing control of the kill switch. No auth is mocked here —
+/// on `main` (before this fix) this call succeeds with zero authorization;
+/// after the fix it must panic on the missing signature.
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn initialize_requires_admin_signature() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+}
+
 #[test]
 fn assert_no_double_init() {
     let env = Env::default();
+    env.mock_all_auths();
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     // First initialization should succeed
