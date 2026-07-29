@@ -21,6 +21,9 @@ python3 scripts/validate_lockfile.py
 echo "Building WASM..."
 cargo build --release --target wasm32-unknown-unknown
 
+echo "WASM size delta (issue #1559)..."
+bash scripts/wasm_size_delta.sh
+
 echo "Running tests..."
 cargo test --all-features
 
