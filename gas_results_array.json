@@ -1,0 +1,128 @@
+[
+  {
+    "contract": "remittance_split",
+    "method": "create_remittance_schedule",
+    "scenario": "single_recurring_schedule",
+    "cpu": 179121,
+    "mem": 34598
+  },
+  {
+    "contract": "remittance_split",
+    "method": "cancel_remittance_schedule",
+    "scenario": "single_schedule_cancellation",
+    "cpu": 134708,
+    "mem": 24345
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "empty_schedules",
+    "cpu": 19338,
+    "mem": 2203
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedule",
+    "scenario": "single_schedule_lookup",
+    "cpu": 65156,
+    "mem": 11183
+  },
+  {
+    "contract": "remittance_split",
+    "method": "distribute_usdc",
+    "scenario": "4_recipients_all_nonzero",
+    "cpu": 801843,
+    "mem": 117992
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n1_cursor0_limit10",
+    "cpu": 82330,
+    "mem": 12632
+  },
+  {
+    "contract": "remittance_split",
+    "method": "modify_remittance_schedule",
+    "scenario": "single_schedule_modification",
+    "cpu": 136247,
+    "mem": 24417
+  },
+  {
+    "contract": "remittance_split",
+    "method": "create_remittance_schedule",
+    "scenario": "11th_schedule_with_existing",
+    "cpu": 222917,
+    "mem": 48521
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "5_schedules_with_isolation",
+    "cpu": 193122,
+    "mem": 22886
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n25_cursor0_limit10",
+    "cpu": 291824,
+    "mem": 34430
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n25_cursor10_limit10",
+    "cpu": 293738,
+    "mem": 34430
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n25_cursor20_limit10",
+    "cpu": 181544,
+    "mem": 24160
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_remittance_schedules",
+    "scenario": "50_schedules_worst_case",
+    "cpu": 1532188,
+    "mem": 145916
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n50_cursor0_limit10",
+    "cpu": 302883,
+    "mem": 38030
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n50_cursor10_limit10",
+    "cpu": 304533,
+    "mem": 38030
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n50_cursor20_limit10",
+    "cpu": 306183,
+    "mem": 38030
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n50_cursor30_limit10",
+    "cpu": 307833,
+    "mem": 38030
+  },
+  {
+    "contract": "remittance_split",
+    "method": "get_schedules_paginated",
+    "scenario": "n50_cursor40_limit10",
+    "cpu": 308949,
+    "mem": 38030
+  }
+]

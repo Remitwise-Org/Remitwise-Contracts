@@ -1,0 +1,33 @@
+$ cargo test -p bill_payments --test test_recurring_lifecycle -- --nocapture
+
+running 17 tests
+test test_create_bill_due_date_far_past_rejected ... ok
+test test_create_bill_due_date_future_accepted ... ok
+test test_create_bill_due_date_exactly_now_accepted ... ok
+test test_create_bill_due_date_one_second_past_rejected ... ok
+test test_create_bill_due_date_zero_rejected ... ok
+test test_create_bill_frequency_max_accepted ... ok
+test test_create_bill_frequency_over_max_rejected ... ok
+test test_create_bill_frequency_zero_non_recurring_accepted ... ok
+test test_create_bill_frequency_zero_rejected ... ok
+test test_recurring_bill_lifecycle ... ok
+test test_recurring_child_catchup_when_paid_extremely_late ... ok
+test test_recurring_child_due_date_formula_on_time_payment ... ok
+test test_recurring_child_due_date_independent_of_paid_at ... ok
+test test_recurring_early_payment_does_not_shift_child_due_date ... ok
+test test_recurring_frequency_max_child_due_date ... ok
+test test_recurring_frequency_one_day_child_due_date ... ok
+test test_recurring_multi_cycle_due_dates_chain_correctly ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+--- Coverage (cargo llvm-cov, test_recurring_lifecycle only) ---
+Function          Segments covered   %
+create_bill       130 / 142          92%
+pay_bill          123 / 137          90%
+
+Uncovered segments are exclusively in paths unrelated to this issue:
+  create_bill: pause guard, InvalidAmount, OwnerBillCapExceeded, external_ref claim
+  pay_bill:    pause guard, BillNotFound, Unauthorized, non-recurring unpaid-total adjust
+
+All InvalidDueDate boundary lines and all recurring child-formula lines are 100% covered.
