@@ -202,6 +202,60 @@ impl RemittanceSplit {
         true
     }
 
+    /// Rotate the split configuration's owner.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the caller (must be the current owner)
+    /// * `new_owner` - Address to become the new owner
+    ///
+    /// # Panics
+    /// - If caller doesn't authorize the transaction
+    /// - If split is not initialized
+    /// - If caller is not the current owner
+    /// - If `new_owner` is this contract's own address -- Stellar/Soroban
+    ///   has no canonical "zero address" the way EVM chains do, but handing
+    ///   ownership to the contract's own address is the equivalent
+    ///   footgun: nothing can `require_auth()` as the contract itself
+    ///   through the normal signing path, so this would permanently lock
+    ///   out every owner-gated function.
+    pub fn rotate_owner(env: Env, caller: Address, new_owner: Address) -> bool {
+        // Access control: require caller authorization
+        caller.require_auth();
+
+        let mut config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .expect("Split not initialized");
+
+        // Access control: verify caller is the current owner
+        if config.owner != caller {
+            panic!("Only the current owner can rotate ownership");
+        }
+
+        // Harden against handing ownership to an address nothing can
+        // authenticate as.
+        if new_owner == env.current_contract_address() {
+            panic!("New owner cannot be the contract's own address");
+        }
+
+        // Extend storage TTL
+        Self::extend_instance_ttl(&env);
+
+        config.owner = new_owner.clone();
+        env.storage()
+            .instance()
+            .set(&symbol_short!("CONFIG"), &config);
+
+        // Emit event for audit trail
+        env.events().publish(
+            (symbol_short!("split"), SplitEvent::Updated),
+            (caller, new_owner),
+        );
+
+        true
+    }
+
     /// Get the current split configuration
     ///
     /// # Returns
@@ -302,7 +356,7 @@ impl RemittanceSplit {
         ];
 
         let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
+        for (category, amount) in categories.into_iter().zip(amounts) {
             result.push_back(Allocation { category, amount });
         }
         result
@@ -389,5 +443,51 @@ mod tests {
             assert_eq!(allocation.amount, expected_amounts[idx]);
             assert_eq!(allocation.category, categories[idx]);
         }
+    }
+
+    #[test]
+    fn rotate_owner_transfers_ownership() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let new_owner = Address::generate(&env);
+        client.initialize_split(&owner, &50, &30, &15, &5);
+
+        client.rotate_owner(&owner, &new_owner);
+
+        assert_eq!(client.get_config().unwrap().owner, new_owner);
+    }
+
+    #[test]
+    #[should_panic(expected = "Only the current owner can rotate ownership")]
+    fn rotate_owner_rejects_a_non_owner_caller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let stranger = Address::generate(&env);
+        let new_owner = Address::generate(&env);
+        client.initialize_split(&owner, &50, &30, &15, &5);
+
+        client.rotate_owner(&stranger, &new_owner);
+    }
+
+    #[test]
+    #[should_panic(expected = "New owner cannot be the contract's own address")]
+    fn rotate_owner_rejects_the_contracts_own_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        client.initialize_split(&owner, &50, &30, &15, &5);
+
+        client.rotate_owner(&owner, &contract_id);
     }
 }
