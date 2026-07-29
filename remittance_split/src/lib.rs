@@ -135,6 +135,26 @@ pub struct Corridor {
     pub fee_bps: u32,
 }
 
+impl Corridor {
+    /// Compute this corridor's fee for `amount`, exactly, in basis points.
+    ///
+    /// Issue #1612 – the fee pipeline previously worked at whole-percent
+    /// granularity: `Rate::to_percent()` truncates 550 bps to 5%, so a
+    /// 5.5% fee on 200 stroops charged 10 instead of the exact 11 — losing
+    /// a stroop to truncation. Rather than fix the math, fractional-bps
+    /// fees were rejected outright (`FeeRounding`) at validation time.
+    ///
+    /// This computes `floor(amount * fee_bps / 10_000)` in one exact step
+    /// (multiply before divide, checked arithmetic), so any `fee_bps` up to
+    /// [`params::MAX_FEE_BPS`] is priced correctly and the validation-time
+    /// ban is no longer needed.
+    pub fn fee_for(&self, amount: i128) -> Result<i128, RemittanceSplitError> {
+        remitwise_common::Rate::from_bps(self.fee_bps)
+            .apply_to(amount)
+            .map_err(|_| RemittanceSplitError::Overflow)
+    }
+}
+
 /// Typed request for distribute_usdc signing.
 /// This structure contains all parameters needed for distributing USDC.
 /// Signers use this to compute a deterministic request hash.
@@ -1081,15 +1101,12 @@ impl RemittanceSplit {
                 if c.fee_bps > params::MAX_FEE_BPS {
                     return Err(RemittanceSplitError::CorridorFeeTooHigh);
                 }
-                if remitwise_common::Rate::from_bps(c.fee_bps).has_fractional_percent() {
-                    soroban_sdk::log!(
-                        env,
-                        "level=ERROR error=FeeRounding corridor_id={} fee_bps={}",
-                        c.id,
-                        c.fee_bps
-                    );
-                    return Err(RemittanceSplitError::FeeRounding);
-                }
+                // Issue #1612 – fractional-bps fees (e.g. 550 = 5.5%) were
+                // previously rejected here with `FeeRounding` because the fee
+                // pipeline truncated at whole-percent granularity and would
+                // have lost value. Fees are now computed bps-exactly via
+                // `Corridor::fee_for`, so the ban is lifted. The error variant
+                // is retained for ABI stability but no longer emitted.
                 if c.max_amount < c.min_amount || c.min_amount < params::MIN_CORRIDOR_AMOUNT {
                     return Err(RemittanceSplitError::InvalidCorridorAmountRange);
                 }

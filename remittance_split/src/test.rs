@@ -2899,3 +2899,107 @@ fn test_paused_since_and_pause_state() {
     assert!(!unpaused_state.paused);
     assert_eq!(unpaused_state.paused_since, None);
 }
+
+// ─── Issue #1612 – fee must be computed bps-exactly, never percent-truncated ──
+
+/// Issue #1612 regression: a 550 bps (5.5%) fee on 200 stroops must charge
+/// exactly floor(200 * 550 / 10_000) = 11. The old pipeline truncated the
+/// rate to a whole percent first (550 bps → 5%), charging 10 — losing one
+/// stroop to truncation.
+#[test]
+fn test_fee_for_is_bps_exact_no_stroop_lost() {
+    let corridor = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 1,
+        max_amount: i128::MAX,
+        fee_bps: 550,
+    };
+
+    // Exact: floor(200 * 550 / 10_000) = 11.
+    assert_eq!(corridor.fee_for(200).unwrap(), 11);
+    // The percent-truncated path (550 bps → 5% → 200 * 5 / 100) gave 10.
+    let percent_truncated = 200i128 * ((550 / 100) as i128) / 100;
+    assert_eq!(percent_truncated, 10, "documents the old lossy computation");
+    assert_eq!(
+        corridor.fee_for(200).unwrap() - percent_truncated,
+        1,
+        "the recovered stroop"
+    );
+
+    // Floor semantics on a non-exact quotient: floor(199 * 550 / 10_000) = 10.
+    assert_eq!(corridor.fee_for(199).unwrap(), 10);
+}
+
+/// Whole-percent fees are unchanged by the fix (500 bps = 5% exactly).
+#[test]
+fn test_fee_for_whole_percent_unchanged() {
+    let corridor = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 1,
+        max_amount: i128::MAX,
+        fee_bps: 500,
+    };
+    assert_eq!(corridor.fee_for(200).unwrap(), 10);
+    assert_eq!(corridor.fee_for(10_000).unwrap(), 500);
+}
+
+/// Zero fee and zero amount both price to zero.
+#[test]
+fn test_fee_for_zero_boundaries() {
+    let mut corridor = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 1,
+        max_amount: i128::MAX,
+        fee_bps: 0,
+    };
+    assert_eq!(corridor.fee_for(1_000_000).unwrap(), 0);
+    corridor.fee_bps = 550;
+    assert_eq!(corridor.fee_for(0).unwrap(), 0);
+}
+
+/// Explicit failure mode: amounts whose product overflows i128 surface the
+/// typed `Overflow` error instead of panicking.
+#[test]
+fn test_fee_for_overflow_is_typed_error() {
+    let corridor = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 1,
+        max_amount: i128::MAX,
+        fee_bps: 550,
+    };
+    assert_eq!(
+        corridor.fee_for(i128::MAX),
+        Err(RemittanceSplitError::Overflow)
+    );
+}
+
+/// Issue #1612: fractional-bps corridors were rejected wholesale with
+/// `FeeRounding` as a workaround for the lossy percent-granular fee path.
+/// With bps-exact pricing the ban is lifted: validation now accepts them.
+#[test]
+fn test_fractional_bps_corridor_now_validates() {
+    let env = Env::default();
+    let corridors = vec![
+        &env,
+        Corridor {
+            id: 1,
+            source_currency: symbol_short!("USD"),
+            dest_currency: symbol_short!("NGN"),
+            min_amount: 100,
+            max_amount: 1_000_000,
+            fee_bps: 550, // 5.5% — previously FeeRounding
+        },
+    ];
+    assert_eq!(
+        RemittanceSplit::validate_corridors(&env, &corridors),
+        Ok(())
+    );
+}
