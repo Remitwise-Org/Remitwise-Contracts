@@ -126,6 +126,11 @@ jobs:
 
         '
       continue-on-error: false
+    - name: Run reserved storage key enforcement check
+      run: 'cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
+
+        '
+      continue-on-error: false
   gas-benchmarks:
     name: Gas Benchmarks
     runs-on: macos-latest

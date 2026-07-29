@@ -8,6 +8,7 @@ This directory contains automated tests that validate storage key naming convent
 
 - **`storage_key_naming_test.rs`** - Comprehensive validation suite for a hand-maintained catalogue of documented storage keys
 - **`storage_key_source_scan_test.rs`** - Parses each contract crate's `src/lib.rs` directly, extracts every storage-key literal actually passed to a Soroban storage accessor (`.get()`, `.set()`, `.has()`, `.remove()`), and re-validates those against the same conventions. This catches drift that the hand-maintained catalogue can miss: a key can be added or renamed in source without anyone remembering to update `storage_key_naming_test.rs`, and this scan will still catch a convention violation because it reads the real code, not a snapshot of it.
+- **`reserved_storage_keys_test.rs`** - Parses the reserved-key table out of [`docs/RESERVED_STORAGE_KEYS.md`](../../docs/RESERVED_STORAGE_KEYS.md) and cross-checks it against the same live source scan used above, failing if any contract stores data under a key set aside for a future roadmap feature (yield generation, staking, the V2 migration path, etc.).
 
 ## What Gets Validated
 
@@ -54,6 +55,28 @@ heuristic silently regressing). It recognizes two shapes:
 instead of literal keys, so the scan naturally finds fewer entries for
 those two crates - see [STORAGE_LAYOUT.md](../../STORAGE_LAYOUT.md).
 
+## Reserved Key Enforcement
+
+`reserved_storage_keys_test.rs` reuses the same key-extraction approach as
+the source scan, but checks against a different list: the "reserved for a
+future feature" keys documented in
+[`docs/RESERVED_STORAGE_KEYS.md`](../../docs/RESERVED_STORAGE_KEYS.md)
+(e.g. `YIELD_CFG`, `STAKE_POL`, `REWARD_CF`). It parses that document's
+table directly, so the doc itself stays the single source of truth - remove
+a row there once the feature ships, and the test stops treating that key as
+reserved without any test-code change.
+
+Three checks:
+
+1. **Parser sanity** - the expected reserved keys are actually found in the
+   doc's table (guards against a markdown format change silently emptying
+   the reserved set).
+2. **Enforcement (happy path)** - no crate in `SCANNED_CRATES` currently
+   uses a reserved key.
+3. **Detector proof (failure mode)** - runs the same extraction + check
+   against a synthetic snippet that intentionally reuses a reserved key,
+   proving the detector actually flags it.
+
 ## Running the Tests
 
 ### Run All Storage Key Tests
@@ -82,6 +105,12 @@ cargo test --package testutils test_print_storage_key_summary -- --nocapture
 
 ```bash
 cargo test --package testutils --test storage_key_source_scan_test -- --nocapture
+```
+
+### Run the Reserved Key Enforcement Check Only
+
+```bash
+cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
 ```
 
 ### Run from Workspace Root
@@ -196,6 +225,11 @@ storage-key-validation:
       run: |
         cargo test --package testutils --test storage_key_source_scan_test -- --nocapture
       continue-on-error: false
+
+    - name: Run reserved storage key enforcement check
+      run: |
+        cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
+      continue-on-error: false
 ```
 
 ## Maintenance
@@ -253,6 +287,7 @@ All keys are centralized in the `get_all_storage_keys()` function for easy maint
 ## References
 
 - [Storage Key Naming Conventions](../../docs/storage-key-naming-conventions.md)
+- [Reserved Storage Keys](../../docs/RESERVED_STORAGE_KEYS.md)
 - [Storage Layout Documentation](../../STORAGE_LAYOUT.md)
 - [Soroban Symbol Documentation](https://docs.rs/soroban-sdk/latest/soroban_sdk/struct.Symbol.html)
 - [Soroban Storage Example](https://developers.stellar.org/docs/build/smart-contracts/example-contracts/storage)

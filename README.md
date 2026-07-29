@@ -337,6 +337,8 @@ To run an example, use `cargo run --example <example_name>`:
 - [Type-Safe Percent Conversion](docs/type-safe-percent-conversion.md) - Converting whole percentages to basis points with checked overflow arithmetic
 - [Configuration Schema Versioning](docs/CONFIG_SCHEMA_VERSIONING.md) - Protocols for bumping configuration schema versions with backward compatibility
 - [Storage Layout Reference](STORAGE_LAYOUT.md)
+- [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) - Naming rules for storage keys, plus the CI checks that enforce them
+- [Reserved Storage Keys](docs/RESERVED_STORAGE_KEYS.md) - Storage-key prefixes set aside for roadmap features; contributors must not reuse them
 - [Audit Event Fields](docs/audit-event-fields.md) - On-chain audit log fields and patterns
 - [Event Indexer](indexer/README.md) - Off-chain event indexing and querying
 - [Audit Trail](docs/AUDIT_TRAIL.md) - How to reconstruct historical state from events alone

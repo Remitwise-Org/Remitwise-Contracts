@@ -47,9 +47,36 @@ pub fn set_notification(env: Env, enabled: bool) {
 }
 ```
 
+## Automated Enforcement
+
+Point 1 below is not just a review checklist item — it's enforced in CI.
+[`testutils/tests/reserved_storage_keys_test.rs`](../testutils/tests/reserved_storage_keys_test.rs)
+parses the table above directly out of this document (so the doc stays the
+single source of truth) and cross-checks every reserved key against every
+storage-key literal actually used in each contract's `src/lib.rs`, the same
+way [`storage_key_source_scan_test.rs`](../testutils/tests/storage_key_source_scan_test.rs)
+catches naming-convention drift. If a PR stores data under a reserved key,
+this test fails the build instead of relying on a reviewer to spot it.
+
+**Run it locally:**
+
+```bash
+cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
+```
+
+When the future feature for a reserved key is actually implemented, remove
+the row from the table above (see step 3 below) — the test will then stop
+treating that key as reserved automatically, no test-code change required.
+
 ## Reviewer Verification
 
 When reviewing PRs, verify that:
-1. No `symbol_short!` macro invocation uses a key from the table above.
+1. No `symbol_short!` macro invocation uses a key from the table above — automatically checked by `reserved_storage_keys_test.rs` (see [Automated Enforcement](#automated-enforcement)), but worth a manual glance for keys built up dynamically (e.g. `format!`) that the scanner can't see.
 2. The storage layout tests in `testutils/tests/storage_key_naming_test.rs` are passing.
 3. If the PR implements the future feature for a reserved key, the key is removed from this document and added to the [Storage Key Naming Conventions](storage-key-naming-conventions.md#common-storage-keys) table.
+
+## References
+
+- [Storage Key Naming Conventions](storage-key-naming-conventions.md) - Naming rules and CI-enforced conventions for all storage keys
+- [Storage Layout Reference](../STORAGE_LAYOUT.md) - Complete storage layout documentation for every contract
+- [testutils/tests/README.md](../testutils/tests/README.md) - Overview of all storage-key validation tests, including this document's enforcement test

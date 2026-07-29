@@ -174,6 +174,10 @@ Storage key naming conventions are automatically validated in CI through two com
    literal actually passed to a Soroban storage accessor (`.get()`, `.set()`,
    `.has()`, `.remove()`), then validates those against the same
    length/format constraints.
+3. **`testutils/tests/reserved_storage_keys_test.rs`** - Parses the
+   [Reserved Storage Keys](RESERVED_STORAGE_KEYS.md) table and cross-checks
+   it against the same live source scan, failing CI if any contract stores
+   data under a key reserved for a future roadmap feature.
 
 The hand-maintained catalogue is easy to read but nothing forces it to stay
 in sync with the code: a key can be renamed or added in source without the
@@ -181,7 +185,9 @@ catalogue (or its checks) ever noticing. The source scan closes that gap by
 validating what the code actually does, independent of whether anyone
 remembered to update the catalogue. Running both together means drift
 between "documented convention" and "real on-chain key" fails CI regardless
-of which side changed.
+of which side changed. The reserved-key check closes a related but distinct
+gap: a key can be perfectly well-formed and still collide with a namespace
+set aside for an unshipped feature.
 
 Note: `savings_goals` and `insurance` primarily use a composite `DataKey`
 enum (`DataKey::Goal(u32)`, `DataKey::Policy(u32)`, ...) for most of their
@@ -202,6 +208,9 @@ cargo test --package testutils test_all_keys_within_max_length -- --nocapture
 
 # Run only the live-source drift scan
 cargo test --package testutils --test storage_key_source_scan_test -- --nocapture
+
+# Run only the reserved-key enforcement check
+cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
 ```
 
 ### Test Coverage
@@ -229,12 +238,14 @@ against `src/lib.rs` in every contract crate:
 
 ### CI Integration
 
-Both test suites run automatically on every pull request and push to main
-through the GitHub Actions workflow defined in `.github/workflows/ci.yml`.
+All three test suites run automatically on every pull request and push to
+main through the GitHub Actions workflow defined in `.github/workflows/ci.yml`.
 
 The `storage-key-validation` job will fail if any naming convention
 violations are detected — by the catalogue check, the source scan, or
-both — preventing non-compliant keys from being merged.
+both — or if the reserved-key check (`reserved_storage_keys_test.rs`) finds
+a reserved key in use, preventing non-compliant or namespace-colliding keys
+from being merged.
 
 ## Adding New Storage Keys
 

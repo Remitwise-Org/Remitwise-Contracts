@@ -21,7 +21,7 @@ All storage keys follow strict naming conventions to ensure consistency and comp
 - **Format:** UPPERCASE_WITH_UNDERSCORES
 - **Valid characters:** A-Z, 0-9, \_ (underscore)
 
-These conventions are automatically validated in CI by two complementary test suites: a hand-maintained catalogue check (`storage_key_naming_test.rs`) and a live source scan (`storage_key_source_scan_test.rs`) that parses each contract's `src/lib.rs` directly so a key added or renamed in code can't silently drift out of sync with the documented conventions. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
+These conventions are automatically validated in CI by three complementary test suites: a hand-maintained catalogue check (`storage_key_naming_test.rs`), a live source scan (`storage_key_source_scan_test.rs`) that parses each contract's `src/lib.rs` directly so a key added or renamed in code can't silently drift out of sync with the documented conventions, and a reserved-key check (`reserved_storage_keys_test.rs`) that fails the build if a contract reuses a key set aside for a future roadmap feature. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines, [Reserved Storage Keys](docs/RESERVED_STORAGE_KEYS.md) for the list of keys not yet available for reuse, and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
 
 **Run validation tests:**
 
