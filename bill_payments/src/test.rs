@@ -4,12 +4,25 @@ mod testsuit {
 
     use crate::*;
     use proptest::prelude::*;
-    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
     use soroban_sdk::{Address, Env, IntoVal, String};
     use std::format;
     use testutils::{set_ledger_time, setup_test_env};
+
+    fn set_time(env: &Env, timestamp: u64) {
+        let proto = env.ledger().protocol_version();
+        env.ledger().set(LedgerInfo {
+            protocol_version: proto,
+            sequence_number: env.ledger().sequence(),
+            timestamp,
+            network_id: env.ledger().network_id().into(),
+            base_reserve: 0,
+            min_temp_entry_ttl: 0,
+            min_persistent_entry_ttl: 0,
+            max_entry_ttl: 6315840,
+        });
+    }
 
     proptest! {
         #[test]
@@ -213,6 +226,139 @@ mod testsuit {
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Currency validation tests (SC-015)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_currency_valid_xlm() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Rent"),
+            &1000,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency, String::from_str(&env, "XLM"));
+    }
+
+    #[test]
+    fn test_currency_empty_defaults_to_xlm() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "EmptyCurrency"),
+            &100,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, ""),
+            &None,
+        );
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency, String::from_str(&env, "XLM"));
+    }
+
+    #[test]
+    fn test_currency_lowercase_normalized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Lowercase"),
+            &200,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "xlm"),
+            &None,
+        );
+        let bill = client.get_bill(&bill_id).unwrap();
+        assert_eq!(bill.currency, String::from_str(&env, "XLM"));
+    }
+
+    #[test]
+    fn test_currency_invalid_with_numbers() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "InvalidNumber"),
+            &100,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM1"),
+            &None,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_currency_invalid_too_long() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "TooLong"),
+            &100,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "VERYLONGCURRENCYCODE"),
+            &None,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidCurrency)));
+    }
+
+    #[test]
+    fn test_currency_unsupported_rejected() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        env.mock_all_auths();
+        let result = client.try_create_bill(
+            &owner,
+            &String::from_str(&env, "Unsupported"),
+            &100,
+            &2000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "NGN"),
+            &None,
+        );
+        assert_eq!(result, Err(Ok(Error::UnsupportedCurrency)));
     }
 
     #[test]

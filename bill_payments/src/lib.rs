@@ -22,16 +22,27 @@
 //! every write. There is no per-bill TTL: a single bill cannot outlive (or
 //! be evicted independently of) the rest of this contract's instance
 //! storage.
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Vec,
+use remitwise_common::{
+    check_and_increment_rate_limit, clamp_limit, require_stable_currency, require_within_settlement_window,
+    reversible_op::{BillPaymentsReversible, ReversibleOpError},
+    EventCategory, EventPriority, RemitwiseEvents, Timestamp,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
+    MAX_CURRENCY_LEN, MAX_SETTLEMENT_WINDOW_SECS, SNAPSHOT_KEY,
+    SNAPSHOT_VERSION,
 };
-
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
     Symbol, Vec,
 };
 
+/// Contract-specific type alias for ergonomic error handling.
+/// Maps to the crate's own error type to keep every `Result<_, Error>`
+/// from needing a `use crate::BillPaymentsError` at every call site.
+pub type Error = BillPaymentsError;
+
+/// Validates that a currency string consists entirely of ASCII alphabetic characters.
+/// This is a first-pass sanity check that rejects non-letter characters before
+/// the stable-currency allowlist check in `validate_and_normalize_currency`.
 fn is_valid_currency_chars(s: &[u8]) -> bool {
     !s.is_empty() && s.iter().all(|&b| b.is_ascii_alphabetic())
 }
@@ -114,6 +125,40 @@ pub struct BillPage {
     pub count: u32,
 }
 
+/// An archived bill that has been moved from active storage to cold storage.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ArchivedBill {
+    pub id: u32,
+    pub owner: Address,
+    pub name: String,
+    pub external_ref: Option<String>,
+    pub amount: i128,
+    pub paid_at: Option<u64>,
+    pub archived_at: u64,
+    pub tags: Vec<String>,
+    pub currency: String,
+}
+
+/// Paginated result for archived bill queries.
+#[contracttype]
+#[derive(Clone)]
+pub struct ArchivedBillPage {
+    pub items: Vec<ArchivedBill>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+impl ArchivedBillPage {
+    /// Returns the first archived bill in the page, or a typed error when the page is empty.
+    pub fn first(&self) -> Result<ArchivedBill, BillPaymentsError> {
+        match self.items.get(0) {
+            Some(bill) => Ok(bill.clone()),
+            None => Err(BillPaymentsError::EmptyPage),
+        }
+    }
+}
+
 impl BillPage {
     /// Returns the first bill in the page, or a typed error when the page is empty.
     pub fn first(&self) -> Result<Bill, BillPaymentsError> {
@@ -161,9 +206,6 @@ pub enum BillPaymentsError {
     /// Amount is zero or negative
     InvalidAmount = 3,
     /// Recurring frequency is invalid (error code 4).
-    ///
-    /// Triggered when `recurring == true` and `frequency_days == 0` or
-    /// `frequency_days > MAX_FREQUENCY_DAYS` (36_500). Valid range: `[1, 36_500]`.
     InvalidFrequency = 4,
     /// Caller is not authorized for this operation
     Unauthorized = 5,
@@ -171,6 +213,54 @@ pub enum BillPaymentsError {
     AdminAlreadyInitialized = 7,
     NoPendingRotation = 8,
     TimelockNotElapsed = 9,
+    /// Returned when a page has zero items.
+    EmptyPage = 10,
+    /// Currency code is invalid (too long, wrong characters, or not in allowlist).
+    InvalidCurrency = 11,
+    /// Currency code is not a supported stable asset.
+    UnsupportedCurrency = 12,
+    /// External reference string is too short, too long, or contains invalid characters.
+    InvalidExternalRef = 13,
+    /// External reference is already in use by another bill for this owner.
+    DuplicateExternalRef = 14,
+    /// Pause admin grant has expired.
+    AdminGrantExpired = 15,
+    /// Contract is globally paused.
+    ContractPaused = 16,
+    /// The requested function is paused.
+    FunctionPaused = 17,
+    /// Caller is not the pause admin.
+    UnauthorizedPause = 18,
+    /// Pre-upgrade snapshot not found.
+    SnapshotNotFound = 19,
+    /// A limit (pagination, cap) was out of allowed bounds.
+    InvalidLimit = 20,
+    /// Pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 21,
+    /// Bill or schedule name is empty or too long.
+    InvalidName = 22,
+    /// Due date is 0, in the past, or would overflow on recurrence.
+    InvalidDueDate = 23,
+    /// Schedule interval is less than the minimum allowed.
+    ScheduleIntervalTooShort = 24,
+    /// Schedule lead time exceeds the maximum allowed.
+    ScheduleLeadTimeTooLong = 25,
+    /// Maximum number of schedules per owner exceeded.
+    ScheduleCapExceeded = 26,
+    /// Schedule with the given ID does not exist.
+    ScheduleNotFound = 27,
+    /// Schedule is not active.
+    ScheduleNotActive = 28,
+    /// Rate limit for this operation has been exceeded.
+    RateLimitExceeded = 29,
+    /// Settlement time exceeds the due date plus grace period.
+    SettlementWindowExpired = 30,
+    /// Per-owner bill cap has been reached.
+    OwnerBillCapExceeded = 31,
+    /// Tag content is invalid (too long or contains disallowed characters).
+    InvalidTagContent = 32,
+    /// Batch operation exceeds the maximum batch size.
+    BatchTooLarge = 33,
 }
 
 #[contracttype]
@@ -2866,7 +2956,7 @@ impl BillPayments {
                         name: bill.name.clone(),
                         external_ref: bill.external_ref.clone(),
                         amount: bill.amount,
-                        paid_at,
+                        paid_at: Some(paid_at),
                         archived_at: current_time,
                         tags: bill.tags.clone(),
                         currency: bill.currency.clone(),
@@ -2979,7 +3069,7 @@ impl BillPayments {
             frequency_days: 0,
             paid: true,
             created_at: env.ledger().timestamp(),
-            paid_at: Some(archived_bill.paid_at),
+            paid_at: archived_bill.paid_at,
             schedule_id: None,
             tags: archived_bill.tags.clone(),
             currency: archived_bill.currency.clone(),
@@ -3224,6 +3314,66 @@ impl BillPayments {
             }
         }
         total
+    }
+
+    /// Returns the total unpaid amount for `owner` filtered by `currency`.
+    ///
+    /// The currency string is normalized (uppercased, whitespace trimmed)
+    /// for consistent lookup against the currency index.
+    pub fn get_total_unpaid_by_currency(env: Env, owner: Address, currency: String) -> i128 {
+        let normalized_currency = Self::normalize_currency(&env, &currency);
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let currency_ids = Self::get_bills_by_owner_currency(&env, &owner, &normalized_currency);
+        let mut total = 0i128;
+        for id in currency_ids.iter() {
+            if let Some(bill) = bills.get(id) {
+                if !bill.paid {
+                    total = total.saturating_add(bill.amount);
+                }
+            }
+        }
+        total
+    }
+
+    /// Returns a page of unpaid bills for `owner` filtered by `currency`.
+    ///
+    /// The currency string is normalized for consistent lookup.
+    /// Pagination uses the existing currency index for O(currency_bills) traversal.
+    pub fn get_unpaid_bills_by_currency(
+        env: Env,
+        owner: Address,
+        currency: String,
+        cursor: u32,
+        limit: u32,
+    ) -> BillPage {
+        let limit = clamp_limit(limit);
+        let normalized_currency = Self::normalize_currency(&env, &currency);
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let currency_ids = Self::get_bills_by_owner_currency(&env, &owner, &normalized_currency);
+        let mut staging: Vec<(u32, Bill)> = Vec::new(&env);
+        for id in currency_ids.iter() {
+            if id <= cursor {
+                continue;
+            }
+            let Some(bill) = bills.get(id) else {
+                continue;
+            };
+            if !bill.paid {
+                staging.push_back((id, bill));
+                if staging.len() > limit {
+                    break;
+                }
+            }
+        }
+        Self::build_page(&env, staging, limit)
     }
 
     pub fn get_storage_stats(env: Env) -> StorageStats {
