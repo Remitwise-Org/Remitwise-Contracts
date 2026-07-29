@@ -176,6 +176,7 @@ Before merging any PR that touches two or more contracts, verify:
 ## See Also
 
 - [`docs/PERIOD_INVARIANTS.md`](PERIOD_INVARIANTS.md) — time-bound period invariants and ledger timestamp rules
+- [`docs/CROSS_CONTRACT_TIME.md`](CROSS_CONTRACT_TIME.md) — how ledger time is shared across contracts and why the host clock is authoritative
 - [`docs/AMOUNT_INVARIANTS.md`](AMOUNT_INVARIANTS.md) — zero-amount handling across contract entrypoints
 - [`docs/AUTHORIZATION_MATRIX.md`](AUTHORIZATION_MATRIX.md) — per-entrypoint caller authorization requirements
 - [`docs/MIGRATIONS.md`](MIGRATIONS.md) — how to bump a contract spec without breaking existing storage
