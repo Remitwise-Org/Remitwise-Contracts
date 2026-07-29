@@ -4,6 +4,8 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+mod fee_math;
+
 #[derive(Clone)]
 #[contracttype]
 pub struct Allocation {
@@ -239,11 +241,12 @@ impl RemittanceSplit {
 
         let split = Self::get_split(&env);
 
-        let spending = (total_amount * split.get(0).unwrap() as i128) / 100;
-        let savings = (total_amount * split.get(1).unwrap() as i128) / 100;
-        let bills = (total_amount * split.get(2).unwrap() as i128) / 100;
-        // Insurance gets the remainder to handle rounding
-        let insurance = total_amount - spending - savings - bills;
+        let (spending, savings, bills, insurance) = fee_math::split_amounts(
+            total_amount,
+            split.get(0).unwrap(),
+            split.get(1).unwrap(),
+            split.get(2).unwrap(),
+        );
 
         // Emit event for audit trail
         env.events().publish(
@@ -302,7 +305,7 @@ impl RemittanceSplit {
         ];
 
         let mut result = Vec::new(env);
-        for (category, amount) in categories.into_iter().zip(amounts.into_iter()) {
+        for (category, amount) in categories.into_iter().zip(amounts) {
             result.push_back(Allocation { category, amount });
         }
         result
