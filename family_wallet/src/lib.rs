@@ -414,8 +414,7 @@ impl FamilyWallet {
         if remitwise_common::require_no_active_kill_switch(&env).is_err() {
             return false;
         }
-        owner.require_auth();
-        if !Self::try_initialize(env.clone(), owner.clone(), initial_members) {
+        if !Self::try_initialize(env.clone(), owner, initial_members) {
             panic!("Wallet already initialized");
         }
         true
@@ -579,7 +578,7 @@ impl FamilyWallet {
             EventPriority::High,
             symbol_short!("role_grnt"),
             RoleGrantedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 role,
                 timestamp: now,
             },
@@ -679,7 +678,7 @@ impl FamilyWallet {
             true,
         );
 
-        true
+        Ok(true)
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -839,13 +838,7 @@ impl FamilyWallet {
             },
         );
 
-        Self::append_access_audit(
-            &env,
-            symbol_short!("ms_conf"),
-            &caller,
-            None,
-            true,
-        );
+        Self::append_access_audit(&env, symbol_short!("ms_conf"), &caller, None, true);
 
         Ok(true)
     }
@@ -1120,6 +1113,10 @@ impl FamilyWallet {
 
         if !Self::check_spending_limit(env.clone(), proposer.clone(), amount) {
             panic!("Spending limit exceeded");
+        }
+
+        if let Err(e) = Self::validate_precision_spending_internal(env.clone(), proposer.clone(), amount) {
+            panic_with_error!(env, e);
         }
 
         let config: MultiSigConfig = env
@@ -1456,8 +1453,7 @@ impl FamilyWallet {
 
         // Defence-in-depth: block removal while multisig proposals are in-flight
         // to prevent orphaned signatures and stale quorum calculations.
-        Self::require_no_pending_operations(&env)
-            .unwrap_or_else(|e| panic_with_error!(&env, e));
+        Self::require_no_pending_operations(&env).unwrap_or_else(|e| panic_with_error!(&env, e));
 
         let owner: Address = env
             .storage()
@@ -1780,13 +1776,7 @@ impl FamilyWallet {
             (archived_count, caller.clone()),
         );
 
-        Self::append_access_audit(
-            &env,
-            symbol_short!("arch_tx"),
-            &caller,
-            None,
-            true,
-        );
+        Self::append_access_audit(&env, symbol_short!("arch_tx"), &caller, None, true);
 
         archived_count
     }
@@ -1891,13 +1881,7 @@ impl FamilyWallet {
             (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
             (removed_count, caller.clone()),
         );
-        Self::append_access_audit(
-            &env,
-            symbol_short!("cln_exp"),
-            &caller,
-            None,
-            true,
-        );
+        Self::append_access_audit(&env, symbol_short!("cln_exp"), &caller, None, true);
         removed_count
     }
 
@@ -2027,13 +2011,7 @@ impl FamilyWallet {
                 .set(&symbol_short!("SPND_TRK"), &trackers);
         }
 
-        Self::append_access_audit(
-            &env,
-            symbol_short!("prec_lim"),
-            &caller,
-            Some(member),
-            true,
-        );
+        Self::append_access_audit(&env, symbol_short!("prec_lim"), &caller, Some(member), true);
 
         Ok(true)
     }

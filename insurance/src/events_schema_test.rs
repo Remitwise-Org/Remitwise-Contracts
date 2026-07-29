@@ -17,8 +17,9 @@
 use super::*;
 use remitwise_common::CoverageType;
 use soroban_sdk::{
-    symbol_short, testutils::Address as _, Address, Env, IntoVal, String as SorobanString, Symbol,
-    TryFromVal, Val,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, IntoVal, String as SorobanString, Symbol, TryFromVal, Val,
 };
 
 // ---------------------------------------------------------------------------
@@ -232,8 +233,7 @@ fn premium_schedule_executed_event_payload_schema() {
     };
 
     let v: Val = evt.clone().into_val(&env);
-    let decoded =
-        PremiumScheduleExecutedEvent::try_from_val(&env, &v).expect("round-trip failed");
+    let decoded = PremiumScheduleExecutedEvent::try_from_val(&env, &v).expect("round-trip failed");
 
     assert_eq!(decoded.schedule_id, 10);
     assert_eq!(decoded.policy_id, 2);
@@ -277,11 +277,7 @@ fn setup_contract(env: &Env) -> (InsuranceClient<'_>, Address) {
 }
 
 /// Helper: create a minimal Health policy.
-fn create_health_policy(
-    env: &Env,
-    client: &InsuranceClient<'_>,
-    policy_owner: &Address,
-) -> u32 {
+fn create_health_policy(env: &Env, client: &InsuranceClient<'_>, policy_owner: &Address) -> u32 {
     client.create_policy(
         policy_owner,
         &SorobanString::from_str(env, "Test Policy"),
@@ -317,10 +313,7 @@ fn create_policy_emits_created_event() {
             let payload: PolicyCreatedEvent =
                 PolicyCreatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             assert_eq!(payload.policy_id, pid);
-            assert_eq!(
-                payload.name,
-                SorobanString::from_str(&env, "Test Policy")
-            );
+            assert_eq!(payload.name, SorobanString::from_str(&env, "Test Policy"));
             assert_eq!(payload.coverage_type, CoverageType::Health);
             assert_eq!(payload.monthly_premium, 5_000_000);
             assert_eq!(payload.coverage_amount, 50_000_000);
@@ -414,7 +407,7 @@ fn reactivate_policy_emits_reactivated_event() {
     // Advance past the 24-hour cooldown (MAX_TENURE_SECS = 86_400).
     env.ledger().with_mut(|l| l.timestamp += 86_401);
 
-    client.reactivate_policy(&policy_owner, &pid).unwrap();
+    client.reactivate_policy(&policy_owner, &pid);
 
     let mut found = false;
     for (_cid, topics, data) in env.events().all() {
@@ -449,9 +442,7 @@ fn set_external_ref_emits_external_ref_updated_event() {
     let pid = create_health_policy(&env, &client, &policy_owner);
 
     let new_ref = SorobanString::from_str(&env, "EXTREF-42");
-    client
-        .set_external_ref(&contract_owner, &pid, &Some(new_ref.clone()))
-        .unwrap();
+    client.set_external_ref(&contract_owner, &pid, &Some(new_ref.clone()));
 
     let mut found = false;
     for (_cid, topics, data) in env.events().all() {
@@ -466,18 +457,14 @@ fn set_external_ref_emits_external_ref_updated_event() {
             InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
         {
             let payload: ExternalRefUpdatedEvent =
-                ExternalRefUpdatedEvent::try_from_val(&env, &data)
-                    .expect("payload decode failed");
+                ExternalRefUpdatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             assert_eq!(payload.policy_id, pid);
             assert_eq!(payload.caller, contract_owner);
             assert_eq!(payload.ext_ref, Some(new_ref.clone()));
             found = true;
         }
     }
-    assert!(
-        found,
-        "InsuranceEvent::ExternalRefUpdated was not emitted"
-    );
+    assert!(found, "InsuranceEvent::ExternalRefUpdated was not emitted");
 }
 
 /// Clearing (`None`) also emits `ExternalRefUpdated` with `ext_ref: None`.
@@ -491,16 +478,12 @@ fn set_external_ref_clear_emits_event_with_none() {
     let pid = create_health_policy(&env, &client, &policy_owner);
 
     // Set first, then clear.
-    client
-        .set_external_ref(
-            &contract_owner,
-            &pid,
-            &Some(SorobanString::from_str(&env, "INITIAL")),
-        )
-        .unwrap();
-    client
-        .set_external_ref(&contract_owner, &pid, &None)
-        .unwrap();
+    client.set_external_ref(
+        &contract_owner,
+        &pid,
+        &Some(SorobanString::from_str(&env, "INITIAL")),
+    );
+    client.set_external_ref(&contract_owner, &pid, &None);
 
     let mut found_clear = false;
     for (_cid, topics, data) in env.events().all() {
@@ -515,8 +498,7 @@ fn set_external_ref_clear_emits_event_with_none() {
             InsuranceEvent::try_from_val(&env, &topics.get(1).unwrap())
         {
             let payload: ExternalRefUpdatedEvent =
-                ExternalRefUpdatedEvent::try_from_val(&env, &data)
-                    .expect("payload decode failed");
+                ExternalRefUpdatedEvent::try_from_val(&env, &data).expect("payload decode failed");
             if payload.ext_ref.is_none() {
                 assert_eq!(payload.policy_id, pid);
                 assert_eq!(payload.caller, contract_owner);
@@ -591,14 +573,12 @@ fn all_lifecycle_events_use_insurance_namespace() {
     client.pay_premium(&policy_owner, &pid);
     client.deactivate_policy(&policy_owner, &pid);
     env.ledger().with_mut(|l| l.timestamp += 86_401);
-    client.reactivate_policy(&policy_owner, &pid).unwrap();
-    client
-        .set_external_ref(
-            &contract_owner,
-            &pid,
-            &Some(SorobanString::from_str(&env, "REF")),
-        )
-        .unwrap();
+    client.reactivate_policy(&policy_owner, &pid);
+    client.set_external_ref(
+        &contract_owner,
+        &pid,
+        &Some(SorobanString::from_str(&env, "REF")),
+    );
 
     let insurance_ns = symbol_short!("insurance");
     let mut lifecycle_variants_seen: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
@@ -660,7 +640,10 @@ fn deactivate_policy_idempotent_emits_no_second_event() {
 
     // Count Deactivated events after the first call.
     let count_after_first = count_deactivated_events(&env, pid);
-    assert_eq!(count_after_first, 1, "expected exactly 1 Deactivated event after first deactivation");
+    assert_eq!(
+        count_after_first, 1,
+        "expected exactly 1 Deactivated event after first deactivation"
+    );
 
     // Second deactivation (idempotent) — must not add another event.
     assert!(client.deactivate_policy(&policy_owner, &pid));

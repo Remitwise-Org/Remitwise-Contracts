@@ -9,10 +9,10 @@ use data_migration::{
 fn remittance_split() -> SnapshotPayload {
     SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
         owner: "GOWNER".into(),
-        spending_percent: 50,
-        savings_percent: 30,
-        bills_percent: 15,
-        insurance_percent: 5,
+        spending_percent: 5000,
+        savings_percent: 3000,
+        bills_percent: 1500,
+        insurance_percent: 500,
     })
 }
 

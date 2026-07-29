@@ -1,9 +1,9 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-mod params;
 #[cfg(test)]
 mod events_schema_test;
+mod params;
 #[cfg(test)]
 mod test;
 #[cfg(test)]
@@ -103,6 +103,8 @@ pub enum RemittanceSplitError {
     InvalidCorridorAmountRange = 37,
     /// Two or more corridors share the same ID.
     DuplicateCorridorId = 38,
+    /// Fee rounding error.
+    FeeRounding = 39,
 }
 
 #[derive(Clone)]
@@ -749,8 +751,8 @@ impl RemittanceSplit {
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
-        let treasury = Self::get_treasury(&env)
-            .ok_or(RemittanceSplitError::TreasuryNotConfigured)?;
+        let treasury =
+            Self::get_treasury(&env).ok_or(RemittanceSplitError::TreasuryNotConfigured)?;
 
         Ok(TokenClient::new(&env, &config.usdc_contract).balance(&treasury))
     }
@@ -1067,7 +1069,10 @@ impl RemittanceSplit {
     /// 2. Each `fee_bps` ≤ [`params::MAX_FEE_BPS`].
     /// 3. Each `max_amount` ≥ `min_amount` and `min_amount` ≥ [`params::MIN_CORRIDOR_AMOUNT`].
     /// 4. No duplicate corridor IDs.
-    fn validate_corridors(env: &Env, corridors: &Vec<Corridor>) -> Result<(), RemittanceSplitError> {
+    fn validate_corridors(
+        env: &Env,
+        corridors: &Vec<Corridor>,
+    ) -> Result<(), RemittanceSplitError> {
         if corridors.len() > params::MAX_CORRIDORS {
             return Err(RemittanceSplitError::CorridorCountExceeded);
         }

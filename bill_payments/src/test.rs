@@ -4,6 +4,7 @@ mod testsuit {
 
     use crate::*;
     use proptest::prelude::*;
+    use remitwise_common::reversible_op::ReversibleOpError;
     use soroban_sdk::testutils::storage::Instance as _;
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
     use soroban_sdk::{Address, Env, IntoVal, String};
@@ -3504,7 +3505,10 @@ mod testsuit {
 
         assert_eq!(
             emitted_actions,
-            [Symbol::new(&env, "paused_v2"), Symbol::new(&env, "unpaused_v2")]
+            [
+                Symbol::new(&env, "paused_v2"),
+                Symbol::new(&env, "unpaused_v2")
+            ]
         );
     }
 
@@ -3915,6 +3919,8 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
 
+        let now = 12_345_678u64;
+        env.ledger().set_timestamp(now);
         client.set_pause_admin(&admin, &admin);
 
         assert_eq!(client.get_paused_since(), None);
@@ -3922,8 +3928,6 @@ mod testsuit {
         assert!(!initial_state.paused);
         assert_eq!(initial_state.paused_since, None);
 
-        let now = 12_345_678u64;
-        env.ledger().set_timestamp(now);
         client.pause(&admin);
 
         assert_eq!(client.get_paused_since(), Some(now));
@@ -3938,38 +3942,40 @@ mod testsuit {
         assert!(!unpaused_state.paused);
         assert_eq!(unpaused_state.paused_since, None);
     }
-}
 
-    // ========================================================================
-    // Tests for set_external_ref authorization and index cleanup (Issue #1410)
-    // ========================================================================
+// ========================================================================
+// Tests for set_external_ref authorization and index cleanup (Issue #1410)
+// ========================================================================
 
-    #[test]
-    fn test_set_external_ref_owner_can_set() {
-        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+#[test]
+fn test_set_external_ref_owner_can_set() {
+    setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
 
-        // Create a bill
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Electricity"),
-            &1000,
-            &1000000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+    // Create a bill
+    let bill_id = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Electricity"),
+        &1000,
+        &1000000,
+        &false,
+        &0,
+        &None,
+        &String::from_str(&env, "XLM"),
+        &None,
+    );
 
-        // Owner should be able to set external_ref
-        env.mock_all_auths();
-        let ext_ref = Some(String::from_str(&env, "EXT-123"));
-        client.set_external_ref(&owner, &bill_id, &ext_ref);
+    // Owner should be able to set external_ref
+    env.mock_all_auths();
+    let ext_ref = Some(String::from_str(&env, "EXT-123"));
+    client.set_external_ref(&owner, &bill_id, &ext_ref);
 
         // Verify the external_ref was set
         let bill = client.get_bill(&bill_id).unwrap();
         assert!(bill.external_ref.is_some());
-        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "EXT-123"));
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "EXT-123")
+        );
     }
 
     #[test]
@@ -4048,7 +4054,10 @@ mod testsuit {
         );
 
         let bill2 = client.get_bill(&bill_id2).unwrap();
-        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "EXT-789"));
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "EXT-789")
+        );
     }
 
     #[test]
@@ -4089,11 +4098,17 @@ mod testsuit {
         );
 
         let bill2 = client.get_bill(&bill_id2).unwrap();
-        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "REF-001"));
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "REF-001")
+        );
 
         // Verify the first bill has the new ref
         let bill = client.get_bill(&bill_id).unwrap();
-        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "REF-002"));
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "REF-002")
+        );
     }
 
     #[test]
@@ -4145,7 +4160,10 @@ mod testsuit {
 
         // Verify first bill still has the external_ref
         let bill1 = client.get_bill(&bill_id1).unwrap();
-        assert_eq!(bill1.external_ref.unwrap(), String::from_str(&env, "DUP-REF"));
+        assert_eq!(
+            bill1.external_ref.unwrap(),
+            String::from_str(&env, "DUP-REF")
+        );
     }
 
     #[test]
@@ -4190,7 +4208,10 @@ mod testsuit {
 
         // Verify second bill has the external_ref
         let bill2 = client.get_bill(&bill_id2).unwrap();
-        assert_eq!(bill2.external_ref.unwrap(), String::from_str(&env, "REUSE-REF"));
+        assert_eq!(
+            bill2.external_ref.unwrap(),
+            String::from_str(&env, "REUSE-REF")
+        );
     }
 
     #[test]
@@ -4212,11 +4233,8 @@ mod testsuit {
 
         // Try to set an empty external_ref (should fail)
         env.mock_all_auths();
-        let result = client.try_set_external_ref(
-            &owner,
-            &bill_id,
-            &Some(String::from_str(&env, "")),
-        );
+        let result =
+            client.try_set_external_ref(&owner, &bill_id, &Some(String::from_str(&env, "")));
 
         assert_eq!(result, Err(Ok(Error::InvalidExternalRef)));
 
@@ -4237,11 +4255,8 @@ mod testsuit {
 
         // Try to set external_ref on a non-existent bill
         env.mock_all_auths();
-        let result = client.try_set_external_ref(
-            &owner,
-            &999,
-            &Some(String::from_str(&env, "REF-999")),
-        );
+        let result =
+            client.try_set_external_ref(&owner, &999, &Some(String::from_str(&env, "REF-999")));
 
         assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
@@ -4271,6 +4286,9 @@ mod testsuit {
 
         // Verify the external_ref was updated
         let bill = client.get_bill(&bill_id).unwrap();
-        assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "REF-NEW"));
+        assert_eq!(
+            bill.external_ref.unwrap(),
+            String::from_str(&env, "REF-NEW")
+        );
     }
 }

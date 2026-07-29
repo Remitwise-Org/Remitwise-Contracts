@@ -747,7 +747,10 @@ impl Insurance {
 
         let now = env.ledger().timestamp();
         env.events().publish(
-            (symbol_short!("insurance"), InsuranceEvent::ExternalRefUpdated),
+            (
+                symbol_short!("insurance"),
+                InsuranceEvent::ExternalRefUpdated,
+            ),
             ExternalRefUpdatedEvent {
                 policy_id,
                 caller,
@@ -1582,7 +1585,10 @@ impl Insurance {
         Self::extend_persistent_ttl(&env, &DataKey::Schedule(schedule_id));
 
         env.events().publish(
-            (symbol_short!("insurance"), InsuranceEvent::ScheduleCancelled),
+            (
+                symbol_short!("insurance"),
+                InsuranceEvent::ScheduleCancelled,
+            ),
             (schedule_id,),
         );
 
@@ -1744,4 +1750,3 @@ mod events_schema_test;
 mod next_payment_scheduling_tests;
 #[cfg(test)]
 mod test;
-

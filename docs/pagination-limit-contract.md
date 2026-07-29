@@ -14,3 +14,12 @@ The contract is:
 
 Callers should import and use this helper instead of duplicating pagination limit
 logic locally.
+
+## Central Bound Enforcement
+
+In addition to `clamp_limit`, `remitwise-common::require_page_limit_within_bounds` provides explicit central validation for pagination limits:
+
+- `require_page_limit_within_bounds(limit: u32) -> Result<(), PageLimitError>`
+- Returns `Err(PageLimitError::LimitExceedsMax)` if `limit > MAX_PAGE_LIMIT`.
+- Returns `Ok(())` for valid limits within `0..=MAX_PAGE_LIMIT`.
+

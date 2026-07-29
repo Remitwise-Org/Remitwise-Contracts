@@ -91,7 +91,7 @@ fn transfer_admin_succeeds_with_different_address() {
     // Confirm the two addresses are genuinely distinct before testing the
     // happy path — makes the boundary explicit and avoids false positives.
     assert!(!same_address(&admin, &new_admin));
-    assert_eq!(client.try_transfer_admin(&new_admin), Ok(Ok(())));
+    assert_eq!(client.try_transfer_admin(&new_admin, &0u64), Ok(Ok(())));
 }
 
 #[test]

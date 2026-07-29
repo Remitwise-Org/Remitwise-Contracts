@@ -22,7 +22,7 @@
 
 #![cfg(test)]
 
-use family_wallet::{Client as FamilyWalletClient, FamilyWallet};
+use family_wallet::{FamilyWallet, FamilyWalletClient};
 use remitwise_common::FamilyRole;
 use soroban_sdk::{testutils::Address as _, vec, Address, Env};
 use testutils::set_ledger_time;
@@ -254,11 +254,5 @@ fn re_register_revoked_operator_restores_registered_state() {
     assert_eq!(client.get_role_expiry_public(&admin), Some(renewed_to));
 
     // Privileged action succeeds again.
-    assert!(client.configure_emergency(
-        &admin,
-        &1000_0000000,
-        &3600,
-        &0,
-        &10000_0000000
-    ));
+    assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000));
 }

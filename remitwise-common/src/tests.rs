@@ -18,10 +18,11 @@ extern crate std;
 
 use super::*;
 use crate::distribute_pro_rata;
+use crate::PeriodKind::{Day, Month, Week};
 use ed25519_dalek::Signer;
 use proptest::prelude::*;
-use soroban_sdk::testutils::LedgerInfo;
-use soroban_sdk::{Bytes, Env, IntoVal, String, Symbol, Vec};
+use soroban_sdk::testutils::{Ledger, LedgerInfo};
+use soroban_sdk::{contract, contractimpl, Bytes, Env, IntoVal, String, Symbol, Vec};
 
 #[allow(dead_code)]
 fn set_ledger(env: &Env, sequence_number: u32) {
@@ -827,7 +828,7 @@ fn test_canonicalise_symbols_invalid_element_short_circuits() {
     let env = Env::default();
     let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
     inputs.push_back(soroban_sdk::String::from_str(&env, "valid_one"));
-    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char"));  // hyphen at pos 3
+    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char")); // hyphen at pos 3
     inputs.push_back(soroban_sdk::String::from_str(&env, "valid_two"));
 
     assert_eq!(
@@ -842,7 +843,10 @@ fn test_canonicalise_symbols_too_long_element() {
     let env = Env::default();
     let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
     inputs.push_back(soroban_sdk::String::from_str(&env, "ok"));
-    inputs.push_back(soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg")); // 33 chars
+    inputs.push_back(soroban_sdk::String::from_str(
+        &env,
+        "abcdefghijklmnopqrstuvwxyzabcdefg",
+    )); // 33 chars
 
     assert_eq!(
         canonicalise_symbols(&env, &inputs),
@@ -859,6 +863,32 @@ fn test_canonicalise_symbols_single_element() {
     let out = canonicalise_symbols(&env, &inputs).unwrap();
     assert_eq!(out.len(), 1);
     assert_eq!(symbol_str(&out.get(0).unwrap()), "mykey");
+}
+
+// ─── require_page_limit_within_bounds ───────────────────────────────────────
+
+#[test]
+fn test_require_page_limit_within_bounds_valid() {
+    assert_eq!(require_page_limit_within_bounds(0), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(1), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(DEFAULT_PAGE_LIMIT), Ok(()));
+    assert_eq!(require_page_limit_within_bounds(MAX_PAGE_LIMIT), Ok(()));
+}
+
+#[test]
+fn test_require_page_limit_within_bounds_exceeded_negative() {
+    assert_eq!(
+        require_page_limit_within_bounds(MAX_PAGE_LIMIT + 1),
+        Err(PageLimitError::LimitExceedsMax)
+    );
+    assert_eq!(
+        require_page_limit_within_bounds(100),
+        Err(PageLimitError::LimitExceedsMax)
+    );
+    assert_eq!(
+        require_page_limit_within_bounds(u32::MAX),
+        Err(PageLimitError::LimitExceedsMax)
+    );
 }
 
 // ─── clamp_limit ─────────────────────────────────────────────────────────────
@@ -985,7 +1015,10 @@ fn test_period_key_month_bucket_epoch_and_dec_2023() {
     assert_eq!(Timestamp::to_period_key(ts, PeriodKind::Month), 202312);
     // Jan 1, 2024 00:00:00 UTC
     let jan1_2024 = 1704067200;
-    assert_eq!(Timestamp::to_period_key(jan1_2024, PeriodKind::Month), 202401);
+    assert_eq!(
+        Timestamp::to_period_key(jan1_2024, PeriodKind::Month),
+        202401
+    );
 }
 
 #[test]
@@ -993,10 +1026,19 @@ fn test_period_key_exact_rollover_edges() {
     // Midnight UTC at 2021-02-28 to Mar 1st transition, and leap-year
     let feb_28_2020 = 1582848000; // 2020-02-28 00:00:00 UTC
     let feb_29_2020 = 1582934400; // 2020-02-29 00:00:00 UTC (leap)
-    let mar_1_2020  = 1583020800; // 2020-03-01 00:00:00 UTC
-    assert_eq!(Timestamp::to_period_key(feb_28_2020, PeriodKind::Month), 202002);
-    assert_eq!(Timestamp::to_period_key(feb_29_2020, PeriodKind::Month), 202002);
-    assert_eq!(Timestamp::to_period_key(mar_1_2020, PeriodKind::Month), 202003);
+    let mar_1_2020 = 1583020800; // 2020-03-01 00:00:00 UTC
+    assert_eq!(
+        Timestamp::to_period_key(feb_28_2020, PeriodKind::Month),
+        202002
+    );
+    assert_eq!(
+        Timestamp::to_period_key(feb_29_2020, PeriodKind::Month),
+        202002
+    );
+    assert_eq!(
+        Timestamp::to_period_key(mar_1_2020, PeriodKind::Month),
+        202003
+    );
 }
 
 #[test]
@@ -1020,7 +1062,7 @@ fn test_period_key_idempotent_and_monotonic_within_bucket() {
 proptest! {
     #[test]
     fn proptest_period_key_roundtrips(t in 0u64..4660000000) { // up to year 2117
-        use remitwise_common::{PeriodKind::*};
+        use crate::PeriodKind::*;
         let day = Timestamp::to_period_key(t, Day);
         let week = Timestamp::to_period_key(t, Week);
         let month = Timestamp::to_period_key(t, Month);
@@ -1406,7 +1448,10 @@ fn test_sign_for_domain_a_replay_against_domain_b_fails() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    assert_eq!(verify_signature(&env, domain_a, message, &signature, &pk), Ok(()));
+    assert_eq!(
+        verify_signature(&env, domain_a, message, &signature, &pk),
+        Ok(())
+    );
     let _ = verify_signature(&env, domain_b, message, &signature, &pk);
 }
 
@@ -1490,22 +1535,24 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_require_matching_cross_contract_epoch() {
     let env = Env::default();
-    
+
     // Default is 0, so epoch 0 matches
     assert_eq!(require_matching_cross_contract_epoch(&env, 0), Ok(()));
-    
+
     // Set epoch to 5
-    env.storage().instance().set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
-    
+    env.storage()
+        .instance()
+        .set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
+
     // Exact match is accepted
     assert_eq!(require_matching_cross_contract_epoch(&env, 5), Ok(()));
-    
+
     // Stale epoch (less than current) is rejected
     assert_eq!(
         require_matching_cross_contract_epoch(&env, 4),
         Err(CrossContractEpochError::EpochMismatch)
     );
-    
+
     // Future epoch (greater than current) is rejected
     assert_eq!(
         require_matching_cross_contract_epoch(&env, 6),
@@ -2187,4 +2234,3 @@ fn test_same_address_symmetric() {
     let b = soroban_sdk::Address::generate(&env);
     assert_eq!(crate::same_address(&a, &b), crate::same_address(&b, &a));
 }
-
