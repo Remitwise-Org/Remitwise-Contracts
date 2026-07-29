@@ -813,6 +813,189 @@ fn test_verify_dependency_address_set_deterministic_error() {
     ));
 }
 
+// ---------------------------------------------------------------------------
+// Additional negative tests for verify_dependency_address_set
+// Each of the 5 slots that could reference self
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_verify_dependency_address_set_rejects_self_reference_in_each_slot() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let other = || -> Address { Address::generate(&env) };
+
+    // Test self-reference in savings_goals slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: contract_id.clone(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in bill_payments slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: contract_id.clone(),
+        insurance: other(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in insurance slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: contract_id.clone(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in family_wallet slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: contract_id,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_non_adjacent_duplicates() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let other = || -> Address { Address::generate(&env) };
+
+    // Duplicate: remittance_split == insurance (non-adjacent)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: x,
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Duplicate: savings_goals == family_wallet (non-adjacent)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: x.clone(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: x,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Duplicate: remittance_split == family_wallet (non-adjacent, first and last)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: x,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_works_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // verify_dependency_address_set is documented as a preflight that
+    // does NOT require authorization — confirm it works even without init.
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Ok(Ok(()))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_self_reference_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // Even without init, self-reference must be rejected
+    let addrs = ContractAddresses {
+        remittance_split: contract_id,
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_duplicates_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // Even without init, duplicates must be rejected
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: Address::generate(&env),
+        bill_payments: x,
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
 #[test]
 fn test_get_remittance_summary() {
     let env = Env::default();
