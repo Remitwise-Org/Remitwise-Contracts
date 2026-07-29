@@ -247,6 +247,17 @@ pub struct ProposalInvalidatedEvent {
     pub timestamp: u64,
 }
 
+/// Emitted when `pause` halts the wallet. `reason` lets off-chain monitors
+/// distinguish a routine admin pause from an incident-driven one without
+/// having to correlate against out-of-band reports.
+#[contracttype]
+#[derive(Clone)]
+pub struct PauseEvent {
+    pub paused_by: Address,
+    pub paused_at: u64,
+    pub reason: Symbol,
+}
+
 /// Emitted when `configure_multisig` successfully sets or updates the
 /// threshold, signer set, or spending limit for a `TransactionType`.
 ///
@@ -2116,7 +2127,7 @@ impl FamilyWallet {
         true
     }
 
-    pub fn pause(env: Env, caller: Address) -> bool {
+    pub fn pause(env: Env, caller: Address, reason: Symbol) -> bool {
         if remitwise_common::require_no_active_kill_switch(&env).is_err() {
             return false;
         }
@@ -2134,8 +2145,14 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.events()
-            .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        env.events().publish(
+            (symbol_short!("wallet"), symbol_short!("paused")),
+            PauseEvent {
+                paused_by: caller.clone(),
+                paused_at: env.ledger().timestamp(),
+                reason,
+            },
+        );
         Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }

@@ -3375,10 +3375,41 @@ fn test_paused_contract_rejects_multisig_config() {
 
     client.init(&owner, &initial_members);
 
-    client.pause(&owner);
+    client.pause(&owner, &symbol_short!("test"));
 
     let signers = vec![&env, owner.clone(), member1.clone()];
     client.configure_multisig(&owner, &TransactionType::LargeWithdrawal, &1, &signers, &0);
+}
+
+/// Issue #1597: `pause`'s emitted event carries a `reason` so off-chain
+/// monitors can distinguish a routine pause from an incident-driven one.
+#[test]
+fn test_pause_event_carries_reason() {
+    use soroban_sdk::IntoVal;
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    client.pause(&owner, &symbol_short!("incident"));
+
+    let mut found = None;
+    for (_cid, topics, data) in env.events().all() {
+        if topics.len() != 2 {
+            continue;
+        }
+        let action: Symbol = topics.get(1).unwrap().into_val(&env);
+        if action == symbol_short!("paused") {
+            found = Some(data.into_val(&env));
+        }
+    }
+    let evt: PauseEvent = found.expect("pause event must be emitted");
+    assert_eq!(evt.paused_by, owner);
+    assert_eq!(evt.reason, symbol_short!("incident"));
 }
 
 #[test]
@@ -4145,7 +4176,7 @@ fn test_expired_admin_cannot_pause() {
     let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
 
     // Attempt pause with expired role should fail
-    let result = client.try_pause(&admin);
+    let result = client.try_pause(&admin, &symbol_short!("test"));
     assert!(result.is_err());
 }
 
@@ -4167,7 +4198,7 @@ fn test_expired_admin_cannot_unpause() {
     let now = env.ledger().timestamp();
     let expires_at = now + 1;
     let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
-    let _pause = client.pause(&admin);
+    let _pause = client.pause(&admin, &symbol_short!("test"));
     env.ledger().set_timestamp(expires_at);
 
     // Attempt unpause with expired role should fail
@@ -4596,7 +4627,7 @@ fn test_non_expired_admin_can_perform_privileged_operations() {
     let _set_exp = client.set_role_expiry(&owner, &admin, &Some(expires_at));
 
     // All these operations should succeed with non-expired role
-    let pause_result = client.try_pause(&admin);
+    let pause_result = client.try_pause(&admin, &symbol_short!("test"));
     assert!(pause_result.is_ok());
 
     let unpause_result = client.try_unpause(&admin);
