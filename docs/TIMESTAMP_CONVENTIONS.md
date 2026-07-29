@@ -162,6 +162,10 @@ let remaining = Timestamp::seconds_until(env.ledger().timestamp(), pause_until);
 
 ---
 
+## See also
+
+- [`docs/CROSS_CONTRACT_TIME.md`](CROSS_CONTRACT_TIME.md) — how ledger time is shared across contracts in the same transaction
+
 ## Summary of Rules
 
 | Rule | Rationale |
