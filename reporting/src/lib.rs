@@ -7,7 +7,7 @@ use soroban_sdk::{
 mod utils;
 use utils::u64_to_u32;
 
-pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
+pub use remitwise_common::{Category, CoverageType, ToI128Checked, DEFAULT_PAGE_LIMIT, MAX_TOP_N};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -36,7 +36,11 @@ pub const MAX_DEP_PAGES: u32 = 20;
 pub const DEP_PAGE_LIMIT: u32 = 50;
 
 /// Maximum number of items included in top-N reports.
-pub const MAX_ITEMS_PER_REPORT: u32 = 10;
+///
+/// Alias for [`remitwise_common::MAX_TOP_N`] so the invariance is
+/// compile-time enforced.  Validated at the top of every top-N endpoint
+/// via [`remitwise_common::require_bounded_top_n`] as defence-in-depth.
+pub const MAX_ITEMS_PER_REPORT: u32 = remitwise_common::MAX_TOP_N;
 
 /// Financial health score (0-100), composed of three weighted components.
 ///
@@ -259,6 +263,10 @@ pub enum ReportingError {
     InvalidPercentageSplit = 8,
     /// u64 to u32 overflow guard
     Overflow = 9,
+    /// Proposed new admin is the same as the current admin.
+    SameAdmin = 10,
+    /// The requested top-N size exceeds the global cap.
+    TopNTooLarge = 11,
 }
 
 #[contracttype]
@@ -686,6 +694,7 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the current admin
+    /// * `SameAdmin` - If `new_admin` is the same as the current admin
     pub fn propose_new_admin(
         env: Env,
         caller: Address,
@@ -701,6 +710,10 @@ impl ReportingContract {
 
         if caller != admin {
             return Err(ReportingError::Unauthorized);
+        }
+
+        if new_admin == admin {
+            return Err(ReportingError::SameAdmin);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1093,7 +1106,8 @@ impl ReportingContract {
         }
 
         let completion_percentage = safe_percent(total_saved, total_target, 100).min(100);
-            let completion_percentage = u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
+        let completion_percentage =
+            u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
 
         Ok(SavingsReport {
             total_goals,
@@ -1171,11 +1185,8 @@ impl ReportingContract {
         let compliance_percentage = if total_bills == 0 {
             100u32
         } else {
-            let val: i128 = safe_percent(
-                paid_bills as i128,
-                total_bills as i128,
-                100,
-            ).clamp(0, 100);
+            let val: i128 =
+                safe_percent(paid_bills as i128, total_bills as i128, 100).clamp(0, 100);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -1244,7 +1255,8 @@ impl ReportingContract {
 
         let annual_premium = monthly_premium.saturating_mul(12);
         let coverage_to_premium_ratio = {
-            let val: i128 = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
+            let val: i128 =
+                safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -1658,6 +1670,12 @@ impl ReportingContract {
     ) -> Result<TopNBillsReport, ReportingError> {
         remitwise_common::validate_period(period_start, period_end)
             .map_err(|_| ReportingError::InvalidPeriod)?;
+        // Defence-in-depth: the hardcoded MAX_ITEMS_PER_REPORT must not
+        // exceed the shared MAX_TOP_N cap.  If a future code change
+        // raises MAX_ITEMS_PER_REPORT above MAX_TOP_N, this guard fails
+        // closed rather than letting an oversized N reach the sort loop.
+        remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
+            .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
         Ok(Self::get_top_bills_report_internal(
             &env,
@@ -1699,39 +1717,24 @@ impl ReportingContract {
             total_count += 1;
 
             // Sorted insertion for Top-N (bounded)
-            //
-            // Ordering contract (deterministic):
-            // 1) Primary: amount descending
-            // 2) Tie-break: bill id ascending
-            let mut inserted = false;
-            for i in 0..top_bills.len() {
-                if let Some(existing) = top_bills.get(i) {
-                    let should_insert = if bill.amount > existing.amount {
-                        true
-                    } else if bill.amount < existing.amount {
-                        false
-                    } else {
-                        // Equal amounts → deterministic tie-break by id ascending
-                        bill.id < existing.id
-                    };
-
-                    if should_insert {
-                        top_bills.insert(i, bill.clone());
-                        inserted = true;
-                        break;
+            remitwise_common::insert_top_n(
+                env,
+                &mut top_bills,
+                MAX_ITEMS_PER_REPORT,
+                bill,
+                |a, b| match a.amount.cmp(&b.amount) {
+                    core::cmp::Ordering::Equal => {
+                        // Deterministic tie-break by id ascending
+                        // Smaller ID should be Greater (appear earlier)
+                        b.id.cmp(&a.id)
                     }
-                } else {
-                    // defensive: if index is out of bounds, skip
-                    continue;
-                }
-            }
+                    other => other,
+                },
+            );
+        }
 
-            if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
-                top_bills.push_back(bill);
-            } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
-                top_bills.remove(MAX_ITEMS_PER_REPORT);
-                availability = DataAvailability::Partial;
-            }
+        if total_count > MAX_ITEMS_PER_REPORT {
+            availability = DataAvailability::Partial;
         }
 
         TopNBillsReport {
@@ -1753,6 +1756,9 @@ impl ReportingContract {
     ) -> Result<TopNSavingsReport, ReportingError> {
         remitwise_common::validate_period(period_start, period_end)
             .map_err(|_| ReportingError::InvalidPeriod)?;
+        // Defence-in-depth: see [`get_top_bills_report`] for rationale.
+        remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
+            .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
         Ok(Self::get_top_savings_report_internal(
             &env,
@@ -1795,38 +1801,24 @@ impl ReportingContract {
             total_count += 1;
 
             // Sorted insertion for Top-N (bounded)
-            //
-            // Ordering contract (deterministic):
-            // 1) Primary: target amount descending
-            // 2) Tie-break: savings goal id ascending
-            let mut inserted = false;
-            for i in 0..top_goals.len() {
-                if let Some(existing) = top_goals.get(i) {
-                    let should_insert = if goal.target_amount > existing.target_amount {
-                        true
-                    } else if goal.target_amount < existing.target_amount {
-                        false
-                    } else {
-                        // Equal targets → deterministic tie-break by id ascending
-                        goal.id < existing.id
-                    };
-
-                    if should_insert {
-                        top_goals.insert(i, goal.clone());
-                        inserted = true;
-                        break;
+            remitwise_common::insert_top_n(
+                env,
+                &mut top_goals,
+                MAX_ITEMS_PER_REPORT,
+                goal,
+                |a, b| match a.target_amount.cmp(&b.target_amount) {
+                    core::cmp::Ordering::Equal => {
+                        // Deterministic tie-break by id ascending
+                        // Smaller ID should be Greater (appear earlier)
+                        b.id.cmp(&a.id)
                     }
-                } else {
-                    // defensive: if index is out of bounds, skip
-                    continue;
-                }
-            }
-            if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {
-                top_goals.push_back(goal);
-            } else if top_goals.len() > MAX_ITEMS_PER_REPORT {
-                top_goals.remove(MAX_ITEMS_PER_REPORT);
-                availability = DataAvailability::Partial;
-            }
+                    other => other,
+                },
+            );
+        }
+
+        if total_count > MAX_ITEMS_PER_REPORT {
+            availability = DataAvailability::Partial;
         }
 
         TopNSavingsReport {
@@ -2108,6 +2100,9 @@ impl ReportingContract {
 
     /// Get a paginated list of archived reports for a user.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// This is the supported entrypoint for reading the archive — see the
     /// deprecation note on [`ReportingContract::get_archived_reports`].
     ///
@@ -2252,8 +2247,9 @@ impl ReportingContract {
                 // Update index
                 if let Some(mut user_idx) = arch_idx.get(user.clone()) {
                     if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        let idx_u32 = u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
-            user_idx.remove(idx_u32);
+                        let idx_u32 =
+                            u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
+                        user_idx.remove(idx_u32);
                         if user_idx.is_empty() {
                             arch_idx.remove(user);
                         } else {

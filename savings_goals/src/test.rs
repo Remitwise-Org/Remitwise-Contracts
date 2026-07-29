@@ -2080,6 +2080,51 @@ fn test_limit_zero_uses_default() {
 }
 
 #[test]
+fn test_limit_one_passthrough() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &1);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.items.len(), 1);
+}
+
+#[test]
+fn test_limit_max_page_limit_passthrough() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &50);
+    assert_eq!(page.count, 50);
+    assert_eq!(page.items.len(), 50);
+}
+
+#[test]
+fn test_limit_above_max_clamped() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &id);
+    let owner = Address::generate(&env);
+
+    client.init();
+    setup_goals(&env, &client, &owner, 60);
+    let page = client.get_goals(&owner, &0, &100);
+    assert_eq!(page.count, 50); // clamped to MAX_PAGE_LIMIT
+    assert_eq!(page.items.len(), 50);
+}
+
+#[test]
 fn test_get_all_goals_backward_compat() {
     let env = Env::default();
     env.mock_all_auths();
@@ -5712,12 +5757,10 @@ fn test_batch_add_to_goals_locked_goal_rejects() {
     // Locked goals still accept deposits in batch
     let contributions = SorobanVec::from_array(
         &env,
-        [
-            ContributionItem {
-                goal_id: id_b,
-                amount: 500,
-            },
-        ],
+        [ContributionItem {
+            goal_id: id_b,
+            amount: 500,
+        }],
     );
     let res = client.batch_add_to_goals(&owner, &contributions);
     assert_eq!(res, 1, "locked goals accept deposits in batch");
@@ -5794,8 +5837,7 @@ fn test_batch_add_to_goals_duplicate_goal_ids_sequential() {
 
     let goal = client.get_goal(&goal_id).unwrap();
     assert_eq!(
-        goal.current_amount,
-        600,
+        goal.current_amount, 600,
         "duplicate goal_id contributions must accumulate"
     );
 }
@@ -7126,6 +7168,27 @@ fn test_pre_upgrade_roundtrip() {
 }
 
 #[test]
+fn test_pre_upgrade_restore_rejects_stale_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    client.init();
+
+    let admin = Address::generate(&env);
+    client.set_upgrade_admin(&admin, &admin);
+
+    let result = client.try_pre_upgrade(&admin);
+    assert!(result.is_ok());
+
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 31 * 24 * 60 * 60 + 1);
+
+    let result = client.try_restore_from_snapshot(&admin);
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_pre_upgrade_unauthorized_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -7153,4 +7216,72 @@ fn test_pre_upgrade_unauthorized_fails() {
     // Unauthorized discard
     let result = client.try_discard_snapshot(&stranger);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_paused_since_and_pause_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.init();
+    client.set_pause_admin(&admin, &admin);
+
+    assert_eq!(client.get_paused_since(), None);
+    let initial_state = client.get_pause_state();
+    assert!(!initial_state.paused);
+    assert_eq!(initial_state.paused_since, None);
+
+    let now = 9_876_543u64;
+    env.ledger().set_timestamp(now);
+    client.pause(&admin);
+
+    assert_eq!(client.get_paused_since(), Some(now));
+    let paused_state = client.get_pause_state();
+    assert!(paused_state.paused);
+    assert_eq!(paused_state.paused_since, Some(now));
+
+    client.unpause(&admin);
+
+    assert_eq!(client.get_paused_since(), None);
+    let unpaused_state = client.get_pause_state();
+    assert!(!unpaused_state.paused);
+    assert_eq!(unpaused_state.paused_since, None);
+}
+
+#[test]
+fn cancel_before_execute_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+
+    let res = client.remove_from_goal(&user, &goal_id, &500);
+    assert_eq!(res, Ok(false));
+}
+
+#[test]
+fn cancel_after_execute_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+
+    client.add_to_goal(&user, &goal_id, &500);
+
+    let res = client.try_remove_from_goal(&user, &goal_id, &500);
+    assert_eq!(res, Err(Ok(ReversibleOpError::InvalidState)));
 }

@@ -334,7 +334,7 @@ fn test_recurring_long_overdue_child_due_date_not_in_past() {
 fn test_recurring_frequency_one_day_tags_preserved() {
     let h = RecurringHarness::new(0);
     let due_date = 2_000_000u64;
-    let parent_id = h.create_recurring("Daily sub", 99, due_date, 1, "NGN");
+    let parent_id = h.create_recurring("Daily sub", 99, due_date, 1, "USDC");
     h.client
         .add_tags_to_bill(&h.owner, &parent_id, &tags(&h.env, &["daily", "streaming"]));
 

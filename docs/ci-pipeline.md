@@ -57,6 +57,22 @@ done
 - A contract that fails to build is reported as size `0`. The workflow does not fail the PR on build errors in this job; use the main `ci.yml` build gate for that.
 - The comment is updated in-place on each push to the PR (identified by a hidden HTML marker), so the thread stays clean.
 
+## Workspace Invariants (`scripts/check_workspace_invariants.py`)
+
+Runs as the `workspace-invariants` job in `.github/workflows/ci.yml` (non-blocking: `continue-on-error: true`). It performs grep-based static checks across every workspace member:
+
+1. Every crate directory has a `README.md`.
+2. Every public entrypoint (`pub fn` inside `#[contractimpl]`) has a `///` doc comment.
+3. Every `#[contracterror]` variant has a `///` doc comment.
+4. No bare `todo!()` / `unimplemented!()` in production (non-test) source.
+5. **No dead crates**: every workspace member must be referenced as a `path` dependency by another crate (a `[dev-dependencies]` reference — i.e. used by another crate's tests — counts too), or have tests of its own (`tests/*.rs`, or a `#[test]`/`#[cfg(test)]` anywhere in the crate).
+
+Run it locally with:
+
+```bash
+python3 scripts/check_workspace_invariants.py
+```
+
 ## Soroban SDK Updates
 
 This pipeline acts as a regression gate for SDK upgrades. When bumping the SDK version (e.g., to `21.7.7` and beyond), the CI must pass before merging.

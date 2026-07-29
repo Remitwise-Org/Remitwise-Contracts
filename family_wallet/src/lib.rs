@@ -6,8 +6,8 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION, SNAPSHOT_KEY,
-    SNAPSHOT_VERSION,
+    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, RoleGrantedEvent, RoleRevokedEvent,
+    CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -38,6 +38,13 @@ const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
 const MAX_MEMBER_PAGE_LIMIT: u32 = 100;
 const DEFAULT_MEMBER_PAGE_LIMIT: u32 = 20;
+
+/// Default multisig spending limit: 1 000 XLM in stroops.
+const DEFAULT_MULTISIG_SPENDING_LIMIT: i128 = 1_000 * STROOPS_PER_XLM;
+/// Default emergency-config maximum single-transfer amount: 10 000 XLM in stroops.
+const DEFAULT_EMERGENCY_MAX_AMOUNT: i128 = 10_000 * STROOPS_PER_XLM;
+/// Default emergency-config daily limit: 100 000 XLM in stroops.
+const DEFAULT_EMERGENCY_DAILY_LIMIT: i128 = 100_000 * STROOPS_PER_XLM;
 
 /// Hard cap on the number of entries retained in `ARCH_TX`.
 /// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
@@ -386,11 +393,27 @@ pub enum Error {
     /// An emergency transfer was rejected because the resulting balance would
     /// fall below `EmergencyConfig.min_balance`.
     MinBalanceViolation = 24,
+    /// One or more split percentages are invalid: either a fee is negative
+    /// (defence-in-depth; u32 makes this impossible) or the four split
+    /// percentages do not sum to exactly 100.
+    InvalidSplitConfig = 25,
+    SnapshotTooOld = 26,
+    /// The requested destructive state change (member removal, multisig
+    /// reconfiguration) was rejected because the wallet has pending
+    /// multisig proposals.  Allowing the change while proposals are
+    /// in-flight could cause orphaned signatures, silently-invalid quorum
+    /// calculations, or execution against stale configuration.
+    PendingOperationsExist = 27,
+    /// The supplied expiry timestamp is in the past.
+    RoleExpiryInPast = 28,
 }
 
 #[contractimpl]
 impl FamilyWallet {
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         owner.require_auth();
         if !Self::try_initialize(env.clone(), owner.clone(), initial_members) {
             panic!("Wallet already initialized");
@@ -399,6 +422,9 @@ impl FamilyWallet {
     }
 
     pub fn try_initialize(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         owner.require_auth();
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
         if existing.is_some() {
@@ -440,7 +466,7 @@ impl FamilyWallet {
         let default_config = MultiSigConfig {
             threshold: 2,
             signers: Vec::new(&env),
-            spending_limit: 1000_0000000,
+            spending_limit: DEFAULT_MULTISIG_SPENDING_LIMIT,
         };
 
         for tx_type in [
@@ -469,10 +495,10 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("NEXT_TX"), &1u64);
         let em_config = EmergencyConfig {
-            max_amount: 10000_0000000,
+            max_amount: DEFAULT_EMERGENCY_MAX_AMOUNT,
             cooldown: 3600,
             min_balance: 0,
-            daily_limit: 100000_0000000,
+            daily_limit: DEFAULT_EMERGENCY_DAILY_LIMIT,
         };
         env.storage()
             .instance()
@@ -541,11 +567,30 @@ impl FamilyWallet {
             EventPriority::High,
             symbol_short!("member"),
             MemberAddedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 role,
                 spending_limit,
                 timestamp: now,
             },
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("role_grnt"),
+            RoleGrantedEvent {
+                member: member_address,
+                role,
+                timestamp: now,
+            },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("add_mem"),
+            &admin,
+            Some(member_address),
+            true,
         );
 
         Ok(true)
@@ -584,15 +629,13 @@ impl FamilyWallet {
         caller: Address,
         member_address: Address,
         new_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
-        if !Self::is_owner_or_admin(&env, &caller) {
-            panic!("Only Owner or Admin can update spending limits");
-        }
+        Self::require_governance_ok(&env, &caller)?;
         if new_limit < 0 {
-            panic!("InvalidSpendingLimit");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         let mut members: Map<Address, FamilyMember> = env
@@ -603,8 +646,7 @@ impl FamilyWallet {
 
         let mut record = members
             .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)
-            .unwrap_or_else(|_| panic!("MemberNotFound"));
+            .ok_or(Error::MemberNotFound)?;
 
         let old_limit = record.spending_limit;
         record.spending_limit = new_limit;
@@ -622,11 +664,19 @@ impl FamilyWallet {
             EventPriority::Medium,
             symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 old_limit,
                 new_limit,
                 timestamp: now,
             },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upd_lim"),
+            &caller,
+            Some(member_address),
+            true,
         );
 
         true
@@ -710,6 +760,10 @@ impl FamilyWallet {
         caller.require_auth();
         Self::require_not_paused(&env);
 
+        // Defence-in-depth: block reconfiguration while multisig proposals are
+        // in-flight to prevent execution against stale threshold / signer set.
+        Self::require_no_pending_operations(&env)?;
+
         let members: Map<Address, FamilyMember> = env
             .storage()
             .instance()
@@ -784,6 +838,8 @@ impl FamilyWallet {
                 timestamp: env.ledger().timestamp(),
             },
         );
+
+        Self::append_access_audit(&env, symbol_short!("ms_conf"), &caller, None, true);
 
         Ok(true)
     }
@@ -926,6 +982,8 @@ impl FamilyWallet {
     }
 
     pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> Result<bool, Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         signer.require_auth();
         Self::require_not_paused(&env);
 
@@ -1082,6 +1140,8 @@ impl FamilyWallet {
     ///
     /// # Errors
     /// Panics if the contract is paused.
+    /// Returns [`Error::InvalidSplitConfig`] if any percentage exceeds 100
+    /// or the four percentages do not sum to exactly 100.
     pub fn propose_split_config_change(
         env: Env,
         proposer: Address,
@@ -1089,13 +1149,20 @@ impl FamilyWallet {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
         Self::require_not_paused(&env);
+        if spending_percent > 100
+            || savings_percent > 100
+            || bills_percent > 100
+            || insurance_percent > 100
+        {
+            return Err(Error::InvalidSplitConfig);
+        }
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
-            panic!("Percentages must sum to 100");
+            return Err(Error::InvalidSplitConfig);
         }
 
-        Self::propose_transaction(
+        Ok(Self::propose_transaction(
             env,
             proposer,
             TransactionType::SplitConfigChange,
@@ -1105,7 +1172,7 @@ impl FamilyWallet {
                 bills_percent,
                 insurance_percent,
             ),
-        )
+        ))
     }
 
     /// Propose a family member role change.
@@ -1198,6 +1265,9 @@ impl FamilyWallet {
     /// # Errors
     /// Panics if the contract is paused.
     pub fn propose_policy_cancellation(env: Env, proposer: Address, policy_id: u32) -> u64 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         Self::require_not_paused(&env);
         Self::propose_transaction(
             env,
@@ -1256,6 +1326,9 @@ impl FamilyWallet {
     ///
     /// This operation is restricted to `Owner` or `Admin` and is recorded in the access audit trail.
     pub fn set_emergency_mode(env: Env, caller: Address, enabled: bool) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1288,6 +1361,9 @@ impl FamilyWallet {
     }
 
     pub fn add_family_member(env: Env, caller: Address, member: Address, role: FamilyRole) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
         if role == FamilyRole::Owner {
@@ -1320,6 +1396,18 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("role_grnt"),
+            RoleGrantedEvent {
+                member: member.clone(),
+                role,
+                timestamp,
+            },
+        );
 
         Self::append_access_audit(&env, symbol_short!("add_mem"), &caller, Some(member), true);
         true
@@ -1354,8 +1442,15 @@ impl FamilyWallet {
     /// - Records access audit entry
     /// - Prevents a re-added member from inheriting previous member's state
     pub fn remove_family_member(env: Env, caller: Address, member: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
+
+        // Defence-in-depth: block removal while multisig proposals are in-flight
+        // to prevent orphaned signatures and stale quorum calculations.
+        Self::require_no_pending_operations(&env).unwrap_or_else(|e| panic_with_error!(&env, e));
 
         let owner: Address = env
             .storage()
@@ -1381,21 +1476,29 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
-        members.remove(member.clone());
-        env.storage()
-            .instance()
-            .set(&symbol_short!("MEMBERS"), &members);
+        if let Some(removed_member) = members.get(member.clone()) {
+            members.remove(member.clone());
+            env.storage()
+                .instance()
+                .set(&symbol_short!("MEMBERS"), &members);
 
-        // Clear all per-member state to prevent storage bloat and stale state
-        // from affecting re-added members.
-        Self::clear_member_state(&env, &member);
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                symbol_short!("role_revk"),
+                RoleRevokedEvent {
+                    member: member.clone(),
+                    role: removed_member.role,
+                    timestamp: env.ledger().timestamp(),
+                },
+            );
 
-        // Re-validate in-flight proposals: strip signatures from the removed
-        // member and invalidate any proposal that can no longer reach quorum.
-        Self::revalidate_proposals_after_membership_change(&env);
-
-        Self::append_access_audit(&env, symbol_short!("rem_mem"), &caller, Some(member), true);
-        true
+            Self::append_access_audit(&env, symbol_short!("rem_mem"), &caller, Some(member), true);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn get_pending_transaction(env: Env, tx_id: u64) -> Option<PendingTransaction> {
@@ -1541,6 +1644,9 @@ impl FamilyWallet {
     /// # Returns
     /// The number of transactions moved from `EXEC_TXS` to `ARCH_TX` in this call.
     pub fn archive_old_transactions(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1664,8 +1770,10 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::TransactionsArchived),
-            (archived_count, caller),
+            (archived_count, caller.clone()),
         );
+
+        Self::append_access_audit(&env, symbol_short!("arch_tx"), &caller, None, true);
 
         archived_count
     }
@@ -1722,6 +1830,9 @@ impl FamilyWallet {
     /// # Integrity
     /// Aborts if `pending.tx_id` does not match the map key (prevents silent corruption during cleanup).
     pub fn cleanup_expired_pending(env: Env, caller: Address) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1765,8 +1876,9 @@ impl FamilyWallet {
 
         env.events().publish(
             (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
-            (removed_count, caller),
+            (removed_count, caller.clone()),
         );
+        Self::append_access_audit(&env, symbol_short!("cln_exp"), &caller, None, true);
         removed_count
     }
 
@@ -1805,6 +1917,16 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
         if members.get(member.clone()).is_none() {
             panic!("Member not found");
+        }
+
+        // Reject expiry timestamps that are in the past — setting an already-
+        // expired role timestamp would immediately lock the member out of
+        // their role with no way to recover except through admin intervention.
+        if let Some(t) = expires_at {
+            let now = env.ledger().timestamp();
+            if t <= now {
+                panic_with_error!(&env, Error::RoleExpiryInPast);
+            }
         }
 
         let mut m: Map<Address, u64> = env
@@ -1880,11 +2002,13 @@ impl FamilyWallet {
                 .instance()
                 .get(&symbol_short!("SPND_TRK"))
                 .unwrap_or_else(|| Map::new(&env));
-            trackers.remove(member);
+            trackers.remove(member.clone());
             env.storage()
                 .instance()
                 .set(&symbol_short!("SPND_TRK"), &trackers);
         }
+
+        Self::append_access_audit(&env, symbol_short!("prec_lim"), &caller, Some(member), true);
 
         Ok(true)
     }
@@ -1899,6 +2023,9 @@ impl FamilyWallet {
     }
 
     /// Paginated listing of family-member addresses for downstream readers.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// Cursor is the number of members already returned. Pass `0` for the
     /// first page.
@@ -1952,6 +2079,9 @@ impl FamilyWallet {
     /// The original proposer may cancel their own transaction. Owners and
     /// admins may cancel any pending transaction.
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1984,6 +2114,9 @@ impl FamilyWallet {
     }
 
     pub fn pause(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| {
@@ -2000,10 +2133,14 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &true);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }
 
     pub fn unpause(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| {
             env.storage()
@@ -2022,15 +2159,26 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &false);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
+        Self::append_access_audit(&env, symbol_short!("unpause"), &caller, None, true);
         true
     }
 
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ps_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
         true
     }
 
@@ -2056,6 +2204,9 @@ impl FamilyWallet {
     /// # Errors
     /// Panics if the contract is paused.
     pub fn set_proposal_expiry(env: Env, caller: Address, expiry: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
         let owner: Address = env
@@ -2079,6 +2230,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PROP_EXP"), &expiry);
+        Self::append_access_audit(&env, symbol_short!("prop_exp"), &caller, None, true);
         true
     }
 
@@ -2257,6 +2409,9 @@ impl FamilyWallet {
     /// - If caller lacks Owner role or higher
     /// - If the contract is paused
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
         Self::require_not_paused(&env);
@@ -2271,6 +2426,14 @@ impl FamilyWallet {
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
             (current_upgrade_admin.clone(), new_admin.clone()),
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upg_adm"),
+            &caller,
+            Some(new_admin),
+            true,
         );
 
         true
@@ -2290,6 +2453,9 @@ impl FamilyWallet {
     /// # Errors
     /// Panics if the contract is paused.
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| {
@@ -2312,6 +2478,7 @@ impl FamilyWallet {
             (symbol_short!("wallet"), symbol_short!("upgraded")),
             (prev, new_version),
         );
+        Self::append_access_audit(&env, symbol_short!("set_ver"), &caller, None, true);
         true
     }
 
@@ -2380,6 +2547,17 @@ impl FamilyWallet {
                     added_at: timestamp,
                 },
             );
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                symbol_short!("role_grnt"),
+                RoleGrantedEvent {
+                    member: item.address.clone(),
+                    role: item.role,
+                    timestamp,
+                },
+            );
             Self::append_access_audit(
                 &env,
                 symbol_short!("add_mem"),
@@ -2412,6 +2590,9 @@ impl FamilyWallet {
     ///   the owner aborts the entire call.
     /// - On success, the return value is the number of members removed.
     pub fn batch_remove_family_members(env: Env, caller: Address, addresses: Vec<Address>) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
         let owner: Address = env
@@ -2434,20 +2615,37 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         let mut seen_addrs: Map<Address, bool> = Map::new(&env);
+        let mut count = 0u32;
         for addr in addresses.iter() {
             if addr.clone() == owner {
                 panic!("Cannot remove owner");
             }
-            if seen_addrs.get(addr.clone()).is_some() {
-                panic!("Duplicate member in batch");
-            }
-            seen_addrs.set(addr.clone(), true);
-            if members_map.get(addr.clone()).is_none() {
-                panic!("Member not found");
+            if let Some(removed_member) = members_map.get(addr.clone()) {
+                members_map.remove(addr.clone());
+
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Access,
+                    EventPriority::High,
+                    symbol_short!("role_revk"),
+                    RoleRevokedEvent {
+                        member: addr.clone(),
+                        role: removed_member.role,
+                        timestamp: env.ledger().timestamp(),
+                    },
+                );
+
+                Self::append_access_audit(
+                    &env,
+                    symbol_short!("rem_mem"),
+                    &caller,
+                    Some(addr.clone()),
+                    true,
+                );
+                count += 1;
             }
         }
 
-        let mut count = 0u32;
         for addr in addresses.iter() {
             members_map.remove(addr.clone());
             // Clear all per-member state to prevent storage bloat and stale state
@@ -2576,6 +2774,9 @@ impl FamilyWallet {
     /// # Returns
     /// The number of proposals that were invalidated (expired early).
     pub fn revalidate_proposals(env: Env, caller: Address) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
         if !Self::is_owner_or_admin(&env, &caller) {
@@ -3066,6 +3267,27 @@ impl FamilyWallet {
         }
     }
 
+    /// Governance check helper for parameter changes.
+    ///
+    /// Returns a typed `Error::Unauthorized` instead of panicking when the caller
+    /// is not an Owner or Admin. This provides consistent error handling for
+    /// governance-level operations and enables proper error propagation to callers.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `caller` - Address attempting the governance operation
+    ///
+    /// # Returns
+    /// * `Ok(())` if caller is Owner or Admin
+    /// * `Err(Error::Unauthorized)` if caller lacks governance role
+    fn require_governance_ok(env: &Env, caller: &Address) -> Result<(), Error> {
+        if Self::is_owner_or_admin(env, caller) {
+            Ok(())
+        } else {
+            Err(Error::Unauthorized)
+        }
+    }
+
     fn append_access_audit(
         env: &Env,
         operation: Symbol,
@@ -3113,6 +3335,9 @@ impl FamilyWallet {
     /// - If the wallet is not initialized
     /// - If `caller` lacks authorization
     pub fn pre_upgrade(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -3159,6 +3384,9 @@ impl FamilyWallet {
                 .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
         };
         env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("family"), symbol_short!("snap_pre")),
             SNAPSHOT_VERSION,
@@ -3185,6 +3413,9 @@ impl FamilyWallet {
     /// # Events
     /// Emits `(symbol_short!("family"), symbol_short!("snap_rst"))`.
     pub fn restore_from_snapshot(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -3199,9 +3430,17 @@ impl FamilyWallet {
             .storage()
             .persistent()
             .get(&SNAPSHOT_KEY)
-            .unwrap_or_else(|| panic!("No pre-upgrade snapshot found"));
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
         if snapshot.schema_version != SNAPSHOT_VERSION {
-            panic!("Unsupported snapshot version");
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, Error::SnapshotTooOld);
         }
         if snapshot.owner != owner {
             panic!("Snapshot owner mismatch");
@@ -3274,6 +3513,9 @@ impl FamilyWallet {
     /// # Panics
     /// - If `caller` lacks authorization
     pub fn discard_snapshot(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         let owner: Address = env
             .storage()
@@ -3305,6 +3547,24 @@ impl FamilyWallet {
         if Self::get_global_paused(env) {
             panic!("Contract is paused");
         }
+    }
+
+    /// Reject the call when the wallet has pending multisig proposals.
+    ///
+    /// Destructive state changes (member removal, multisig reconfiguration)
+    /// while proposals are in-flight risk orphaned signatures, silently
+    /// invalid quorum calculations, or execution against stale configuration.
+    fn require_no_pending_operations(env: &Env) -> Result<(), Error> {
+        let pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(env));
+
+        if pending_txs.len() > 0 {
+            return Err(Error::PendingOperationsExist);
+        }
+        Ok(())
     }
 
     fn extend_instance_ttl(env: &Env) {

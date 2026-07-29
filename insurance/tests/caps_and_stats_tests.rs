@@ -1,6 +1,8 @@
 //! Unit tests for per-owner policy caps and StorageStats determinism.
 
-use insurance::{Insurance, InsuranceClient, MAX_POLICIES_PER_OWNER};
+use insurance::{
+    Insurance, InsuranceClient, MAX_COVERAGE_AMOUNT, MAX_MONTHLY_PREMIUM, MAX_POLICIES_PER_OWNER,
+};
 use remitwise_common::CoverageType;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
@@ -20,6 +22,7 @@ fn setup(env: &Env) -> (Address, InsuranceClient<'_>) {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(env, &contract_id);
     let owner = Address::generate(env);
+    client.init(&owner);
     (owner, client)
 }
 
@@ -92,6 +95,7 @@ fn cap_is_per_owner_not_global() {
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
 
+    client.init(&alice);
     for _ in 0..MAX_POLICIES_PER_OWNER {
         create_one(&env, &client, &alice);
         create_one(&env, &client, &bob);
@@ -225,6 +229,7 @@ fn deactivate_wrong_owner_returns_false() {
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
 
+    client.init(&alice);
     let id = create_one(&env, &client, &alice);
     assert!(!client.deactivate_policy(&bob, &id));
 }
@@ -271,7 +276,10 @@ fn bounds_monthly_premium_too_high() {
         &10_000i128,
         &None,
     );
-    assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
+    assert_eq!(
+        result,
+        Err(Ok(insurance::InsuranceError::MonthlyPremiumTooHigh))
+    );
 }
 
 #[test]
@@ -286,7 +294,10 @@ fn bounds_coverage_amount_too_high() {
         &(MAX_COVERAGE_AMOUNT + 1),
         &None,
     );
-    assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
+    assert_eq!(
+        result,
+        Err(Ok(insurance::InsuranceError::CoverageAmountTooHigh))
+    );
 }
 
 #[test]
@@ -317,7 +328,7 @@ fn bounds_monthly_premium_nonpositive_rejected() {
         &10_000i128,
         &None,
     );
-    assert_eq!(r0, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+    assert_eq!(r0, Err(Ok(insurance::InsuranceError::MonthlyPremiumTooLow)));
 
     let rneg = client.try_create_policy(
         &owner,
@@ -327,7 +338,10 @@ fn bounds_monthly_premium_nonpositive_rejected() {
         &10_000i128,
         &None,
     );
-    assert_eq!(rneg, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+    assert_eq!(
+        rneg,
+        Err(Ok(insurance::InsuranceError::MonthlyPremiumTooLow))
+    );
 }
 
 #[test]
@@ -343,7 +357,7 @@ fn bounds_coverage_amount_nonpositive_rejected() {
         &0i128,
         &None,
     );
-    assert_eq!(r0, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+    assert_eq!(r0, Err(Ok(insurance::InsuranceError::CoverageAmountTooLow)));
 
     let rneg = client.try_create_policy(
         &owner,
@@ -353,7 +367,10 @@ fn bounds_coverage_amount_nonpositive_rejected() {
         &-1i128,
         &None,
     );
-    assert_eq!(rneg, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+    assert_eq!(
+        rneg,
+        Err(Ok(insurance::InsuranceError::CoverageAmountTooLow))
+    );
 }
 
 #[test]

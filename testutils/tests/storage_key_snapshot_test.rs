@@ -39,12 +39,10 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             type_name: "SplitConfig",
             tier: "instance",
         },
-        StorageKeyEntry {
-            key: "SPLIT",
-            contract: "remittance_split",
-            type_name: "Vec<u32>",
-            tier: "instance",
-        },
+        // SPLIT was previously a separate Vec<u32> key storing the same
+        // percentage data as CONFIG.  It has been removed — get_split now
+        // derives the percentages from CONFIG directly.  The key is retained
+        // in this snapshot comment to document the historical state.
         StorageKeyEntry {
             key: "NONCES",
             contract: "remittance_split",
@@ -149,6 +147,12 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             key: "DataKey::Paused",
             contract: "savings_goals",
             type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PausedSince",
+            contract: "savings_goals",
+            type_name: "u64",
             tier: "instance",
         },
         StorageKeyEntry {
@@ -665,6 +669,12 @@ fn get_snapshot_entries() -> Vec<StorageKeyEntry> {
             key: "DataKey::GlobalPaused",
             contract: "emergency_killswitch",
             type_name: "bool",
+            tier: "instance",
+        },
+        StorageKeyEntry {
+            key: "DataKey::PausedSince",
+            contract: "emergency_killswitch",
+            type_name: "u64",
             tier: "instance",
         },
         StorageKeyEntry {

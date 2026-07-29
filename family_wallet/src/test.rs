@@ -581,6 +581,90 @@ fn test_propose_split_config_change() {
 }
 
 #[test]
+fn test_propose_split_config_change_invalid_sum_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Percentages sum to 101 instead of 100 — must be rejected with typed error, not panic.
+    let result = client.try_propose_split_config_change(&owner, &50, &30, &20, &1);
+    assert_eq!(result, Err(Ok(Error::InvalidSplitConfig)));
+}
+
+#[test]
+fn test_propose_split_config_change_individual_out_of_range_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+    let mut all_members = initial_members.clone();
+    if !all_members.contains(&owner) {
+        all_members.push_back(owner.clone());
+    }
+    if all_members.is_empty() {
+        all_members.push_back(owner.clone());
+    }
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::SplitConfigChange,
+        &2,
+        &signers,
+        &0,
+    );
+
+    // Individual percentage exceeds 100 — must be rejected with typed error, not panic.
+    let result = client.try_propose_split_config_change(&owner, &101, &0, &0, &0);
+    assert_eq!(result, Err(Ok(Error::InvalidSplitConfig)));
+}
+
+#[test]
 fn test_propose_role_change() {
     let env = Env::default();
     env.mock_all_auths();
@@ -6749,10 +6833,14 @@ fn test_auth_matrix_update_spending_limit_by_owner() {
 
     // Action: Owner updates member's spending limit
     let new_limit = 1000_0000000i128;
-    let result = client.update_spending_limit(&owner, &member, &new_limit);
+    let result = client.try_update_spending_limit(&owner, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert!(result, "Owner must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Owner must be able to update spending limits"
+    );
 
     // Verification: Spending limit was updated
     let member_data = client.get_family_member(&member);
@@ -6784,10 +6872,14 @@ fn test_auth_matrix_update_spending_limit_by_admin() {
 
     // Action: Admin updates member's spending limit
     let new_limit = 500_0000000i128;
-    let result = client.update_spending_limit(&admin, &member, &new_limit);
+    let result = client.try_update_spending_limit(&admin, &member, &new_limit);
 
     // Assertion: Operation succeeds
-    assert!(result, "Admin must be able to update spending limits");
+    assert_eq!(
+        result,
+        Ok(Ok(true)),
+        "Admin must be able to update spending limits"
+    );
 
     // Verification
     let member_data = client.get_family_member(&member);
@@ -6818,9 +6910,10 @@ fn test_auth_matrix_update_spending_limit_by_member_fails() {
     // Action: Member1 attempts to update Member2's spending limit (should fail)
     let result = client.try_update_spending_limit(&member1, &member2, &1000_0000000);
 
-    // Assertion: Operation fails
-    assert!(
-        result.is_err(),
+    // Assertion: Operation fails with typed error
+    assert_eq!(
+        result,
+        Err(Ok(Error::Unauthorized)),
         "Member must not be able to update spending limits"
     );
 }
@@ -6846,10 +6939,93 @@ fn test_auth_matrix_update_spending_limit_by_viewer_fails() {
     // Action: Viewer attempts to update spending limit (should fail)
     let result = client.try_update_spending_limit(&viewer, &member, &1000_0000000);
 
-    // Assertion: Operation fails
+    // Assertion: Operation fails with typed error
+    assert_eq!(
+        result,
+        Err(Ok(Error::Unauthorized)),
+        "Viewer must not be able to update spending limits"
+    );
+}
+
+fn seed_governance_members(env: &Env, contract_id: &Address, owner: &Address, member: &Address) {
+    env.as_contract(contract_id, || {
+        let mut members = Map::new(env);
+        members.set(
+            owner.clone(),
+            FamilyMember {
+                address: owner.clone(),
+                role: FamilyRole::Owner,
+                spending_limit: 0,
+                precision_limit: PrecisionLimitOpt::None,
+                added_at: 0,
+            },
+        );
+        members.set(
+            member.clone(),
+            FamilyMember {
+                address: member.clone(),
+                role: FamilyRole::Member,
+                spending_limit: 0,
+                precision_limit: PrecisionLimitOpt::None,
+                added_at: 0,
+            },
+        );
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("MEMBERS"), &members);
+    });
+}
+
+#[test]
+fn test_require_governance_ok_allows_owner() {
+    // Verifies that an owner is accepted by the governance helper.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    seed_governance_members(&env, &contract_id, &owner, &member);
+
+    let result = env.as_contract(&contract_id, || {
+        FamilyWallet::require_governance_ok(&env, &owner)
+    });
+
+    assert_eq!(result, Ok(()), "Owner must pass the governance gate");
+}
+
+#[test]
+fn test_require_governance_ok_rejects_non_governance_member() {
+    // Verifies that a regular member is rejected by the governance helper.
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    seed_governance_members(&env, &contract_id, &owner, &member);
+
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let result = client.try_update_spending_limit(&member, &member, &1000_0000000);
+
+    assert!(result.is_err(), "Non-governance member must be rejected");
+}
+
+#[test]
+fn test_require_governance_ok_returns_typed_error() {
+    // Verifies that the helper rejects a non-governance caller with the typed
+    // unauthorized error that callers can propagate.
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    seed_governance_members(&env, &contract_id, &owner, &member);
+
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let result = client.try_update_spending_limit(&member, &member, &1000_0000000);
+
     assert!(
         result.is_err(),
-        "Viewer must not be able to update spending limits"
+        "require_governance_ok must return a rejection for unauthorized access"
     );
 }
 
@@ -6940,8 +7116,9 @@ fn test_auth_matrix_comprehensive_role_isolation() {
 
         // Member cannot update spending limit
         let result_update = client.try_update_spending_limit(&member, &test_target, &1000_0000000);
-        assert!(
-            result_update.is_err(),
+        assert_eq!(
+            result_update,
+            Err(Ok(Error::Unauthorized)),
             "Member cannot update spending limit"
         );
     }
@@ -6954,8 +7131,9 @@ fn test_auth_matrix_comprehensive_role_isolation() {
 
         // Viewer cannot update spending limit
         let result_update = client.try_update_spending_limit(&viewer, &test_target, &1000_0000000);
-        assert!(
-            result_update.is_err(),
+        assert_eq!(
+            result_update,
+            Err(Ok(Error::Unauthorized)),
             "Viewer cannot update spending limit"
         );
     }
@@ -7772,4 +7950,133 @@ fn slashed_funds_route_to_current_recipient_not_stale_destination() {
         total - 2 * slash_amount,
         "owner must lose exactly two slash amounts",
     );
+}
+
+// ─── Pending-operations guard (defence-in-depth) ───────────────────────────
+// Destructive state changes must be rejected while multisig proposals are
+// in-flight to prevent orphaned signatures, stale quorum calculations, or
+// execution against an outdated signer set / threshold.
+
+/// Helper: set up a wallet with multisig configs and create one pending proposal.
+fn setup_wallet_with_pending_proposal() -> (Env, FamilyWalletClient<'static>, Address) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let initial_members = vec![&env, member1.clone(), member2.clone()];
+
+    client.init(&owner, &initial_members);
+
+    // Configure multisig for EmergencyTransfer (3-of-3) so propose_emergency_transfer works
+    let all_members = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &all_members,
+        &1000_0000000,
+    );
+    client.configure_multisig(
+        &owner,
+        &TransactionType::EmergencyTransfer,
+        &3,
+        &all_members,
+        &0,
+    );
+
+    // Set up token so the proposal can be created
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &5000_0000000);
+
+    // Create a pending proposal — this populates PEND_TXS
+    let recipient = Address::generate(&env);
+    client.propose_emergency_transfer(&owner, &token_contract.address(), &recipient, &3000_0000000);
+
+    (env, client, owner)
+}
+
+#[test]
+fn test_remove_member_blocked_by_pending_operations() {
+    let (env, client, owner) = setup_wallet_with_pending_proposal();
+    let member1 = Address::generate(&env);
+
+    // Try to remove a member while a proposal is pending.
+    // remove_family_member panics with the typed error via panic_with_error!.
+    let result = client.try_remove_family_member(&owner, &member1);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from(Error::PendingOperationsExist))),
+        "remove_family_member must reject when pending proposals exist"
+    );
+}
+
+#[test]
+fn test_configure_multisig_blocked_by_pending_operations() {
+    let (env, client, owner) = setup_wallet_with_pending_proposal();
+    let member1 = Address::generate(&env);
+    let member2 = Address::generate(&env);
+    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+
+    // Try to reconfigure multisig while a proposal is pending.
+    // configure_multisig returns Result<bool, Error>.
+    let result = client.try_configure_multisig(
+        &owner,
+        &TransactionType::LargeWithdrawal,
+        &2,
+        &signers,
+        &500_0000000,
+    );
+    assert_eq!(
+        result,
+        Err(Ok(Error::PendingOperationsExist)),
+        "configure_multisig must reject when pending proposals exist"
+    );
+}
+
+// ============================================================================
+// Archive Integrity Tests (SC-004)
+//
+// Verify that archive_old_transactions fails closed when EXEC_TXS contains
+// a corrupted entry whose map key does not match meta.tx_id.
+// ============================================================================
+
+#[test]
+#[should_panic(expected = "Inconsistent executed transaction metadata")]
+fn test_archive_integrity_rejects_mismatched_tx_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 50_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    // Inject a corrupted ExecutedTxMeta directly into instance storage.
+    // Map key = 999, but meta.tx_id = 42 — a deliberate mismatch that
+    // archive_old_transactions must detect and abort on.
+    env.as_contract(&contract_id, || {
+        let mut corrupted_map: Map<u64, ExecutedTxMeta> = Map::new(&env);
+        corrupted_map.set(
+            999_u64,
+            ExecutedTxMeta {
+                tx_id: 42,
+                tx_type: TransactionType::RegularWithdrawal,
+                proposer: owner.clone(),
+                executed_at: 1_000,
+            },
+        );
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EXEC_TXS"), &corrupted_map);
+    });
+
+    // Archive with a cutoff well after executed_at so the corrupted entry
+    // would be eligible for archiving — triggering the integrity check.
+    client.archive_old_transactions(&owner, &10_000);
 }

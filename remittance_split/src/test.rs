@@ -429,7 +429,9 @@ fn test_distribute_usdc_deadline_expired() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -469,7 +471,9 @@ fn test_distribute_usdc_deadline_too_far() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -509,7 +513,9 @@ fn test_distribute_usdc_deadline_zero() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -549,7 +555,9 @@ fn test_distribute_usdc_hash_mismatch() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -592,7 +600,9 @@ fn test_distribute_usdc_deadline_at_boundary() {
     set_time(&env, 1000);
 
     let owner = Address::generate(&env);
-    let usdc_contract = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let usdc_contract = token_contract.address();
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
@@ -1094,8 +1104,263 @@ fn test_request_hash_hashed_path_rejects_self_transfer() {
 
     assert_eq!(
         result,
-        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
     );
+}
+
+// ---------------------------------------------------------------------------
+// Corridor configuration tests
+// ---------------------------------------------------------------------------
+
+fn sample_corridor(env: &Env, id: u32) -> Corridor {
+    Corridor {
+        id,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 100,
+        max_amount: 1_000_000,
+        fee_bps: 50,
+    }
+}
+
+fn sample_corridors(env: &Env) -> Vec<Corridor> {
+    vec![env, sample_corridor(env, 1), sample_corridor(env, 2)]
+}
+
+#[test]
+fn test_init_corridors_happy_path() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let corridors = sample_corridors(&env);
+    client.init_corridors(&owner, &1, &corridors);
+
+    let stored = client.get_corridors();
+    assert_eq!(stored.len(), 2);
+
+    let c1 = stored.get(0).unwrap();
+    assert_eq!(c1.id, 1);
+    assert_eq!(c1.source_currency, symbol_short!("USD"));
+    assert_eq!(c1.dest_currency, symbol_short!("NGN"));
+    assert_eq!(c1.min_amount, 100);
+    assert_eq!(c1.max_amount, 1_000_000);
+    assert_eq!(c1.fee_bps, 50);
+}
+
+#[test]
+fn test_init_corridors_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let corridors = sample_corridors(&env);
+
+    let result = client.try_init_corridors(&owner, &0, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::NotInitialized)));
+}
+
+#[test]
+fn test_init_corridors_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let corridors = sample_corridors(&env);
+    let result = client.try_init_corridors(&attacker, &1, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_init_corridors_count_exceeded() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    // Create more corridors than MAX_CORRIDORS
+    let mut many_corridors = vec![&env];
+    for i in 0..=params::MAX_CORRIDORS {
+        many_corridors.push_back(sample_corridor(&env, i));
+    }
+
+    let result = client.try_init_corridors(&owner, &1, &many_corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::CorridorCountExceeded)));
+}
+
+#[test]
+fn test_init_corridors_fee_too_high() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let bad = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 100,
+        max_amount: 1_000_000,
+        fee_bps: params::MAX_FEE_BPS + 1,
+    };
+    let corridors = vec![&env, bad];
+
+    let result = client.try_init_corridors(&owner, &1, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::CorridorFeeTooHigh)));
+}
+
+#[test]
+fn test_init_corridors_fee_rounding() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let bad = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 100,
+        max_amount: 1_000_000,
+        fee_bps: 150, // 1.5% which is a fractional percent
+    };
+    let corridors = vec![&env, bad];
+
+    let result = client.try_init_corridors(&owner, &1, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::FeeRounding)));
+}
+#[test]
+fn test_init_corridors_invalid_amount_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let bad = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 1_000_000,
+        max_amount: 100,
+        fee_bps: 50,
+    };
+    let corridors = vec![&env, bad];
+
+    let result = client.try_init_corridors(&owner, &1, &corridors);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidCorridorAmountRange))
+    );
+}
+
+#[test]
+fn test_init_corridors_duplicate_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let c1 = Corridor {
+        id: 1,
+        source_currency: symbol_short!("USD"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 100,
+        max_amount: 1_000_000,
+        fee_bps: 50,
+    };
+    let c2 = Corridor {
+        id: 1,
+        source_currency: symbol_short!("EUR"),
+        dest_currency: symbol_short!("NGN"),
+        min_amount: 200,
+        max_amount: 2_000_000,
+        fee_bps: 75,
+    };
+    let corridors = vec![&env, c1, c2];
+
+    let result = client.try_init_corridors(&owner, &1, &corridors);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DuplicateCorridorId)));
+}
+
+#[test]
+fn test_init_corridors_replaces_previous() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &5000, &3000, &1500, &500);
+
+    let first = vec![&env, sample_corridor(&env, 1)];
+    client.init_corridors(&owner, &1, &first);
+
+    let second = vec![&env, sample_corridor(&env, 99)];
+    client.init_corridors(&owner, &2, &second);
+
+    let stored = client.get_corridors();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored.get(0).unwrap().id, 99);
 }
 
 #[test]
@@ -2429,6 +2694,31 @@ fn test_not_initialized_fails() {
 }
 
 #[test]
+fn test_treasury_balance_returns_configured_usdc_balance() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+    let balance = 42_000_000i128;
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+    harness.client.accept_treasury(&treasury);
+    harness.stellar_client.mint(&treasury, &balance);
+
+    assert_eq!(harness.client.treasury_balance(), balance);
+}
+
+#[test]
+fn test_treasury_balance_rejects_unconfigured_treasury() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+
+    assert_eq!(
+        harness.client.try_treasury_balance(),
+        Err(Ok(RemittanceSplitError::TreasuryNotConfigured))
+    );
+}
+
+#[test]
 fn test_initialize_split_percentage_out_of_range() {
     let env = Env::default();
     env.mock_all_auths();
@@ -2438,9 +2728,11 @@ fn test_initialize_split_percentage_out_of_range() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
 
-    // Call try_initialize_split with spending_percent = 10_001
+    // Call try_initialize_split with spending_percent = 10_001 (> 10_000)
     let result = client.try_initialize_split(&owner, &0, &token_addr, &10_001, &0, &0, &0);
 
     assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
@@ -2456,13 +2748,115 @@ fn test_initialize_split_percentages_invalid_sum() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
 
     let owner = Address::generate(&env);
-    let token_addr = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token_addr = token_contract.address();
 
-    // Call try_initialize_split with sum = 9_999
-    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &999);
+    // Call try_initialize_split with sum = 9_999 (!= 10_000)
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &999);
 
     assert_eq!(
         result,
         Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
     );
+}
+
+#[test]
+fn test_initialize_split_rejects_unsupported_ingress_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    let result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
+
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UnsupportedTokenContract))
+    );
+}
+
+#[test]
+fn test_update_split_percentage_out_of_range() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    let _result = client.try_initialize_split(&owner, &0, &token_addr, &4000, &3000, &2000, &1000);
+
+    // Try to update with spending_percent > 10_000
+    let result = client.try_update_split(&owner, &1, &10_001, &0, &0, &0);
+
+    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentageOutOfRange)));
+}
+
+#[test]
+fn test_update_split_percentages_invalid_sum() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    // Initialize with valid percentages first (sum = 10_000)
+    client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
+
+    // Try to update with percentages that don't sum to 10_000 (sum = 9_999)
+    let result = client.try_update_split(&owner, &1, &4_000, &3_000, &2_000, &999);
+
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
+}
+
+#[test]
+fn test_paused_since_and_pause_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let token_addr = Address::generate(&env);
+
+    client.initialize_split(&owner, &0, &token_addr, &4_000, &3_000, &2_000, &1_000);
+
+    assert_eq!(client.get_paused_since(), None);
+    let initial_state = client.get_pause_state();
+    assert!(!initial_state.paused);
+    assert_eq!(initial_state.paused_since, None);
+
+    let now = 5_000u64;
+    set_time(&env, now);
+    client.pause(&owner);
+
+    assert_eq!(client.get_paused_since(), Some(now));
+    let paused_state = client.get_pause_state();
+    assert!(paused_state.paused);
+    assert_eq!(paused_state.paused_since, Some(now));
+
+    client.unpause(&owner);
+
+    assert_eq!(client.get_paused_since(), None);
+    let unpaused_state = client.get_pause_state();
+    assert!(!unpaused_state.paused);
+    assert_eq!(unpaused_state.paused_since, None);
 }
