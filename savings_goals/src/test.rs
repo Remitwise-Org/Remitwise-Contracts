@@ -7251,3 +7251,38 @@ fn test_paused_since_and_pause_state() {
     assert!(!unpaused_state.paused);
     assert_eq!(unpaused_state.paused_since, None);
 }
+
+#[test]
+fn cancel_before_execute_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+
+    let res = client.remove_from_goal(&user, &goal_id, &500);
+    assert_eq!(res, Ok(false));
+}
+
+#[test]
+fn cancel_after_execute_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+    client.init();
+
+    let name = String::from_str(&env, "Goal");
+    let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
+
+    client.add_to_goal(&user, &goal_id, &500);
+
+    let res = client.try_remove_from_goal(&user, &goal_id, &500);
+    assert_eq!(res, Err(Ok(ReversibleOpError::InvalidState)));
+}
+

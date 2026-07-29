@@ -4273,4 +4273,47 @@ mod testsuit {
         let bill = client.get_bill(&bill_id).unwrap();
         assert_eq!(bill.external_ref.unwrap(), String::from_str(&env, "REF-NEW"));
     }
+
+    #[test]
+    fn cancel_before_execute_succeeds() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &100,
+            &1735689600,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        let res = client.reverse_payment(&owner, &bill_id, &100);
+        assert_eq!(res, Ok(false));
+    }
+
+    #[test]
+    fn cancel_after_execute_fails() {
+        setup_test_env!(env, BillPayments, BillPaymentsClient, client, owner);
+
+        let bill_id = client.create_bill(
+            &owner,
+            &String::from_str(&env, "Electricity"),
+            &100,
+            &1735689600,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+
+        client.pay_bill(&owner, &bill_id);
+
+        let res = client.try_reverse_payment(&owner, &bill_id, &100);
+        assert_eq!(res, Err(Ok(ReversibleOpError::InvalidState)));
+    }
 }
+
