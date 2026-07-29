@@ -2758,6 +2758,85 @@ fn test_treasury_balance_rejects_unconfigured_treasury() {
 }
 
 #[test]
+fn test_propose_treasury_emits_trsr_prop_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+
+    let events = harness.env.events().all();
+    let (_contract_id, topics, data) = events.last().expect("no events emitted");
+
+    assert_eq!(topics.len(), 2, "trsr_prop event should have 2 topics");
+    let action: Symbol = topics
+        .get(1)
+        .expect("missing action topic")
+        .into_val(&harness.env);
+    assert_eq!(action, symbol_short!("trsr_prop"));
+
+    let (proposer, proposed): (Address, Address) = data.into_val(&harness.env);
+    assert_eq!(proposer, harness.owner);
+    assert_eq!(proposed, treasury);
+}
+
+// The treasury-recovery event: `accept_treasury` is the step where a staged
+// treasury proposal is actually recovered/taken over by the proposed
+// address, completing the rotation. This locks in the `trsr_xfr` event's
+// shape so a future refactor can't silently drop or reshape it.
+#[test]
+fn test_accept_treasury_emits_trsr_xfr_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+    harness.client.accept_treasury(&treasury);
+
+    let events = harness.env.events().all();
+    let (_contract_id, topics, data) = events.last().expect("no events emitted");
+
+    assert_eq!(topics.len(), 2, "trsr_xfr event should have 2 topics");
+    let action: Symbol = topics
+        .get(1)
+        .expect("missing action topic")
+        .into_val(&harness.env);
+    assert_eq!(action, symbol_short!("trsr_xfr"));
+
+    let (old_treasury, new_treasury): (Option<Address>, Address) = data.into_val(&harness.env);
+    assert_eq!(
+        old_treasury, None,
+        "no treasury was active before the first acceptance"
+    );
+    assert_eq!(new_treasury, treasury);
+}
+
+// Explicit failure mode: a caller other than the staged proposal must not
+// be able to trigger (or forge evidence of) a treasury recovery.
+#[test]
+fn test_accept_treasury_with_wrong_caller_fails_and_emits_no_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+    let impostor = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+    let events_before = harness.env.events().all().len();
+
+    let result = harness.client.try_accept_treasury(&impostor);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PendingTreasuryMismatch))
+    );
+
+    let events_after = harness.env.events().all().len();
+    assert_eq!(
+        events_before, events_after,
+        "a failed accept_treasury call must not emit a trsr_xfr event"
+    );
+}
+
+#[test]
 fn test_initialize_split_percentage_out_of_range() {
     let env = Env::default();
     env.mock_all_auths();
