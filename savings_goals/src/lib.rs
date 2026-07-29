@@ -127,8 +127,15 @@ pub struct ScheduleMissedEvent {
     pub timestamp: u64,
 }
 
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
-const INSTANCE_BUMP_AMOUNT: u32 = 518400;
+// Issue #1516 – these constants are applied exclusively to PERSISTENT
+// entries (goals, archives, schedules), but previously carried the
+// *instance* bucket's values (1-day threshold / 30-day bump) under
+// misleading INSTANCE_* names. Persistent user data was therefore
+// archived on the instance schedule — half the intended lifetime.
+// Values now match remitwise-common's persistent bucket
+// (PERSISTENT_LIFETIME_THRESHOLD / PERSISTENT_BUMP_AMOUNT).
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = remitwise_common::PERSISTENT_LIFETIME_THRESHOLD;
+const PERSISTENT_BUMP_AMOUNT: u32 = remitwise_common::PERSISTENT_BUMP_AMOUNT;
 
 /// Pagination constants
 pub const DEFAULT_PAGE_LIMIT: u32 = 20;
@@ -899,8 +906,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &ids);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -925,8 +932,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -976,8 +983,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         RemitwiseEvents::emit(
@@ -1051,8 +1058,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         RemitwiseEvents::emit(
@@ -1135,8 +1142,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(new_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(new_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
         env.storage().instance().set(&DataKey::NextId, &new_id);
         Self::append_owner_goal_id(&env, &owner, new_id);
@@ -1251,8 +1258,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         // Emit events
@@ -1376,8 +1383,8 @@ impl SavingsGoalContract {
                 .set(&DataKey::Goal(item.goal_id), &goal);
             env.storage().persistent().extend_ttl(
                 &DataKey::Goal(item.goal_id),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
 
             // Emit standardized event for indexers
@@ -1552,8 +1559,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         let withdraw_event = FundsWithdrawnEvent {
@@ -1626,8 +1633,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
@@ -1687,8 +1694,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
@@ -1963,8 +1970,8 @@ impl SavingsGoalContract {
         );
         env.storage().persistent().extend_ttl(
             &DataKey::ArchivedGoal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::remove_owner_goal_id(&env, &caller, goal_id);
@@ -2024,8 +2031,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &restored_goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::remove_owner_archived_goal_id(&env, &caller, goal_id);
@@ -2317,8 +2324,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&DataKey::Goal(g.id), &g);
             env.storage().persistent().extend_ttl(
                 &DataKey::Goal(g.id),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
             let mut ids = owner_indices
                 .get(g.owner.clone())
@@ -2334,8 +2341,8 @@ impl SavingsGoalContract {
                 .set(&DataKey::OwnerGoals(owner.clone()), &ids);
             env.storage().persistent().extend_ttl(
                 &DataKey::OwnerGoals(owner.clone()),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
 
@@ -2429,8 +2436,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &ids);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2461,8 +2468,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &out);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2495,8 +2502,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -2528,8 +2535,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &out);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2562,8 +2569,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -2572,7 +2579,7 @@ impl SavingsGoalContract {
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            .extend_ttl(PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
     }
 
     /// Set or extend the time-lock on a goal.
@@ -2648,8 +2655,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("timelock"), &caller, true);
@@ -2727,8 +2734,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(next_schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(next_schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
         env.storage()
             .instance()
@@ -2795,8 +2802,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         env.events().publish(
@@ -2843,8 +2850,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         env.events().publish(
@@ -3137,8 +3144,8 @@ impl SavingsGoalsReversible for SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         RemitwiseEvents::emit(
@@ -3174,3 +3181,4 @@ mod test;
 mod tests_safe_math;
 #[cfg(test)]
 mod tests_schedule_exec;
+mod ttl_bucket_test;

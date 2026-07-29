@@ -7265,7 +7265,9 @@ fn cancel_before_execute_succeeds() {
     let goal_id = client.create_goal(&user, &name, &1000, &1735689600, &false);
 
     let res = client.remove_from_goal(&user, &goal_id, &500);
-    assert_eq!(res, Ok(false));
+    // The generated client unwraps the contract Result: success returns the
+    // inner bool directly (a contract error would panic the client call).
+    assert_eq!(res, false);
 }
 
 #[test]
