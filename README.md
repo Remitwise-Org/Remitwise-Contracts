@@ -295,6 +295,11 @@ cargo install --locked --version 21.0.0 soroban-cli
 cargo build --release --target wasm32-unknown-unknown
 ```
 
+If you have [`just`](https://github.com/casey/just) installed, `just help`
+(or plain `just`) lists the available recipes -- thin wrappers around the
+same cargo/make commands used above (`just check`, `just test`, `just wasm`,
+`just build`, ...). It's optional; nothing here requires it.
+
 ## Examples
 
 The workspace includes runnable examples for each contract in the `examples/` directory. These examples demonstrate basic read and write operations using the Soroban SDK test environment.
