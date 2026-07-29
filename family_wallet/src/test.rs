@@ -4176,6 +4176,53 @@ fn test_expired_admin_cannot_unpause() {
 }
 
 #[test]
+fn test_paused_at_is_none_before_first_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    assert_eq!(client.paused_at(), None);
+}
+
+#[test]
+fn test_paused_at_reports_the_pause_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    client.pause(&owner);
+
+    assert_eq!(client.paused_at(), Some(1_000));
+}
+
+#[test]
+fn test_paused_at_clears_on_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    client.pause(&owner);
+    assert_eq!(client.paused_at(), Some(1_000));
+
+    client.unpause(&owner);
+    assert_eq!(client.paused_at(), None);
+}
+
+#[test]
 fn test_expired_admin_cannot_archive_transactions() {
     let env = Env::default();
     env.mock_all_auths();

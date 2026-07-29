@@ -2134,6 +2134,9 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
         Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
@@ -2160,6 +2163,7 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &false);
+        env.storage().instance().remove(&symbol_short!("PAUSED_AT"));
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
         Self::append_access_audit(&env, symbol_short!("unpause"), &caller, None, true);
@@ -2187,6 +2191,12 @@ impl FamilyWallet {
 
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
+    }
+
+    /// Ledger timestamp the wallet was paused at, or `None` if it isn't
+    /// currently paused. Cleared by `unpause`.
+    pub fn paused_at(env: Env) -> Option<u64> {
+        env.storage().instance().get(&symbol_short!("PAUSED_AT"))
     }
 
     pub fn get_version(env: Env) -> u32 {
