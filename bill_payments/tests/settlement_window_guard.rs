@@ -100,7 +100,10 @@ fn returns_ok_when_creation_due_date_equals_current_ledger_time() {
         &None,
     );
 
-    assert!(res.is_ok(), "creation at exact ledger time boundary must succeed");
+    assert!(
+        res.is_ok(),
+        "creation at exact ledger time boundary must succeed"
+    );
 }
 
 /// Creation with `due_date < now` (outside window) returns InvalidDueDate.

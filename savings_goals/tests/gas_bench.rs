@@ -337,8 +337,9 @@ fn bench_get_archived_goals_page_first_n50() {
 
     setup_archived_goals(&client, &owner, 50);
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
     assert_eq!(page.count, MAX_PAGE_LIMIT);
 
     println!(
@@ -357,8 +358,9 @@ fn bench_get_archived_goals_page_first_n200() {
 
     setup_archived_goals(&client, &owner, 200);
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
     assert_eq!(page.count, MAX_PAGE_LIMIT);
 
     println!(
@@ -377,8 +379,9 @@ fn bench_get_archived_goals_page_first_n1000() {
 
     setup_archived_goals(&client, &owner, 1000);
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
     assert_eq!(page.count, MAX_PAGE_LIMIT);
 
     println!(
@@ -403,8 +406,9 @@ fn bench_get_archived_goals_page_last_n50() {
         cursor = last_page.next_cursor;
         last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
     }
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
     assert!(page.count > 0);
 
     println!(
@@ -429,8 +433,9 @@ fn bench_get_archived_goals_page_last_n200() {
         cursor = last_page.next_cursor;
         last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
     }
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
     assert!(page.count > 0);
 
     println!(
@@ -455,8 +460,9 @@ fn bench_get_archived_goals_page_last_n1000() {
         cursor = last_page.next_cursor;
         last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
     }
-    let (cpu, mem, page) =
-        measure(&env, || client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
     assert!(page.count > 0);
 
     println!(

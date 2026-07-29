@@ -244,7 +244,10 @@ fn scanned_storage_keys_within_max_length() {
 fn scanned_storage_keys_are_uppercase_with_underscores() {
     let violations: Vec<String> = scan_all_crates()
         .into_iter()
-        .filter(|(_, key)| !key.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'))
+        .filter(|(_, key)| {
+            !key.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
         .map(|(krate, key)| format!("❌ {krate}: '{key}' is not UPPERCASE_WITH_UNDERSCORES"))
         .collect();
 
@@ -262,7 +265,9 @@ fn scanned_storage_keys_are_uppercase_with_underscores() {
 fn scanned_storage_keys_have_no_leading_trailing_or_double_underscores() {
     let violations: Vec<String> = scan_all_crates()
         .into_iter()
-        .filter(|(_, key)| key.starts_with('_') || key.ends_with('_') || key.contains("__") || key.is_empty())
+        .filter(|(_, key)| {
+            key.starts_with('_') || key.ends_with('_') || key.contains("__") || key.is_empty()
+        })
         .map(|(krate, key)| format!("❌ {krate}: '{key}' has an underscore placement violation"))
         .collect();
 

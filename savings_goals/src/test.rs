@@ -7285,4 +7285,3 @@ fn cancel_after_execute_fails() {
     let res = client.try_remove_from_goal(&user, &goal_id, &500);
     assert_eq!(res, Err(Ok(ReversibleOpError::InvalidState)));
 }
-
