@@ -4,8 +4,8 @@
 use remitwise_common::reversible_op::{BillPaymentsReversible, ReversibleOpError};
 use remitwise_common::{
     check_and_increment_rate_limit, clamp_limit, require_stable_currency,
-    require_within_settlement_window, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
+    require_within_settlement_window, EventCategory, EventPriority, RemitwiseEvents, Timestamp,
+    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY,
     INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN,
     MAX_SETTLEMENT_WINDOW_SECS, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -889,7 +889,7 @@ impl BillPayments {
         new_admin: Address,
     ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
-        
+
         // Defense-in-depth: Validate admin grant TTL before allowing admin changes
         // Prevents bypass of the 30-day admin grant expiration mechanism
         let current = Self::get_pause_admin(&env);
@@ -898,7 +898,7 @@ impl BillPayments {
             // (first-time setup when current is None is allowed to proceed)
             Self::require_admin_grant_valid(&env)?;
         }
-        
+
         match current {
             Option::None => {
                 if caller != new_admin {

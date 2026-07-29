@@ -554,14 +554,20 @@ fn paged_reader_user_isolation_holds_under_bound() {
     let page_a = client.get_archived_reports_page(&user_a, &0u32, &DEFAULT_PAGE_LIMIT);
     assert_eq!(page_a.items.len(), DEFAULT_PAGE_LIMIT);
     for r in page_a.items.iter() {
-        assert!(same_address(&r.user, &user_a), "user_a must only see their own archive");
+        assert!(
+            same_address(&r.user, &user_a),
+            "user_a must only see their own archive"
+        );
     }
 
     // user_b sees only their own (smaller) archive.
     let page_b = client.get_archived_reports_page(&user_b, &0u32, &DEFAULT_PAGE_LIMIT);
     assert_eq!(page_b.items.len(), 3);
     for r in page_b.items.iter() {
-        assert!(same_address(&r.user, &user_b), "user_b must only see their own archive");
+        assert!(
+            same_address(&r.user, &user_b),
+            "user_b must only see their own archive"
+        );
     }
 
     // Walking user_a's archive never exposes user_b's stored rows.

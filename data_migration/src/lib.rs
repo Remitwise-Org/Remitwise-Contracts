@@ -569,13 +569,29 @@ fn validate_encrypted_payload_size(encoded_len: usize) -> Result<(), MigrationEr
 /// Migration/import errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationError {
-    IncompatibleVersion { found: u32, min: u32, max: u32 },
-    UnsupportedEncryptedVersion { found: u32, max: u32 },
+    IncompatibleVersion {
+        found: u32,
+        min: u32,
+        max: u32,
+    },
+    UnsupportedEncryptedVersion {
+        found: u32,
+        max: u32,
+    },
     ChecksumMismatch,
     UnknownHashAlgorithm,
-    PayloadTooLarge { size: usize, max: usize },
-    SnapshotTooLarge { size: usize, max: usize },
-    TooManyRecords { count: usize, max: usize },
+    PayloadTooLarge {
+        size: usize,
+        max: usize,
+    },
+    SnapshotTooLarge {
+        size: usize,
+        max: usize,
+    },
+    TooManyRecords {
+        count: usize,
+        max: usize,
+    },
     InvalidFormat(String),
     ValidationFailed(String),
     DeserializeError(String),
@@ -4421,7 +4437,7 @@ mod tests {
         let bytes = export_to_json(&snapshot).unwrap();
         let mut tracker = MigrationTracker::new();
         let imported = import_from_json(&bytes, &mut tracker, 1_000).unwrap();
-        
+
         assert_eq!(snapshot.payload, imported.payload);
         assert!(tracker.is_imported(&imported));
     }
@@ -4440,7 +4456,7 @@ mod tests {
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
         let bytes = export_to_json(&snapshot).unwrap();
         let mut tracker = MigrationTracker::new();
-        
+
         let result = import_from_json(&bytes, &mut tracker, 1_000);
         assert!(matches!(result, Err(MigrationError::ValidationFailed(_))));
     }
@@ -4457,7 +4473,7 @@ mod tests {
             let sum = spending as u64 + savings as u64 + bills as u64;
             if sum > 10000 { return Ok(()); }
             let insurance = 10000 - sum as u32;
-            
+
             let payload = SnapshotPayload::RemittanceSplit(RemittanceSplitExport {
                 owner,
                 spending_percent: spending,
@@ -4469,7 +4485,7 @@ mod tests {
             let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
             let bytes = export_to_json(&snapshot).unwrap();
             let mut tracker = MigrationTracker::new();
-            
+
             let imported = import_from_json(&bytes, &mut tracker, 1_000).unwrap();
             assert_eq!(snapshot.payload, imported.payload);
         }
@@ -4967,8 +4983,7 @@ mod tests {
             "blob".into(),
             serde_json::Value::String("x".repeat(MAX_MIGRATION_PAYLOAD_BYTES + 1)).into(),
         );
-        let snapshot =
-            ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+        let snapshot = ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
         assert!(
             matches!(
                 export_to_json(&snapshot),
@@ -4981,8 +4996,7 @@ mod tests {
     /// Binary export with too many records is rejected.
     #[test]
     fn test_binary_export_rejects_too_many_records() {
-        let payload =
-            SnapshotPayload::SavingsGoals(sample_goals_export(MAX_MIGRATION_RECORDS + 1));
+        let payload = SnapshotPayload::SavingsGoals(sample_goals_export(MAX_MIGRATION_RECORDS + 1));
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Binary);
         assert_eq!(
             export_to_binary(&snapshot),
@@ -5019,7 +5033,10 @@ mod tests {
             max: MAX_MIGRATION_SNAPSHOT_BYTES,
         }
         .to_string();
-        assert!(msg.contains("200000"), "Display must include actual size: {msg}");
+        assert!(
+            msg.contains("200000"),
+            "Display must include actual size: {msg}"
+        );
         assert!(
             msg.contains(&MAX_MIGRATION_SNAPSHOT_BYTES.to_string()),
             "Display must include max size: {msg}"
@@ -5033,7 +5050,10 @@ mod tests {
             max: MAX_MIGRATION_PAYLOAD_BYTES,
         }
         .to_string();
-        assert!(msg.contains("100000"), "Display must include actual size: {msg}");
+        assert!(
+            msg.contains("100000"),
+            "Display must include actual size: {msg}"
+        );
         assert!(
             msg.contains(&MAX_MIGRATION_PAYLOAD_BYTES.to_string()),
             "Display must include max size: {msg}"
@@ -5047,7 +5067,10 @@ mod tests {
             max: MAX_MIGRATION_RECORDS,
         }
         .to_string();
-        assert!(msg.contains("2048"), "Display must include actual count: {msg}");
+        assert!(
+            msg.contains("2048"),
+            "Display must include actual count: {msg}"
+        );
         assert!(
             msg.contains(&MAX_MIGRATION_RECORDS.to_string()),
             "Display must include max count: {msg}"

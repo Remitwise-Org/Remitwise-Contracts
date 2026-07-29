@@ -1,13 +1,14 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol};
+use soroban_sdk::{
+    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol,
+};
 pub mod tokens;
 pub use tokens::{
     SupportedToken, BASE_UNITS_PER_EURC, BASE_UNITS_PER_USDC, DEFAULT_CURRENCY, EURC_DECIMALS,
     MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
 };
-
 
 #[soroban_sdk::contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -303,8 +304,8 @@ pub fn guard_bytes_len(bytes: &Bytes) -> Result<(), BytesReturnError> {
 
 /// Guards against executing dispute-related operations in an outdated epoch.
 ///
-/// This is a defence-in-depth fix. If an attacker could proceed with dispute-related 
-/// operations in an outdated epoch, they could bypass lifecycle expiration rules, 
+/// This is a defence-in-depth fix. If an attacker could proceed with dispute-related
+/// operations in an outdated epoch, they could bypass lifecycle expiration rules,
 /// allowing them to manipulate dispute resolutions or lock funds unexpectedly.
 ///
 /// # Arguments
@@ -322,7 +323,11 @@ pub enum DisputeError {
 
 /// * `Err(DisputeError::OutdatedEpoch)` if the epoch is outdated
 pub fn require_no_pending_dispute_epoch(env: &Env, ep: u64) -> Result<(), DisputeError> {
-    let current_epoch: u64 = env.storage().instance().get(&symbol_short!("DISP_EP")).unwrap_or(0);
+    let current_epoch: u64 = env
+        .storage()
+        .instance()
+        .get(&symbol_short!("DISP_EP"))
+        .unwrap_or(0);
     if ep < current_epoch {
         return Err(DisputeError::OutdatedEpoch);
     }
@@ -354,8 +359,15 @@ pub const STORAGE_CROSS_CONTRACT_EPOCH: Symbol = symbol_short!("XC_EPOCH");
 /// # Returns
 /// * `Ok(())` if the epoch matches the current cross-contract epoch exactly
 /// * `Err(CrossContractEpochError::EpochMismatch)` if the epoch is outdated
-pub fn require_matching_cross_contract_epoch(env: &Env, ep: u64) -> Result<(), CrossContractEpochError> {
-    let current_epoch: u64 = env.storage().instance().get(&STORAGE_CROSS_CONTRACT_EPOCH).unwrap_or(0);
+pub fn require_matching_cross_contract_epoch(
+    env: &Env,
+    ep: u64,
+) -> Result<(), CrossContractEpochError> {
+    let current_epoch: u64 = env
+        .storage()
+        .instance()
+        .get(&STORAGE_CROSS_CONTRACT_EPOCH)
+        .unwrap_or(0);
     if ep != current_epoch {
         return Err(CrossContractEpochError::EpochMismatch);
     }
@@ -489,7 +501,7 @@ pub enum SettlementWindowError {
     WindowExpired = 1,
 }
 
-/// Guards against settling an invoice excessively late, which could lead to bounds-checking 
+/// Guards against settling an invoice excessively late, which could lead to bounds-checking
 /// attacks on catch-up loops (DoS) or economic exposure from stale states.
 ///
 /// # Arguments
@@ -823,11 +835,15 @@ mod pagination_limit_tests {
     fn is_idempotent() {
         // Applying clamp_limit twice should give same result
         let test_values = [0, 1, 25, MAX_PAGE_LIMIT, MAX_PAGE_LIMIT + 100, u32::MAX];
-        
+
         for value in test_values {
             let clamped_once = clamp_limit(value);
             let clamped_twice = clamp_limit(clamped_once);
-            assert_eq!(clamped_once, clamped_twice, "clamp_limit is not idempotent for {}", value);
+            assert_eq!(
+                clamped_once, clamped_twice,
+                "clamp_limit is not idempotent for {}",
+                value
+            );
         }
     }
 }
@@ -937,7 +953,6 @@ impl ToI128Checked for i32 {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Symbol canonicalisation — trim, casefold, charset validation
 // ---------------------------------------------------------------------------
@@ -1042,9 +1057,7 @@ pub fn canonicalise_symbol_checked(
             byte
         };
         if !is_symbol_char(folded) {
-            return Err(SymbolValidationError::InvalidChar {
-                position: i as u32,
-            });
+            return Err(SymbolValidationError::InvalidChar { position: i as u32 });
         }
         canonical[i] = folded;
     }
@@ -1176,8 +1189,6 @@ pub enum RateError {
     Overflow,
 }
 
-
-
 /// A whole percentage value (1% = 100 basis points).
 ///
 /// `Percent` wraps a `u32` representing whole percentage units. Safe conversions
@@ -1255,7 +1266,7 @@ impl TryFrom<Percent> for Rate {
 /// assert_eq!(rate.apply_to(1000), Ok(50));
 /// assert_eq!(rate.apply_to(i128::MAX), Err(RateError::Overflow));
 /// ```
-/// 
+///
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Rate(u32);
@@ -1290,7 +1301,8 @@ impl Rate {
     ///
     /// This is the safe entry point for untrusted inputs that carry an explicit
     /// unit field. Only supported units are accepted.
-    #[inline(always)]    pub fn try_from_input(value: u32, unit: u32) -> Result<Self, RateUnitError> {
+    #[inline(always)]
+    pub fn try_from_input(value: u32, unit: u32) -> Result<Self, RateUnitError> {
         require_supported_rate_unit(unit)?;
         Ok(Self::from_bps(value))
     }
@@ -1306,8 +1318,6 @@ impl Rate {
     pub fn to_bps(self) -> u32 {
         self.0
     }
-
-
 
     /// Convert this rate back to a whole percentage integer value, truncating fractional basis points.
     ///
@@ -1341,8 +1351,6 @@ impl Rate {
             .and_then(|product| product.checked_div(BASIS_POINTS as i128))
             .ok_or(RateError::Overflow)
     }
-
-
 }
 
 impl ToI128Checked for Rate {
@@ -1401,12 +1409,8 @@ impl Timestamp {
     #[inline(always)]
     pub fn to_period_key(timestamp: u64, period: PeriodKind) -> u64 {
         match period {
-            PeriodKind::Day => {
-                timestamp / SECONDS_PER_DAY
-            }
-            PeriodKind::Week => {
-                timestamp / SECONDS_PER_WEEK
-            }
+            PeriodKind::Day => timestamp / SECONDS_PER_DAY,
+            PeriodKind::Week => timestamp / SECONDS_PER_WEEK,
             PeriodKind::Month => {
                 // Convert timestamp (seconds since epoch) to YYYYMM integer.
                 // Uses proleptic Gregorian calendar, UTC; ignores leap seconds.
@@ -1415,7 +1419,7 @@ impl Timestamp {
                 // 1970-01-01 is day 0.
                 let z = days as i64 + 719468;
                 let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
-                let doe = z - era * 146097;                                    // [0, 146096]
+                let doe = z - era * 146097; // [0, 146096]
                 let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
                 let y = yoe + era * 400;
                 let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
@@ -1427,7 +1431,6 @@ impl Timestamp {
         }
     }
 }
-
 
 /// Validates that a requested period is logically ordered.
 ///
@@ -1682,8 +1685,6 @@ pub enum TagError {
     InvalidChar { position: u32 },
 }
 
-
-
 /// Signature verification failure.
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -1755,9 +1756,7 @@ pub fn require_registered_verifier(env: &Env, public_key: &[u8]) -> Result<(), S
         .unwrap_or_else(|| Map::new(env));
 
     match registered_verifiers.get(key) {
-        Some(registered_network_id) if registered_network_id == env.ledger().network_id() => {
-            Ok(())
-        }
+        Some(registered_network_id) if registered_network_id == env.ledger().network_id() => Ok(()),
         Some(_) => Err(SignatureError::VerifierNetworkMismatch),
         None => Err(SignatureError::UnregisteredVerifier),
     }
@@ -1805,7 +1804,8 @@ pub fn verify_signature(
         BytesN::from_array(env, &arr)
     };
 
-    env.crypto().ed25519_verify(&pk_bytes, &prefixed_message, &sig_bytes);
+    env.crypto()
+        .ed25519_verify(&pk_bytes, &prefixed_message, &sig_bytes);
     let pk_arr: [u8; 32] = public_key
         .try_into()
         .map_err(|_| SignatureError::InvalidPublicKeyLength)?;
@@ -1864,7 +1864,6 @@ pub fn verify_slash_signature(
     }
     Ok(())
 }
-
 
 /// Validates and canonicalizes a batch of tags without panicking.
 ///
@@ -2011,75 +2010,6 @@ pub fn same_address(a: &Address, b: &Address) -> bool {
     a == b
 }
 
-/// Canonicalise a caller-supplied Soroban [`soroban_sdk::String`] into a
-/// [`Symbol`] by stripping leading/trailing ASCII whitespace and
-/// lower-casing every ASCII uppercase letter.
-///
-/// # Allowed character set
-///
-/// After stripping and lowercasing, every remaining byte must satisfy
-/// `[a-z0-9_]`.  The Soroban SDK `Symbol` type rejects hyphens and other
-/// punctuation, so they are treated as invalid here too.  Passing a string
-/// that contains such characters will panic; use this function only with
-/// trusted or pre-validated input.
-///
-/// # Panics
-/// - If `input` is empty (length == 0).
-/// - If the trimmed result is empty (whitespace-only input).
-/// - If the trimmed result is longer than 32 bytes (Symbol hard limit).
-/// - If any byte in the trimmed result is not in `[a-z0-9_]` after
-///   upper-case folding (e.g., hyphens or other punctuation).
-pub fn canonicalise_symbol(env: &Env, input: &soroban_sdk::String) -> Symbol {
-    let len = input.len();
-    assert!(
-        len >= 1,
-        "symbol input must contain between 1 and 32 characters"
-    );
-
-    // Copy into a fixed-size buffer (Symbol max = 32 bytes).
-    const MAX: usize = 32;
-    assert!(
-        len as usize <= MAX,
-        "symbol input must contain between 1 and 32 characters"
-    );
-
-    let mut buf = [0u8; MAX];
-    input.copy_into_slice(&mut buf[..len as usize]);
-
-    // Strip leading whitespace.
-    let mut start = 0usize;
-    while start < len as usize && buf[start] == b' ' {
-        start += 1;
-    }
-
-    // Strip trailing whitespace.
-    let mut end = len as usize;
-    while end > start && buf[end - 1] == b' ' {
-        end -= 1;
-    }
-
-    assert!(
-        start < end,
-        "symbol input must contain at least one non-whitespace character"
-    );
-
-    // Lowercase ASCII uppercase letters in-place.
-    for b in &mut buf[start..end] {
-        if b.is_ascii_uppercase() {
-            *b += b'a' - b'A';
-        }
-    }
-
-    // Validate charset: [a-z0-9_] only (Symbol does not accept hyphens).
-    let valid_slice = &buf[start..end];
-    let s = match core::str::from_utf8(valid_slice) {
-        Ok(v) => v,
-        Err(_) => panic!("symbol input must be valid UTF-8"),
-    };
-
-    Symbol::new(env, s)
-}
-
 pub mod events;
 pub mod reversible_op;
 
@@ -2194,7 +2124,6 @@ fn symbol_matches_known_case_insensitive(env: &Env, symbol: &Symbol, known: &str
     }
     false
 }
-
 
 #[cfg(test)]
 mod tests;
@@ -2647,10 +2576,7 @@ pub fn require_no_investigation_epoch(env: &Env) -> Result<(), InvestigationEpoc
 /// responsibility to gate it with admin auth (e.g.
 /// `admin.require_auth()` in the calling contract).
 pub fn start_investigation_epoch(env: &Env, duration_secs: u64) {
-    let end_time = env
-        .ledger()
-        .timestamp()
-        .saturating_add(duration_secs);
+    let end_time = env.ledger().timestamp().saturating_add(duration_secs);
     env.storage()
         .instance()
         .set(&STORAGE_INVESTIGATION_EPOCH, &end_time);
@@ -2665,7 +2591,9 @@ pub fn start_investigation_epoch(env: &Env, duration_secs: u64) {
 /// This function does not enforce authentication — it is the caller's
 /// responsibility to gate it with admin auth.
 pub fn clear_investigation_epoch(env: &Env) {
-    env.storage().instance().remove(&STORAGE_INVESTIGATION_EPOCH);
+    env.storage()
+        .instance()
+        .remove(&STORAGE_INVESTIGATION_EPOCH);
 }
 
 // ---------------------------------------------------------------------------
@@ -2744,9 +2672,7 @@ pub fn require_no_active_kill_switch(env: &Env) -> Result<(), KillSwitchError> {
 /// responsibility to gate it with admin auth (e.g.
 /// `admin.require_auth()` in the calling contract).
 pub fn activate_kill_switch(env: &Env) {
-    env.storage()
-        .instance()
-        .set(&STORAGE_KILL_SWITCH, &true);
+    env.storage().instance().set(&STORAGE_KILL_SWITCH, &true);
 }
 
 /// Deactivate the kill switch, allowing write operations to proceed.
@@ -3088,7 +3014,7 @@ mod encoding_stability_tests {
 
 #[cfg(test)]
 mod stable_currency_tests {
-    use super::{require_supported_currency, require_stable_currency, StableCurrencyError};
+    use super::{require_stable_currency, require_supported_currency, StableCurrencyError};
     use soroban_sdk::{Env, Symbol};
 
     // --- Whitelisted paths: currency accepted by stable currency allowlist ---
@@ -3407,12 +3333,12 @@ mod stable_currency_tests {
         // outside Symbol's `[a-zA-Z0-9_]` charset — `Symbol::new`
         // would panic on them and mask the boundary we want to test.)
         for variant in [
-            "USDX",     // swap last byte of USDC
-            "USCA",     // swap last + a different letter
-            "UCDC",     // swap second byte of USDC
-            "USDCC",    // duplicate last byte
-            "USDC0",    // digit suffix
-            "0USDC",    // digit prefix
+            "USDX",  // swap last byte of USDC
+            "USCA",  // swap last + a different letter
+            "UCDC",  // swap second byte of USDC
+            "USDCC", // duplicate last byte
+            "USDC0", // digit suffix
+            "0USDC", // digit prefix
         ] {
             let sym = Symbol::new(&env, variant);
             assert_eq!(

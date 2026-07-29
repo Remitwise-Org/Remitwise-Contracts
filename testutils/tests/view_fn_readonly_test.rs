@@ -412,10 +412,7 @@ fn detect_panics_in_view_fns(source: &str) -> (bool, Vec<String>) {
     while let Some(fn_idx) = source[current_idx..].find("pub fn ") {
         let abs_idx = current_idx + fn_idx;
         let start_of_name = abs_idx + 7; // skip "pub fn "
-        let end_of_name = source[start_of_name..]
-            .find('(')
-            .unwrap_or(0)
-            + start_of_name;
+        let end_of_name = source[start_of_name..].find('(').unwrap_or(0) + start_of_name;
         let fn_name = source[start_of_name..end_of_name].trim();
 
         if fn_name.starts_with("get_") || fn_name.starts_with("is_") {
@@ -459,8 +456,7 @@ fn detect_panics_in_view_fns(source: &str) -> (bool, Vec<String>) {
                 };
 
                 let has_expect = body.contains(".expect(");
-                let has_panic = body.contains("panic!(")
-                    || body.contains("panic_with_error!(");
+                let has_panic = body.contains("panic!(") || body.contains("panic_with_error!(");
 
                 if has_bare_unwrap || has_expect || has_panic {
                     let reason = if has_bare_unwrap {
@@ -689,10 +685,7 @@ impl Bad {
 }
 "#;
     let (found, violations) = detect_panics_in_view_fns(source);
-    assert!(
-        found,
-        "bare .unwrap() in an is_* fn must be flagged"
-    );
+    assert!(found, "bare .unwrap() in an is_* fn must be flagged");
     assert!(
         violations.iter().any(|v| v.contains("is_initialized")),
         "violation must name 'is_initialized', got:\n{}",
