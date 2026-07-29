@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: remitwise-indexer
+    restart: unless-stopped
+    environment:
+      - STELLAR_RPC_URL=${STELLAR_RPC_URL}
+      - NETWORK_PASSPHRASE=${NETWORK_PASSPHRASE}
+      - BILL_PAYMENTS_CONTRACT=${BILL_PAYMENTS_CONTRACT}
+      - SAVINGS_GOALS_CONTRACT=${SAVINGS_GOALS_CONTRACT}
+      - INSURANCE_CONTRACT=${INSURANCE_CONTRACT}
+      - REMITTANCE_SPLIT_CONTRACT=${REMITTANCE_SPLIT_CONTRACT}
+      - DB_PATH=/data/remitwise.db
+      - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-5000}
+      - START_LEDGER=${START_LEDGER:-0}
+    volumes:
+      - ./data:/data
+    networks:
+      - remitwise
+
+networks:
+  remitwise:
+    driver: bridge
