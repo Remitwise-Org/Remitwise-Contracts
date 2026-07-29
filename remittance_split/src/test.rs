@@ -1151,7 +1151,7 @@ fn test_corridor_below_min_deposit_is_rejected() {
     );
 }
 
-fn sample_corridor(env: &Env, id: u32) -> Corridor {
+fn sample_corridor(_env: &Env, id: u32) -> Corridor {
     Corridor {
         id,
         source_currency: symbol_short!("USD"),
@@ -1164,6 +1164,38 @@ fn sample_corridor(env: &Env, id: u32) -> Corridor {
 
 fn sample_corridors(env: &Env) -> Vec<Corridor> {
     vec![env, sample_corridor(env, 1), sample_corridor(env, 2)]
+}
+
+#[test]
+fn test_validate_corridors_accepts_exact_loop_bound() {
+    let env = Env::default();
+    let mut corridors = vec![&env];
+
+    for id in 0..params::MAX_CORRIDORS {
+        let mut corridor = sample_corridor(&env, id);
+        corridor.fee_bps = 100;
+        corridors.push_back(corridor);
+    }
+
+    assert_eq!(
+        RemittanceSplit::validate_corridors(&env, &corridors),
+        Ok(())
+    );
+}
+
+#[test]
+fn test_validate_corridors_rejects_input_above_loop_bound() {
+    let env = Env::default();
+    let mut corridors = vec![&env];
+
+    for id in 0..=params::MAX_CORRIDORS {
+        corridors.push_back(sample_corridor(&env, id));
+    }
+
+    assert_eq!(
+        RemittanceSplit::validate_corridors(&env, &corridors),
+        Err(RemittanceSplitError::CorridorCountExceeded)
+    );
 }
 
 #[test]

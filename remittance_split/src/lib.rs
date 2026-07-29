@@ -1073,10 +1073,15 @@ impl RemittanceSplit {
         env: &Env,
         corridors: &Vec<Corridor>,
     ) -> Result<(), RemittanceSplitError> {
-        if corridors.len() > params::MAX_CORRIDORS {
+        let corridor_count = corridors.len();
+        if corridor_count > params::MAX_CORRIDORS {
             return Err(RemittanceSplitError::CorridorCountExceeded);
         }
-        for i in 0..corridors.len() {
+
+        // Keep validation work linear within the checked caller-controlled bound.
+        // Pairwise duplicate checks made the maximum accepted input quadratic.
+        let mut seen_ids: Map<u32, bool> = Map::new(env);
+        for i in 0..corridor_count {
             if let Some(c) = corridors.get(i) {
                 if c.fee_bps > params::MAX_FEE_BPS {
                     return Err(RemittanceSplitError::CorridorFeeTooHigh);
@@ -1093,13 +1098,10 @@ impl RemittanceSplit {
                 if c.max_amount < c.min_amount || c.min_amount < params::MIN_CORRIDOR_AMOUNT {
                     return Err(RemittanceSplitError::InvalidCorridorAmountRange);
                 }
-                for j in (i + 1)..corridors.len() {
-                    if let Some(other) = corridors.get(j) {
-                        if c.id == other.id {
-                            return Err(RemittanceSplitError::DuplicateCorridorId);
-                        }
-                    }
+                if seen_ids.contains_key(c.id) {
+                    return Err(RemittanceSplitError::DuplicateCorridorId);
                 }
+                seen_ids.set(c.id, true);
             }
         }
         Ok(())
