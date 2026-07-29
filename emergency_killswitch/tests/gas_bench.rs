@@ -10,107 +10,112 @@ struct RegressionSpec {
     mem_threshold_percent: u64,
 }
 
+// Baselines below were bumped for `initialize` requiring `admin.require_auth()`
+// (issue #1538 — front-running-the-constructor fix). Auth checks aren't free,
+// and every scenario here initializes the contract as setup, so the cost
+// ripples through all of them. Re-measured via
+// `cargo test -p emergency_killswitch --test gas_bench -- --nocapture`.
 const INITIALIZE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 20769,
-    mem_baseline: 2378,
+    cpu_baseline: 33846,
+    mem_baseline: 4050,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const PAUSE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 43358,
-    mem_baseline: 5217,
+    cpu_baseline: 61908,
+    mem_baseline: 7300,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const UNPAUSE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 69428,
-    mem_baseline: 8000,
+    cpu_baseline: 97550,
+    mem_baseline: 11093,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const CLEAR_EMERGENCY: RegressionSpec = RegressionSpec {
-    cpu_baseline: 53721,
-    mem_baseline: 6568,
+    cpu_baseline: 80435,
+    mem_baseline: 9613,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const SCHEDULE_UNPAUSE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 49093,
-    mem_baseline: 6317,
+    cpu_baseline: 67420,
+    mem_baseline: 9025,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const TRANSFER_ADMIN: RegressionSpec = RegressionSpec {
-    cpu_baseline: 40575,
-    mem_baseline: 4936,
+    cpu_baseline: 55501,
+    mem_baseline: 6668,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const PAUSE_FUNCTION: RegressionSpec = RegressionSpec {
-    cpu_baseline: 47263,
-    mem_baseline: 5701,
+    cpu_baseline: 59806,
+    mem_baseline: 7389,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const UNPAUSE_FUNCTION: RegressionSpec = RegressionSpec {
-    cpu_baseline: 63556,
-    mem_baseline: 7538,
+    cpu_baseline: 79377,
+    mem_baseline: 9409,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const PAUSE_MODULE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 42067,
-    mem_baseline: 5238,
+    cpu_baseline: 53901,
+    mem_baseline: 6910,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const UNPAUSE_MODULE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 52384,
-    mem_baseline: 6750,
+    cpu_baseline: 67046,
+    mem_baseline: 8605,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const IS_PAUSED: RegressionSpec = RegressionSpec {
-    cpu_baseline: 18092,
-    mem_baseline: 2070,
+    cpu_baseline: 23659,
+    mem_baseline: 2839,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const IS_FUNCTION_PAUSED: RegressionSpec = RegressionSpec {
-    cpu_baseline: 38097,
-    mem_baseline: 3890,
+    cpu_baseline: 45103,
+    mem_baseline: 4659,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const IS_MODULE_PAUSED: RegressionSpec = RegressionSpec {
-    cpu_baseline: 28118,
-    mem_baseline: 3142,
+    cpu_baseline: 33849,
+    mem_baseline: 3911,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const LIST_PAUSED_FUNCTIONS: RegressionSpec = RegressionSpec {
-    cpu_baseline: 32686,
-    mem_baseline: 3757,
+    cpu_baseline: 38661,
+    mem_baseline: 4526,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const GET_UNPAUSE_SCHEDULE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 32393,
-    mem_baseline: 3702,
+    cpu_baseline: 42893,
+    mem_baseline: 5160,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };

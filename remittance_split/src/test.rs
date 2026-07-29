@@ -226,6 +226,150 @@ fn test_distribution_event_topic_correctness() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Balance conservation across a real `distribute_usdc` transfer
+//
+// The existing `calculate_split`/`get_split_allocations` conservation tests
+// (see `assert_conservation` below) only check the in-memory allocation
+// arithmetic — they never call `distribute_usdc` and inspect real token
+// balances afterward. Those are different guarantees: the split math being
+// correct doesn't prove the actual `token.transfer()` calls inside
+// `distribute_usdc` moved the same amounts. These tests close that gap by
+// checking `TokenClient::balance` on every account after a real transfer.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Happy path: after a successful `distribute_usdc`, the sender's balance is
+/// debited by exactly `total_amount`, each destination account holds exactly
+/// its `calculate_split` allocation, and the four destination balances sum to
+/// exactly `total_amount` — real on-chain conservation, not just the
+/// in-memory allocation arithmetic. Uses an amount that doesn't divide evenly
+/// by the split percentages, so the dust/remainder path is exercised too.
+#[test]
+fn test_distribute_usdc_conserves_balance_across_transfer() {
+    let env = Env::default();
+    // Percentages are in basis points (must sum to exactly 10_000), not
+    // percent (0-100) — see `validate_percentages`.
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
+    let client = &harness.client;
+    let owner = &harness.owner;
+    let token_addr = &harness.token_addr;
+    let stellar_client = &harness.stellar_client;
+
+    let accounts = sample_accounts(&env);
+    let total_amount = 1_001i128;
+    stellar_client.mint(owner, &total_amount);
+
+    let expected = split_expected(&env, client, total_amount);
+
+    let nonce = 1u64; // nonce 0 is consumed by initialize_split in setup_split
+    let deadline = env.ledger().timestamp() + 3600;
+    let request_hash = RemittanceSplit::compute_request_hash(
+        symbol_short!("distrib"),
+        owner.clone(),
+        nonce,
+        total_amount,
+        deadline,
+    );
+
+    client.distribute_usdc(
+        token_addr,
+        owner,
+        &nonce,
+        &deadline,
+        &request_hash,
+        &accounts,
+        &total_amount,
+    );
+
+    let token_client = soroban_sdk::token::TokenClient::new(&env, token_addr);
+
+    assert_eq!(
+        token_client.balance(owner),
+        0,
+        "sender must be debited exactly total_amount, leaving zero balance"
+    );
+    assert_eq!(
+        token_client.balance(&accounts.spending),
+        expected[0],
+        "spending must receive exactly its calculate_split allocation"
+    );
+    assert_eq!(
+        token_client.balance(&accounts.savings),
+        expected[1],
+        "savings must receive exactly its calculate_split allocation"
+    );
+    assert_eq!(
+        token_client.balance(&accounts.bills),
+        expected[2],
+        "bills must receive exactly its calculate_split allocation"
+    );
+    assert_eq!(
+        token_client.balance(&accounts.insurance),
+        expected[3],
+        "insurance must receive exactly its calculate_split allocation (incl. dust remainder)"
+    );
+
+    let total_received = token_client.balance(&accounts.spending)
+        + token_client.balance(&accounts.savings)
+        + token_client.balance(&accounts.bills)
+        + token_client.balance(&accounts.insurance);
+    assert_eq!(
+        total_received, total_amount,
+        "real on-chain balances across all four destinations must sum to exactly total_amount"
+    );
+}
+
+/// Sad path: a `distribute_usdc` call rejected before any token movement
+/// (mismatched request hash) must leave every balance untouched — the sender
+/// keeps the full minted amount and every destination account stays at zero.
+#[test]
+fn test_distribute_usdc_rejected_call_leaves_balances_unchanged() {
+    let env = Env::default();
+    // Percentages are in basis points (must sum to exactly 10_000), not
+    // percent (0-100) — see `validate_percentages`.
+    let harness = setup_split(&env, 5000, 3000, 1500, 500);
+    let client = &harness.client;
+    let owner = &harness.owner;
+    let token_addr = &harness.token_addr;
+    let stellar_client = &harness.stellar_client;
+
+    let accounts = sample_accounts(&env);
+    let total_amount = 1_000i128;
+    stellar_client.mint(owner, &total_amount);
+
+    let nonce = 1u64;
+    let deadline = env.ledger().timestamp() + 3600;
+
+    let request = DistributeUsdcRequest {
+        usdc_contract: token_addr.clone(),
+        from: owner.clone(),
+        nonce,
+        accounts: accounts.clone(),
+        total_amount,
+        deadline,
+    };
+    let wrong_hash = soroban_sdk::Bytes::from_slice(&env, &[0u8; 32]);
+
+    let result = client.try_distribute_usdc_hashed(&request, &wrong_hash);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
+
+    let token_client = soroban_sdk::token::TokenClient::new(&env, token_addr);
+
+    assert_eq!(
+        token_client.balance(owner),
+        total_amount,
+        "rejected distribution must not debit the sender"
+    );
+    assert_eq!(token_client.balance(&accounts.spending), 0);
+    assert_eq!(token_client.balance(&accounts.savings), 0);
+    assert_eq!(token_client.balance(&accounts.bills), 0);
+    assert_eq!(
+        token_client.balance(&accounts.insurance),
+        0,
+        "rejected distribution must not credit any destination account"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Request Hash Tests - Test Vectors for distribute_usdc Signing
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -2790,6 +2934,85 @@ fn test_treasury_balance_rejects_unconfigured_treasury() {
 }
 
 #[test]
+fn test_propose_treasury_emits_trsr_prop_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+
+    let events = harness.env.events().all();
+    let (_contract_id, topics, data) = events.last().expect("no events emitted");
+
+    assert_eq!(topics.len(), 2, "trsr_prop event should have 2 topics");
+    let action: Symbol = topics
+        .get(1)
+        .expect("missing action topic")
+        .into_val(&harness.env);
+    assert_eq!(action, symbol_short!("trsr_prop"));
+
+    let (proposer, proposed): (Address, Address) = data.into_val(&harness.env);
+    assert_eq!(proposer, harness.owner);
+    assert_eq!(proposed, treasury);
+}
+
+// The treasury-recovery event: `accept_treasury` is the step where a staged
+// treasury proposal is actually recovered/taken over by the proposed
+// address, completing the rotation. This locks in the `trsr_xfr` event's
+// shape so a future refactor can't silently drop or reshape it.
+#[test]
+fn test_accept_treasury_emits_trsr_xfr_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+    harness.client.accept_treasury(&treasury);
+
+    let events = harness.env.events().all();
+    let (_contract_id, topics, data) = events.last().expect("no events emitted");
+
+    assert_eq!(topics.len(), 2, "trsr_xfr event should have 2 topics");
+    let action: Symbol = topics
+        .get(1)
+        .expect("missing action topic")
+        .into_val(&harness.env);
+    assert_eq!(action, symbol_short!("trsr_xfr"));
+
+    let (old_treasury, new_treasury): (Option<Address>, Address) = data.into_val(&harness.env);
+    assert_eq!(
+        old_treasury, None,
+        "no treasury was active before the first acceptance"
+    );
+    assert_eq!(new_treasury, treasury);
+}
+
+// Explicit failure mode: a caller other than the staged proposal must not
+// be able to trigger (or forge evidence of) a treasury recovery.
+#[test]
+fn test_accept_treasury_with_wrong_caller_fails_and_emits_no_event() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let treasury = Address::generate(&env);
+    let impostor = Address::generate(&env);
+
+    harness.client.propose_treasury(&harness.owner, &treasury);
+    let events_before = harness.env.events().all().len();
+
+    let result = harness.client.try_accept_treasury(&impostor);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PendingTreasuryMismatch))
+    );
+
+    let events_after = harness.env.events().all().len();
+    assert_eq!(
+        events_before, events_after,
+        "a failed accept_treasury call must not emit a trsr_xfr event"
+    );
+}
+
+#[test]
 fn test_initialize_split_percentage_out_of_range() {
     let env = Env::default();
     env.mock_all_auths();
@@ -3034,4 +3257,138 @@ fn test_fractional_bps_corridor_now_validates() {
         RemittanceSplit::validate_corridors(&env, &corridors),
         Ok(())
     );
+}
+
+/// Issue #1592: an owner-directed `batch_transfer` entrypoint for sending
+/// arbitrary amounts to arbitrary recipients in a single call.
+#[test]
+fn test_batch_transfer_sends_funds_to_each_recipient() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let r1 = Address::generate(&env);
+    let r2 = Address::generate(&env);
+    let recipients = vec![&env, r1.clone(), r2.clone()];
+    let amounts = vec![&env, 300i128, 700i128];
+
+    let result = harness.client.batch_transfer(
+        &harness.owner,
+        &1, // nonce 0 used in initialize_split
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert!(result);
+    assert_eq!(
+        RemittanceSplit::get_usdc_balance(&env, harness.token_addr.clone(), r1),
+        300
+    );
+    assert_eq!(
+        RemittanceSplit::get_usdc_balance(&env, harness.token_addr.clone(), r2),
+        700
+    );
+}
+
+#[test]
+fn test_batch_transfer_rejects_length_mismatch() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let recipients = vec![&env, Address::generate(&env), Address::generate(&env)];
+    let amounts = vec![&env, 300i128];
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::BatchLengthMismatch)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_batch_over_max_size() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+
+    let mut recipients = vec![&env];
+    let mut amounts = vec![&env];
+    for _ in 0..=MAX_BATCH_SIZE {
+        recipients.push_back(Address::generate(&env));
+        amounts.push_back(1i128);
+    }
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::BatchSizeExceeded)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_non_owner_caller() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let not_owner = Address::generate(&env);
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    let result = harness.client.try_batch_transfer(
+        &not_owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_untrusted_token_contract() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let other_token = Address::generate(&env);
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    let result =
+        harness
+            .client
+            .try_batch_transfer(&harness.owner, &0, &other_token, &recipients, &amounts);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UntrustedTokenContract))
+    );
+}
+
+#[test]
+fn test_batch_transfer_rejects_replayed_nonce() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    harness.client.batch_transfer(
+        &harness.owner,
+        &1, // nonce 0 used in initialize_split
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &1,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidNonce)));
 }

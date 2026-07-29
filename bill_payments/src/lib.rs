@@ -261,6 +261,104 @@ pub enum BillPaymentsError {
     InvalidTagContent = 32,
     /// Batch operation exceeds the maximum batch size.
     BatchTooLarge = 33,
+    /// The entire contract is paused
+    ContractPaused = 6,
+    /// Caller is not authorized to pause/unpause
+    UnauthorizedPause = 7,
+    /// This specific function is paused
+    FunctionPaused = 8,
+    /// Batch exceeds maximum allowed size
+    BatchTooLarge = 9,
+    /// One or more bills in the batch failed validation
+    BatchValidationFailed = 10,
+    /// Pagination limit is out of allowed range
+    InvalidLimit = 11,
+    /// Due date is in the past or otherwise invalid (error code 12).
+    ///
+    /// Triggered when `due_date == 0` OR `due_date < env.ledger().timestamp()`.
+    /// Boundary: `due_date == now` is **accepted** (strict less-than comparison).
+    InvalidDueDate = 12,
+    /// Tag string is invalid (empty or too long)
+    InvalidTag = 13,
+    /// Tags list is empty
+    EmptyTags = 14,
+    /// Currency code is invalid (empty, too long, or contains non-alphanumeric)
+    InvalidCurrency = 15,
+    /// External reference is invalid (empty, too long, or contains disallowed chars)
+    InvalidExternalRef = 16,
+    /// External reference already used by another active bill for this owner
+    DuplicateExternalRef = 17,
+    /// Owner has reached the maximum number of allowed active bills.
+    OwnerBillCapExceeded = 18,
+    /// Tag content contains invalid characters (must be [a-z0-9-_])
+    InvalidTagContent = 19,
+    /// Rate limit exceeded for this operation
+    RateLimitExceeded = 20,
+    /// Schedule interval is below the minimum allowed duration
+    ScheduleIntervalTooShort = 21,
+    /// Schedule lead time exceeds the maximum allowed duration
+    ScheduleLeadTimeTooLong = 22,
+    /// Owner has reached the maximum number of bill schedules
+    ScheduleCapExceeded = 23,
+    /// Bill schedule with the given ID does not exist
+    ScheduleNotFound = 24,
+    /// Bill schedule is not active
+    ScheduleNotActive = 25,
+    /// The currency is not a recognized stable asset.
+    /// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM) are intentionally rejected.
+    UnsupportedCurrency = 31,
+    /// No pre-upgrade snapshot was persisted for restore.
+    SnapshotNotFound = 26,
+    /// The pre-upgrade snapshot is older than the freshness window.
+    SnapshotTooOld = 27,
+    /// The admin grant has expired and must be refreshed.
+    AdminGrantExpired = 28,
+    /// The page is empty so there is no first item to return.
+    EmptyPage = 29,
+    /// Bill or schedule name is invalid (empty or exceeds max length)
+    InvalidName = 30,
+    /// Settlement occurred outside the allowed settlement window
+    SettlementWindowExpired = 32,
+    /// `set_upgrade_admin` was called with `new_admin` equal to the current
+    /// upgrade admin — rejected so a mistyped no-op rotation is caught at the
+    /// call site instead of silently doing nothing.
+    SameAdmin = 33,
+}
+
+pub type Error = BillPaymentsError;
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ArchivedBill {
+    pub id: u32,
+    pub owner: Address,
+    pub name: String,
+    pub external_ref: Option<String>,
+    pub amount: i128,
+    pub paid_at: u64,
+    pub archived_at: u64,
+    pub tags: Vec<String>,
+    pub currency: String,
+}
+
+/// Paginated result for archived bill queries
+#[contracttype]
+#[derive(Clone)]
+pub struct ArchivedBillPage {
+    pub items: Vec<ArchivedBill>,
+    /// 0 means no more pages
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+impl ArchivedBillPage {
+    /// Returns the first archived bill in the page, or a typed error when the page is empty.
+    pub fn first(&self) -> Result<ArchivedBill, BillPaymentsError> {
+        match self.items.get(0) {
+            Some(bill) => Ok(bill.clone()),
+            None => Err(BillPaymentsError::EmptyPage),
+        }
+    }
 }
 
 #[contracttype]
@@ -1213,6 +1311,9 @@ impl BillPayments {
     /// # Security Requirements
     /// - If no upgrade admin exists, caller must equal new_admin (bootstrap pattern)
     /// - If upgrade admin exists, only current upgrade admin can transfer
+    /// - If upgrade admin exists, `new_admin` must differ from the current upgrade
+    ///   admin — unlike the pause admin, there is no TTL grant to refresh here, so
+    ///   a same-admin call can only be a mistake (e.g. a copy-pasted address)
     /// - Caller must be authenticated via require_auth()
     ///
     /// # Parameters
@@ -1222,6 +1323,7 @@ impl BillPayments {
     /// # Returns
     /// - `Ok(())` on successful admin transfer
     /// - `Err(Error::Unauthorized)` if caller lacks permission
+    /// - `Err(Error::SameAdmin)` if `new_admin` is already the upgrade admin
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
@@ -1231,7 +1333,8 @@ impl BillPayments {
 
         // Authorization logic:
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
-        // 2. If upgrade admin exists, only current upgrade admin can transfer
+        // 2. If upgrade admin exists, only current upgrade admin can transfer,
+        //    and only to a genuinely different address
         match &current_upgrade_admin {
             None => {
                 // Bootstrap pattern - caller must be setting themselves as admin
@@ -1243,6 +1346,9 @@ impl BillPayments {
                 // Admin transfer - only current admin can transfer
                 if *current_admin != caller {
                     return Err(Error::Unauthorized);
+                }
+                if *current_admin == new_admin {
+                    return Err(Error::SameAdmin);
                 }
             }
         }

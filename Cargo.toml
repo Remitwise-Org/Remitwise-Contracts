@@ -2,6 +2,10 @@
 name = "remitwise-contracts"
 version = "0.1.0"
 edition = "2021"
+# Verified via `cargo +<version> check -p remittance_split`: 1.85.1 fails
+# because `darling@0.23.0`/`serde_with@3.21.0` require 1.88.0; 1.88.0 builds
+# clean. Keep this in sync with the `msrv` matrix in .github/workflows/ci.yml.
+rust-version = "1.88.0"
 publish = false
 
 [workspace]

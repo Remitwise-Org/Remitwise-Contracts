@@ -3818,6 +3818,43 @@ mod testsuit {
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
+    #[test]
+    fn test_set_upgrade_admin_rejects_same_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        // Bootstrap is unaffected: caller == new_admin is required and allowed
+        // when no upgrade admin exists yet.
+        client.set_upgrade_admin(&admin, &admin);
+
+        // A second call naming the same address as "new" is a no-op rotation —
+        // most likely a mistake — and must be rejected.
+        let result = client.try_set_upgrade_admin(&admin, &admin);
+        assert_eq!(result, Err(Ok(Error::SameAdmin)));
+
+        // The upgrade admin is unchanged.
+        assert_eq!(client.get_upgrade_admin_public(), Some(admin));
+    }
+
+    #[test]
+    fn test_set_upgrade_admin_allows_rotation_to_different_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let successor = Address::generate(&env);
+
+        client.set_upgrade_admin(&admin, &admin);
+
+        // Rotating to a genuinely different address still succeeds.
+        client.set_upgrade_admin(&admin, &successor);
+        assert_eq!(client.get_upgrade_admin_public(), Some(successor));
+    }
+
     #[derive(Debug, Clone)]
     #[allow(clippy::enum_variant_names)]
     enum Operation {
