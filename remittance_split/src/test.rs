@@ -3035,3 +3035,137 @@ fn test_fractional_bps_corridor_now_validates() {
         Ok(())
     );
 }
+
+/// Issue #1592: an owner-directed `batch_transfer` entrypoint for sending
+/// arbitrary amounts to arbitrary recipients in a single call.
+#[test]
+fn test_batch_transfer_sends_funds_to_each_recipient() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let r1 = Address::generate(&env);
+    let r2 = Address::generate(&env);
+    let recipients = vec![&env, r1.clone(), r2.clone()];
+    let amounts = vec![&env, 300i128, 700i128];
+
+    let result = harness.client.batch_transfer(
+        &harness.owner,
+        &1, // nonce 0 used in initialize_split
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert!(result);
+    assert_eq!(
+        RemittanceSplit::get_usdc_balance(&env, harness.token_addr.clone(), r1),
+        300
+    );
+    assert_eq!(
+        RemittanceSplit::get_usdc_balance(&env, harness.token_addr.clone(), r2),
+        700
+    );
+}
+
+#[test]
+fn test_batch_transfer_rejects_length_mismatch() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let recipients = vec![&env, Address::generate(&env), Address::generate(&env)];
+    let amounts = vec![&env, 300i128];
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::BatchLengthMismatch)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_batch_over_max_size() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+
+    let mut recipients = vec![&env];
+    let mut amounts = vec![&env];
+    for _ in 0..=MAX_BATCH_SIZE {
+        recipients.push_back(Address::generate(&env));
+        amounts.push_back(1i128);
+    }
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::BatchSizeExceeded)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_non_owner_caller() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let not_owner = Address::generate(&env);
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    let result = harness.client.try_batch_transfer(
+        &not_owner,
+        &0,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_untrusted_token_contract() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    let other_token = Address::generate(&env);
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    let result =
+        harness
+            .client
+            .try_batch_transfer(&harness.owner, &0, &other_token, &recipients, &amounts);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UntrustedTokenContract))
+    );
+}
+
+#[test]
+fn test_batch_transfer_rejects_replayed_nonce() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+    harness.stellar_client.mint(&harness.owner, &1_000);
+
+    let recipients = vec![&env, Address::generate(&env)];
+    let amounts = vec![&env, 100i128];
+
+    harness.client.batch_transfer(
+        &harness.owner,
+        &1, // nonce 0 used in initialize_split
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &1,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidNonce)));
+}

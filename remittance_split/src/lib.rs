@@ -11,7 +11,7 @@ mod tests_safe_math;
 
 use remitwise_common::{
     clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
     PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 
@@ -106,6 +106,10 @@ pub enum RemittanceSplitError {
     DuplicateCorridorId = 38,
     /// Fee rounding error.
     FeeRounding = 39,
+    /// `batch_transfer`'s `recipients` and `amounts` vectors have different lengths.
+    BatchLengthMismatch = 40,
+    /// `batch_transfer`'s recipient count exceeds `remitwise_common::MAX_BATCH_SIZE`.
+    BatchSizeExceeded = 41,
 }
 
 #[derive(Clone)]
@@ -1847,6 +1851,80 @@ impl RemittanceSplit {
         Self::increment_nonce(&env, &request.from)?;
         Self::append_audit(&env, symbol_short!("distH"), &request.from, true);
         Self::emit_distribution_completed(&env, &request.from, request.total_amount, &amounts);
+        Ok(true)
+    }
+
+    /// Transfers the configured USDC asset from `caller` to each address in
+    /// `recipients`, in the paired `amounts`, in one call.
+    ///
+    /// Unlike `distribute_usdc` (which always splits into the four fixed
+    /// spending/savings/bills/insurance accounts), this sends arbitrary
+    /// amounts to arbitrary recipients -- for owner-directed payouts that
+    /// don't follow the split percentages.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the split has not been initialized.
+    /// - `Unauthorized` if `caller` is not the configured owner.
+    /// - `UntrustedTokenContract` if `usdc_contract` != the trusted address
+    ///   pinned at initialization.
+    /// - `BatchLengthMismatch` if `recipients.len() != amounts.len()`.
+    /// - `BatchSizeExceeded` if `recipients.len() > MAX_BATCH_SIZE`.
+    /// - `InvalidAmount` if any amount is <= 0.
+    /// - `InvalidNonce` on replay.
+    pub fn batch_transfer(
+        env: Env,
+        caller: Address,
+        nonce: u64,
+        usdc_contract: Address,
+        recipients: Vec<Address>,
+        amounts: Vec<i128>,
+    ) -> Result<bool, RemittanceSplitError> {
+        caller.require_auth();
+        Self::require_not_paused(&env)?;
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        if config.owner != caller {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+        if config.usdc_contract != usdc_contract {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
+        if recipients.len() != amounts.len() {
+            return Err(RemittanceSplitError::BatchLengthMismatch);
+        }
+        if recipients.len() > MAX_BATCH_SIZE {
+            return Err(RemittanceSplitError::BatchSizeExceeded);
+        }
+
+        Self::require_nonce(&env, &caller, nonce)?;
+
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(RemittanceSplitError::InvalidAmount);
+            }
+        }
+
+        let token = TokenClient::new(&env, &usdc_contract);
+        for i in 0..recipients.len() {
+            let recipient = recipients.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            let amount = amounts.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            token.transfer(&caller, &recipient, &amount);
+        }
+
+        Self::increment_nonce(&env, &caller)?;
+        Self::append_audit(&env, symbol_short!("batchtx"), &caller, true);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("batch_tx")),
+            (caller, recipients.len()),
+        );
+
         Ok(true)
     }
 
