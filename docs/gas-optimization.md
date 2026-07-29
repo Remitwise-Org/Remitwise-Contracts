@@ -1,5 +1,7 @@
 # Gas Optimization Report
 
+> **Looking for actionable tuning advice?** See the **[Gas Tuning Guide](GAS_TUNING.md)** for how to interpret gas snapshots and which knobs to turn.
+
 This document records the implemented gas/cost-efficiency pass for the RemitWise Soroban contracts and maps to the acceptance criteria described in `AGENTS.md` (without modifying `AGENTS.md` itself).
 
 ## Scope

@@ -31,11 +31,7 @@ fn get_all_storage_keys() -> Vec<StorageKey> {
             contract: "remittance_split",
             description: "Owner + percentages + initialized flag",
         },
-        StorageKey {
-            key: "SPLIT",
-            contract: "remittance_split",
-            description: "Ordered percentages",
-        },
+        // SPLIT key has been removed (percentages are now derived from CONFIG).
         StorageKey {
             key: "NONCES",
             contract: "remittance_split",
@@ -475,9 +471,7 @@ fn test_no_duplicate_keys_within_contract() {
     let mut violations = Vec::new();
 
     for key_def in &keys {
-        let entry = contract_keys
-            .entry(key_def.contract)
-            .or_insert_with(HashSet::new);
+        let entry = contract_keys.entry(key_def.contract).or_default();
 
         if !entry.insert(key_def.key) {
             violations.push(format!(
@@ -600,7 +594,7 @@ fn test_common_keys_consistency() {
     for key_def in &keys {
         key_contracts
             .entry(key_def.key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key_def.contract);
     }
 

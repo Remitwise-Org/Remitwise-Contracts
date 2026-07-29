@@ -105,6 +105,26 @@ let insurance_client = InsuranceClient::new(&env, &insurance_contract_id);
 - All entities are created successfully
 - IDs are sequential and unique per contract
 
+### 4. Orchestrated Multisig Flow (`test_orchestrated_multisig_flow`)
+
+**Purpose**: Verify the `Orchestrator` correctly coordinates across multiple contracts and respects multisig-gated trust boundaries.
+
+**What it covers**:
+- **Multisig Gating**: Ensures the flow is blocked when a user lacks sufficient permissions (e.g., spending limit exceeded) and requires a multisig quorum (e.g., role elevation) to proceed.
+- **Quorum Logic**: Validates the `propose_transaction` → `sign_transaction` flow in `FamilyWallet` to reach a quorum.
+- **Dependency Pausing**: Verifies that the `Orchestrator` fails if any of its downstream dependencies (like `SavingsGoalContract`) are paused.
+- **Reentrancy Protection**: Validates the `EXEC_LOCK` behavior to prevent concurrent or reentrant executions.
+
+**Trust Boundaries**:
+- **FamilyWallet**: Acts as the primary authorizer for the executor's spending capacity.
+- **Orchestrator**: Maintains its own internal state (`EXEC_LOCK`, `NONCES`) and enforces atomicity across the remittance flow.
+- **Downstream Contracts**: Each dependency (`SavingsGoalContract`, `BillPayments`, `Insurance`) maintains its own operational state and pause controls.
+
+**How to run it**:
+```bash
+cargo test -p integration_tests test_orchestrated_multisig_flow
+```
+
 ## Running Tests
 
 ### Local Development

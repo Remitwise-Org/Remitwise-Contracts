@@ -18,3 +18,27 @@ testutils = { path = "../testutils" }
 [[test]]
 name = "pagination_gaps"
 path = "tests/pagination_gaps.rs"
+
+[[test]]
+name = "test_recurring_lifecycle"
+path = "tests/test_recurring_lifecycle.rs"
+
+[[test]]
+name = "tests_recurring"
+path = "tests/tests_recurring.rs"
+
+[[test]]
+name = "tests_overdue"
+path = "tests/tests_overdue.rs"
+
+[[test]]
+name = "tests_bill_schedule_exec"
+path = "src/tests_bill_schedule_exec.rs"
+
+[[test]]
+name = "unpaid_by_currency_pagination"
+path = "tests/unpaid_by_currency_pagination.rs"
+
+[[test]]
+name = "gas_bench"
+path = "tests/gas_bench.rs"

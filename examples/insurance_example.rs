@@ -32,14 +32,15 @@ fn main() {
         &coverage_type,
         &monthly_premium,
         &coverage_amount,
-        &None,
     );
     println!("Policy created successfully with ID: {}", policy_id);
 
     // 5. [Read] List active policies
     let policy_page = client.get_active_policies(&owner, &0, &5);
     println!("\nActive Policies for {:?}:", owner);
-    for policy in policy_page.items.iter() {
+    // `items` is a page of policy IDs; resolve each to the full policy.
+    for id in policy_page.items.iter() {
+        let policy = client.get_policy(&id).unwrap();
         println!(
             "  ID: {}, Name: {:?}, Premium: {}, Coverage: {}",
             policy.id, policy.name, policy.monthly_premium, policy.coverage_amount

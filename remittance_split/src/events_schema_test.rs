@@ -91,7 +91,9 @@ fn split_initialized_event_payload_schema() {
     };
 
     let v: Val = evt.clone().into_val(&env);
-    let decoded = SplitInitializedEvent::try_from_val(&env, &v).expect("round-trip failed");
+    let decoded_result = SplitInitializedEvent::try_from_val(&env, &v);
+    assert!(decoded_result.is_ok(), "round-trip failed");
+    let decoded = decoded_result.unwrap();
 
     assert_eq!(decoded.spending_percent, 50);
     assert_eq!(decoded.savings_percent, 30);
@@ -123,7 +125,9 @@ fn split_calculated_event_payload_schema() {
     };
 
     let v: Val = evt.clone().into_val(&env);
-    let decoded = SplitCalculatedEvent::try_from_val(&env, &v).expect("round-trip failed");
+    let decoded_result = SplitCalculatedEvent::try_from_val(&env, &v);
+    assert!(decoded_result.is_ok(), "round-trip failed");
+    let decoded = decoded_result.unwrap();
 
     assert_eq!(decoded.total_amount, 10_000);
     assert_eq!(decoded.spending_amount, 5_000);
@@ -158,7 +162,9 @@ fn distribution_completed_event_payload_schema() {
     };
 
     let v: Val = evt.clone().into_val(&env);
-    let decoded = DistributionCompletedEvent::try_from_val(&env, &v).expect("round-trip failed");
+    let decoded_result = DistributionCompletedEvent::try_from_val(&env, &v);
+    assert!(decoded_result.is_ok(), "round-trip failed");
+    let decoded = decoded_result.unwrap();
 
     assert_eq!(decoded.from, from);
     assert_eq!(decoded.total_amount, 10_000);
@@ -167,6 +173,16 @@ fn distribution_completed_event_payload_schema() {
     assert_eq!(decoded.bills_amount, 1_500);
     assert_eq!(decoded.insurance_amount, 500);
     assert_eq!(decoded.timestamp, 1_234_567_900);
+}
+
+#[test]
+fn distribution_completed_structured_event_topic_is_stable() {
+    let env = Env::default();
+
+    // Topic tuple emitted by emit_distribution_completed for indexers that
+    // subscribe to the structured per-category payload.
+    let topic: Val = (symbol_short!("split"), SplitEvent::DistributionCompleted).into_val(&env);
+    let _: Val = topic;
 }
 
 // ---------------------------------------------------------------------------

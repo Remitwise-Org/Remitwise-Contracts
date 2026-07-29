@@ -5,38 +5,38 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import dotenv from 'dotenv';
-import { initializeDatabase } from './db/schema';
-import { Indexer } from './indexer';
-import { ApiService } from './api';
-import * as fs from 'fs';
-import * as path from 'path';
+import dotenv from "dotenv";
+import { initializeDatabase } from "./db/schema";
+import { Indexer } from "./indexer";
+import { ApiService } from "./api";
+import * as fs from "fs";
+import * as path from "path";
 
 // Load environment variables
 dotenv.config();
 
 function validateEnv(): void {
   const required = [
-    'STELLAR_RPC_URL',
-    'BILL_PAYMENTS_CONTRACT',
-    'SAVINGS_GOALS_CONTRACT',
-    'INSURANCE_CONTRACT',
+    "STELLAR_RPC_URL",
+    "BILL_PAYMENTS_CONTRACT",
+    "SAVINGS_GOALS_CONTRACT",
+    "INSURANCE_CONTRACT",
   ];
 
-  const missing = required.filter(key => !process.env[key]);
-  
+  const missing = required.filter((key) => !process.env[key]);
+
   if (missing.length > 0) {
-    console.error('Missing required environment variables:');
-    missing.forEach(key => console.error(`  - ${key}`));
-    console.error('\nPlease copy .env.example to .env and configure it.');
+    console.error("Missing required environment variables:");
+    missing.forEach((key) => console.error(`  - ${key}`));
+    console.error("\nPlease copy .env.example to .env and configure it.");
     process.exit(1);
   }
 }
 
 function ensureDataDirectory(): void {
-  const dbPath = process.env.DB_PATH || './data/remitwise.db';
+  const dbPath = process.env.DB_PATH || "./data/remitwise.db";
   const dataDir = path.dirname(dbPath);
-  
+
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
     console.log(`Created data directory: ${dataDir}`);
@@ -44,14 +44,14 @@ function ensureDataDirectory(): void {
 }
 
 async function main() {
-  console.log('Remitwise Indexer v1.0.0\n');
+  console.log("Remitwise Indexer v1.0.0\n");
 
   // Validate environment
   validateEnv();
   ensureDataDirectory();
 
   // Initialize database
-  const dbPath = process.env.DB_PATH || './data/remitwise.db';
+  const dbPath = process.env.DB_PATH || "./data/remitwise.db";
   console.log(`Initializing database: ${dbPath}`);
   const db = initializeDatabase(dbPath);
 
@@ -66,33 +66,45 @@ async function main() {
     contracts.push(process.env.REMITTANCE_SPLIT_CONTRACT);
   }
 
+  if (process.env.FAMILY_WALLET_CONTRACT) {
+    contracts.push(process.env.FAMILY_WALLET_CONTRACT);
+  }
+
+  if (process.env.ORCHESTRATOR_CONTRACT) {
+    contracts.push(process.env.ORCHESTRATOR_CONTRACT);
+  }
+
+  if (process.env.KILLSWITCH_CONTRACT) {
+    contracts.push(process.env.KILLSWITCH_CONTRACT);
+  }
+
   // Parse command line arguments
   const args = process.argv.slice(2);
   const command = args[0];
 
-  if (command === 'query') {
+  if (command === "query") {
     // Query mode - run example queries
     await runQueryExamples(db, args.slice(1));
   } else {
     // Indexer mode - start indexing
-    const pollInterval = parseInt(process.env.POLL_INTERVAL_MS || '5000');
+    const pollInterval = parseInt(process.env.POLL_INTERVAL_MS || "5000");
     const indexer = new Indexer(
       db,
       process.env.STELLAR_RPC_URL!,
       contracts,
-      pollInterval
+      pollInterval,
     );
 
     // Handle graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\nReceived SIGINT, shutting down gracefully...');
+    process.on("SIGINT", () => {
+      console.log("\nReceived SIGINT, shutting down gracefully...");
       indexer.stop();
       db.close();
       process.exit(0);
     });
 
-    process.on('SIGTERM', () => {
-      console.log('\nReceived SIGTERM, shutting down gracefully...');
+    process.on("SIGTERM", () => {
+      console.log("\nReceived SIGTERM, shutting down gracefully...");
       indexer.stop();
       db.close();
       process.exit(0);
@@ -108,53 +120,59 @@ async function runQueryExamples(db: any, args: string[]): Promise<void> {
   const queryType = args[0];
   const param = args[1];
 
-  console.log('Running query examples...\n');
+  console.log("Running query examples...\n");
 
   switch (queryType) {
-    case 'dashboard':
+    case "dashboard":
       if (!param) {
-        console.error('Usage: npm start query dashboard <owner_address>');
+        console.error("Usage: npm start query dashboard <owner_address>");
         process.exit(1);
       }
       api.printUserDashboard(param);
       break;
 
-    case 'overdue':
+    case "overdue":
       api.printOverdueBills();
       break;
 
-    case 'tag':
+    case "tag":
       if (!param) {
-        console.error('Usage: npm start query tag <tag_name>');
+        console.error("Usage: npm start query tag <tag_name>");
         process.exit(1);
       }
       api.printEntitiesByTag(param);
       break;
 
-    case 'tags':
+    case "tags":
       api.printAllTags();
       break;
 
-    case 'goals':
+    case "goals":
       const goals = api.getActiveGoals();
-      console.log('=== Active Goals ===');
-      goals.forEach(goal => {
+      console.log("=== Active Goals ===");
+      goals.forEach((goal) => {
         const tags = JSON.parse(goal.tags);
-        console.log(`[${goal.id}] ${goal.name}: ${goal.current_amount}/${goal.target_amount} ${tags.length > 0 ? `[${tags.join(', ')}]` : ''}`);
+        console.log(
+          `[${goal.id}] ${goal.name}: ${goal.current_amount}/${goal.target_amount} ${tags.length > 0 ? `[${tags.join(", ")}]` : ""}`,
+        );
       });
-      console.log('');
+      console.log("");
       break;
 
     default:
-      console.log('Available query commands:');
-      console.log('  dashboard <owner_address> - Show user dashboard');
-      console.log('  overdue                   - Show all overdue bills');
-      console.log('  tag <tag_name>            - Show entities with specific tag');
-      console.log('  tags                      - Show all tags');
-      console.log('  goals                     - Show active goals');
-      console.log('');
-      console.log('Example:');
-      console.log('  npm start query dashboard GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+      console.log("Available query commands:");
+      console.log("  dashboard <owner_address> - Show user dashboard");
+      console.log("  overdue                   - Show all overdue bills");
+      console.log(
+        "  tag <tag_name>            - Show entities with specific tag",
+      );
+      console.log("  tags                      - Show all tags");
+      console.log("  goals                     - Show active goals");
+      console.log("");
+      console.log("Example:");
+      console.log(
+        "  npm start query dashboard GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      );
       break;
   }
 
@@ -162,7 +180,7 @@ async function runQueryExamples(db: any, args: string[]): Promise<void> {
 }
 
 // Run the application
-main().catch(error => {
-  console.error('Fatal error:', error);
+main().catch((error) => {
+  console.error("Fatal error:", error);
   process.exit(1);
 });

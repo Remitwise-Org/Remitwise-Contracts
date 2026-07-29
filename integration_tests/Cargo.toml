@@ -13,6 +13,7 @@ insurance = { path = "../insurance" }
 remitwise-common = { path = "../remitwise-common" }
 reporting = { path = "../reporting" }
 family_wallet = { path = "../family_wallet" }
+orchestrator = { path = "../orchestrator" }
 
 [dev-dependencies]
 soroban-sdk = { version = "=21.7.7", features = ["testutils"] }

@@ -46,9 +46,26 @@ Smart contracts emit events but don't provide efficient querying capabilities. T
 | Contract | Events Tracked | Entities |
 |----------|----------------|----------|
 | Savings Goals | goal_created, goal_deposit, goal_withdraw, tags_add, tags_rem | SavingsGoal |
-| Bill Payments | bill_created, bill_paid, tags_add, tags_rem | Bill |
+| Bill Payments | bill_created, bill_paid, bill_cancelled, bill_restored, bill_archived, ext_upd, tags_add, tags_rem | Bill |
 | Insurance | policy_created, tags_add, tags_rem | InsurancePolicy |
 | Remittance Split | split_created, split_executed | RemittanceSplit |
+| Family Wallet | member, limit, ms_conf, em_mode, em_conf, em_prop, add_mem, rem_mem, role_exp, adm_xfr, archived, exp_cln, upgraded | FamilyMember, MultisigConfig |
+
+### Family Wallet Processor Notes
+
+The Family Wallet processor consumes the `("Remitwise", category, priority, action)`
+topic schema documented in [EVENTS.md](EVENTS.md#family-wallet-contract). The
+`ms_conf` action carries a `MultisigConfiguredEvent` payload and signals a
+**governance-level change** to a `TransactionType`'s threshold, signer set, or
+spending limit. The processor SHOULD:
+
+- Persist every emission (initial configuration and reconfiguration both emit)
+  so the audit trail is complete.
+- Treat the event as high-priority for security dashboards and alerting — a
+  silent multisig change is exactly the kind of action a monitor must surface.
+- Record `signer_count` from the payload; the authoritative signer list is
+  intentionally not in the payload and must be fetched via
+  `get_multisig_config` if needed.
 
 ## Architecture
 
@@ -460,3 +477,6 @@ MIT - See main project LICENSE file
 **Version**: 1.0.0
 
 **Last Updated**: 2026-02-25
+
+## Crash-Safe Resume
+Indexer state is stored in `indexer_state` to prevent data loss.

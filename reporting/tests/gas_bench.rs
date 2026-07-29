@@ -90,24 +90,26 @@ mod mock_remittance_split {
     pub struct MockRemittanceSplit;
 
     /// Returns a fixed 50/30/15/5 split matching the standard four categories.
+    /// Percentages are basis points (10_000 = 100%), which is the format
+    /// `get_remittance_summary_internal` validates against (sum == 10_000).
     /// Security: no auth required on read-only split queries.
     #[contractimpl]
     impl RemittanceSplitTrait for MockRemittanceSplit {
         fn get_split(env: &Env) -> Vec<u32> {
             let mut split = Vec::new(env);
-            split.push_back(50u32);
-            split.push_back(30u32);
-            split.push_back(15u32);
-            split.push_back(5u32);
+            split.push_back(5000u32);
+            split.push_back(3000u32);
+            split.push_back(1500u32);
+            split.push_back(500u32);
             split
         }
 
         fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
             let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 50 / 100);
-            amounts.push_back(total_amount * 30 / 100);
-            amounts.push_back(total_amount * 15 / 100);
-            amounts.push_back(total_amount * 5 / 100);
+            amounts.push_back(total_amount * 5000 / 10_000);
+            amounts.push_back(total_amount * 3000 / 10_000);
+            amounts.push_back(total_amount * 1500 / 10_000);
+            amounts.push_back(total_amount * 500 / 10_000);
             amounts
         }
     }
@@ -260,6 +262,7 @@ macro_rules! mock_insurance {
     ($mod_name:ident, $struct_name:ident, $n:expr) => {
         mod $mod_name {
             use reporting::{CoverageType, InsurancePolicy, InsuranceTrait, PolicyPage};
+            use soroban_sdk::testutils::Address as _;
             use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
             #[contract]
@@ -269,29 +272,39 @@ macro_rules! mock_insurance {
             impl InsuranceTrait for $struct_name {
                 fn get_active_policies(
                     env: Env,
-                    owner: Address,
+                    _owner: Address,
                     _cursor: u32,
                     _limit: u32,
                 ) -> PolicyPage {
                     let mut items = Vec::new(&env);
                     for i in 0u32..$n {
-                        items.push_back(InsurancePolicy {
-                            id: i,
-                            owner: owner.clone(),
-                            name: SorobanString::from_str(&env, "Bench Policy"),
-                            coverage_type: remitwise_common::CoverageType::Health,
-                            monthly_premium: 200i128,
-                            coverage_amount: 50_000i128,
-                            active: true,
-                            next_payment_date: 1_800_000_000,
-                            external_ref: None,
-                        });
+                        items.push_back(i);
                     }
                     let count = items.len();
                     PolicyPage {
                         items,
                         next_cursor: 0,
                         count,
+                    }
+                }
+
+                fn get_policy(env: Env, policy_id: u32) -> Option<InsurancePolicy> {
+                    if policy_id < $n {
+                        Some(InsurancePolicy {
+                            id: policy_id,
+                            owner: Address::generate(&env),
+                            name: SorobanString::from_str(&env, "Bench Policy"),
+                            coverage_type: CoverageType::Health,
+                            monthly_premium: 200i128,
+                            coverage_amount: 50_000i128,
+                            external_ref: None,
+                            active: true,
+                            created_at: 0,
+                            last_payment_at: 0,
+                            next_payment_date: 1_800_000_000,
+                        })
+                    } else {
+                        None
                     }
                 }
 
@@ -454,8 +467,8 @@ fn bench_trend_analysis_multi_5_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    // 5 data points → 4 trend windows
-    assert_eq!(trends.len(), 4);
+    // 5 data points → 5 trend entries (first entry uses prev=0 baseline)
+    assert_eq!(trends.len(), 5);
     // Each window should show a 100 % increase (amount doubles each step)
     for trend in trends.iter() {
         assert!(trend.change_percentage > 0);
@@ -485,7 +498,7 @@ fn bench_trend_analysis_multi_25_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    assert_eq!(trends.len(), 24);
+    assert_eq!(trends.len(), 25);
 
     println!(
         r#"{{"contract":"reporting","method":"get_trend_analysis_multi","scenario":"25_periods","cpu":{},"mem":{}}}"#,
@@ -511,7 +524,7 @@ fn bench_trend_analysis_multi_50_periods() {
 
     let (cpu, mem, trends) = measure(&env, || client.get_trend_analysis_multi(&user, &history));
 
-    assert_eq!(trends.len(), 49);
+    assert_eq!(trends.len(), 50);
 
     println!(
         r#"{{"contract":"reporting","method":"get_trend_analysis_multi","scenario":"50_periods","cpu":{},"mem":{}}}"#,
@@ -548,7 +561,7 @@ fn bench_financial_health_report_small_5_items() {
     );
 
     let (cpu, mem, report) = measure(&env, || {
-        client.get_financial_health_report(&user, &500_000i128, &PERIOD_START, &PERIOD_END)
+        client.get_financial_health_report(&user, &user, &500_000i128, &PERIOD_START, &PERIOD_END)
     });
 
     assert!(report.health_score.score <= 100);
@@ -578,7 +591,7 @@ fn bench_financial_health_report_medium_25_items() {
     );
 
     let (cpu, mem, report) = measure(&env, || {
-        client.get_financial_health_report(&user, &500_000i128, &PERIOD_START, &PERIOD_END)
+        client.get_financial_health_report(&user, &user, &500_000i128, &PERIOD_START, &PERIOD_END)
     });
 
     assert!(report.health_score.score <= 100);
@@ -611,7 +624,7 @@ fn bench_financial_health_report_large_50_items() {
     );
 
     let (cpu, mem, report) = measure(&env, || {
-        client.get_financial_health_report(&user, &500_000i128, &PERIOD_START, &PERIOD_END)
+        client.get_financial_health_report(&user, &user, &500_000i128, &PERIOD_START, &PERIOD_END)
     });
 
     assert!(report.health_score.score <= 100);
@@ -637,6 +650,7 @@ fn bench_financial_health_report_large_50_items() {
 ///
 /// Reports are generated by calling `get_financial_health_report` so that the
 /// `generated_at` timestamp is set correctly for the archive threshold.
+#[allow(clippy::too_many_arguments)]
 fn store_n_reports(
     env: &Env,
     client: &ReportingContractClient,
@@ -661,8 +675,13 @@ fn store_n_reports(
     for i in 0u32..n {
         let user = Address::generate(env);
         let period_key = PERIOD_START + (i as u64) * 3_600;
-        let report =
-            client.get_financial_health_report(&user, &100_000i128, &PERIOD_START, &PERIOD_END);
+        let report = client.get_financial_health_report(
+            &user,
+            &user,
+            &100_000i128,
+            &PERIOD_START,
+            &PERIOD_END,
+        );
         client.store_report(&user, &report, &period_key);
     }
 

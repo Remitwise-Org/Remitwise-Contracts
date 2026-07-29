@@ -34,8 +34,7 @@ fn test_add_to_goal_unauthorized_access() {
     let target_amount = 10_000i128;
     let deadline = 1_800_000u64;
 
-    let goal_id = client.create_goal(&owner_a, &goal_name, &target_amount, &deadline);
-
+    let goal_id = client.create_goal(&owner_a, &goal_name, &target_amount, &deadline, &false);
     // 3. The "Attack": User B tries to call add_to_goal for User A's goal_id
     let deposit_amount = 500i128;
 

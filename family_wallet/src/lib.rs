@@ -6,7 +6,8 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, CONTRACT_VERSION,
+    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, RoleGrantedEvent, RoleRevokedEvent,
+    CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -26,7 +27,8 @@ const MIN_THRESHOLD: u32 = 1;
 const MAX_SIGNERS: u32 = 20;
 
 // Batch bounds
-const MAX_BATCH_MEMBERS: u32 = 50;
+const MAX_BATCH_MEMBERS: u32 = 30;
+const MAX_FAMILY_MEMBERS: u32 = MAX_BATCH_MEMBERS;
 
 // Access audit bounds
 const MAX_ACCESS_AUDIT_ENTRIES: u32 = 200;
@@ -34,6 +36,24 @@ const MAX_AUDIT_PAGE_LIMIT: u32 = 50;
 const DEFAULT_AUDIT_PAGE_LIMIT: u32 = 20;
 const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
+const MAX_MEMBER_PAGE_LIMIT: u32 = 100;
+const DEFAULT_MEMBER_PAGE_LIMIT: u32 = 20;
+
+/// Default multisig spending limit: 1 000 XLM in stroops.
+const DEFAULT_MULTISIG_SPENDING_LIMIT: i128 = 1_000 * STROOPS_PER_XLM;
+/// Default emergency-config maximum single-transfer amount: 10 000 XLM in stroops.
+const DEFAULT_EMERGENCY_MAX_AMOUNT: i128 = 10_000 * STROOPS_PER_XLM;
+/// Default emergency-config daily limit: 100 000 XLM in stroops.
+const DEFAULT_EMERGENCY_DAILY_LIMIT: i128 = 100_000 * STROOPS_PER_XLM;
+
+/// Hard cap on the number of entries retained in `ARCH_TX`.
+/// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
+/// evicted before the new one is inserted, keeping instance-storage rent bounded.
+const MAX_ARCHIVE_ENTRIES: u32 = 500;
+/// Default page size for `get_archived_transactions` when `limit == 0`.
+const DEFAULT_ARCHIVE_PAGE_LIMIT: u32 = 20;
+/// Maximum page size for `get_archived_transactions`.
+const MAX_ARCHIVE_PAGE_LIMIT: u32 = 100;
 
 #[contracttype]
 #[derive(Clone)]
@@ -63,6 +83,26 @@ pub enum TransactionType {
     EmergencyTransfer = 4,
     PolicyCancellation = 5,
     RegularWithdrawal = 6,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WithdrawalTier {
+    Regular,
+    Large,
+}
+
+/// Determines whether a withdrawal falls into the Regular or Large tier.
+///
+/// ### Boundary Policy (Pinned & Documented):
+/// * **Below Limit** (`amount < spending_limit`): `WithdrawalTier::Regular`
+/// * **Exactly At Boundary** (`amount == spending_limit`): `WithdrawalTier::Regular` (Inclusive)
+/// * **Above Limit** (`amount > spending_limit`): `WithdrawalTier::Large`
+pub fn select_withdrawal_tier(amount: i128, spending_limit: i128) -> WithdrawalTier {
+    if amount <= spending_limit {
+        WithdrawalTier::Regular
+    } else {
+        WithdrawalTier::Large
+    }
 }
 
 #[contracttype]
@@ -123,6 +163,14 @@ pub struct SpendingTracker {
     pub last_tx_timestamp: u64,
     pub tx_count: u32,
     pub period: SpendingPeriod,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MemberAddressPage {
+    pub items: Vec<Address>,
+    pub next_cursor: u32,
+    pub count: u32,
 }
 
 /// Enhanced spending limit with precision controls
@@ -193,6 +241,37 @@ pub struct SpendingLimitUpdatedEvent {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct ProposalInvalidatedEvent {
+    pub tx_id: u64,
+    pub reason: Symbol,
+    pub timestamp: u64,
+}
+
+/// Emitted when `configure_multisig` successfully sets or updates the
+/// threshold, signer set, or spending limit for a `TransactionType`.
+///
+/// This is a governance-level change — it determines who can sign and how
+/// many signatures are required for the most powerful actions the wallet
+/// supports. Off-chain monitors must surface every emission so quorum
+/// changes leave an auditable trail.
+///
+/// The signer set is summarised as `signer_count` rather than the full
+/// `Vec<Address>` of signers. The shared event taxonomy keeps payloads
+/// fixed-size and avoids exposing the membership list on-chain to topic
+/// subscribers; the authoritative signer list remains queryable via
+/// `get_multisig_config`.
+#[contracttype]
+#[derive(Clone)]
+pub struct MultisigConfiguredEvent {
+    pub tx_type: TransactionType,
+    pub threshold: u32,
+    pub signer_count: u32,
+    pub spending_limit: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct ArchivedTransaction {
     pub tx_id: u64,
     pub tx_type: TransactionType,
@@ -224,6 +303,37 @@ pub struct StorageStats {
 }
 
 const MAX_THRESHOLD: u32 = 100;
+
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage before a contract upgrade so state
+/// can be restored if the upgrade fails or produces inconsistent results.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Owner address.
+    pub owner: Address,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Emergency mode state.
+    pub emergency_mode: bool,
+    /// Emergency config.
+    pub emergency_config: EmergencyConfig,
+    /// Emergency last used timestamp.
+    pub emergency_last: u64,
+    /// Next transaction ID counter.
+    pub next_tx: u64,
+    /// Proposal expiry duration.
+    pub proposal_expiry: u64,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -279,15 +389,45 @@ pub enum Error {
     InvalidPrecisionConfig = 20,
     InvalidProposalExpiry = 21,
     MemberAlreadyExists = 22,
+    QuorumUnachievable = 23,
+    /// An emergency transfer was rejected because the resulting balance would
+    /// fall below `EmergencyConfig.min_balance`.
+    MinBalanceViolation = 24,
+    /// One or more split percentages are invalid: either a fee is negative
+    /// (defence-in-depth; u32 makes this impossible) or the four split
+    /// percentages do not sum to exactly 100.
+    InvalidSplitConfig = 25,
+    SnapshotTooOld = 26,
+    /// The requested destructive state change (member removal, multisig
+    /// reconfiguration) was rejected because the wallet has pending
+    /// multisig proposals.  Allowing the change while proposals are
+    /// in-flight could cause orphaned signatures, silently-invalid quorum
+    /// calculations, or execution against stale configuration.
+    PendingOperationsExist = 27,
+    /// The supplied expiry timestamp is in the past.
+    RoleExpiryInPast = 28,
 }
 
 #[contractimpl]
 impl FamilyWallet {
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
+        if !Self::try_initialize(env.clone(), owner, initial_members) {
+            panic!("Wallet already initialized");
+        }
+        true
+    }
+
+    pub fn try_initialize(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         owner.require_auth();
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
         if existing.is_some() {
-            panic!("Wallet already initialized");
+            return false;
         }
         Self::extend_instance_ttl(&env);
         env.storage()
@@ -325,7 +465,7 @@ impl FamilyWallet {
         let default_config = MultiSigConfig {
             threshold: 2,
             signers: Vec::new(&env),
-            spending_limit: 1000_0000000,
+            spending_limit: DEFAULT_MULTISIG_SPENDING_LIMIT,
         };
 
         for tx_type in [
@@ -334,6 +474,7 @@ impl FamilyWallet {
             TransactionType::RoleChange,
             TransactionType::EmergencyTransfer,
             TransactionType::PolicyCancellation,
+            TransactionType::RegularWithdrawal,
         ] {
             env.storage()
                 .instance()
@@ -353,10 +494,10 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("NEXT_TX"), &1u64);
         let em_config = EmergencyConfig {
-            max_amount: 10000_0000000,
+            max_amount: DEFAULT_EMERGENCY_MAX_AMOUNT,
             cooldown: 3600,
             min_balance: 0,
-            daily_limit: 100000_0000000,
+            daily_limit: DEFAULT_EMERGENCY_DAILY_LIMIT,
         };
         env.storage()
             .instance()
@@ -425,11 +566,30 @@ impl FamilyWallet {
             EventPriority::High,
             symbol_short!("member"),
             MemberAddedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 role,
                 spending_limit,
                 timestamp: now,
             },
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("role_grnt"),
+            RoleGrantedEvent {
+                member: member_address.clone(),
+                role,
+                timestamp: now,
+            },
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("add_mem"),
+            &admin,
+            Some(member_address),
+            true,
         );
 
         Ok(true)
@@ -468,15 +628,13 @@ impl FamilyWallet {
         caller: Address,
         member_address: Address,
         new_limit: i128,
-    ) -> bool {
+    ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
 
-        if !Self::is_owner_or_admin(&env, &caller) {
-            panic!("Only Owner or Admin can update spending limits");
-        }
+        Self::require_governance_ok(&env, &caller)?;
         if new_limit < 0 {
-            panic!("InvalidSpendingLimit");
+            return Err(Error::InvalidSpendingLimit);
         }
 
         let mut members: Map<Address, FamilyMember> = env
@@ -487,8 +645,7 @@ impl FamilyWallet {
 
         let mut record = members
             .get(member_address.clone())
-            .ok_or(Error::MemberNotFound)
-            .unwrap_or_else(|_| panic!("MemberNotFound"));
+            .ok_or(Error::MemberNotFound)?;
 
         let old_limit = record.spending_limit;
         record.spending_limit = new_limit;
@@ -506,14 +663,22 @@ impl FamilyWallet {
             EventPriority::Medium,
             symbol_short!("limit"),
             SpendingLimitUpdatedEvent {
-                member: member_address,
+                member: member_address.clone(),
                 old_limit,
                 new_limit,
                 timestamp: now,
             },
         );
 
-        true
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upd_lim"),
+            &caller,
+            Some(member_address),
+            true,
+        );
+
+        Ok(true)
     }
 
     /// Check if `caller` is allowed to spend `amount`.
@@ -571,7 +736,7 @@ impl FamilyWallet {
             return Err(Error::Unauthorized);
         }
 
-        Ok(())
+        Self::validate_precision_spending_internal(env, caller, amount)
     }
 
     /// @notice Configure multisig parameters for a given transaction type.
@@ -593,6 +758,10 @@ impl FamilyWallet {
     ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
+
+        // Defence-in-depth: block reconfiguration while multisig proposals are
+        // in-flight to prevent execution against stale threshold / signer set.
+        Self::require_no_pending_operations(&env)?;
 
         let members: Map<Address, FamilyMember> = env
             .storage()
@@ -623,6 +792,7 @@ impl FamilyWallet {
         }
 
         if threshold > signer_count {
+            // Must return a typed error for `configure_multisig`'s `Result` API.
             return Err(Error::InvalidThreshold);
         }
 
@@ -654,6 +824,22 @@ impl FamilyWallet {
             .instance()
             .set(&Self::get_config_key(tx_type), &config);
 
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("ms_conf"),
+            MultisigConfiguredEvent {
+                tx_type,
+                threshold,
+                signer_count,
+                spending_limit,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Self::append_access_audit(&env, symbol_short!("ms_conf"), &caller, None, true);
+
         Ok(true)
     }
 
@@ -671,30 +857,70 @@ impl FamilyWallet {
             panic!("Only family members can propose transactions");
         }
 
-        let config_key = match tx_type {
-            TransactionType::RegularWithdrawal => {
-                Self::get_config_key(TransactionType::LargeWithdrawal)
-            }
-            _ => Self::get_config_key(tx_type),
-        };
+        // Fetch Regular config (source of truth for boundary)
+        let reg_config_key = Self::get_config_key(TransactionType::RegularWithdrawal);
+        let reg_config: MultiSigConfig = env
+            .storage()
+            .instance()
+            .get(&reg_config_key)
+            .unwrap_or_else(|| panic!("Regular multi-sig config not found"));
+
+        let mut requires_multisig = true;
+        let mut resolved_tx_type = tx_type;
+
+        // Normalize tier selection
+        if let TransactionData::Withdrawal(_, _, amount) = &data {
+            let limit = reg_config.spending_limit;
+
+            let tier = select_withdrawal_tier(*amount, limit);
+
+            resolved_tx_type = match tier {
+                WithdrawalTier::Regular => TransactionType::RegularWithdrawal,
+                WithdrawalTier::Large => TransactionType::LargeWithdrawal,
+            };
+
+            requires_multisig = true;
+        } else if let TransactionType::RegularWithdrawal = resolved_tx_type {
+            // Non-withdrawals incorrectly tagged
+            requires_multisig = false;
+        }
+
+        // Direct execution if no multisig required
+        if !requires_multisig {
+            return Self::execute_transaction_internal(
+                &env,
+                &proposer,
+                &resolved_tx_type,
+                &data,
+                false,
+            );
+        }
 
         let config: MultiSigConfig = env
             .storage()
             .instance()
-            .get(&config_key)
+            .get(&Self::get_config_key(resolved_tx_type))
             .unwrap_or_else(|| panic!("Multi-sig config not found"));
 
-        let requires_multisig = match (&tx_type, &data) {
-            (TransactionType::RegularWithdrawal, TransactionData::Withdrawal(_, _, amount)) => {
-                *amount > config.spending_limit
+        let mut valid_signatures: u32 = 0;
+        for authorized_signer in config.signers.iter() {
+            if authorized_signer.clone() == proposer {
+                valid_signatures += 1;
+                break;
             }
-            (TransactionType::LargeWithdrawal, _) => true,
-            (TransactionType::RegularWithdrawal, _) => false,
-            _ => true,
-        };
+        }
 
-        if !requires_multisig {
-            return Self::execute_transaction_internal(&env, &proposer, &tx_type, &data, false);
+        if valid_signatures >= config.threshold {
+            let executed = Self::execute_transaction_internal(
+                &env,
+                &proposer,
+                &resolved_tx_type,
+                &data,
+                false,
+            );
+            if executed == 0 {
+                return 0;
+            }
         }
 
         Self::extend_instance_ttl(&env);
@@ -713,8 +939,6 @@ impl FamilyWallet {
             .set(&symbol_short!("NEXT_TX"), &next_tx_id);
 
         let timestamp = env.ledger().timestamp();
-        let mut signatures = Vec::new(&env);
-        signatures.push_back(proposer.clone());
 
         let expiry_duration: u64 = env
             .storage()
@@ -722,13 +946,22 @@ impl FamilyWallet {
             .get(&symbol_short!("PROP_EXP"))
             .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
 
+        let expires_at = if expiry_duration == 0 {
+            u64::MAX
+        } else {
+            timestamp + expiry_duration
+        };
+
+        let mut signatures = Vec::new(&env);
+        signatures.push_back(proposer.clone());
+
         let pending_tx = PendingTransaction {
             tx_id,
-            tx_type,
+            tx_type: resolved_tx_type, // normalized
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
-            expires_at: timestamp + expiry_duration,
+            expires_at,
             data: data.clone(),
         };
 
@@ -739,20 +972,24 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
         pending_txs.set(tx_id, pending_tx);
+
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
 
         tx_id
     }
-    pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> bool {
+
+    pub fn sign_transaction(env: Env, signer: Address, tx_id: u64) -> Result<bool, Error> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         signer.require_auth();
         Self::require_not_paused(&env);
-        Self::require_role_at_least(&env, &signer, FamilyRole::Member);
 
         if !Self::is_family_member(&env, &signer) {
-            panic!("Only family members can sign transactions");
+            return Err(Error::SignerNotMember);
         }
+        Self::require_role_at_least(&env, &signer, FamilyRole::Member);
 
         Self::extend_instance_ttl(&env);
 
@@ -768,12 +1005,13 @@ impl FamilyWallet {
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
-            panic!("Transaction expired");
+            return Err(Error::TransactionExpired);
         }
 
+        // If signer already recorded, reject with typed error.
         for sig in pending_tx.signatures.iter() {
             if sig.clone() == signer {
-                panic!("Already signed this transaction");
+                return Err(Error::DuplicateSignature);
             }
         }
 
@@ -792,12 +1030,25 @@ impl FamilyWallet {
         }
 
         if !is_authorized {
-            panic!("Signer not authorized for this transaction type");
+            return Err(Error::SignerNotMember);
         }
 
         pending_tx.signatures.push_back(signer.clone());
 
-        if pending_tx.signatures.len() >= config.threshold {
+        // Count only signatures whose signer is still authorized in the CURRENT
+        // config. Signatures collected from signers that were rotated out before
+        // this call must not contribute to quorum.
+        let mut valid_signatures: u32 = 0;
+        for sig in pending_tx.signatures.iter() {
+            for authorized_signer in config.signers.iter() {
+                if authorized_signer.clone() == sig {
+                    valid_signatures += 1;
+                    break;
+                }
+            }
+        }
+
+        if valid_signatures >= config.threshold {
             let executed = Self::execute_transaction_internal(
                 &env,
                 &pending_tx.proposer,
@@ -833,7 +1084,7 @@ impl FamilyWallet {
                     .set(&symbol_short!("EXEC_TXS"), &executed_txs);
             }
 
-            return true;
+            return Ok(true);
         }
 
         pending_txs.set(tx_id, pending_tx);
@@ -841,9 +1092,13 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
 
-        true
+        Ok(true)
     }
 
+    /// Withdraw funds using the appropriate spending limit and multi-sig configuration.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn withdraw(
         env: Env,
         proposer: Address,
@@ -851,12 +1106,17 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        Self::require_not_paused(&env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
 
         if !Self::check_spending_limit(env.clone(), proposer.clone(), amount) {
             panic!("Spending limit exceeded");
+        }
+
+        if let Err(e) = Self::validate_precision_spending_internal(env.clone(), proposer.clone(), amount) {
+            panic_with_error!(env, e);
         }
 
         let config: MultiSigConfig = env
@@ -879,6 +1139,12 @@ impl FamilyWallet {
         )
     }
 
+    /// Propose a split configuration change.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
+    /// Returns [`Error::InvalidSplitConfig`] if any percentage exceeds 100
+    /// or the four percentages do not sum to exactly 100.
     pub fn propose_split_config_change(
         env: Env,
         proposer: Address,
@@ -886,12 +1152,20 @@ impl FamilyWallet {
         savings_percent: u32,
         bills_percent: u32,
         insurance_percent: u32,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
+        Self::require_not_paused(&env);
+        if spending_percent > 100
+            || savings_percent > 100
+            || bills_percent > 100
+            || insurance_percent > 100
+        {
+            return Err(Error::InvalidSplitConfig);
+        }
         if spending_percent + savings_percent + bills_percent + insurance_percent != 100 {
-            panic!("Percentages must sum to 100");
+            return Err(Error::InvalidSplitConfig);
         }
 
-        Self::propose_transaction(
+        Ok(Self::propose_transaction(
             env,
             proposer,
             TransactionType::SplitConfigChange,
@@ -901,15 +1175,20 @@ impl FamilyWallet {
                 bills_percent,
                 insurance_percent,
             ),
-        )
+        ))
     }
 
+    /// Propose a family member role change.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_role_change(
         env: Env,
         proposer: Address,
         member: Address,
         new_role: FamilyRole,
     ) -> u64 {
+        Self::require_not_paused(&env);
         Self::propose_transaction(
             env,
             proposer,
@@ -918,6 +1197,10 @@ impl FamilyWallet {
         )
     }
 
+    /// Propose or execute an emergency transfer.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_emergency_transfer(
         env: Env,
         proposer: Address,
@@ -925,6 +1208,7 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        Self::require_not_paused(&env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -979,7 +1263,15 @@ impl FamilyWallet {
         tx_id
     }
 
+    /// Propose a policy cancellation.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn propose_policy_cancellation(env: Env, proposer: Address, policy_id: u32) -> u64 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
+        Self::require_not_paused(&env);
         Self::propose_transaction(
             env,
             proposer,
@@ -1012,6 +1304,9 @@ impl FamilyWallet {
         if min_balance < 0 {
             panic!("Emergency min balance must be non-negative");
         }
+        if daily_limit < 0 {
+            panic!("Emergency daily limit must be non-negative");
+        }
 
         Self::extend_instance_ttl(&env);
 
@@ -1034,6 +1329,9 @@ impl FamilyWallet {
     ///
     /// This operation is restricted to `Owner` or `Admin` and is recorded in the access audit trail.
     pub fn set_emergency_mode(env: Env, caller: Address, enabled: bool) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1066,6 +1364,9 @@ impl FamilyWallet {
     }
 
     pub fn add_family_member(env: Env, caller: Address, member: Address, role: FamilyRole) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
         if role == FamilyRole::Owner {
@@ -1099,11 +1400,33 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("MEMBERS"), &members);
 
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::High,
+            symbol_short!("role_grnt"),
+            RoleGrantedEvent {
+                member: member.clone(),
+                role,
+                timestamp,
+            },
+        );
+
         Self::append_access_audit(&env, symbol_short!("add_mem"), &caller, Some(member), true);
         true
     }
 
     /// Remove a family member from the wallet.
+    ///
+    /// Removes the member and cleans up all associated per-member state to prevent
+    /// storage bloat and correctness defects when the same address is re-added.
+    ///
+    /// # Cleanup
+    /// The following per-member entries are deleted:
+    /// - `MEMBERS`: The member record itself
+    /// - `ROLE_EXP`: Any role expiry timestamp for the member
+    /// - `PREC_LIM`: Any precision spending limit configuration
+    /// - `SPND_TRK`: Any cumulative spending tracker state
     ///
     /// # Authorization
     /// Only Owner can remove family members.
@@ -1120,9 +1443,17 @@ impl FamilyWallet {
     /// - Prevents removing the Owner
     /// - Silently succeeds if member doesn't exist
     /// - Records access audit entry
+    /// - Prevents a re-added member from inheriting previous member's state
     pub fn remove_family_member(env: Env, caller: Address, member: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
+
+        // Defence-in-depth: block removal while multisig proposals are in-flight
+        // to prevent orphaned signatures and stale quorum calculations.
+        Self::require_no_pending_operations(&env).unwrap_or_else(|e| panic_with_error!(&env, e));
 
         let owner: Address = env
             .storage()
@@ -1148,13 +1479,29 @@ impl FamilyWallet {
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
-        members.remove(member.clone());
-        env.storage()
-            .instance()
-            .set(&symbol_short!("MEMBERS"), &members);
+        if let Some(removed_member) = members.get(member.clone()) {
+            members.remove(member.clone());
+            env.storage()
+                .instance()
+                .set(&symbol_short!("MEMBERS"), &members);
 
-        Self::append_access_audit(&env, symbol_short!("rem_mem"), &caller, Some(member), true);
-        true
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                symbol_short!("role_revk"),
+                RoleRevokedEvent {
+                    member: member.clone(),
+                    role: removed_member.role,
+                    timestamp: env.ledger().timestamp(),
+                },
+            );
+
+            Self::append_access_audit(&env, symbol_short!("rem_mem"), &caller, Some(member), true);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn get_pending_transaction(env: Env, tx_id: u64) -> Option<PendingTransaction> {
@@ -1279,9 +1626,16 @@ impl FamilyWallet {
     ///
     /// # Semantics
     /// - `before_timestamp` is a **retention cutoff** (ledger seconds): a row is archived iff
-    ///   `executed_at < before_timestamp`.
+    ///   `executed_at < before_timestamp` (strictly less-than — entries executed *at* the cutoff
+    ///   are **not** archived, preserving the most recent boundary entry in `EXEC_TXS`).
     /// - The cutoff must satisfy `before_timestamp <= ledger timestamp`. A future cutoff would
-    ///   treat recent executions as “old” relative to an incorrect clock and could archive too much.
+    ///   treat recent executions as "old" relative to an incorrect clock and could archive too much.
+    ///
+    /// # Bounded growth invariant
+    /// `ARCH_TX` is capped at `MAX_ARCHIVE_ENTRIES`. Before inserting each new entry, if the
+    /// archive is already at capacity the entry with the **lowest `tx_id`** (oldest) is evicted.
+    /// This keeps instance-storage rent bounded regardless of how many transactions are executed
+    /// over the contract's lifetime.
     ///
     /// # Authorization
     /// Owner or Admin only (`caller.require_auth()`).
@@ -1289,7 +1643,13 @@ impl FamilyWallet {
     /// # Data integrity
     /// Archived rows copy **proposer**, **tx_type**, and **executed_at** from `ExecutedTxMeta`.
     /// If `meta.tx_id != map_key`, the contract panics to avoid corrupting the archive.
+    ///
+    /// # Returns
+    /// The number of transactions moved from `EXEC_TXS` to `ARCH_TX` in this call.
     pub fn archive_old_transactions(env: Env, caller: Address, before_timestamp: u64) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1320,11 +1680,67 @@ impl FamilyWallet {
         let mut archived_count = 0u32;
         let mut to_remove: Vec<u64> = Vec::new(&env);
 
+        // Pre-compute archive length and oldest tx_id once, before the main loop.
+        // This avoids O(n²) nested iteration which exhausts the Soroban WASM budget.
+        let mut arch_len = 0u32;
+        let mut oldest_arch_id: Option<u64> = None;
+        for (aid, _) in archived.iter() {
+            arch_len += 1;
+            oldest_arch_id = Some(match oldest_arch_id {
+                None => aid,
+                Some(prev) => {
+                    if aid < prev {
+                        aid
+                    } else {
+                        prev
+                    }
+                }
+            });
+        }
+
         for (tx_id, meta) in executed_txs.iter() {
             if meta.tx_id != tx_id {
                 panic!("Inconsistent executed transaction metadata");
             }
+            // Strictly less-than: entries executed AT before_timestamp are retained.
             if meta.executed_at < before_timestamp {
+                // Enforce the archive size cap: evict the oldest entry (lowest tx_id)
+                // before inserting so ARCH_TX never exceeds MAX_ARCHIVE_ENTRIES.
+                if arch_len >= MAX_ARCHIVE_ENTRIES {
+                    if let Some(oid) = oldest_arch_id {
+                        archived.remove(oid);
+                        // After eviction, find the new oldest from the remaining entries.
+                        let mut new_oldest: Option<u64> = None;
+                        for (aid, _) in archived.iter() {
+                            new_oldest = Some(match new_oldest {
+                                None => aid,
+                                Some(prev) => {
+                                    if aid < prev {
+                                        aid
+                                    } else {
+                                        prev
+                                    }
+                                }
+                            });
+                        }
+                        oldest_arch_id = new_oldest;
+                        // arch_len stays the same: we removed one and will add one below.
+                    }
+                } else {
+                    arch_len += 1;
+                    // Update oldest_arch_id if this new entry is older (lower tx_id).
+                    oldest_arch_id = Some(match oldest_arch_id {
+                        None => tx_id,
+                        Some(prev) => {
+                            if tx_id < prev {
+                                tx_id
+                            } else {
+                                prev
+                            }
+                        }
+                    });
+                }
+
                 let archived_tx = ArchivedTransaction {
                     tx_id: meta.tx_id,
                     tx_type: meta.tx_type,
@@ -1355,18 +1771,21 @@ impl FamilyWallet {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::Low,
-            symbol_short!("archived"),
-            (archived_count, caller),
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::TransactionsArchived),
+            (archived_count, caller.clone()),
         );
+
+        Self::append_access_audit(&env, symbol_short!("arch_tx"), &caller, None, true);
 
         archived_count
     }
 
-    /// Returns up to `limit` archived transactions (order follows map iteration).
+    /// Returns a page of archived transactions ordered by ascending `tx_id`.
+    ///
+    /// # Parameters
+    /// - `limit`: entries to return; `0` → `DEFAULT_ARCHIVE_PAGE_LIMIT`; clamped to
+    ///   `MAX_ARCHIVE_PAGE_LIMIT`. Ordering follows the map's natural key order (ascending `tx_id`).
     ///
     /// # Authorization
     /// Only Owner or Admin. Requires `caller.require_auth()` to prevent unauthenticated reads
@@ -1381,6 +1800,15 @@ impl FamilyWallet {
             panic!("Only Owner or Admin can view archived transactions");
         }
 
+        // Clamp limit: 0 → default, >max → max.
+        let effective_limit = if limit == 0 {
+            DEFAULT_ARCHIVE_PAGE_LIMIT
+        } else if limit > MAX_ARCHIVE_PAGE_LIMIT {
+            MAX_ARCHIVE_PAGE_LIMIT
+        } else {
+            limit
+        };
+
         let archived: Map<u64, ArchivedTransaction> = env
             .storage()
             .instance()
@@ -1389,7 +1817,7 @@ impl FamilyWallet {
 
         let mut result = Vec::new(&env);
         for (count, (_, tx)) in archived.iter().enumerate() {
-            if count as u32 >= limit {
+            if count as u32 >= effective_limit {
                 break;
             }
             result.push_back(tx);
@@ -1405,6 +1833,9 @@ impl FamilyWallet {
     /// # Integrity
     /// Aborts if `pending.tx_id` does not match the map key (prevents silent corruption during cleanup).
     pub fn cleanup_expired_pending(env: Env, caller: Address) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1446,13 +1877,11 @@ impl FamilyWallet {
 
         Self::update_storage_stats(&env);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::Low,
-            symbol_short!("exp_cln"),
-            (removed_count, caller),
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
+            (removed_count, caller.clone()),
         );
+        Self::append_access_audit(&env, symbol_short!("cln_exp"), &caller, None, true);
         removed_count
     }
 
@@ -1491,6 +1920,16 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
         if members.get(member.clone()).is_none() {
             panic!("Member not found");
+        }
+
+        // Reject expiry timestamps that are in the past — setting an already-
+        // expired role timestamp would immediately lock the member out of
+        // their role with no way to recover except through admin intervention.
+        if let Some(t) = expires_at {
+            let now = env.ledger().timestamp();
+            if t <= now {
+                panic_with_error!(&env, Error::RoleExpiryInPast);
+            }
         }
 
         let mut m: Map<Address, u64> = env
@@ -1566,11 +2005,13 @@ impl FamilyWallet {
                 .instance()
                 .get(&symbol_short!("SPND_TRK"))
                 .unwrap_or_else(|| Map::new(&env));
-            trackers.remove(member);
+            trackers.remove(member.clone());
             env.storage()
                 .instance()
                 .set(&symbol_short!("SPND_TRK"), &trackers);
         }
+
+        Self::append_access_audit(&env, symbol_short!("prec_lim"), &caller, Some(member), true);
 
         Ok(true)
     }
@@ -1584,11 +2025,66 @@ impl FamilyWallet {
             .get(member)
     }
 
+    /// Paginated listing of family-member addresses for downstream readers.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
+    /// Cursor is the number of members already returned. Pass `0` for the
+    /// first page.
+    pub fn get_member_addresses_page(env: Env, cursor: u32, limit: u32) -> MemberAddressPage {
+        let capped_limit = if limit == 0 {
+            DEFAULT_MEMBER_PAGE_LIMIT
+        } else {
+            limit.min(MAX_MEMBER_PAGE_LIMIT)
+        };
+
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        let mut items: Vec<Address> = Vec::new(&env);
+        let mut seen = 0u32;
+        let mut has_more = false;
+
+        for (address, _) in members.iter() {
+            if seen < cursor {
+                seen = seen.saturating_add(1);
+                continue;
+            }
+
+            if items.len() < capped_limit {
+                items.push_back(address);
+                seen = seen.saturating_add(1);
+            } else {
+                has_more = true;
+                break;
+            }
+        }
+
+        let next_cursor = if has_more {
+            cursor.saturating_add(items.len())
+        } else {
+            0
+        };
+
+        MemberAddressPage {
+            count: items.len(),
+            items,
+            next_cursor,
+        }
+    }
+
     /// Cancel a pending transaction.
     ///
     /// The original proposer may cancel their own transaction. Owners and
     /// admins may cancel any pending transaction.
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env);
 
@@ -1611,10 +2107,19 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
+
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::TransactionCancelled),
+            (tx_id, caller),
+        );
+
         true
     }
 
     pub fn pause(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| {
@@ -1631,10 +2136,14 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &true);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }
 
     pub fn unpause(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| {
             env.storage()
@@ -1653,15 +2162,26 @@ impl FamilyWallet {
             .set(&symbol_short!("PAUSED"), &false);
         env.events()
             .publish((symbol_short!("wallet"), symbol_short!("unpaused")), ());
+        Self::append_access_audit(&env, symbol_short!("unpause"), &caller, None, true);
         true
     }
 
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSE_ADM"), &new_admin);
+        Self::append_access_audit(
+            &env,
+            symbol_short!("ps_adm"),
+            &caller,
+            Some(new_admin),
+            true,
+        );
         true
     }
 
@@ -1680,8 +2200,18 @@ impl FamilyWallet {
     ///
     /// # Security
     /// Only the Owner can set this value, and their role must not be expired.
+    ///
+    /// A value of `0` disables expiry (proposals never expire).
+    /// Values greater than `MAX_PROPOSAL_EXPIRY` are rejected.
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn set_proposal_expiry(env: Env, caller: Address, expiry: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
+        Self::require_not_paused(&env);
         let owner: Address = env
             .storage()
             .instance()
@@ -1696,13 +2226,14 @@ impl FamilyWallet {
             panic!("Role has expired");
         }
 
-        if expiry == 0 || expiry > MAX_PROPOSAL_EXPIRY {
+        if expiry > MAX_PROPOSAL_EXPIRY {
             panic_with_error!(&env, Error::InvalidProposalExpiry);
         }
 
         env.storage()
             .instance()
             .set(&symbol_short!("PROP_EXP"), &expiry);
+        Self::append_access_audit(&env, symbol_short!("prop_exp"), &caller, None, true);
         true
     }
 
@@ -1797,7 +2328,11 @@ impl FamilyWallet {
             .get(&symbol_short!("SPND_TRK"))
             .unwrap_or_else(|| Map::new(env));
         let mut tracker = Self::current_spending_tracker(env, proposer);
-        tracker.current_spent = tracker.current_spent.saturating_add(amount);
+        // Overflow-safe tracker accumulation
+        tracker.current_spent = tracker
+            .current_spent
+            .checked_add(amount)
+            .unwrap_or(i128::MAX);
         tracker.last_tx_timestamp = env.ledger().timestamp();
         tracker.tx_count = tracker.tx_count.saturating_add(1);
         trackers.set(proposer.clone(), tracker);
@@ -1839,7 +2374,12 @@ impl FamilyWallet {
 
             if limit.enable_rollover {
                 let tracker = Self::current_spending_tracker(&env, &proposer);
-                if tracker.current_spent.saturating_add(amount) > limit.limit {
+                // Overflow-safe addition to prevent DoS via integer overflow in accumulated spend
+                let new_spent = tracker
+                    .current_spent
+                    .checked_add(amount)
+                    .ok_or(Error::InvalidSpendingLimit)?;
+                if new_spent > limit.limit {
                     return Err(Error::InvalidSpendingLimit);
                 }
             }
@@ -1870,9 +2410,14 @@ impl FamilyWallet {
     ///
     /// # Panics
     /// - If caller lacks Owner role or higher
+    /// - If the contract is paused
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
+        Self::require_not_paused(&env);
 
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
 
@@ -1884,6 +2429,14 @@ impl FamilyWallet {
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
             (current_upgrade_admin.clone(), new_admin.clone()),
+        );
+
+        Self::append_access_audit(
+            &env,
+            symbol_short!("upg_adm"),
+            &caller,
+            Some(new_admin),
+            true,
         );
 
         true
@@ -1898,8 +2451,16 @@ impl FamilyWallet {
         Self::get_upgrade_admin(&env)
     }
 
+    /// Set the contract version (upgrade support).
+    ///
+    /// # Errors
+    /// Panics if the contract is paused.
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
+        Self::require_not_paused(&env);
         let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| {
             env.storage()
                 .instance()
@@ -1920,36 +2481,65 @@ impl FamilyWallet {
             (symbol_short!("wallet"), symbol_short!("upgraded")),
             (prev, new_version),
         );
+        Self::append_access_audit(&env, symbol_short!("set_ver"), &caller, None, true);
         true
     }
 
+    /// Add a batch of family members atomically.
+    ///
+    /// Semantics:
+    /// - The whole batch succeeds or the whole batch fails.
+    /// - Empty batches are accepted and return `0`.
+    /// - Any duplicate address in the batch, pre-existing member, owner-role item,
+    ///   or batch that would exceed the family-member cap aborts the entire call.
+    /// - On success, the return value is the number of members added.
     pub fn batch_add_family_members(
         env: Env,
         caller: Address,
         members: Vec<BatchMemberItem>,
     ) -> u32 {
         caller.require_auth();
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Access,
-            EventPriority::Medium,
-            symbol_short!("batch_mem"),
-            members.len(),
-        );
         Self::require_role_at_least(&env, &caller, FamilyRole::Admin);
         Self::require_not_paused(&env);
+        if members.len() > MAX_BATCH_MEMBERS {
+            panic!("Batch too large");
+        }
         Self::extend_instance_ttl(&env);
+
         let mut members_map: Map<Address, FamilyMember> = env
             .storage()
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
-        let timestamp = env.ledger().timestamp();
-        let mut count = 0u32;
+
+        let mut current_member_count = 0u32;
+        for _ in members_map.iter() {
+            current_member_count += 1;
+        }
+
+        let mut seen_addrs: Map<Address, bool> = Map::new(&env);
+        let mut additions = 0u32;
         for item in members.iter() {
             if item.role == FamilyRole::Owner {
                 panic!("Cannot add Owner via batch");
             }
+            if seen_addrs.get(item.address.clone()).is_some() {
+                panic!("Duplicate member in batch");
+            }
+            seen_addrs.set(item.address.clone(), true);
+            if members_map.get(item.address.clone()).is_some() {
+                panic!("Member already exists");
+            }
+            additions += 1;
+        }
+
+        if current_member_count + additions > MAX_FAMILY_MEMBERS {
+            panic!("Member cap exceeded");
+        }
+
+        let timestamp = env.ledger().timestamp();
+        let mut count = 0u32;
+        for item in members.iter() {
             members_map.set(
                 item.address.clone(),
                 FamilyMember {
@@ -1958,6 +2548,17 @@ impl FamilyWallet {
                     spending_limit: 0,
                     precision_limit: PrecisionLimitOpt::None,
                     added_at: timestamp,
+                },
+            );
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Access,
+                EventPriority::High,
+                symbol_short!("role_grnt"),
+                RoleGrantedEvent {
+                    member: item.address.clone(),
+                    role: item.role,
+                    timestamp,
                 },
             );
             Self::append_access_audit(
@@ -1972,11 +2573,29 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members_map);
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Access,
+            EventPriority::Medium,
+            symbol_short!("batch_mem"),
+            count,
+        );
         Self::update_storage_stats(&env);
         count
     }
 
+    /// Remove a batch of family members atomically.
+    ///
+    /// Semantics:
+    /// - The whole batch succeeds or the whole batch fails.
+    /// - Empty batches are accepted and return `0`.
+    /// - Any duplicate address in the batch, missing member, or attempt to remove
+    ///   the owner aborts the entire call.
+    /// - On success, the return value is the number of members removed.
     pub fn batch_remove_family_members(env: Env, caller: Address, addresses: Vec<Address>) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
         let owner: Address = env
@@ -1997,13 +2616,28 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
+
+        let mut seen_addrs: Map<Address, bool> = Map::new(&env);
         let mut count = 0u32;
         for addr in addresses.iter() {
             if addr.clone() == owner {
                 panic!("Cannot remove owner");
             }
-            if members_map.get(addr.clone()).is_some() {
+            if let Some(removed_member) = members_map.get(addr.clone()) {
                 members_map.remove(addr.clone());
+
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::Access,
+                    EventPriority::High,
+                    symbol_short!("role_revk"),
+                    RoleRevokedEvent {
+                        member: addr.clone(),
+                        role: removed_member.role,
+                        timestamp: env.ledger().timestamp(),
+                    },
+                );
+
                 Self::append_access_audit(
                     &env,
                     symbol_short!("rem_mem"),
@@ -2014,10 +2648,30 @@ impl FamilyWallet {
                 count += 1;
             }
         }
+
+        for addr in addresses.iter() {
+            members_map.remove(addr.clone());
+            // Clear all per-member state to prevent storage bloat and stale state
+            // from affecting re-added members.
+            Self::clear_member_state(&env, &addr);
+            Self::append_access_audit(
+                &env,
+                symbol_short!("rem_mem"),
+                &caller,
+                Some(addr.clone()),
+                true,
+            );
+            count += 1;
+        }
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members_map);
         Self::update_storage_stats(&env);
+
+        // Re-validate in-flight proposals after batch removal: strip signatures
+        // from removed members and invalidate proposals that can no longer reach quorum.
+        Self::revalidate_proposals_after_membership_change(&env);
+
         count
     }
 
@@ -2039,6 +2693,25 @@ impl FamilyWallet {
 
     // Owner/Admin only: audit data is privacy-sensitive — reveals who accessed
     // what and when, so Members are excluded from reading the full trail.
+    //
+    // ## Pagination cursor semantics
+    //
+    // `from_index` is the **inclusive** zero-based index of the first entry to
+    // return.  `next_cursor` in the returned page is the index to pass as
+    // `from_index` on the next call.
+    //
+    // **Sentinel value:** when `next_cursor == total` (i.e. equals the length
+    // of the log at the time of the call) there are no more entries.  Callers
+    // MUST stop iterating when `next_cursor >= count` returned by a previous
+    // page, or when the returned page is empty.
+    //
+    // **Clamping rules (no panic on adversarial input):**
+    // - `limit == 0`            → silently promoted to `DEFAULT_AUDIT_PAGE_LIMIT`.
+    // - `limit > MAX_AUDIT_PAGE_LIMIT` → clamped to `MAX_AUDIT_PAGE_LIMIT`.
+    // - `from_index >= total`   → returns an empty page with
+    //                             `next_cursor = total` (end-of-log sentinel).
+    // - `from_index = u32::MAX` → handled by the `>= total` check above; no
+    //                             arithmetic overflow is possible.
     pub fn get_access_audit_page(
         env: Env,
         caller: Address,
@@ -2054,13 +2727,27 @@ impl FamilyWallet {
             .get(&symbol_short!("ACC_AUDIT"))
             .unwrap_or_else(|| Vec::new(&env));
 
+        // Clamp limit: 0 → default, oversized → max.
         let capped_limit = if limit == 0 {
             DEFAULT_AUDIT_PAGE_LIMIT
         } else {
             limit.min(MAX_AUDIT_PAGE_LIMIT)
         };
+
         let total = entries.len();
+
+        // Out-of-range offset: return empty page with end-of-log sentinel so
+        // callers can detect exhaustion without a separate length query.
+        if from_index >= total {
+            return AccessAuditPage {
+                items: Vec::new(&env),
+                next_cursor: total, // sentinel: no more entries
+                count: 0,
+            };
+        }
+
         let mut items = Vec::new(&env);
+        // `i` is bounded by `total` (u32), so no overflow risk.
         let mut i = from_index;
         while i < total && items.len() < capped_limit {
             if let Some(e) = entries.get(i) {
@@ -2069,7 +2756,9 @@ impl FamilyWallet {
             i += 1;
         }
         let count = items.len();
-        let next_cursor = if i < total { i } else { 0 };
+        // `next_cursor == total` is the end-of-log sentinel.
+        // Callers iterate while `next_cursor < total` (or while `count > 0`).
+        let next_cursor = i; // equals `total` when the log is exhausted
         AccessAuditPage {
             items,
             next_cursor,
@@ -2077,9 +2766,216 @@ impl FamilyWallet {
         }
     }
 
+    /// Manually trigger quorum re-validation for all in-flight proposals.
+    ///
+    /// This is useful after any membership or multisig-config change to ensure
+    /// proposals that can no longer reach quorum are invalidated immediately.
+    ///
+    /// # Authorization
+    /// Owner or Admin only.
+    ///
+    /// # Returns
+    /// The number of proposals that were invalidated (expired early).
+    pub fn revalidate_proposals(env: Env, caller: Address) -> u32 {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return 0;
+        }
+        caller.require_auth();
+        Self::require_not_paused(&env);
+        if !Self::is_owner_or_admin(&env, &caller) {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        Self::extend_instance_ttl(&env);
+        Self::revalidate_proposals_after_membership_change(&env)
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /// Re-validate every in-flight proposal against the current membership and
+    /// multisig configuration.
+    ///
+    /// For each pending proposal this function:
+    /// 1. Strips signatures from addresses that are no longer active members.
+    /// 2. Checks whether the remaining eligible signers in the multisig config
+    ///    can still satisfy the threshold.
+    /// 3. If quorum is unachievable, the proposal is invalidated by setting its
+    ///    `expires_at` to the current ledger timestamp (effectively expired) and
+    ///    emitting a `ProposalInvalidatedEvent`.
+    ///
+    /// Returns the count of proposals that were invalidated.
+    fn revalidate_proposals_after_membership_change(env: &Env) -> u32 {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| Map::new(env));
+
+        let mut pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(env));
+
+        let now = env.ledger().timestamp();
+        let mut invalidated_count = 0u32;
+        let mut updated_txs: Vec<(u64, PendingTransaction)> = Vec::new(env);
+
+        for (tx_id, mut tx) in pending_txs.iter() {
+            // Skip already-expired proposals — they will be cleaned up separately.
+            if tx.expires_at <= now {
+                continue;
+            }
+
+            // --- Step 1: strip signatures from addresses no longer in the wallet ---
+            let mut valid_sigs: Vec<Address> = Vec::new(env);
+            for sig in tx.signatures.iter() {
+                if members.get(sig.clone()).is_some() && !Self::role_has_expired(env, &sig) {
+                    valid_sigs.push_back(sig);
+                }
+            }
+            tx.signatures = valid_sigs;
+
+            // --- Step 2: count eligible signers in the multisig config ---
+            let config_key = Self::get_config_key(tx.tx_type);
+            let config: MultiSigConfig = match env.storage().instance().get(&config_key) {
+                Some(c) => c,
+                None => {
+                    // No config means the proposal can never execute — invalidate it.
+                    tx.expires_at = now;
+                    invalidated_count += 1;
+                    RemitwiseEvents::emit(
+                        env,
+                        EventCategory::System,
+                        EventPriority::High,
+                        symbol_short!("inv_prop"),
+                        ProposalInvalidatedEvent {
+                            tx_id,
+                            reason: symbol_short!("no_cfg"),
+                            timestamp: now,
+                        },
+                    );
+                    updated_txs.push_back((tx_id, tx));
+                    continue;
+                }
+            };
+
+            // Count how many configured signers are still active members.
+            let mut eligible_signers = 0u32;
+            for signer in config.signers.iter() {
+                if members.get(signer.clone()).is_some() && !Self::role_has_expired(env, &signer) {
+                    eligible_signers += 1;
+                }
+            }
+
+            // --- Step 3: invalidate if quorum is now unachievable ---
+            // Quorum is unachievable when the total number of eligible signers
+            // (including those who already signed) is less than the threshold.
+            // We use `eligible_signers` from the config list because only
+            // configured signers are allowed to sign (see `sign_transaction`).
+            if eligible_signers < config.threshold {
+                tx.expires_at = now;
+                invalidated_count += 1;
+                RemitwiseEvents::emit(
+                    env,
+                    EventCategory::System,
+                    EventPriority::High,
+                    symbol_short!("inv_prop"),
+                    ProposalInvalidatedEvent {
+                        tx_id,
+                        reason: symbol_short!("no_qrm"),
+                        timestamp: now,
+                    },
+                );
+            }
+
+            updated_txs.push_back((tx_id, tx));
+        }
+
+        // Persist all modified proposals back to storage.
+        for i in 0..updated_txs.len() {
+            if let Some((tx_id, tx)) = updated_txs.get(i) {
+                pending_txs.set(tx_id, tx);
+            }
+        }
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PEND_TXS"), &pending_txs);
+
+        invalidated_count
+    }
+
+    /// Enforces the emergency transfer daily volume cap and persists the updated `EM_VOL`.
+    ///
+    /// # Day-boundary rollover
+    ///
+    /// The window is anchored to **UTC midnight** boundaries derived from `EM_LAST`
+    /// (the timestamp of the most-recently completed emergency transfer):
+    ///
+    /// ```text
+    /// is_new_day = (now / 86_400) > (EM_LAST / 86_400)
+    /// ```
+    ///
+    /// When `is_new_day` is true `EM_VOL` is reset to zero before adding `amount`.
+    /// This prevents the sliding-window attack where an attacker splits transfers
+    /// across an artificial 24-hour boundary to reset the counter early and
+    /// effectively drain up to `2 × daily_limit` across two adjacent calls.
+    ///
+    /// # Checked arithmetic
+    ///
+    /// `checked_add` is used instead of `saturating_add`.  An `i128` overflow would
+    /// silently wrap to a value that passes the cap comparison; `checked_add` panics
+    /// instead, treating overflow as a hard protocol error rather than masking it.
+    ///
+    /// # Panics
+    /// - `"Emergency volume arithmetic overflow"` — `current_vol + amount` overflows `i128`.
+    /// - `"Emergency daily limit exceeded"` — accumulated volume would exceed `daily_limit`.
+    fn check_and_update_emergency_volume(env: &Env, now: u64, amount: i128, daily_limit: i128) {
+        const DAY: u64 = 86_400;
+
+        // EM_LAST: timestamp of the last recorded emergency transfer.
+        // Initialized to 0 in `init`; 0 places the last transfer at the Unix epoch
+        // (day 0), so any transfer at timestamp >= 86_400 triggers a fresh window.
+        let last_ts: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_LAST"))
+            .unwrap_or(0u64);
+
+        // EM_VOL: accumulated volume for the current UTC day.
+        let stored_vol: i128 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_VOL"))
+            .unwrap_or(0i128);
+
+        // Integer division truncates to the start of each UTC day.
+        // e.g. 86_399 / 86_400 = 0  (day 0)
+        //      86_400 / 86_400 = 1  (day 1) ← triggers reset
+        let current_vol = if (now / DAY) > (last_ts / DAY) {
+            0i128 // new UTC day — discard previous window's volume
+        } else {
+            stored_vol
+        };
+
+        // checked_add: overflow is a hard error, not a user-correctable condition.
+        let new_vol = current_vol
+            .checked_add(amount)
+            .unwrap_or_else(|| panic!("Emergency volume arithmetic overflow"));
+
+        if new_vol > daily_limit {
+            panic!("Emergency daily limit exceeded");
+        }
+
+        // Persist updated volume. EM_LAST is written by the caller *after* the
+        // token transfer succeeds, so on the next call this helper sees the correct
+        // "last transfer day" for rollover detection.
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_VOL"), &new_vol);
+    }
 
     fn execute_emergency_transfer_now(
         env: Env,
@@ -2108,26 +3004,37 @@ impl FamilyWallet {
             panic!("Emergency transfer cooldown period not elapsed");
         }
 
-        // Daily Rate Limit Enforcement
-        let day_in_seconds = 86400u64;
-        let mut daily_usage: (i128, u64) = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("EM_VOL"))
-            .unwrap_or((0i128, 0u64));
+        // Enforce daily volume cap — correct day-boundary rollover + checked arithmetic.
+        Self::check_and_update_emergency_volume(&env, now, amount, config.daily_limit);
 
-        if now >= daily_usage.1.saturating_add(day_in_seconds) {
-            daily_usage = (0i128, now);
-        }
-
-        if daily_usage.0.saturating_add(amount) > config.daily_limit {
-            panic!("Emergency daily limit exceeded");
-        }
-
+        // --- Minimum balance floor -------------------------------------------------
+        //
+        // Invariant: an emergency transfer must never drain the proposer's balance
+        // below `EmergencyConfig.min_balance`. This floor exists so a wallet stays
+        // solvent for recurring obligations (bills, premiums) even during an
+        // emergency drain; if it were unenforced it would be a purely decorative
+        // setting.
+        //
+        // `min_balance == 0` intentionally disables the floor (any non-negative
+        // post-transfer balance is allowed), matching `configure_emergency`'s
+        // validation that only rejects *negative* `min_balance` values.
+        //
+        // TOCTOU safety: this reads `current_balance` from the same `token_client`
+        // (same token address) that `execute_transaction_internal` uses to perform
+        // the actual transfer below, and no external/cross-contract call happens
+        // between this read and that transfer — so there is no window in which the
+        // balance could change between the check and the transfer.
+        //
+        // `checked_sub` (rather than plain `-`) mirrors the daily-volume cap's
+        // checked-arithmetic discipline: an overflow/underflow here must surface as
+        // a hard error rather than silently wrapping and bypassing the floor.
         let token_client = TokenClient::new(&env, &token);
         let current_balance = token_client.balance(&proposer);
-        if current_balance - amount < config.min_balance {
-            panic!("Emergency transfer would violate minimum balance requirement");
+        let post_transfer_balance = current_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::MinBalanceViolation));
+        if post_transfer_balance < config.min_balance {
+            panic_with_error!(&env, Error::MinBalanceViolation);
         }
 
         RemitwiseEvents::emit(
@@ -2154,11 +3061,6 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("EM_LAST"), &store_ts);
 
-        daily_usage.0 = daily_usage.0.saturating_add(amount);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("EM_VOL"), &daily_usage);
-
         env.events().publish(
             (symbol_short!("emerg"), EmergencyEvent::TransferExec),
             (proposer.clone(), recipient.clone(), amount),
@@ -2182,18 +3084,34 @@ impl FamilyWallet {
         data: &TransactionData,
         require_auth: bool,
     ) -> u64 {
-        match (tx_type, data) {
-            (
-                TransactionType::RegularWithdrawal,
-                TransactionData::Withdrawal(token, recipient, amount),
-            )
-            | (
-                TransactionType::LargeWithdrawal,
-                TransactionData::Withdrawal(token, recipient, amount),
-            ) => {
+        match data {
+            TransactionData::Withdrawal(token, recipient, amount) => {
+                // RE-COMPUTE TIER (CRITICAL FIX)
+                let reg_config_key = Self::get_config_key(TransactionType::RegularWithdrawal);
+
+                let reg_config: MultiSigConfig = env
+                    .storage()
+                    .instance()
+                    .get(&reg_config_key)
+                    .unwrap_or_else(|| panic!("Regular multi-sig config not found"));
+
+                let limit_i128 = reg_config.spending_limit;
+                let expected_tier = select_withdrawal_tier(*amount, limit_i128);
+
+                let expected_tx_type = match expected_tier {
+                    WithdrawalTier::Regular => TransactionType::RegularWithdrawal,
+                    WithdrawalTier::Large => TransactionType::LargeWithdrawal,
+                };
+
+                // HARD SECURITY CHECK
+                if tx_type != &expected_tx_type {
+                    panic!("Transaction tier mismatch: invalid multisig enforcement");
+                }
+
                 if require_auth {
                     proposer.require_auth();
                 }
+
                 if let Err(e) = Self::validate_precision_spending_internal(
                     env.clone(),
                     proposer.clone(),
@@ -2201,13 +3119,19 @@ impl FamilyWallet {
                 ) {
                     panic_with_error!(env, e);
                 }
+
                 Self::record_precision_spending(env, proposer, *amount);
+
                 let token_client = TokenClient::new(env, token);
                 token_client.transfer(proposer, recipient, amount);
+
                 0
             }
-            (TransactionType::SplitConfigChange, TransactionData::SplitConfigChange(..)) => 0,
-            (TransactionType::RoleChange, TransactionData::RoleChange(member, new_role)) => {
+
+            // unchanged cases
+            TransactionData::SplitConfigChange(..) => 0,
+
+            TransactionData::RoleChange(member, new_role) => {
                 let mut members: Map<Address, FamilyMember> = env
                     .storage()
                     .instance()
@@ -2228,21 +3152,22 @@ impl FamilyWallet {
                         true,
                     );
                 }
+
                 0
             }
-            (
-                TransactionType::EmergencyTransfer,
-                TransactionData::EmergencyTransfer(token, recipient, amount),
-            ) => {
+
+            TransactionData::EmergencyTransfer(token, recipient, amount) => {
                 if require_auth {
                     proposer.require_auth();
                 }
+
                 let token_client = TokenClient::new(env, token);
                 token_client.transfer(proposer, recipient, amount);
+
                 0
             }
-            (TransactionType::PolicyCancellation, TransactionData::PolicyCancellation(..)) => 0,
-            _ => panic!("Invalid transaction type or data mismatch"),
+
+            TransactionData::PolicyCancellation(..) => 0,
         }
     }
 
@@ -2345,6 +3270,27 @@ impl FamilyWallet {
         }
     }
 
+    /// Governance check helper for parameter changes.
+    ///
+    /// Returns a typed `Error::Unauthorized` instead of panicking when the caller
+    /// is not an Owner or Admin. This provides consistent error handling for
+    /// governance-level operations and enables proper error propagation to callers.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `caller` - Address attempting the governance operation
+    ///
+    /// # Returns
+    /// * `Ok(())` if caller is Owner or Admin
+    /// * `Err(Error::Unauthorized)` if caller lacks governance role
+    fn require_governance_ok(env: &Env, caller: &Address) -> Result<(), Error> {
+        if Self::is_owner_or_admin(env, caller) {
+            Ok(())
+        } else {
+            Err(Error::Unauthorized)
+        }
+    }
+
     fn append_access_audit(
         env: &Env,
         operation: Symbol,
@@ -2378,6 +3324,217 @@ impl FamilyWallet {
             .set(&symbol_short!("ACC_AUDIT"), &entries);
     }
 
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may take
+    /// a snapshot.
+    ///
+    /// # Panics
+    /// - If the wallet is not initialized
+    /// - If `caller` lacks authorization
+    pub fn pre_upgrade(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner.clone());
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        Self::extend_instance_ttl(&env);
+        let em_config: EmergencyConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EM_CONF"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            owner: owner.clone(),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+            version: Self::get_version(env.clone()),
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            emergency_mode: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("EM_MODE"))
+                .unwrap_or(false),
+            emergency_config: em_config,
+            emergency_last: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("EM_LAST"))
+                .unwrap_or(0),
+            next_tx: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("NEXT_TX"))
+                .unwrap_or(1),
+            proposal_expiry: env
+                .storage()
+                .instance()
+                .get(&symbol_short!("PROP_EXP"))
+                .unwrap_or(DEFAULT_PROPOSAL_EXPIRY),
+        };
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+        true
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// owner, pause state, version, upgrade admin, emergency config, next
+    /// transaction ID, and proposal expiry back to instance storage.
+    /// The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may
+    /// restore from a snapshot.
+    ///
+    /// # Panics
+    /// - If no snapshot exists
+    /// - If the snapshot version is unsupported
+    /// - If `caller` lacks authorization
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("family"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner.clone());
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::Unauthorized));
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, Error::SnapshotTooOld);
+        }
+        if snapshot.owner != owner {
+            panic!("Snapshot owner mismatch");
+        }
+        Self::extend_instance_ttl(&env);
+
+        // Restore pause state
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED"), &snapshot.paused);
+        match &snapshot.pause_admin {
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("PAUSE_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
+        }
+
+        // Restore version
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VERSION"), &snapshot.version);
+
+        // Restore upgrade admin
+        match &snapshot.upgrade_admin {
+            Some(addr) => env
+                .storage()
+                .instance()
+                .set(&symbol_short!("UPG_ADM"), addr),
+            None => env.storage().instance().remove(&symbol_short!("UPG_ADM")),
+        }
+
+        // Restore emergency config
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_CONF"), &snapshot.emergency_config);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_MODE"), &snapshot.emergency_mode);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EM_LAST"), &snapshot.emergency_last);
+
+        // Restore next TX and proposal expiry
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_TX"), &snapshot.next_tx);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &snapshot.proposal_expiry);
+
+        // Consume the snapshot
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+
+        env.events().publish(
+            (symbol_short!("family"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+        true
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin (or owner if no upgrade admin is set) may
+    /// discard a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` lacks authorization
+    pub fn discard_snapshot(env: Env, caller: Address) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("OWNER"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let admin = Self::get_upgrade_admin(&env).unwrap_or(owner);
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events()
+            .publish((symbol_short!("family"), symbol_short!("snap_dsc")), ());
+        true
+    }
+
     fn get_pause_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("PAUSE_ADM"))
     }
@@ -2395,6 +3552,24 @@ impl FamilyWallet {
         }
     }
 
+    /// Reject the call when the wallet has pending multisig proposals.
+    ///
+    /// Destructive state changes (member removal, multisig reconfiguration)
+    /// while proposals are in-flight risk orphaned signatures, silently
+    /// invalid quorum calculations, or execution against stale configuration.
+    fn require_no_pending_operations(env: &Env) -> Result<(), Error> {
+        let pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .unwrap_or_else(|| Map::new(env));
+
+        if pending_txs.len() > 0 {
+            return Err(Error::PendingOperationsExist);
+        }
+        Ok(())
+    }
+
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
@@ -2405,6 +3580,48 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .extend_ttl(ARCHIVE_LIFETIME_THRESHOLD, ARCHIVE_BUMP_AMOUNT);
+    }
+
+    /// Clear all per-member state maps for a removed member.
+    ///
+    /// Removes entries from ROLE_EXP, PREC_LIM, and SPND_TRK to prevent:
+    /// - Unbounded storage growth from orphaned records
+    /// - Re-added members inheriting stale spending trackers or precision limits
+    ///
+    /// This ensures that a re-added member starts with a clean slate.
+    fn clear_member_state(env: &Env, member: &Address) {
+        // Remove role expiry if present
+        let mut role_exp: Map<Address, u64> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ROLE_EXP"))
+            .unwrap_or_else(|| Map::new(env));
+        role_exp.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("ROLE_EXP"), &role_exp);
+
+        // Remove precision spending limit if present
+        let mut prec_lim: Map<Address, PrecisionSpendingLimit> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PREC_LIM"))
+            .unwrap_or_else(|| Map::new(env));
+        prec_lim.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PREC_LIM"), &prec_lim);
+
+        // Remove spending tracker if present
+        let mut spnd_trk: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+        spnd_trk.remove(member.clone());
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SPND_TRK"), &spnd_trk);
     }
 
     fn update_storage_stats(env: &Env) {

@@ -243,3 +243,6 @@ Some operations may have inherently higher variance:
 - Complex calculations (higher CPU threshold)
 
 Update `thresholds.json` with appropriate values based on operation characteristics.
+
+### Orchestrator and Migration
+New benchmark harnesses added for `execute_remittance_flow` and `data_migration` import/export paths to detect cost regressions.

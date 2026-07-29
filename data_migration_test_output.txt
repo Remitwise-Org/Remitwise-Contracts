@@ -1,0 +1,95 @@
+   Compiling data_migration v0.1.0 (C:\OPEN SOURCE\round-trip and CSV-injection safety tests\Remitwise-Contracts\data_migration)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 54s
+     Running unittests src\lib.rs (target\debug\deps\data_migration-a955e5c183d2441d.exe)
+
+running 60 tests
+test tests::test_checksum_mismatch_import_fails ... ok
+test tests::test_csv_injection_prevention_equals_sign_in_name ... FAILED
+test tests::test_csv_export_import_goals_succeeds ... ok
+test tests::test_csv_injection_prevention_minus_sign_in_name ... ok
+test tests::test_algorithm_field_roundtrips_binary ... ok
+test tests::test_csv_injection_prevention_at_sign_in_owner ... ok
+test tests::test_check_version_compatibility_succeeds ... ok
+test tests::test_algorithm_field_roundtrips_json ... ok
+test tests::test_csv_injection_safe_normal_text_unmodified ... ok
+test tests::test_csv_injection_safe_numbers_unmodified ... ok
+test tests::test_encrypted_payload_empty_ciphertext_fails ... ok
+test tests::test_csv_injection_prevention_plus_sign_in_owner ... ok
+test tests::test_encrypted_payload_empty_string_fails ... ok
+test tests::test_csv_roundtrip_after_injection_escaping ... FAILED
+test tests::test_csv_injection_prevention_multiple_goals_with_mixed_payloads ... ok
+test tests::test_different_payload_same_size_no_collision ... ok
+test tests::test_encrypted_payload_invalid_base64_fails ... ok
+test tests::test_encrypted_payload_missing_marker_fails ... ok
+test tests::test_encrypted_payload_pre_decode_boundary_plus_one_fails ... ok
+test tests::test_encrypted_payload_exact_boundary_accepted ... ok
+test tests::test_encrypted_payload_partial_marker_fails ... ok
+test tests::test_csv_import_rejects_too_many_records ... ok
+test tests::test_encrypted_payload_roundtrip_at_size_limit_succeeds ... ok
+test tests::test_encrypted_payload_whitespace_input_fails ... ok
+test tests::test_encrypted_payload_unsupported_version_marker_fails ... ok
+test tests::test_error_display_messages ... ok
+test tests::test_encrypted_payload_wrong_case_marker_fails ... ok
+test tests::test_encrypted_payload_post_decode_too_large_fails ... ok
+test tests::test_export_import_binary_succeeds ... ok
+test tests::test_import_binary_rejects_oversized_snapshot_before_deserialize ... ok
+test tests::test_import_from_encrypted_payload_rejects_oversized_input ... ok
+test tests::test_import_json_rejects_oversized_snapshot_before_deserialize ... ok
+test tests::test_generic_payload_checksum_is_stable_across_map_order ... ok
+test tests::test_export_import_json_succeeds ... ok
+test tests::test_legacy_simple_checksum_import_succeeds ... ok
+test tests::test_replay_protection_cross_payload_types_independent ... ok
+test tests::test_import_replay_protection_prevents_duplicates ... ok
+test tests::test_replay_protection_generic_payload_binary_duplicate_rejected ... ok
+test tests::test_replay_protection_savings_goals_json_duplicate_rejected ... ok
+test tests::test_replay_protection_savings_goals_binary_duplicate_rejected ... ok
+test tests::test_replay_protection_generic_payload_json_duplicate_rejected ... ok
+test tests::test_migration_event_serialization_succeeds ... ok
+test tests::test_missing_hash_algorithm_field_defaults_to_legacy_simple ... ok
+test tests::test_roundtrip_binary_generic_payload ... FAILED
+test tests::test_roundtrip_csv_empty_payload ... ok
+test tests::test_roundtrip_csv_savings_goals ... ok
+test tests::test_roundtrip_binary_savings_goals_payload ... ok
+test tests::test_roundtrip_binary_remittance_split_payload ... ok
+test tests::test_roundtrip_json_remittance_split_payload ... ok
+test tests::test_roundtrip_json_savings_goals_payload ... ok
+test tests::test_roundtrip_json_generic_payload ... ok
+test tests::test_roundtrip_csv_with_unicode_names ... ok
+test tests::test_export_rejects_payload_larger_than_limit ... ok
+test tests::test_export_binary_rejects_too_many_records ... ok
+test tests::test_same_payload_type_different_content_no_collision ... ok
+test tests::test_snapshot_checksum_roundtrip_succeeds ... ok
+test tests::test_tracker_mark_imported_allows_different_version_same_checksum ... ok
+test tests::test_tracker_mark_imported_rejects_exact_duplicate ... ok
+test tests::test_tracker_is_imported_reflects_state_across_types ... ok
+test tests::test_enc_marker_fault_condition_exploration ... ok
+
+failures:
+
+---- tests::test_csv_injection_prevention_equals_sign_in_name stdout ----
+
+thread 'tests::test_csv_injection_prevention_equals_sign_in_name' (8632) panicked at data_migration\src\lib.rs:1622:9:
+CSV should not contain unescaped formula
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::test_csv_roundtrip_after_injection_escaping stdout ----
+
+thread 'tests::test_csv_roundtrip_after_injection_escaping' (16952) panicked at data_migration\src\lib.rs:1823:9:
+assertion `left == right` failed
+  left: "'=MALICIOUS"
+ right: "=MALICIOUS"
+
+---- tests::test_roundtrip_binary_generic_payload stdout ----
+
+thread 'tests::test_roundtrip_binary_generic_payload' (10524) panicked at data_migration\src\lib.rs:1499:81:
+called `Result::unwrap()` on an `Err` value: DeserializeError("Bincode does not support the serde::Deserializer::deserialize_any method")
+
+
+failures:
+    tests::test_csv_injection_prevention_equals_sign_in_name
+    tests::test_csv_roundtrip_after_injection_escaping
+    tests::test_roundtrip_binary_generic_payload
+
+test result: FAILED. 57 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s
+
+error: test failed, to rerun pass `-p data_migration --lib`

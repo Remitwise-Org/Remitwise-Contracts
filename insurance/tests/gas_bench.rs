@@ -48,8 +48,8 @@ const PAGING_FIRST_PAGE_200: RegressionSpec = RegressionSpec {
 };
 
 const PAGING_FIRST_PAGE_500: RegressionSpec = RegressionSpec {
-    cpu_baseline: 22_000_000,
-    mem_baseline: 5_500_000,
+    cpu_baseline: 9_500_000,
+    mem_baseline: 2_300_000,
     cpu_threshold_percent: 15,
     mem_threshold_percent: 12,
 };
@@ -77,10 +77,10 @@ const PAY_PREMIUM_TYPICAL_50: RegressionSpec = RegressionSpec {
     mem_threshold_percent: 12,
 };
 
-// pay_premium – worst-case: payment on the last policy of 500
-const PAY_PREMIUM_WORST_500: RegressionSpec = RegressionSpec {
-    cpu_baseline: 22_000_000,
-    mem_baseline: 5_500_000,
+// pay_premium – worst-case: payment on the last policy of MAX_POLICIES_PER_OWNER
+const PAY_PREMIUM_WORST_200: RegressionSpec = RegressionSpec {
+    cpu_baseline: 9_000_000,
+    mem_baseline: 2_200_000,
     cpu_threshold_percent: 15,
     mem_threshold_percent: 12,
 };
@@ -144,6 +144,7 @@ fn bench_get_total_monthly_premium_worst_case() {
 
     let name = String::from_str(&env, "BenchPolicy");
     let coverage_type = CoverageType::Health;
+    client.init(&owner);
     for _ in 0..MAX_POLICIES_PER_OWNER {
         client.create_policy(&owner, &name, &coverage_type, &100i128, &10_000i128, &None);
     }
@@ -154,14 +155,14 @@ fn bench_get_total_monthly_premium_worst_case() {
 
     emit_bench_result(
         "get_total_monthly_premium",
-        "50_active_policies",
+        "max_active_policies",
         cpu,
         mem,
         TOTAL_PREMIUM_MAX_ACTIVE,
     );
 }
 
-/// pay_premium worst-case: 500 existing policies, paying the last one.
+/// pay_premium worst-case: MAX_POLICIES_PER_OWNER existing policies, paying the last one.
 ///
 /// The contract loads the full policy map from storage on every call, so the
 /// last-inserted policy represents the maximum storage read cost.
@@ -170,15 +171,15 @@ fn bench_get_total_monthly_premium_worst_case() {
 /// - Return value is true.
 /// - next_payment_date is updated on the correct policy.
 #[test]
-#[ignore = "policy cap is 50"]
-fn bench_pay_premium_worst_case_500() {
+fn bench_pay_premium_worst_case_200() {
     let env = bench_env();
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
-    let last_id = seed_policies(&client, &env, &owner, 500);
+    let last_id = seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
 
     let (cpu, mem, ok) = measure(&env, || client.pay_premium(&owner, &last_id));
     assert!(ok, "pay_premium must succeed for the last active policy");
@@ -189,12 +190,19 @@ fn bench_pay_premium_worst_case_500() {
         "next_payment_date must be updated"
     );
 
-    emit_bench_result(
+    assert_regression_bounds(
         "pay_premium",
-        "worst_case_n500_last_policy",
+        "worst_case_max_policies_last_policy",
         cpu,
         mem,
-        PAY_PREMIUM_WORST_500,
+        PAY_PREMIUM_WORST_200,
+    );
+    emit_bench_result(
+        "pay_premium",
+        "worst_case_max_policies_last_policy",
+        cpu,
+        mem,
+        PAY_PREMIUM_WORST_200,
     );
 }
 
@@ -209,6 +217,7 @@ fn bench_pay_premium_rejects_non_owner() {
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
     let attacker = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
     seed_policies(&client, &env, &owner, 10);
@@ -234,6 +243,7 @@ fn bench_pay_premium_rejects_inactive_policy() {
     let contract_id = env.register_contract(None, Insurance);
     let client = InsuranceClient::new(&env, &contract_id);
     let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
     seed_policies(&client, &env, &owner, 5);
@@ -242,6 +252,216 @@ fn bench_pay_premium_rejects_inactive_policy() {
 
     let result = client.pay_premium(&owner, &target_id);
     assert!(!result, "pay_premium on inactive policy must return false");
+}
+
+/// Paging benchmark: first page (cursor=0, limit=20) over 50 policies.
+#[test]
+fn bench_paging_first_page_50() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    seed_policies(&client, &env, &owner, 50);
+
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &20u32));
+    assert_eq!(page.count, 20, "first page must return 20 policies");
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be set for pagination"
+    );
+
+    assert_regression_bounds(
+        "get_active_policies",
+        "first_page_n50",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_50,
+    );
+    emit_bench_result(
+        "get_active_policies",
+        "first_page_n50",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_50,
+    );
+}
+
+/// Paging benchmark: first page (cursor=0, limit=20) over 200 policies.
+#[test]
+fn bench_paging_first_page_200() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    seed_policies(&client, &env, &owner, 200);
+
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &20u32));
+    assert_eq!(page.count, 20, "first page must return 20 policies");
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be set for pagination"
+    );
+
+    assert_regression_bounds(
+        "get_active_policies",
+        "first_page_n200",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_200,
+    );
+    emit_bench_result(
+        "get_active_policies",
+        "first_page_n200",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_200,
+    );
+}
+
+/// Paging benchmark: first page (cursor=0, limit=20) over 500 policies (exceeds MAX_POLICIES_PER_OWNER).
+/// This test uses MAX_POLICIES_PER_OWNER since the contract enforces a cap.
+#[test]
+fn bench_paging_first_page_500() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    // Use MAX_POLICIES_PER_OWNER (200) since contract caps at this value
+    seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
+
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &20u32));
+    assert_eq!(page.count, 20, "first page must return 20 policies");
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must be set for pagination"
+    );
+
+    assert_regression_bounds(
+        "get_active_policies",
+        "first_page_n500",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_500,
+    );
+    emit_bench_result(
+        "get_active_policies",
+        "first_page_n500",
+        cpu,
+        mem,
+        PAGING_FIRST_PAGE_500,
+    );
+}
+
+/// Paging benchmark: last page (worst-case cursor near end) over 200 policies.
+#[test]
+fn bench_paging_last_page_200() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    seed_policies(&client, &env, &owner, 200);
+
+    // Simulate worst-case: cursor near the end (policy ID 180)
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &180u32, &20u32));
+    assert!(page.count > 0, "last page must return at least one policy");
+
+    assert_regression_bounds(
+        "get_active_policies",
+        "last_page_n200",
+        cpu,
+        mem,
+        PAGING_LAST_PAGE_200,
+    );
+    emit_bench_result(
+        "get_active_policies",
+        "last_page_n200",
+        cpu,
+        mem,
+        PAGING_LAST_PAGE_200,
+    );
+}
+
+/// Paging benchmark: last page (worst-case cursor near end) over 500 policies (capped at MAX).
+#[test]
+fn bench_paging_last_page_500() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    // Use MAX_POLICIES_PER_OWNER (200) since contract caps at this value
+    seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
+
+    // Simulate worst-case: cursor near the end (policy ID 180)
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &180u32, &20u32));
+    assert!(page.count > 0, "last page must return at least one policy");
+
+    assert_regression_bounds(
+        "get_active_policies",
+        "last_page_n500",
+        cpu,
+        mem,
+        PAGING_LAST_PAGE_500,
+    );
+    emit_bench_result(
+        "get_active_policies",
+        "last_page_n500",
+        cpu,
+        mem,
+        PAGING_LAST_PAGE_500,
+    );
+}
+
+/// pay_premium typical case: 50 existing policies, paying the first one.
+#[test]
+fn bench_pay_premium_typical_50() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    client.init(&owner);
+    client.set_pause_admin(&owner, &owner);
+
+    seed_policies(&client, &env, &owner, 50);
+    let target_id = 1u32;
+
+    let (cpu, mem, ok) = measure(&env, || client.pay_premium(&owner, &target_id));
+    assert!(ok, "pay_premium must succeed for active policy");
+
+    let policy = client.get_policy(&target_id).expect("policy must exist");
+    assert!(
+        policy.next_payment_date > 1_700_000_000,
+        "next_payment_date must be updated"
+    );
+
+    assert_regression_bounds(
+        "pay_premium",
+        "typical_n50_first_policy",
+        cpu,
+        mem,
+        PAY_PREMIUM_TYPICAL_50,
+    );
+    emit_bench_result(
+        "pay_premium",
+        "typical_n50_first_policy",
+        cpu,
+        mem,
+        PAY_PREMIUM_TYPICAL_50,
+    );
 }
 
 fn max_allowed(baseline: u64, threshold_percent: u64) -> u64 {

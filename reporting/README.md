@@ -5,11 +5,56 @@ Aggregates financial health data from the remittance_split, savings_goals, bill_
 ## Features
 
 - Generate financial health reports (health score, remittance summary, savings, bills, insurance)
-- Store and retrieve reports per `(user, period_key)`
+- Store and retrieve reports per `(user, period_key)` (see [`docs/PERIOD_KEYS.md`](../docs/PERIOD_KEYS.md) for period key specification)
 - Admin-only archival and cleanup of old reports
 - Storage TTL management (instance: ~30 days, archive: ~180 days)
 
-## Dependency contract address integrity
+## Financial Health Score
+
+> **Authoritative spec:** [`docs/HEALTH_SCORE.md`](../docs/HEALTH_SCORE.md) documents
+> the exact component weights, the input each consumes, the clamping to `0..=100`,
+> the `DataAvailability` (Partial/Missing) behavior, and worked examples.
+
+The contract calculates a comprehensive financial health score (0-100) based on three components:
+
+### Score Components
+
+- **Savings Score (0-40 points)**: Based on savings goal completion percentage
+- **Bills Score (0-40 points)**: Based on bill payment compliance
+- **Insurance Score (0-20 points)**: Based on active insurance coverage
+
+### Arithmetic Safety & Normalization
+
+The health score calculation implements hardened arithmetic to ensure security and predictability:
+
+#### Overflow Protection
+- Uses saturating arithmetic for amount summations
+- Safe division prevents intermediate overflow in percentage calculations
+- Individual amounts are clamped to reasonable bounds
+
+#### Bounds Guarantees
+- Overall score is always bounded [0, 100]
+- Component scores never exceed their maximum values
+- Progress percentages are clamped [0, 100]
+
+#### Edge Case Handling
+- Zero savings targets result in default score (20 points)
+- Negative amounts are clamped to zero
+- Extreme input values don't cause calculation failures
+
+#### Security Properties
+- Deterministic output for identical inputs
+- No external dependencies on ledger state
+- Cross-contract calls use configured addresses only
+
+### Example Calculation
+
+For a user with:
+- 80% savings goal completion → 32 savings points
+- Unpaid bills (none overdue) → 35 bills points  
+- Active insurance policy → 20 insurance points
+
+**Total Score**: 32 + 35 + 20 = 87
 
 Reporting stores five downstream contract IDs (`remittance_split`, `savings_goals`,
 `bill_payments`, `insurance`, `family_wallet`) set via `configure_addresses`.
@@ -82,8 +127,27 @@ Generates a full report by querying all sub-contracts.
 #### `get_savings_report(user, period_start, period_end) -> Result<SavingsReport, ReportingError>`
 #### `get_bill_compliance_report(user, period_start, period_end) -> Result<BillComplianceReport, ReportingError>`
 #### `get_insurance_report(user, period_start, period_end) -> Result<InsuranceReport, ReportingError>`
+#### `get_family_spending_report(caller, user, period_start, period_end) -> Result<FamilySpendingReport, ReportingError>`
+Aggregates per-member spending from the configured `family_wallet` dependency.
+See [`docs/FAMILY_SPENDING_REPORT.md`](docs/FAMILY_SPENDING_REPORT.md) for the full
+schema and `DataAvailability` degradation rules.
+
 #### `calculate_health_score(user, total_remittance) -> HealthScore`
 #### `get_trend_analysis(user, current_amount, previous_amount) -> TrendData`
+#### `get_trend_analysis_multi(user, history) -> Vec<TrendData>`
+
+`get_trend_analysis_multi` walks the supplied `(timestamp, amount)` history in
+input order. Callers should sort by timestamp ascending before calling when they
+need chronological trends; the contract does not sort or reject unsorted input.
+
+The first history point is compared against a zero baseline, so a single-point
+history returns one trend entry with `previous_amount = 0`. Empty history returns
+an empty vector. For positive previous amounts, `change_percentage` is
+`(current - previous) * 100 / previous`, clamped to `i32`; decreases from a
+positive baseline are negative. When the previous amount is zero or negative,
+the percentage is `100` if the current amount is positive and `0` otherwise.
+Trend deltas use checked arithmetic and saturate at the `i128` bounds on
+overflow.
 
 All report generation endpoints validate the period bounds and fail closed with
 `InvalidPeriod` when `period_start > period_end`.
@@ -105,8 +169,29 @@ Retrieves a stored report. Returns `None` if not found.
 #### `archive_old_reports(caller: Address, before_timestamp: u64) -> u32`
 Moves reports generated before `before_timestamp` to archive storage. Admin only.
 
-#### `get_archived_reports(user: Address) -> Vec<ArchivedReport>`
-Returns archived reports for a specific user.
+#### `get_archived_reports_page(user: Address, cursor: u32, limit: u32) -> ArchivedPage`
+Returns a paginated slice of archived reports for a specific user. **This is the supported entrypoint for archive reads.**
+
+- `cursor` — Starting index in the user's archived list (`0` for the first page).
+- `limit` — Maximum items to return in the page. `0` is normalized to `DEFAULT_PAGE_LIMIT` (20); values above `MAX_PAGE_LIMIT` (50) are clamped.
+- Returns [`ArchivedPage`]:
+  - `items`       — Up to `limit` `ArchivedReport` entries.
+  - `next_cursor` — `0` when there are no more pages (canonical terminator). Otherwise, the index of the next page's first item.
+  - `count`       — Total number of archived reports for `user`. Unaffected by `cursor` or `limit`.
+
+The cursor **always terminates**: out-of-range cursors (`cursor >= count`) and empty archives both return an empty page with `next_cursor == 0`. Walk the full archive with:
+
+```rust
+let mut cursor = 0u32;
+loop {
+    let page = client.get_archived_reports_page(&user, &cursor, &DEFAULT_PAGE_LIMIT);
+    // ... process `page.items` ...
+    if page.next_cursor == 0 { break; }
+    cursor = page.next_cursor;
+}
+```
+
+> **Deprecation note (Issue #832):** `get_archived_reports(user)` is preserved for backwards compatibility but is **bounded** to the first `DEFAULT_PAGE_LIMIT` (20) entries — it no longer walks the entire `ARCH_IDX(user)` list. Callers should migrate to `get_archived_reports_page` to walk the full archive without hitting the host return-size/gas budget.
 
 #### `cleanup_old_reports(caller: Address, before_timestamp: u64) -> u32`
 Permanently deletes archives created before `before_timestamp`. Admin only.

@@ -22,7 +22,7 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 
 - Create savings goals with target amounts and dates
 - **Per-Owner Goal Cap**: Maximum of 2000 goals per owner (active + archived) to prevent storage-bloat DoS.
-- **Goal Name Validation**: Goal names are limited to 128 bytes.
+- **Goal Name Validation**: Goal names are limited to 32 bytes.
 - Add funds to goals with progress tracking
 - Withdraw funds (when goal is unlocked)
 - Lock/unlock goals for withdrawal control
@@ -35,28 +35,24 @@ The Savings Goals contract allows users to create savings goals, add/withdraw fu
 
 ## Pagination Stability
 
-`get_goals(owner, cursor, limit)` now uses the owner goal-ID index as the canonical ordering source.
+The contract uses a single, canonical **cursor-based pagination** pattern via `get_goals(owner, cursor, limit)`.
 
-- Ordering is deterministic: ascending goal creation ID for that owner.
-- Cursor is exclusive: page N+1 starts strictly after the cursor ID.
-- Cursor is owner-bound: a non-zero cursor must exist in that owner's index.
-- Invalid/stale non-zero cursors are rejected to prevent silent duplicate/skip behavior.
+- **Deterministic ordering**: Ascending goal creation ID for that owner
+- **Exclusive cursor semantics**: Page N+1 starts strictly after the cursor goal ID
+- **Owner-bound validation**: A non-zero cursor must exist in that owner's index; invalid cursors are rejected
+- **Consistency guarantees**: Index-to-storage mismatches fail fast instead of returning ambiguous data
+- **Stable pagination**: If new goals are added between reads, they appear in later pages without duplicating already-read items
 
-### Cursor Semantics
+### Cursor Contract
 
-- `cursor = 0` starts from the first goal.
-- `next_cursor = 0` means there are no more pages.
-- If writes happen between reads, new goals are appended and will appear in later pages without duplicating already-read items.
-
-### Offset Pagination
-
-The contract also provides `get_goals_by_owner(owner, offset, limit)` for simple offset-based pagination. This is efficient as it uses the owner's goal index vector directly.
+- `cursor = 0`: Start from the first goal
+- `next_cursor = 0`: No more pages; this is the last page
+- Invalid non-zero cursors are rejected to prevent silent duplicate/skip behavior
 
 ### Security Notes
 
-- Pagination validates index-to-storage consistency and owner binding.
-- Any detected index/storage mismatch fails fast instead of returning ambiguous data.
-- This reduces the risk of inconsistent client state caused by malformed or stale cursors.
+- Pagination validates index-to-storage consistency and owner binding
+- This reduces the risk of inconsistent client state caused by stale or malformed cursors
 
 ## Archived Goals
 

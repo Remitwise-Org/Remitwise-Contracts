@@ -11,9 +11,9 @@ Successfully implemented bounded string validation for goal names in the savings
 
 #### Constants
 ```rust
-const MAX_GOAL_NAME_LEN_BYTES: u32 = 128;
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
 ```
-- 128 bytes provides reasonable limits for goal names while protecting storage
+- 32 bytes provides reasonable limits for goal names while protecting storage
 - Allows typical names (e.g., "FIRE Goal", "House Down Payment")
 
 #### Error Variant
@@ -77,8 +77,8 @@ fn validate_goal_name(name: &String) -> Result<(), SavingsGoalError> {
 |-----------|---------|----------|
 | `test_create_goal_accepts_valid_name_1byte` | Minimum boundary (1 byte) | ✅ |
 | `test_create_goal_accepts_typical_names` | Common use cases (10-50 bytes) | ✅ |
-| `test_create_goal_accepts_max_length_128byte_name` | Maximum boundary (128 bytes) | ✅ |
-| `test_create_goal_rejects_oversized_name_129bytes` | Just over limit (129 bytes) | ✅ |
+| `test_create_goal_accepts_max_length_128byte_name` | Maximum boundary (32 bytes) | ✅ |
+| `test_create_goal_rejects_oversized_name_129bytes` | Just over limit (33 bytes) | ✅ |
 | `test_create_goal_rejects_very_long_name` | Far over limit (>200 bytes) | ✅ |
 | `test_goal_name_validation_prevents_storage_and_id_consumption` | Storage semantics | ✅ |
 | `test_name_validation_independent_of_amount_validation` | Validation order | ✅ |
@@ -198,9 +198,9 @@ Comprehensive documentation (297 lines) including:
 
 1. **Boundary Tests** (5 tests)
    - 1 byte (minimum valid)
-   - 127 bytes (just below limit)
-   - 128 bytes (at limit)
-   - 129 bytes (just above limit)
+   - 31 bytes (just below limit)
+   - 32 bytes (at limit)
+   - 33 bytes (just above limit)
    - 200+ bytes (far above limit)
 
 2. **Semantic Tests** (4 tests)

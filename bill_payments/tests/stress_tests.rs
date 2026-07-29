@@ -18,7 +18,10 @@
 //!   DEFAULT_PAGE_LIMIT     = 20
 //!   MAX_BATCH_SIZE         = 50
 
-use bill_payments::{BillPayments, BillPaymentsClient, MAX_BILLS_PER_OWNER};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, CREATE_BILL_RATE_LIMIT, MAX_BILLS_PER_OWNER,
+};
+use remitwise_common::RATE_LIMIT_WINDOW_SECONDS;
 use soroban_sdk::testutils::storage::Instance as _;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -62,6 +65,61 @@ where
     (cpu, mem, result)
 }
 
+fn advance_ledger_time(env: &Env, timestamp: u64) {
+    env.ledger().set(LedgerInfo {
+        protocol_version: env.ledger().protocol_version(),
+        sequence_number: env.ledger().sequence() + 1,
+        timestamp,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
+}
+
+fn maybe_advance_for_create_rate_limit(env: &Env, create_index: u32) {
+    if create_index > 0 && create_index.is_multiple_of(CREATE_BILL_RATE_LIMIT) {
+        advance_ledger_time(env, env.ledger().timestamp() + RATE_LIMIT_WINDOW_SECONDS);
+    }
+}
+
+fn create_standard_bill(
+    env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+    name: &String,
+    amount: i128,
+    due_date: u64,
+    create_index: u32,
+) -> u32 {
+    maybe_advance_for_create_rate_limit(env, create_index);
+    client.create_bill(
+        owner,
+        name,
+        &amount,
+        &due_date,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(env, "XLM"),
+        &None,
+    )
+}
+
+fn fill_owner_to_cap(
+    env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+    name: &String,
+    amount: i128,
+    due_date: u64,
+) {
+    for i in 0..MAX_BILLS_PER_OWNER {
+        create_standard_bill(env, client, owner, name, amount, due_date, i);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Stress: many entities per user
 // ---------------------------------------------------------------------------
@@ -78,19 +136,7 @@ fn stress_max_bills_single_user() {
     let name = String::from_str(&env, "StressBill");
     let due_date = 2_000_000_000u64; // far future
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     // Verify aggregate total
     let total = client.get_total_unpaid(&owner);
@@ -142,25 +188,15 @@ fn stress_instance_ttl_valid_after_max_bills() {
     let name = String::from_str(&env, "TTLBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    let ledger_advances_for_rate_limit = MAX_BILLS_PER_OWNER / CREATE_BILL_RATE_LIMIT;
+    let min_ttl = 518_400u64.saturating_sub(ledger_advances_for_rate_limit as u64);
     assert!(
-        ttl >= 518_400,
-        "Instance TTL ({}) must remain >= INSTANCE_BUMP_AMOUNT (518,400) after owner-cap creates",
-        ttl
+        u64::from(ttl) >= min_ttl,
+        "Instance TTL ({}) must remain >= {} after owner-cap creates (accounting for {} rate-limit ledger advances)",
+        ttl, min_ttl, ledger_advances_for_rate_limit
     );
 }
 
@@ -521,19 +557,7 @@ fn bench_get_unpaid_bills_first_page_of_max() {
     let name = String::from_str(&env, "BenchBill");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let (cpu, mem, page) = measure(&env, || client.get_unpaid_bills(&owner, &0u32, &50u32));
     assert_eq!(page.count, 50, "First page must return 50 bills");
@@ -555,25 +579,24 @@ fn bench_get_unpaid_bills_last_page_of_max() {
     let name = String::from_str(&env, "BenchBillLast");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
+
+    // Walk forward to the cursor that yields the final page. With
+    // MAX_BILLS_PER_OWNER bills and a page size of 50, this advances through
+    // every page until the one whose `next_cursor` is 0.
+    let mut last_cursor = 0u32;
+    loop {
+        let page = client.get_unpaid_bills(&owner, &last_cursor, &50u32);
+        if page.next_cursor == 0 {
+            // `last_cursor` already addresses the final page.
+            break;
+        }
+        last_cursor = page.next_cursor;
     }
 
-    // Navigate to the last page cursor
-    let page1 = client.get_unpaid_bills(&owner, &0u32, &50u32);
-    let cursor2 = page1.next_cursor;
-
-    let (cpu, mem, last_page) = measure(&env, || client.get_unpaid_bills(&owner, &cursor2, &50u32));
+    let (cpu, mem, last_page) = measure(&env, || {
+        client.get_unpaid_bills(&owner, &last_cursor, &50u32)
+    });
     assert_eq!(last_page.count, 50, "Last page must return 50 bills");
     assert_eq!(last_page.next_cursor, 0, "No more pages after last page");
 
@@ -633,19 +656,7 @@ fn bench_get_total_unpaid_max_bills() {
     let name = String::from_str(&env, "TotalBench");
     let due_date = 2_000_000_000u64;
 
-    for _ in 0..MAX_BILLS_PER_OWNER {
-        client.create_bill(
-            &owner,
-            &name,
-            &100i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-    }
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
 
     let expected = MAX_BILLS_PER_OWNER as i128 * 100;
     let (cpu, mem, total) = measure(&env, || client.get_total_unpaid(&owner));
@@ -814,4 +825,464 @@ fn stress_overdue_bills_pagination_correctness() {
     for id in collected {
         assert_eq!(id % 2, 1, "Only odd IDs should be overdue");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 10 additional stress / benchmark tests
+// ---------------------------------------------------------------------------
+
+/// Stress: owner bill cap is enforced — the (MAX_BILLS_PER_OWNER + 1)-th create must fail.
+#[test]
+fn stress_owner_cap_enforced_at_boundary() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "CapBill");
+    let due_date = 2_000_000_000u64;
+
+    fill_owner_to_cap(&env, &client, &owner, &name, 1i128, due_date);
+
+    // The (cap + 1)-th create must return OwnerBillCapExceeded (error code 18).
+    maybe_advance_for_create_rate_limit(&env, MAX_BILLS_PER_OWNER);
+    let result = client.try_create_bill(
+        &owner,
+        &name,
+        &1i128,
+        &due_date,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&env, "XLM"),
+        &None,
+    );
+    assert!(
+        result.is_err(),
+        "Creating a bill beyond the owner cap must fail"
+    );
+}
+
+/// Stress: cancel_bill frees a slot so a new bill can be created after the cap was reached.
+#[test]
+fn stress_cancel_frees_slot_at_cap() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "SlotBill");
+    let due_date = 2_000_000_000u64;
+
+    // Fill to cap; record the first bill ID
+    let first_id = create_standard_bill(&env, &client, &owner, &name, 1i128, due_date, 0);
+    for i in 1..MAX_BILLS_PER_OWNER {
+        create_standard_bill(&env, &client, &owner, &name, 1i128, due_date, i);
+    }
+
+    // Cancel the first bill to free a slot
+    client.cancel_bill(&owner, &first_id);
+
+    // Now a new create must succeed (advance ledger if the create rate window is full).
+    let new_id = create_standard_bill(
+        &env,
+        &client,
+        &owner,
+        &name,
+        1i128,
+        due_date,
+        MAX_BILLS_PER_OWNER,
+    );
+    assert!(new_id > 0, "New bill must be created after cancelling one");
+}
+
+/// Stress: get_owner_bill_count returns the correct count across create / cancel / pay cycles.
+#[test]
+fn stress_owner_bill_count_consistency() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "CountBill");
+    let due_date = 2_000_000_000u64;
+
+    // Create 30 bills
+    let mut ids = std::vec::Vec::new();
+    for _ in 0..30 {
+        ids.push(client.create_bill(
+            &owner,
+            &name,
+            &50i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        ));
+    }
+    assert_eq!(client.get_owner_bill_count(&owner), 30);
+
+    // Cancel 5
+    for id in ids.iter().take(5) {
+        client.cancel_bill(&owner, id);
+    }
+    assert_eq!(client.get_owner_bill_count(&owner), 25);
+
+    // Pay 5 more (non-recurring, so no new bill spawned)
+    for id in ids.iter().skip(5).take(5) {
+        client.pay_bill(&owner, id);
+    }
+    // Paid bills remain in the active index until archived
+    assert_eq!(client.get_owner_bill_count(&owner), 25);
+}
+
+/// Stress: get_total_unpaid_by_currency correctly sums across a mixed-currency bill set.
+#[test]
+fn stress_total_unpaid_by_currency_mixed() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let due_date = 2_000_000_000u64;
+    let name = String::from_str(&env, "CurrBill");
+
+    // 40 XLM bills at 100 each
+    for _ in 0..40 {
+        client.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+    }
+    // 30 USDC bills at 200 each
+    for _ in 0..30 {
+        client.create_bill(
+            &owner,
+            &name,
+            &200i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "USDC"),
+            &None,
+        );
+    }
+
+    let xlm_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "XLM"));
+    let usdc_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
+
+    assert_eq!(xlm_total, 40 * 100, "XLM total must be 4000");
+    assert_eq!(usdc_total, 30 * 200, "USDC total must be 6000");
+
+    // get_total_unpaid must equal the sum of both currencies
+    let grand_total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        grand_total,
+        xlm_total + usdc_total,
+        "Grand total must equal XLM + USDC totals"
+    );
+}
+
+/// Stress: get_unpaid_bills_by_currency paginates correctly over a large single-currency set.
+#[test]
+fn stress_unpaid_bills_by_currency_pagination() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let due_date = 2_000_000_000u64;
+    let name = String::from_str(&env, "PagCurrBill");
+
+    // Create 80 USDC bills
+    for _ in 0..80 {
+        client.create_bill(
+            &owner,
+            &name,
+            &50i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "USDC"),
+            &None,
+        );
+    }
+    // Create 20 XLM bills (should not appear in USDC pages)
+    for _ in 0..20 {
+        client.create_bill(
+            &owner,
+            &name,
+            &50i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+    }
+
+    let mut collected = 0u32;
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_unpaid_bills_by_currency(
+            &owner,
+            &String::from_str(&env, "USDC"),
+            &cursor,
+            &50u32,
+        );
+        assert!(
+            page.count <= 50,
+            "Page count must not exceed MAX_PAGE_LIMIT"
+        );
+        // Every item on this page must be USDC
+        for bill in page.items.iter() {
+            assert_eq!(
+                bill.currency,
+                String::from_str(&env, "USDC"),
+                "Only USDC bills must appear in currency-filtered pages"
+            );
+        }
+        collected += page.count;
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    assert_eq!(collected, 80, "Must paginate exactly 80 USDC bills");
+}
+
+/// Stress: recurring bill pay spawns a new bill and does NOT reduce get_total_unpaid.
+#[test]
+fn stress_recurring_pay_spawns_next_bill() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "RecurBill");
+    let due_date = 2_000_000_000u64;
+
+    // Create 10 recurring bills (30-day frequency)
+    let mut ids = std::vec::Vec::new();
+    for _ in 0..10 {
+        ids.push(client.create_bill(
+            &owner,
+            &name,
+            &300i128,
+            &due_date,
+            &true,  // recurring
+            &30u32, // 30-day frequency
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        ));
+    }
+
+    let total_before = client.get_total_unpaid(&owner);
+    assert_eq!(total_before, 10 * 300, "Initial total must be 3000");
+
+    // Pay all 10 recurring bills — each spawns a new bill
+    for id in &ids {
+        client.pay_bill(&owner, id);
+    }
+
+    // Recurring pay does NOT reduce the unpaid total (new bill replaces old)
+    let total_after = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total_after, total_before,
+        "Paying recurring bills must not reduce the unpaid total (new bill spawned)"
+    );
+
+    // Owner bill count must still be 10 (old paid + new unpaid, but index tracks active)
+    // The new bills are in the active index; the paid ones remain until archived
+    let count = client.get_owner_bill_count(&owner);
+    assert!(
+        count >= 10,
+        "Owner must have at least 10 active bills after recurring pay"
+    );
+}
+
+/// Stress: bulk_cleanup_bills removes archived bills and updates storage stats.
+#[test]
+fn stress_bulk_cleanup_after_archive() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "CleanBill");
+    let due_date = 1_700_000_000u64; // same as ledger timestamp
+
+    // Create and pay 60 bills
+    for _ in 0..60 {
+        client.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+    }
+    for id in 1u32..=60 {
+        client.pay_bill(&owner, &id);
+    }
+
+    // Archive all 60
+    let archived = client.archive_paid_bills(&owner, &2_000_000_000u64);
+    assert_eq!(archived, 60);
+
+    let stats_before = client.get_storage_stats();
+    assert_eq!(stats_before.archived_bills, 60);
+
+    // Advance ledger timestamp so archived_at < before_timestamp
+    env.ledger().set(LedgerInfo {
+        protocol_version: env.ledger().protocol_version(),
+        sequence_number: env.ledger().sequence(),
+        timestamp: 1_700_000_000u64 + 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 1,
+        min_persistent_entry_ttl: 1,
+        max_entry_ttl: 700_000,
+    });
+
+    // Cleanup all archived bills
+    let cleaned = client.bulk_cleanup_bills(&owner, &2_000_000_000u64);
+    assert_eq!(cleaned, 60, "All 60 archived bills must be cleaned up");
+
+    let stats_after = client.get_storage_stats();
+    assert_eq!(
+        stats_after.archived_bills, 0,
+        "Storage stats must show 0 archived bills after cleanup"
+    );
+}
+
+/// Stress: restore_bill moves an archived bill back to active and updates storage stats.
+#[test]
+fn stress_restore_bill_updates_stats() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "RestoreBill");
+    let due_date = 1_700_000_000u64;
+
+    // Create and pay 10 bills
+    for _ in 0..10 {
+        client.create_bill(
+            &owner,
+            &name,
+            &100i128,
+            &due_date,
+            &false,
+            &0u32,
+            &None,
+            &String::from_str(&env, "XLM"),
+            &None,
+        );
+    }
+    for id in 1u32..=10 {
+        client.pay_bill(&owner, &id);
+    }
+
+    // Archive all 10
+    let archived = client.archive_paid_bills(&owner, &2_000_000_000u64);
+    assert_eq!(archived, 10);
+
+    let stats_mid = client.get_storage_stats();
+    assert_eq!(stats_mid.active_bills, 0);
+    assert_eq!(stats_mid.archived_bills, 10);
+
+    // Restore bill ID 1
+    client.restore_bill(&owner, &1u32);
+
+    let stats_after = client.get_storage_stats();
+    assert_eq!(
+        stats_after.active_bills, 1,
+        "Restoring a bill must increment active_bills"
+    );
+    assert_eq!(
+        stats_after.archived_bills, 9,
+        "Restoring a bill must decrement archived_bills"
+    );
+
+    // The restored bill must be retrievable via get_bill
+    let bill = client.get_bill(&1u32);
+    assert!(
+        bill.is_some(),
+        "Restored bill must be accessible via get_bill"
+    );
+}
+
+/// Benchmark: measure CPU + memory for get_all_bills_for_owner at the owner cap.
+#[test]
+fn bench_get_all_bills_for_owner_at_cap() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "AllBillsBench");
+    let due_date = 2_000_000_000u64;
+
+    // Fill to cap
+    fill_owner_to_cap(&env, &client, &owner, &name, 100i128, due_date);
+
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_all_bills_for_owner(&owner, &0u32, &50u32)
+    });
+    assert_eq!(page.count, 50, "First page must return 50 bills");
+
+    println!(
+        r#"{{"contract":"bill_payments","method":"get_all_bills_for_owner","scenario":"cap_bills_page1_50","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// Benchmark: measure CPU + memory for cancel_bill when the owner has the maximum bill count.
+#[test]
+fn bench_cancel_bill_at_max_owner_bills() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "CancelBench");
+    let due_date = 2_000_000_000u64;
+
+    // Fill to cap; record the last bill ID
+    let mut last_id = 0u32;
+    for i in 0..MAX_BILLS_PER_OWNER {
+        last_id = create_standard_bill(&env, &client, &owner, &name, 100i128, due_date, i);
+    }
+
+    let (cpu, mem, _) = measure(&env, || client.cancel_bill(&owner, &last_id));
+
+    println!(
+        r#"{{"contract":"bill_payments","method":"cancel_bill","scenario":"cap_bills_cancel_last","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+
+    // Verify the bill is gone
+    assert!(
+        client.get_bill(&last_id).is_none(),
+        "Cancelled bill must not be retrievable"
+    );
 }

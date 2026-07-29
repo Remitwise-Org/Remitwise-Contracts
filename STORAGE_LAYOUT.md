@@ -19,13 +19,15 @@ All storage keys follow strict naming conventions to ensure consistency and comp
 
 - **Maximum length:** 9 characters (enforced by `symbol_short!`)
 - **Format:** UPPERCASE_WITH_UNDERSCORES
-- **Valid characters:** A-Z, 0-9, _ (underscore)
+- **Valid characters:** A-Z, 0-9, \_ (underscore)
 
-These conventions are automatically validated in CI. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
+These conventions are automatically validated in CI by two complementary test suites: a hand-maintained catalogue check (`storage_key_naming_test.rs`) and a live source scan (`storage_key_source_scan_test.rs`) that parses each contract's `src/lib.rs` directly so a key added or renamed in code can't silently drift out of sync with the documented conventions. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
 
 **Run validation tests:**
+
 ```bash
-cargo test --package testutils storage_key_naming_test -- --nocapture
+# Catalogue check + live source scan
+cargo test --package testutils storage_key -- --nocapture
 ```
 
 ## Common Patterns
@@ -46,6 +48,18 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
 - Important implementation detail:
   - Archive bump helpers still call `instance().extend_ttl(...)`; they extend the contract instance entry TTL, not a separate archive namespace.
 
+### Shared TTL-bump helpers (remitwise-common)
+
+`remitwise-common` exports three helpers that centralise the canonical TTL policy:
+
+| Helper                      | Threshold                                 | Bump                               | Purpose                    |
+| --------------------------- | ----------------------------------------- | ---------------------------------- | -------------------------- |
+| `bump_instance(env)`        | `INSTANCE_LIFETIME_THRESHOLD` (1 day)     | `INSTANCE_BUMP_AMOUNT` (30 days)   | Active instance data       |
+| `bump_persistent(env, key)` | `PERSISTENT_LIFETIME_THRESHOLD` (15 days) | `PERSISTENT_BUMP_AMOUNT` (60 days) | Persistent storage entries |
+| `bump_archive(env)`         | `ARCHIVE_LIFETIME_THRESHOLD` (1 day)      | `ARCHIVE_BUMP_AMOUNT` (150 days)   | Archive instance window    |
+
+Using these helpers prevents the common mistake of swapping `threshold` and `bump` arguments. See [docs/ttl-bump-helpers.md](docs/ttl-bump-helpers.md) for usage guidance.
+
 ### ID allocation patterns
 
 - Monotonic counters via `NEXT_*` keys:
@@ -62,19 +76,27 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
 | Key         | Type                           | Notes                                                        |
 | ----------- | ------------------------------ | ------------------------------------------------------------ |
 | `CONFIG`    | `SplitConfig`                  | Owner + percentages + initialized flag                       |
-| `SPLIT`     | `Vec<u32>`                     | Ordered percentages: `[spending, savings, bills, insurance]` |
 | `NONCES`    | `Map<Address, u64>`            | Replay protection for owner-authorized mutating calls        |
 | `AUDIT`     | `Vec<AuditEntry>`              | Rotating audit log, max `MAX_AUDIT_ENTRIES` (100)            |
 | `REM_SCH`   | `Map<u32, RemittanceSchedule>` | Remittance schedules                                         |
 | `NEXT_RSCH` | `u32`                          | Next remittance schedule ID                                  |
 | `PAUSE_ADM` | `Address`                      | Pause admin                                                  |
 | `PAUSED`    | `bool`                         | Global pause flag                                            |
+| `PAUSED_AT` | `u64`                          | Timestamp when contract was paused                           |
 | `UPG_ADM`   | `Address`                      | Upgrade admin                                                |
 | `VERSION`   | `u32`                          | Contract version                                             |
 
+### Keys and value types (persistent storage)
+
+| Key               | Type                 | Notes                                                     |
+| ----------------- | -------------------- | --------------------------------------------------------- |
+| `Schedule(u32)`   | `RemittanceSchedule` | Individual remittance schedule                            |
+| `OwnerSchedules`  | `Vec<u32>`           | Per-owner index of schedule IDs, ordered by ID ascending  |
+
 ### TTL and IDs
 
-- TTL bumps on mutating flows via `extend_instance_ttl`.
+- **Instance TTL**: `CONFIG`, `SPLIT`, and other administrative keys are bumped on every access (read/write) using `INSTANCE_BUMP_AMOUNT` / `INSTANCE_LIFETIME_THRESHOLD`.
+- **Persistent TTL**: `RemittanceSchedule` and the `OwnerSchedules` index are bumped on every access using `PERSISTENT_BUMP_AMOUNT` / `PERSISTENT_LIFETIME_THRESHOLD`.
 - Schedule IDs allocate from `NEXT_RSCH` (`0 -> 1 -> 2 ...`).
 
 ### Savings Goals Storage (Scalable DataKey Pattern)
@@ -91,11 +113,11 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
 | `AUDIT`     | `Vec<AuditEntry>`           | Rotating audit log, max 100            |
 | `PAUSE_ADM` | `Address`                   | Pause admin                            |
 | `PAUSED`    | `bool`                      | Global pause flag                      |
+| `PausedSince` | `u64`                    | Timestamp when contract was paused     |
 | `PAUSED_FN` | `Map<Symbol, bool>`         | Per-function pause switches            |
 | `UNP_AT`    | `u64`                       | Optional time-locked unpause timestamp |
 | `UPG_ADM`   | `Address`                   | Upgrade admin                          |
 | `VERSION`   | `u32`                       | Contract version                       |
-
 
 | Key       | Type                    | Notes                           |
 | --------- | ----------------------- | ------------------------------- |
@@ -122,6 +144,7 @@ cargo test --package testutils storage_key_naming_test -- --nocapture
 | `STOR_STAT` | `StorageStats`           | Aggregated storage metrics                                                                                                   |
 | `PAUSE_ADM` | `Address`                | Pause admin                                                                                                                  |
 | `PAUSED`    | `bool`                   | Global pause flag                                                                                                            |
+| `PAUSED_AT` | `u64`                    | Timestamp when contract was paused                                                                                           |
 | `PAUSED_FN` | `Map<Symbol, bool>`      | Per-function pause switches                                                                                                  |
 | `UNP_AT`    | `u64`                    | Optional unpause timestamp                                                                                                   |
 | `UPG_ADM`   | `Address`                | Upgrade admin                                                                                                                |

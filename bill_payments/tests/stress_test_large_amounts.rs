@@ -9,8 +9,7 @@
 //!
 //! ## Documented Limitations
 //! - Maximum safe bill amount: i128::MAX/2 (to allow for safe addition operations)
-//! - get_total_unpaid uses checked_add internally via += operator
-//! - No explicit caps are imposed by the contract, but overflow will panic
+//! - get_total_unpaid and unpaid-total cache updates use saturating arithmetic
 
 use bill_payments::{BillPayments, BillPaymentsClient};
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
@@ -169,8 +168,7 @@ fn test_get_total_unpaid_with_two_large_bills() {
 }
 
 #[test]
-#[should_panic(expected = "overflow")]
-fn test_get_total_unpaid_overflow_panics() {
+fn test_get_total_unpaid_saturates_on_overflow() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -178,7 +176,7 @@ fn test_get_total_unpaid_overflow_panics() {
 
     env.mock_all_auths();
 
-    // Create two bills that will overflow when added
+    // Create two bills that would overflow when added normally
     let amount = i128::MAX / 2 + 1000;
 
     client.create_bill(
@@ -206,8 +204,82 @@ fn test_get_total_unpaid_overflow_panics() {
         &None,
     );
 
-    // This should panic due to overflow
-    client.get_total_unpaid(&owner);
+    // get_total_unpaid should saturate instead of panicking
+    // When overflow would occur, result should be i128::MAX
+    let total = client.get_total_unpaid(&owner);
+    assert_eq!(
+        total,
+        i128::MAX,
+        "get_total_unpaid should saturate to i128::MAX on overflow, not panic"
+    );
+}
+
+#[test]
+fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create two large bills in USDC that would overflow
+    let amount = i128::MAX / 2 + 1000;
+
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "USDC Bill 1"),
+        &amount,
+        &1000000,
+        &false,
+        &0,
+        &None,
+        &String::from_str(&env, "USDC"),
+        &None,
+    );
+
+    env.mock_all_auths();
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "USDC Bill 2"),
+        &amount,
+        &1000000,
+        &false,
+        &0,
+        &None,
+        &String::from_str(&env, "USDC"),
+        &None,
+    );
+
+    // get_total_unpaid_by_currency should saturate on overflow
+    let total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
+    assert_eq!(
+        total,
+        i128::MAX,
+        "get_total_unpaid_by_currency should saturate to i128::MAX on overflow"
+    );
+
+    // Create a XLM bill and verify it's not included in USDC total
+    env.mock_all_auths();
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "XLM Bill"),
+        &1000,
+        &1000000,
+        &false,
+        &0,
+        &None,
+        &String::from_str(&env, "XLM"),
+        &None,
+    );
+
+    // USDC total should still be saturated
+    let usdc_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
+    assert_eq!(usdc_total, i128::MAX);
+
+    // XLM total should only include XLM bills
+    let xlm_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "XLM"));
+    assert_eq!(xlm_total, 1000);
 }
 
 #[test]
