@@ -344,6 +344,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Epoch Model](docs/EPOCH_MODEL.md) - How epoch counters bump, what they invalidate, and the stale-authorization replay threat they mitigate in the emergency killswitch and orchestrator contracts
 - [Dispute Epoch Model](docs/DISPUTE_EPOCH_MODEL.md) - Semantics + when dispute epochs bump
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
+- [Kill-Switch Recovery Runbook](docs/KILL_SWITCH_RECOVERY.md) - Operator runbook: how to engage the kill switch, verify the freeze, and safely resume operations after an incident
 - [Ledger Monotonicity](docs/LEDGER_MONOTONICITY.md) - Where and why contract code relies on ledger sequence and timestamp monotonicity
 - [Timestamp Conventions](docs/TIMESTAMP_CONVENTIONS.md) - How timestamps are represented, stored, and compared across all contracts
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system

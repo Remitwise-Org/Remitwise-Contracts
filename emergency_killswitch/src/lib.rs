@@ -785,3 +785,273 @@ mod tests {
         assert_eq!(res, Err(Ok(Error::Unauthorized)));
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Expanded kill-switch-epoch guard tests (#1293)
+//
+// Covers: same epoch, off-by-one (too low, too high), ancient epoch,
+// consecutive bumps, replay with stale epoch, epoch boundary semantics,
+// and error discriminant stability.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod kill_switch_epoch_guard_comprehensive_tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin)
+    }
+
+    // ── Happy path: exact epoch match ─────────────────────────────────────
+
+    /// `require_killswitch_epoch` passes when the caller supplies the correct
+    /// epoch (0 immediately after initialization).
+    #[test]
+    fn correct_epoch_zero_passes_after_init() {
+        let (_env, client, _admin) = setup();
+        let res = client.try_require_killswitch_epoch(&0u64);
+        assert_eq!(res, Ok(Ok(())));
+    }
+
+    /// After one bump the epoch is 1; supplying 1 must pass.
+    #[test]
+    fn correct_epoch_one_passes_after_single_bump() {
+        let (_env, client, admin) = setup();
+        client.bump_kill_switch_epoch(&admin);
+        let res = client.try_require_killswitch_epoch(&1u64);
+        assert_eq!(res, Ok(Ok(())));
+    }
+
+    /// After multiple consecutive bumps, supplying the resulting epoch passes.
+    #[test]
+    fn correct_epoch_passes_after_five_consecutive_bumps() {
+        let (_env, client, admin) = setup();
+        let mut last = 0u64;
+        for _ in 0..5 {
+            last = client.bump_kill_switch_epoch(&admin);
+        }
+        assert_eq!(last, 5);
+        let res = client.try_require_killswitch_epoch(&5u64);
+        assert_eq!(res, Ok(Ok(())));
+    }
+
+    // ── Off-by-one: one below current epoch ───────────────────────────────
+
+    /// Supplying epoch = current - 1 (one below) is rejected with EpochMismatch.
+    /// This is the classic "stale authorization" off-by-one.
+    #[test]
+    fn one_below_current_epoch_rejected_off_by_one() {
+        let (_env, client, admin) = setup();
+        client.bump_kill_switch_epoch(&admin); // epoch is now 1
+
+        // Supply 0 (one below current 1) — must fail.
+        let res = client.try_require_killswitch_epoch(&0u64);
+        assert_eq!(res, Err(Ok(Error::EpochMismatch)));
+    }
+
+    /// Supplying epoch = current + 1 (one above) is also rejected — the guard
+    /// requires an exact match, not just >= or <=.
+    #[test]
+    fn one_above_current_epoch_rejected_off_by_one() {
+        let (_env, client, _admin) = setup();
+        // Epoch is 0 after init; supply 1 (one above).
+        let res = client.try_require_killswitch_epoch(&1u64);
+        assert_eq!(res, Err(Ok(Error::EpochMismatch)));
+    }
+
+    // ── Ancient epoch ─────────────────────────────────────────────────────
+
+    /// An ancient epoch (many bumps ago) is rejected. Pins that the guard does
+    /// not compare with >= (which would allow old epochs after bumps).
+    #[test]
+    fn ancient_epoch_rejected_after_many_bumps() {
+        let (_env, client, admin) = setup();
+        // Bump 10 times — current epoch is now 10.
+        for _ in 0..10 {
+            client.bump_kill_switch_epoch(&admin);
+        }
+
+        // Epoch 0 (the initial value, now 10 bumps stale) must be rejected.
+        let res = client.try_require_killswitch_epoch(&0u64);
+        assert_eq!(res, Err(Ok(Error::EpochMismatch)));
+
+        // Epoch 5 (half-stale) must also be rejected.
+        let res = client.try_require_killswitch_epoch(&5u64);
+        assert_eq!(res, Err(Ok(Error::EpochMismatch)));
+    }
+
+    // ── Replay attack simulation ──────────────────────────────────────────
+
+    /// Simulate a replay attack: obtain a valid authorization at epoch N,
+    /// bump the epoch to N+1, then try to replay the old authorization.
+    /// The replay must fail with EpochMismatch.
+    #[test]
+    fn stale_authorization_replay_rejected_after_epoch_bump() {
+        let (env, client, admin) = setup();
+        let new_admin = Address::generate(&env);
+
+        // Capture current epoch (0) — represents a "signed" transfer_admin call.
+        let captured_epoch = client.get_kill_switch_epoch();
+        assert_eq!(captured_epoch, 0);
+
+        // Transfer to new_admin using epoch 0 (valid at capture time).
+        let res = client.try_transfer_admin(&new_admin, &captured_epoch);
+        assert_eq!(res, Ok(Ok(())));
+
+        // New admin bumps the epoch to invalidate any further epoch-0 auths.
+        let new_epoch = client.bump_kill_switch_epoch(&new_admin);
+        assert_eq!(new_epoch, 1);
+
+        // A second address tries to replay the old epoch-0 authorization.
+        let another_admin = Address::generate(&env);
+        let replay = client.try_transfer_admin(&another_admin, &captured_epoch);
+        assert_eq!(
+            replay,
+            Err(Ok(Error::EpochMismatch)),
+            "replay with stale epoch must be rejected after bump"
+        );
+    }
+
+    // ── Consecutive bump semantics ────────────────────────────────────────
+
+    /// Every bump increments by exactly one and returns the new epoch.
+    #[test]
+    fn consecutive_bumps_increment_by_one_and_return_new_epoch() {
+        let (_env, client, admin) = setup();
+        for expected_new in 1u64..=10 {
+            let returned = client.bump_kill_switch_epoch(&admin);
+            assert_eq!(
+                returned, expected_new,
+                "bump must return the new epoch (expected {expected_new})"
+            );
+            let stored = client.get_kill_switch_epoch();
+            assert_eq!(
+                stored, expected_new,
+                "stored epoch must equal returned epoch after bump {expected_new}"
+            );
+        }
+    }
+
+    /// After each bump, the previous epoch is immediately rejected.
+    #[test]
+    fn previous_epoch_rejected_immediately_after_each_bump() {
+        let (_env, client, admin) = setup();
+        for bump_count in 1u64..=5 {
+            client.bump_kill_switch_epoch(&admin);
+            // The epoch that was valid before this bump is now stale.
+            let stale_epoch = bump_count - 1;
+            let res = client.try_require_killswitch_epoch(&stale_epoch);
+            assert_eq!(
+                res,
+                Err(Ok(Error::EpochMismatch)),
+                "epoch {stale_epoch} must be rejected immediately after bump to {bump_count}"
+            );
+        }
+    }
+
+    // ── Epoch at boundary: u64::MAX - 1 ──────────────────────────────────
+
+    /// The overflow guard in `bump_kill_switch_epoch` uses `checked_add`, which
+    /// returns an error (mapped to `Error::InvalidAdmin`) when the epoch would
+    /// wrap past u64::MAX.  This test bumps to u64::MAX - 1 via storage
+    /// manipulation to verify the overflow guard fires on the next bump.
+    ///
+    /// We write the epoch directly to instance storage to avoid the prohibitive
+    /// cost of calling `bump_kill_switch_epoch` u64::MAX - 1 times.
+    #[test]
+    fn overflow_guard_fires_at_u64_max() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Inject u64::MAX directly into instance storage — the contract's
+        // bump function uses checked_add so the next bump must overflow.
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::KillSwitchEpoch, &u64::MAX);
+        });
+
+        assert_eq!(client.get_kill_switch_epoch(), u64::MAX);
+
+        // The next bump would overflow u64 — must return an error.
+        let res = client.try_bump_kill_switch_epoch(&admin);
+        // bump_kill_switch_epoch maps checked_add None to Error::InvalidAdmin
+        assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+    }
+
+    // ── Error discriminant stability ──────────────────────────────────────
+
+    /// The EpochMismatch discriminant must be 7 (ABI contract — pinned for
+    /// encoding stability across contract versions and downstream integrators).
+    #[test]
+    fn epoch_mismatch_error_discriminant_is_seven() {
+        assert_eq!(
+            Error::EpochMismatch as u32,
+            7u32,
+            "Error::EpochMismatch discriminant must be 7 (ABI contract)"
+        );
+    }
+
+    // ── get_kill_switch_epoch — observable without auth ───────────────────
+
+    /// `get_kill_switch_epoch` always reflects the current epoch and its
+    /// return value matches what `bump_kill_switch_epoch` reports.
+    #[test]
+    fn get_kill_switch_epoch_reflects_current_epoch_after_bumps() {
+        let (_env, client, admin) = setup();
+
+        // Before any bump: epoch must be 0.
+        assert_eq!(client.get_kill_switch_epoch(), 0);
+
+        // After first bump: epoch must be 1.
+        client.bump_kill_switch_epoch(&admin);
+        assert_eq!(client.get_kill_switch_epoch(), 1);
+
+        // After second bump: epoch must be 2.
+        client.bump_kill_switch_epoch(&admin);
+        assert_eq!(
+            client.get_kill_switch_epoch(),
+            2,
+            "get_kill_switch_epoch must return 2 after two bumps"
+        );
+    }
+
+    // ── transfer_admin epoch binding ──────────────────────────────────────
+
+    /// `transfer_admin` requires the caller to supply the current epoch. A
+    /// call with a future epoch (one not yet reached) must also fail, preventing
+    /// pre-authorization for a future epoch.
+    #[test]
+    fn transfer_admin_with_future_epoch_rejected() {
+        let (env, client, _admin) = setup();
+        let new_admin = Address::generate(&env);
+        // Current epoch is 0; supply 99 (future, never bumped to).
+        let res = client.try_transfer_admin(&new_admin, &99u64);
+        assert_eq!(
+            res,
+            Err(Ok(Error::EpochMismatch)),
+            "transfer_admin with future epoch must be rejected"
+        );
+    }
+
+    /// `transfer_admin` with epoch 0 at initialization succeeds, confirming
+    /// the default epoch from `initialize` is 0 and is the only valid value.
+    #[test]
+    fn transfer_admin_with_correct_epoch_zero_succeeds() {
+        let (env, client, _admin) = setup();
+        let new_admin = Address::generate(&env);
+        let res = client.try_transfer_admin(&new_admin, &0u64);
+        assert_eq!(res, Ok(Ok(())));
+    }
+}
