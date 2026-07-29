@@ -633,3 +633,29 @@ fn test_canonicalize_tags_checked_does_not_panic_on_injected_special_chars() {
     // '=' is not in [a-z0-9-_], so it must return InvalidChar.
     assert!(matches!(result, Err(crate::TagError::InvalidChar { position: 0 })));
 }
+
+// ============================================================================
+// require_registered_operator tests (#1182)
+// ============================================================================
+
+#[test]
+fn test_require_registered_operator_success() {
+    let env = Env::default();
+    let caller = Address::generate(&env);
+    
+    // Register the operator
+    env.storage().instance().set(&symbol_short!("OPERATOR"), &true);
+    
+    let result = require_registered_operator(&env, &caller);
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn test_require_registered_operator_fails_if_missing() {
+    let env = Env::default();
+    let caller = Address::generate(&env);
+    
+    // Missing operator registration
+    let result = require_registered_operator(&env, &caller);
+    assert_eq!(result, Err(OperatorError::NotRegistered));
+}

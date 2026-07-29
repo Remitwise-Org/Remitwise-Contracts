@@ -166,6 +166,25 @@ pub struct RateLimitRecord {
     pub window_id: u64,
 }
 
+/// Error for operator validation
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum OperatorError {
+    NotRegistered = 99,
+}
+
+/// Helper to enforce that the caller is a registered operator.
+/// This provides central enforcement for operator-only operations.
+pub fn require_registered_operator(env: &Env, caller: &Address) -> Result<(), OperatorError> {
+    let key = symbol_short!("OPERATOR");
+    let is_registered = env.storage().instance().get(&key).unwrap_or(false);
+    if !is_registered {
+        return Err(OperatorError::NotRegistered);
+    }
+    Ok(())
+}
+
 /// Rate limit error
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RateLimitError {
