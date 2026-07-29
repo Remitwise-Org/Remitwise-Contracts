@@ -106,6 +106,12 @@ pub enum RemittanceSplitError {
     DuplicateCorridorId = 38,
     /// Fee rounding error.
     FeeRounding = 39,
+    /// A treasury proposal named the contract's own address -- Stellar has
+    /// no canonical zero address, but this is the equivalent footgun:
+    /// nothing can `require_auth()` as the contract itself, so `new_treasury`
+    /// would sit in `accept_treasury`'s pending slot forever, unacceptable
+    /// by anyone.
+    InvalidTreasuryAddress = 40,
 }
 
 #[derive(Clone)]
@@ -734,6 +740,11 @@ impl RemittanceSplit {
             .ok_or(RemittanceSplitError::NotInitialized)?;
         if config.owner != caller {
             return Err(RemittanceSplitError::Unauthorized);
+        }
+
+        // Harden against proposing a treasury nothing can ever accept as.
+        if new_treasury == env.current_contract_address() {
+            return Err(RemittanceSplitError::InvalidTreasuryAddress);
         }
 
         Self::set_pending_treasury(&env, &new_treasury);

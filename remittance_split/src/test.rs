@@ -2790,6 +2790,25 @@ fn test_treasury_balance_rejects_unconfigured_treasury() {
 }
 
 #[test]
+fn test_propose_treasury_rejects_the_contracts_own_address() {
+    // Stellar has no canonical zero address, but proposing the contract's
+    // own address as treasury is the equivalent footgun: nothing can
+    // require_auth() as the contract itself, so it could never be accepted
+    // via accept_treasury and would sit as a permanently stuck proposal.
+    let env = Env::default();
+    let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);
+
+    let result = harness
+        .client
+        .try_propose_treasury(&harness.owner, &harness.client.address);
+
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::InvalidTreasuryAddress))
+    );
+}
+
+#[test]
 fn test_initialize_split_percentage_out_of_range() {
     let env = Env::default();
     env.mock_all_auths();
