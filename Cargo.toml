@@ -1,11 +1,53 @@
+[package]
+name = "remitwise-contracts"
+version = "0.1.0"
+edition = "2021"
+# Verified via `cargo +<version> check -p remittance_split`: 1.85.1 fails
+# because `darling@0.23.0`/`serde_with@3.21.0` require 1.88.0; 1.88.0 builds
+# clean. Keep this in sync with the `msrv` matrix in .github/workflows/ci.yml.
+rust-version = "1.88.0"
+publish = false
+
 [workspace]
 members = [
-    "remittance_split",
-    "savings_goals",
+    "emergency_killswitch",
+    "family_wallet",
+    "data_migration",
+    "reporting",
+    "orchestrator",
+    "cli",
+    "scenarios",
+    "testutils",
+    "integration_tests",
+    "remitwise-common",
+]
+exclude = [
     "bill_payments",
     "insurance",
+    "remittance_split",
+    "savings_goals",
+]
+default-members = [
+    "family_wallet",
+    "data_migration",
+    "reporting",
+    "orchestrator",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+ed25519-dalek = "=2.1.1"
+
+[dependencies]
+soroban-sdk = "=21.7.7"
+ed25519-dalek = "=2.2.0"
+family_wallet = { path = "./family_wallet" }
+reporting = { path = "./reporting" }
+orchestrator = { path = "./orchestrator" }
+remitwise-common = { path = "./remitwise-common" }
+
+[dev-dependencies]
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
@@ -21,3 +63,5 @@ lto = true
 inherits = "release"
 debug-assertions = true
 
+[patch.crates-io]
+ed25519-dalek = { path = "vendor/ed25519-dalek-2.2.0" }

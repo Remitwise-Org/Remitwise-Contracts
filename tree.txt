@@ -1,0 +1,768 @@
+.
+├── ACCESS_CONTROL_MATRIX.md
+├── analytics
+│   └── test_snapshots
+│       └── tests
+│           ├── test_calculate_health_score.1.json
+│           ├── test_get_category_analysis.1.json
+│           └── test_track_remittance.1.json
+├── ARCHITECTURE.md
+├── benchmarks
+│   ├── baseline.json
+│   ├── history
+│   ├── README.md
+│   └── thresholds.json
+├── bill_payments
+│   ├── Cargo.toml
+│   ├── README.md
+│   ├── src
+│   │   ├── events.rs
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   ├── test_snapshots
+│   │   ├── test
+│   │   │   ├── test_create_bill_emits_event.1.json
+│   │   │   ├── test_create_bill_invalid_due_date.1.json
+│   │   │   ├── test_get_all_bills_for_owner_includes_paid.1.json
+│   │   │   ├── test_get_archived_bills_pagination.1.json
+│   │   │   ├── test_get_overdue_bills_not_overdue.1.json
+│   │   │   ├── test_get_overdue_bills_pagination.1.json
+│   │   │   ├── test_get_unpaid_bills_empty.1.json
+│   │   │   ├── test_get_unpaid_bills_excludes_other_owner.1.json
+│   │   │   ├── test_get_unpaid_bills_excludes_paid.1.json
+│   │   │   ├── test_get_unpaid_bills_multiple_pages.1.json
+│   │   │   ├── test_get_unpaid_bills_owner_isolation_after_one_pays.1.json
+│   │   │   ├── test_get_unpaid_bills_owner_isolation_all_paid_other_owner_unpaid.1.json
+│   │   │   ├── test_get_unpaid_bills_owner_isolation_bidirectional.1.json
+│   │   │   ├── test_get_unpaid_bills_owner_isolation_one_owner_no_bills.1.json
+│   │   │   ├── test_get_unpaid_bills_owner_isolation_pagination_does_not_leak.1.json
+│   │   │   ├── test_get_unpaid_bills_single_page.1.json
+│   │   │   ├── test_limit_clamped_to_max.1.json
+│   │   │   ├── test_limit_zero_uses_default.1.json
+│   │   │   ├── test_multiple_bills_emit_separate_events.1.json
+│   │   │   ├── test_pay_bill_emits_event.1.json
+│   │   │   ├── test_pay_recurring_bill_emits_multiple_events.1.json
+│   │   │   ├── test_recurring_bill_clone_fields.1.json
+│   │   │   ├── test_recurring_date_math_amount_preserved_across_cycles.1.json
+│   │   │   ├── test_recurring_date_math_early_payment_does_not_affect_schedule.1.json
+│   │   │   ├── test_recurring_date_math_exact_calculation_verification.1.json
+│   │   │   ├── test_recurring_date_math_frequency_1_day.1.json
+│   │   │   ├── test_recurring_date_math_frequency_30_days.1.json
+│   │   │   ├── test_recurring_date_math_frequency_365_days.1.json
+│   │   │   ├── test_recurring_date_math_multiple_pay_cycles_2nd_bill.1.json
+│   │   │   ├── test_recurring_date_math_multiple_pay_cycles_3rd_bill.1.json
+│   │   │   ├── test_recurring_date_math_name_preserved_across_cycles.1.json
+│   │   │   ├── test_recurring_date_math_owner_preserved_across_cycles.1.json
+│   │   │   ├── test_recurring_date_math_paid_at_does_not_affect_next_due.1.json
+│   │   │   ├── test_recurring_date_math_preserves_frequency_across_cycles.1.json
+│   │   │   ├── test_time_drift_bill_not_overdue_at_exact_due_date.1.json
+│   │   │   ├── test_time_drift_bill_overdue_one_second_after_due_date.1.json
+│   │   │   ├── test_time_drift_overdue_boundary_mixed_bills.1.json
+│   │   │   ├── test_time_drift_overdue_full_day_boundary.1.json
+│   │   │   └── testsuit
+│   │   │       ├── test_archive_empty_when_no_paid_bills.1.json
+│   │   │       ├── test_archive_paid_bills.1.json
+│   │   │       ├── test_archive_ttl_extended_on_archive_paid_bills.1.json
+│   │   │       ├── test_bulk_cleanup_bills.1.json
+│   │   │       ├── test_cancel_bill_owner_succeeds.1.json
+│   │   │       ├── test_cancel_bill_unauthorized_fails.1.json
+│   │   │       ├── test_cancel_bill.1.json
+│   │   │       ├── test_cancel_nonexistent_bill.1.json
+│   │   │       ├── test_cancel_schedule.1.json
+│   │   │       ├── test_create_bill_emits_event.1.json
+│   │   │       ├── test_create_bill_invalid_amount.1.json
+│   │   │       ├── test_create_bill_negative_amount.1.json
+│   │   │       ├── test_create_bill.1.json
+│   │   │       ├── test_create_recurring_bill_invalid_frequency.1.json
+│   │   │       ├── test_create_schedule.1.json
+│   │   │       ├── test_data_persists_across_repeated_operations.1.json
+│   │   │       ├── test_execute_due_schedules.1.json
+│   │   │       ├── test_execute_missed_schedules.1.json
+│   │   │       ├── test_execute_recurring_schedule.1.json
+│   │   │       ├── test_get_all_bills_admin_only.1.json
+│   │   │       ├── test_get_all_bills_for_owner_after_cancel.1.json
+│   │   │       ├── test_get_all_bills_for_owner_after_pay.1.json
+│   │   │       ├── test_get_all_bills_for_owner_basic.1.json
+│   │   │       ├── test_get_all_bills_for_owner_empty.1.json
+│   │   │       ├── test_get_all_bills_for_owner_isolation.1.json
+│   │   │       ├── test_get_all_bills_no_admin_set_fails.1.json
+│   │   │       ├── test_get_all_bills_non_admin_fails.1.json
+│   │   │       ├── test_get_all_bills.1.json
+│   │   │       ├── test_get_archived_bill.1.json
+│   │   │       ├── test_get_overdue_bills.1.json
+│   │   │       ├── test_get_schedules.1.json
+│   │   │       ├── test_get_total_unpaid.1.json
+│   │   │       ├── test_get_unpaid_bills_many_items.1.json
+│   │   │       ├── test_get_unpaid_bills.1.json
+│   │   │       ├── test_instance_ttl_extended_on_batch_pay_bills.1.json
+│   │   │       ├── test_instance_ttl_extended_on_create_bill.1.json
+│   │   │       ├── test_instance_ttl_refreshed_on_pay_bill.1.json
+│   │   │       ├── test_modify_schedule.1.json
+│   │   │       ├── test_multiple_recurring_payments.1.json
+│   │   │       ├── test_pay_already_paid_bill.1.json
+│   │   │       ├── test_pay_bill_emits_event.1.json
+│   │   │       ├── test_pay_bill_unauthorized.1.json
+│   │   │       ├── test_pay_bill.1.json
+│   │   │       ├── test_pay_bills_and_verify_decreased_counts.1.json
+│   │   │       ├── test_pay_nonexistent_bill.1.json
+│   │   │       ├── test_pay_overdue_bill.1.json
+│   │   │       ├── test_recurring_bill_cancellation.1.json
+│   │   │       ├── test_recurring_bill.1.json
+│   │   │       ├── test_restore_bill_not_found.1.json
+│   │   │       ├── test_restore_bill_unauthorized.1.json
+│   │   │       ├── test_restore_bill.1.json
+│   │   │       ├── test_schedule_validation_past_date.1.json
+│   │   │       ├── test_short_recurrence.1.json
+│   │   │       └── test_storage_stats.1.json
+│   │   ├── test_archive_large_amount_bill.1.json
+│   │   ├── test_batch_pay_large_bills.1.json
+│   │   ├── test_create_bill_near_max_i128.1.json
+│   │   ├── test_edge_case_i128_max_minus_one.1.json
+│   │   ├── test_get_total_unpaid_overflow_panics.1.json
+│   │   ├── test_get_total_unpaid_with_two_large_bills.1.json
+│   │   ├── test_multiple_large_bills_different_owners.1.json
+│   │   ├── test_notification_flow.1.json
+│   │   ├── test_overdue_bills_with_large_amounts.1.json
+│   │   ├── test_pagination_with_large_amounts.1.json
+│   │   ├── test_pay_bill_with_large_amount.1.json
+│   │   └── test_recurring_bill_with_large_amount.1.json
+│   └── tests
+│       ├── gas_bench.rs
+│       ├── stress_test_large_amounts.rs
+│       ├── stress_tests.rs
+│       └── test_notifications.rs
+├── Cargo.toml
+├── CHANGELOG_CONTRACTS.md
+├── check_ci.sh
+├── cli
+│   ├── Cargo.toml
+│   ├── README.md
+│   └── src
+│       └── main.rs
+├── commit_changes.sh
+├── COMPATIBILITY_QUICK_REFERENCE.md
+├── data_migration
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+├── DEPLOYMENT.md
+├── docs
+│   ├── adr-admin-role.md
+│   ├── family-wallet-design.md
+│   ├── frontend-integration.md
+│   ├── gas-optimization.md
+│   ├── rate-limiting-design.md
+│   └── stress-test-documentation.md
+├── emergency_killswitch
+│   ├── Cargo.toml
+│   ├── src
+│   │   └── lib.rs
+│   ├── test_snapshots
+│   │   ├── test_emergency_pause_emits_event.1.json
+│   │   ├── test_non_admin_cannot_pause.1.json
+│   │   ├── test_non_admin_cannot_unpause.1.json
+│   │   ├── test_pause_blocks_mint.1.json
+│   │   ├── test_pause_blocks_transfer.1.json
+│   │   ├── test_read_only_works_while_paused.1.json
+│   │   ├── test_schedule_unpause_enforced.1.json
+│   │   ├── test_transfer_admin.1.json
+│   │   └── test_unpause_restores_operations.1.json
+│   └── tests
+│       └── test_killswitch.rs
+├── EVENTS.md
+├── examples
+│   ├── bill_payments_example.rs
+│   ├── family_wallet_example.rs
+│   ├── insurance_example.rs
+│   ├── orchestrator_example.rs
+│   ├── remittance_split_example.rs
+│   ├── reporting_example.rs
+│   └── savings_goals_example.rs
+├── family_wallet
+│   ├── Cargo.toml
+│   ├── docs
+│   │   └── family-wallet-design.md
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   ├── test_snapshots
+│   │   └── test
+│   │       ├── test_add_and_remove_family_member.1.json
+│   │       ├── test_add_member_and_get_member.1.json
+│   │       ├── test_add_member_creates_new.1.json
+│   │       ├── test_add_member_duplicate.1.json
+│   │       ├── test_add_member_invalid_role_owner.1.json
+│   │       ├── test_add_member_negative_limit_fails.1.json
+│   │       ├── test_add_member_negative_spending_limit.1.json
+│   │       ├── test_add_member_unauthorized.1.json
+│   │       ├── test_add_member_updates_existing.1.json
+│   │       ├── test_add_member_zero_limit_fails.1.json
+│   │       ├── test_archive_old_transactions.1.json
+│   │       ├── test_archive_ttl_extended_on_archive_transactions.1.json
+│   │       ├── test_archive_unauthorized.1.json
+│   │       ├── test_check_spending_limit_exceeds_limit.1.json
+│   │       ├── test_check_spending_limit_member_not_found.1.json
+│   │       ├── test_check_spending_limit_negative_amount_returns_false.1.json
+│   │       ├── test_check_spending_limit_unknown_member_returns_false.1.json
+│   │       ├── test_check_spending_limit_within_limit.1.json
+│   │       ├── test_check_spending_limit_within.1.json
+│   │       ├── test_check_spending_limit_zero_means_unlimited.1.json
+│   │       ├── test_check_spending_limit.1.json
+│   │       ├── test_cleanup_expired_pending.1.json
+│   │       ├── test_cleanup_unauthorized.1.json
+│   │       ├── test_configure_multisig_unauthorized.1.json
+│   │       ├── test_configure_multisig.1.json
+│   │       ├── test_data_persists_across_repeated_operations.1.json
+│   │       ├── test_different_thresholds_for_different_transaction_types.1.json
+│   │       ├── test_duplicate_signature_prevention.1.json
+│   │       ├── test_emergency_mode_direct_transfer_within_limits.1.json
+│   │       ├── test_emergency_transfer_cooldown_enforced.1.json
+│   │       ├── test_emergency_transfer_exceeds_limit.1.json
+│   │       ├── test_emergency_transfer_min_balance_enforced.1.json
+│   │       ├── test_get_all_members_empty.1.json
+│   │       ├── test_get_all_members.1.json
+│   │       ├── test_get_member_found.1.json
+│   │       ├── test_get_member_not_found.1.json
+│   │       ├── test_get_member_returns_none_for_unknown.1.json
+│   │       ├── test_init_family_wallet.1.json
+│   │       ├── test_initialize_twice_fails.1.json
+│   │       ├── test_initialize.1.json
+│   │       ├── test_instance_ttl_extended_on_init.1.json
+│   │       ├── test_instance_ttl_refreshed_on_add_member.1.json
+│   │       ├── test_large_spending_limit.1.json
+│   │       ├── test_multisig_threshold_validation.1.json
+│   │       ├── test_non_owner_cannot_add_member.1.json
+│   │       ├── test_non_owner_cannot_update_limit.1.json
+│   │       ├── test_propose_emergency_transfer.1.json
+│   │       ├── test_propose_role_change.1.json
+│   │       ├── test_propose_split_config_change.1.json
+│   │       ├── test_storage_stats.1.json
+│   │       ├── test_unauthorized_signer.1.json
+│   │       ├── test_update_spending_limit_member_not_found.1.json
+│   │       ├── test_update_spending_limit_negative_fails.1.json
+│   │       ├── test_update_spending_limit_negative.1.json
+│   │       ├── test_update_spending_limit_success.1.json
+│   │       ├── test_update_spending_limit_unauthorized.1.json
+│   │       ├── test_update_spending_limit_zero_fails.1.json
+│   │       ├── test_update_spending_limit.1.json
+│   │       ├── test_withdraw_above_threshold_requires_multisig.1.json
+│   │       └── test_withdraw_below_threshold_no_multisig.1.json
+│   └── tests
+│       └── gas_bench.rs
+├── fix_lib.py
+├── gas_results.json
+├── indexer
+│   ├── DEPLOYMENT_CHECKLIST.md
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   ├── examples
+│   │   └── query-examples.ts
+│   ├── IMPLEMENTATION.md
+│   ├── package.json
+│   ├── QUICK_START.md
+│   ├── README.md
+│   ├── scripts
+│   │   ├── reset-db.sh
+│   │   └── setup.sh
+│   ├── src
+│   │   ├── api.ts
+│   │   ├── db
+│   │   │   ├── queries.ts
+│   │   │   └── schema.ts
+│   │   ├── eventProcessor.ts
+│   │   ├── index.ts
+│   │   ├── indexer.ts
+│   │   └── types.ts
+│   ├── tests
+│   │   └── eventProcessor.test.ts
+│   └── tsconfig.json
+├── INDEXER_FEATURE.md
+├── insurance
+│   ├── Cargo.toml
+│   ├── README.md
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   ├── test_snapshots
+│   │   ├── test
+│   │   │   ├── test_archive_empty_when_all_active.1.json
+│   │   │   ├── test_archive_inactive_policies.1.json
+│   │   │   ├── test_bulk_cleanup_policies.1.json
+│   │   │   ├── test_cancel_premium_schedule.1.json
+│   │   │   ├── test_create_policy_emits_event_exists.1.json
+│   │   │   ├── test_create_policy_emits_event.1.json
+│   │   │   ├── test_create_policy_invalid_coverage.1.json
+│   │   │   ├── test_create_policy_invalid_premium.1.json
+│   │   │   ├── test_create_policy_negative_coverage_panics.1.json
+│   │   │   ├── test_create_policy_negative_premium_panics.1.json
+│   │   │   ├── test_create_policy_requires_auth.1.json
+│   │   │   ├── test_create_policy_success.1.json
+│   │   │   ├── test_create_policy.1.json
+│   │   │   ├── test_create_premium_schedule.1.json
+│   │   │   ├── test_deactivate_policy_emits_event.1.json
+│   │   │   ├── test_deactivate_policy_owner_only.1.json
+│   │   │   ├── test_deactivate_policy.1.json
+│   │   │   ├── test_execute_due_premium_schedules.1.json
+│   │   │   ├── test_execute_missed_premium_schedules.1.json
+│   │   │   ├── test_execute_recurring_premium_schedule.1.json
+│   │   │   ├── test_get_active_policies_empty.1.json
+│   │   │   ├── test_get_active_policies_excludes_deactivated.1.json
+│   │   │   ├── test_get_active_policies_excludes_inactive.1.json
+│   │   │   ├── test_get_active_policies_filters_by_owner_and_active.1.json
+│   │   │   ├── test_get_active_policies_multi_owner_isolation.1.json
+│   │   │   ├── test_get_active_policies_multiple_pages.1.json
+│   │   │   ├── test_get_active_policies_paginated.1.json
+│   │   │   ├── test_get_active_policies_pagination.1.json
+│   │   │   ├── test_get_active_policies_single_page.1.json
+│   │   │   ├── test_get_active_policies.1.json
+│   │   │   ├── test_get_all_policies_for_owner_includes_inactive.1.json
+│   │   │   ├── test_get_all_policies_for_owner_pagination.1.json
+│   │   │   ├── test_get_archived_policy.1.json
+│   │   │   ├── test_get_policies_for_owner.1.json
+│   │   │   ├── test_get_policy_nonexistent.1.json
+│   │   │   ├── test_get_premium_schedules.1.json
+│   │   │   ├── test_get_total_monthly_premium_comprehensive.1.json
+│   │   │   ├── test_get_total_monthly_premium_deactivated_policy_excluded.1.json
+│   │   │   ├── test_get_total_monthly_premium_different_owner_isolation.1.json
+│   │   │   ├── test_get_total_monthly_premium_multiple_active_policies.1.json
+│   │   │   ├── test_get_total_monthly_premium_one_policy.1.json
+│   │   │   ├── test_get_total_monthly_premium_zero_policies.1.json
+│   │   │   ├── test_get_total_monthly_premium.1.json
+│   │   │   ├── test_initial_payment_date_calculation.1.json
+│   │   │   ├── test_instance_ttl_extended_on_create_policy.1.json
+│   │   │   ├── test_instance_ttl_extended_on_deactivate_policy.1.json
+│   │   │   ├── test_instance_ttl_refreshed_on_pay_premium.1.json
+│   │   │   ├── test_limit_clamped_to_max.1.json
+│   │   │   ├── test_limit_zero_uses_default.1.json
+│   │   │   ├── test_modify_premium_schedule.1.json
+│   │   │   ├── test_multiple_policies_emit_separate_events.1.json
+│   │   │   ├── test_multiple_policies_independent_payment_dates.1.json
+│   │   │   ├── test_multiple_policies_same_owner.1.json
+│   │   │   ├── test_multiple_premium_payments.1.json
+│   │   │   ├── test_new_policy_initial_state.1.json
+│   │   │   ├── test_pay_premium_after_deactivate.1.json
+│   │   │   ├── test_pay_premium_emits_event.1.json
+│   │   │   ├── test_pay_premium_inactive_policy_panics.1.json
+│   │   │   ├── test_pay_premium_policy_not_found.1.json
+│   │   │   ├── test_pay_premium_success.1.json
+│   │   │   ├── test_pay_premium_unauthorized_panics.1.json
+│   │   │   ├── test_pay_premium_unauthorized.1.json
+│   │   │   ├── test_pay_premium.1.json
+│   │   │   ├── test_payment_date_update_after_single_payment.1.json
+│   │   │   ├── test_payment_date_with_early_payment.1.json
+│   │   │   ├── test_payment_date_with_late_payment.1.json
+│   │   │   ├── test_policy_data_persists_across_ledger_advancements.1.json
+│   │   │   ├── test_policy_lifecycle_emits_all_events.1.json
+│   │   │   ├── test_restore_nonexistent_policy.1.json
+│   │   │   ├── test_restore_policy_unauthorized.1.json
+│   │   │   ├── test_restore_policy.1.json
+│   │   │   ├── test_sequential_payment_date_updates.1.json
+│   │   │   ├── test_storage_stats.1.json
+│   │   │   ├── test_time_drift_next_payment_date_uses_actual_payment_time.1.json
+│   │   │   ├── test_time_drift_no_double_execution_after_schedule_advances.1.json
+│   │   │   ├── test_time_drift_premium_schedule_executes_at_exact_next_due.1.json
+│   │   │   └── test_time_drift_premium_schedule_not_executed_before_next_due.1.json
+│   │   ├── test_events
+│   │   │   ├── test_create_policy_emits_event_exists.1.json
+│   │   │   ├── test_create_policy_emits_event.1.json
+│   │   │   ├── test_create_policy_invalid_premium.1.json
+│   │   │   ├── test_deactivate_policy_emits_event.1.json
+│   │   │   ├── test_get_active_policies_empty.1.json
+│   │   │   ├── test_get_active_policies_excludes_inactive.1.json
+│   │   │   ├── test_get_active_policies_multi_owner_isolation.1.json
+│   │   │   ├── test_get_active_policies_pagination.1.json
+│   │   │   ├── test_get_active_policies_single_page.1.json
+│   │   │   ├── test_get_all_policies_for_owner_includes_inactive.1.json
+│   │   │   ├── test_instance_ttl_extended_on_create_policy.1.json
+│   │   │   ├── test_instance_ttl_extended_on_deactivate_policy.1.json
+│   │   │   ├── test_instance_ttl_refreshed_on_pay_premium.1.json
+│   │   │   ├── test_limit_clamped_to_max.1.json
+│   │   │   ├── test_limit_zero_uses_default.1.json
+│   │   │   ├── test_multiple_policies_emit_separate_events.1.json
+│   │   │   ├── test_pay_premium_after_deactivate.1.json
+│   │   │   ├── test_pay_premium_emits_event.1.json
+│   │   │   ├── test_pay_premium_policy_not_found.1.json
+│   │   │   ├── test_policy_data_persists_across_ledger_advancements.1.json
+│   │   │   ├── test_policy_lifecycle_emits_all_events.1.json
+│   │   │   ├── test_time_drift_next_payment_date_uses_actual_payment_time.1.json
+│   │   │   ├── test_time_drift_no_double_execution_after_schedule_advances.1.json
+│   │   │   ├── test_time_drift_premium_schedule_executes_at_exact_next_due.1.json
+│   │   │   └── test_time_drift_premium_schedule_not_executed_before_next_due.1.json
+│   │   └── tests
+│   │       ├── test_create_policy_negative_coverage.1.json
+│   │       ├── test_create_policy_negative_premium.1.json
+│   │       ├── test_create_policy_success.1.json
+│   │       ├── test_create_policy_zero_coverage.1.json
+│   │       ├── test_create_policy_zero_premium.1.json
+│   │       ├── test_deactivate_policy_nonexistent.1.json
+│   │       ├── test_deactivate_policy_success.1.json
+│   │       ├── test_get_active_policies.1.json
+│   │       ├── test_get_policy_nonexistent.1.json
+│   │       ├── test_get_total_monthly_premium.1.json
+│   │       ├── test_large_amounts.1.json
+│   │       ├── test_multiple_policies_management.1.json
+│   │       ├── test_pay_premium_inactive_policy.1.json
+│   │       ├── test_pay_premium_nonexistent_policy.1.json
+│   │       └── test_pay_premium_success.1.json
+│   └── tests
+│       ├── gas_bench.rs
+│       └── stress_tests.rs
+├── integration_tests
+│   ├── Cargo.toml
+│   ├── INTEGRATION_TESTING.md
+│   ├── README.md
+│   ├── run_tests.sh
+│   ├── test_snapshots
+│   │   ├── test_multi_contract_user_flow.1.json
+│   │   ├── test_multiple_entities_creation.1.json
+│   │   └── test_split_with_rounding.1.json
+│   └── tests
+│       └── multi_contract_integration.rs
+├── NEW_CONTRACT_GUIDE.md
+├── orchestrator
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   └── test_snapshots
+│       └── test
+│           └── tests
+│               ├── test_bill_payment_with_invalid_bill.1.json
+│               ├── test_get_audit_log.1.json
+│               ├── test_get_execution_stats.1.json
+│               ├── test_remittance_flow_bill_payment_failure_causes_rollback.1.json
+│               ├── test_remittance_flow_exceeds_spending_limit.1.json
+│               ├── test_remittance_flow_invalid_amount.1.json
+│               ├── test_remittance_flow_savings_failure_causes_rollback.1.json
+│               ├── test_savings_deposit_with_invalid_goal.1.json
+│               ├── test_spending_limit_exceeded.1.json
+│               ├── test_successful_bill_payment.1.json
+│               ├── test_successful_complete_remittance_flow.1.json
+│               ├── test_successful_insurance_payment.1.json
+│               └── test_successful_savings_deposit.1.json
+├── PR_312.md
+├── rate_limiter
+│   └── test_snapshots
+│       └── tests
+│           ├── test_check_rate_limit.1.json
+│           ├── test_get_rate_limit_status.1.json
+│           ├── test_init_rate_limit.1.json
+│           └── test_whitelist.1.json
+├── README.md
+├── recurring_remittance
+│   └── test_snapshots
+│       └── tests
+│           ├── test_cancel_schedule.1.json
+│           ├── test_create_schedule.1.json
+│           ├── test_modify_schedule.1.json
+│           └── test_pause_resume_schedule.1.json
+├── remittance_split
+│   ├── Cargo.toml
+│   ├── error.txt
+│   ├── README.md
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   ├── test_snapshots
+│   │   ├── fuzz_calculate_split_small_amounts.1.json
+│   │   ├── fuzz_calculate_split_sum_preservation.1.json
+│   │   ├── fuzz_calculate_split_sum_preservation.10.json
+│   │   ├── fuzz_calculate_split_sum_preservation.2.json
+│   │   ├── fuzz_calculate_split_sum_preservation.3.json
+│   │   ├── fuzz_calculate_split_sum_preservation.4.json
+│   │   ├── fuzz_calculate_split_sum_preservation.5.json
+│   │   ├── fuzz_calculate_split_sum_preservation.6.json
+│   │   ├── fuzz_calculate_split_sum_preservation.7.json
+│   │   ├── fuzz_calculate_split_sum_preservation.8.json
+│   │   ├── fuzz_calculate_split_sum_preservation.9.json
+│   │   ├── fuzz_invalid_amounts.1.json
+│   │   ├── fuzz_invalid_percentages.1.json
+│   │   ├── fuzz_invalid_percentages.2.json
+│   │   ├── fuzz_invalid_percentages.3.json
+│   │   ├── fuzz_invalid_percentages.4.json
+│   │   ├── fuzz_invalid_percentages.5.json
+│   │   ├── fuzz_large_amounts.1.json
+│   │   ├── fuzz_rounding_behavior.1.json
+│   │   ├── fuzz_rounding_behavior.2.json
+│   │   ├── fuzz_rounding_behavior.3.json
+│   │   ├── fuzz_rounding_behavior.4.json
+│   │   ├── fuzz_rounding_behavior.5.json
+│   │   ├── fuzz_single_category_splits.1.json
+│   │   ├── fuzz_single_category_splits.2.json
+│   │   ├── fuzz_single_category_splits.3.json
+│   │   ├── fuzz_single_category_splits.4.json
+│   │   ├── test
+│   │   │   ├── test_calculate_complex_rounding.1.json
+│   │   │   ├── test_calculate_split_basic.1.json
+│   │   │   ├── test_calculate_split_default_when_uninitialized.1.json
+│   │   │   ├── test_calculate_split_emits_event.1.json
+│   │   │   ├── test_calculate_split_events.1.json
+│   │   │   ├── test_calculate_split_large_amount.1.json
+│   │   │   ├── test_calculate_split_large_non_divisible_amount.1.json
+│   │   │   ├── test_calculate_split_negative_amount.1.json
+│   │   │   ├── test_calculate_split_positive_amount.1.json
+│   │   │   ├── test_calculate_split_rounding_rigorous.1.json
+│   │   │   ├── test_calculate_split_rounding_total_matches.1.json
+│   │   │   ├── test_calculate_split_rounding_varied_percentages.1.json
+│   │   │   ├── test_calculate_split_rounding.1.json
+│   │   │   ├── test_calculate_split_small_amount_rounding.1.json
+│   │   │   ├── test_calculate_split_with_zero_categories.1.json
+│   │   │   ├── test_calculate_split_zero_amount.1.json
+│   │   │   ├── test_calculate_split_zero_or_negative_panics.1.json
+│   │   │   ├── test_calculate_split.1.json
+│   │   │   ├── test_cancel_remittance_schedule.1.json
+│   │   │   ├── test_create_remittance_schedule.1.json
+│   │   │   ├── test_event_emitted_on_initialize_and_update.1.json
+│   │   │   ├── test_get_config_returns_none_before_init.1.json
+│   │   │   ├── test_get_config_returns_some_after_init.1.json
+│   │   │   ├── test_get_remittance_schedules.1.json
+│   │   │   ├── test_get_split_configured_values.1.json
+│   │   │   ├── test_get_split_default.1.json
+│   │   │   ├── test_get_split_returns_default_before_init.1.json
+│   │   │   ├── test_initialize_split_already_initialized_panics.1.json
+│   │   │   ├── test_initialize_split_already_initialized.1.json
+│   │   │   ├── test_initialize_split_emits_event.1.json
+│   │   │   ├── test_initialize_split_events.1.json
+│   │   │   ├── test_initialize_split_invalid_does_not_overwrite.1.json
+│   │   │   ├── test_initialize_split_invalid_over_100.1.json
+│   │   │   ├── test_initialize_split_invalid_sum.1.json
+│   │   │   ├── test_initialize_split_percentages_must_sum_to_100.1.json
+│   │   │   ├── test_initialize_split_requires_auth.1.json
+│   │   │   ├── test_initialize_split_success.1.json
+│   │   │   ├── test_initialize_split_update_existing.1.json
+│   │   │   ├── test_initialize_split_valid.1.json
+│   │   │   ├── test_initialize_split_with_zero_percentages.1.json
+│   │   │   ├── test_initialize_split.1.json
+│   │   │   ├── test_instance_ttl_extended_on_initialize_split.1.json
+│   │   │   ├── test_instance_ttl_refreshed_on_update_split.1.json
+│   │   │   ├── test_modify_remittance_schedule.1.json
+│   │   │   ├── test_multiple_operations_emit_multiple_events.1.json
+│   │   │   ├── test_remittance_schedule_validation.1.json
+│   │   │   ├── test_remittance_schedule_zero_amount.1.json
+│   │   │   ├── test_split_boundary_0_0_0_100.1.json
+│   │   │   ├── test_split_boundary_0_0_100_0.1.json
+│   │   │   ├── test_split_boundary_0_100_0_0.1.json
+│   │   │   ├── test_split_boundary_100_0_0_0.1.json
+│   │   │   ├── test_split_boundary_25_25_25_25.1.json
+│   │   │   ├── test_split_data_persists_across_ledger_advancements.1.json
+│   │   │   ├── test_uninitialized_defaults.1.json
+│   │   │   ├── test_update_split_boundary_percentages.1.json
+│   │   │   ├── test_update_split_events.1.json
+│   │   │   ├── test_update_split_not_initialized.1.json
+│   │   │   ├── test_update_split_owner_only.1.json
+│   │   │   ├── test_update_split_percentages_must_sum_to_100.1.json
+│   │   │   ├── test_update_split_unauthorized.1.json
+│   │   │   └── test_update_split.1.json
+│   │   ├── test_calculate_split_near_max_safe_value.1.json
+│   │   ├── test_calculate_split_overflow_detection.1.json
+│   │   ├── test_calculate_split_with_large_amount.1.json
+│   │   ├── test_calculate_split_with_minimal_percentages.1.json
+│   │   ├── test_checked_arithmetic_prevents_silent_overflow.1.json
+│   │   ├── test_edge_case_i128_max_divided_by_100.1.json
+│   │   ├── test_get_split_allocations_with_large_amount.1.json
+│   │   ├── test_insurance_remainder_calculation_with_large_values.1.json
+│   │   ├── test_multiple_splits_with_large_amounts.1.json
+│   │   ├── test_rounding_behavior_with_large_amounts.1.json
+│   │   ├── test_sequential_large_calculations.1.json
+│   │   ├── test_split_with_100_percent_to_one_category.1.json
+│   │   └── tests
+│   │       ├── distribute_usdc_apportions_tokens_to_recipients.1.json
+│   │       ├── export_import_snapshot_and_audit.1.json
+│   │       ├── replay_attack_rejected.1.json
+│   │       └── split_allocations_report_categories_and_amounts.1.json
+│   └── tests
+│       ├── fuzz_tests.rs
+│       ├── gas_bench.rs
+│       ├── standalone_gas_test.rs
+│       └── stress_test_large_amounts.rs
+├── remitwise-common
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+├── reporting
+│   ├── Cargo.toml
+│   ├── README.md
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── tests.rs
+│   └── test_snapshots
+│       └── tests
+│           ├── test_archive_empty_when_no_old_reports.1.json
+│           ├── test_archive_old_reports.1.json
+│           ├── test_archive_ttl_extended_on_archive_reports.1.json
+│           ├── test_archive_unauthorized.1.json
+│           ├── test_calculate_health_score.1.json
+│           ├── test_cleanup_old_reports.1.json
+│           ├── test_cleanup_unauthorized.1.json
+│           ├── test_configure_addresses_unauthorized.1.json
+│           ├── test_configure_addresses.1.json
+│           ├── test_get_bill_compliance_report.1.json
+│           ├── test_get_financial_health_report.1.json
+│           ├── test_get_insurance_report.1.json
+│           ├── test_get_remittance_summary.1.json
+│           ├── test_get_savings_report.1.json
+│           ├── test_get_trend_analysis_decrease.1.json
+│           ├── test_get_trend_analysis.1.json
+│           ├── test_health_score_no_goals.1.json
+│           ├── test_init_reporting_contract.1.json
+│           ├── test_init_twice_fails.1.json
+│           ├── test_instance_ttl_extended_on_init.1.json
+│           ├── test_instance_ttl_refreshed_on_configure_addresses.1.json
+│           ├── test_instance_ttl_refreshed_on_store_report.1.json
+│           ├── test_report_data_persists_across_ledger_advancements.1.json
+│           ├── test_retrieve_nonexistent_report.1.json
+│           ├── test_storage_stats.1.json
+│           └── test_store_and_retrieve_report.1.json
+├── rust-toolchain.toml
+├── savings_goals
+│   ├── Cargo.toml
+│   ├── README.md
+│   ├── src
+│   │   ├── lib.rs
+│   │   └── test.rs
+│   ├── test_snapshots
+│   │   ├── test
+│   │   │   ├── test_add_to_goal_emits_event.1.json
+│   │   │   ├── test_add_to_goal_increments.1.json
+│   │   │   ├── test_add_to_non_existent_goal.1.json
+│   │   │   ├── test_archive_completed_goals.1.json
+│   │   │   ├── test_archive_empty_when_no_completed_goals.1.json
+│   │   │   ├── test_archive_preserves_owner_separation.1.json
+│   │   │   ├── test_cancel_savings_schedule.1.json
+│   │   │   ├── test_cleanup_old_archives.1.json
+│   │   │   ├── test_create_goal_emits_event.1.json
+│   │   │   ├── test_create_goal_unique_ids.1.json
+│   │   │   ├── test_create_savings_schedule.1.json
+│   │   │   ├── test_edge_cases_large_amounts.1.json
+│   │   │   ├── test_exact_goal_completion.1.json
+│   │   │   ├── test_execute_due_savings_schedules.1.json
+│   │   │   ├── test_execute_missed_savings_schedules.1.json
+│   │   │   ├── test_execute_recurring_savings_schedule.1.json
+│   │   │   ├── test_full_withdrawal.1.json
+│   │   │   ├── test_get_all_goals_backward_compat.1.json
+│   │   │   ├── test_get_all_goals_many_items.1.json
+│   │   │   ├── test_get_all_goals.1.json
+│   │   │   ├── test_get_archived_goal.1.json
+│   │   │   ├── test_get_goal_retrieval.1.json
+│   │   │   ├── test_get_goals_cursor_is_exclusive.1.json
+│   │   │   ├── test_get_goals_empty.1.json
+│   │   │   ├── test_get_goals_multi_owner_isolation.1.json
+│   │   │   ├── test_get_goals_multiple_pages.1.json
+│   │   │   ├── test_get_goals_paginated_cursor_behavior.1.json
+│   │   │   ├── test_get_goals_paginated_cursor_not_found.1.json
+│   │   │   ├── test_get_goals_paginated_default_limit.1.json
+│   │   │   ├── test_get_goals_paginated_empty_owner.1.json
+│   │   │   ├── test_get_goals_paginated_max_limit_enforcement.1.json
+│   │   │   ├── test_get_goals_paginated_minimum_limit.1.json
+│   │   │   ├── test_get_goals_paginated_multiple_pages.1.json
+│   │   │   ├── test_get_goals_paginated_single_page.1.json
+│   │   │   ├── test_get_goals_single_page.1.json
+│   │   │   ├── test_goal_completed_emits_event.1.json
+│   │   │   ├── test_instance_ttl_extended_on_create_goal.1.json
+│   │   │   ├── test_instance_ttl_extended_on_lock_goal.1.json
+│   │   │   ├── test_instance_ttl_refreshed_on_add_to_goal.1.json
+│   │   │   ├── test_is_goal_completed.1.json
+│   │   │   ├── test_limit_zero_uses_default.1.json
+│   │   │   ├── test_lock_goal_emits_event.1.json
+│   │   │   ├── test_lock_goal_success.1.json
+│   │   │   ├── test_lock_goal_unauthorized_panics.1.json
+│   │   │   ├── test_lock_nonexistent_goal_panics.1.json
+│   │   │   ├── test_lock_unlock_goal.1.json
+│   │   │   ├── test_modify_savings_schedule.1.json
+│   │   │   ├── test_multiple_goals_emit_separate_events.1.json
+│   │   │   ├── test_multiple_goals_management.1.json
+│   │   │   ├── test_new_goal_locked_state.1.json
+│   │   │   ├── test_restore_goal.1.json
+│   │   │   ├── test_restore_nonexistent_goal.1.json
+│   │   │   ├── test_restore_unauthorized.1.json
+│   │   │   ├── test_savings_data_persists_across_ledger_advancements.1.json
+│   │   │   ├── test_savings_schedule_goal_completion.1.json
+│   │   │   ├── test_set_time_lock.1.json
+│   │   │   ├── test_storage_stats.1.json
+│   │   │   ├── test_time_drift_is_goal_completed_depends_on_amount_not_time.1.json
+│   │   │   ├── test_time_drift_is_goal_completed_early_funding.1.json
+│   │   │   ├── test_time_drift_large_jump_marks_missed_count.1.json
+│   │   │   ├── test_time_drift_no_double_execution_after_next_due_advances.1.json
+│   │   │   ├── test_time_drift_schedule_executes_at_exact_next_due.1.json
+│   │   │   ├── test_unlock_goal_emits_event.1.json
+│   │   │   ├── test_unlock_goal_success.1.json
+│   │   │   ├── test_unlock_goal_unauthorized_panics.1.json
+│   │   │   ├── test_withdraw_after_lock_fails.1.json
+│   │   │   ├── test_withdraw_after_unlock_succeeds.1.json
+│   │   │   ├── test_withdraw_from_goal_emits_event.1.json
+│   │   │   ├── test_withdraw_from_goal_insufficient_balance_panics.1.json
+│   │   │   ├── test_withdraw_from_goal_insufficient_balance.1.json
+│   │   │   ├── test_withdraw_from_goal_locked_panics.1.json
+│   │   │   ├── test_withdraw_from_goal_locked.1.json
+│   │   │   ├── test_withdraw_from_goal_nonexistent_goal_panics.1.json
+│   │   │   ├── test_withdraw_from_goal_success.1.json
+│   │   │   ├── test_withdraw_from_goal_unauthorized_panics.1.json
+│   │   │   ├── test_withdraw_from_goal_unauthorized.1.json
+│   │   │   ├── test_withdraw_from_goal_zero_amount_panics.1.json
+│   │   │   ├── test_withdraw_from_goal.1.json
+│   │   │   ├── test_withdraw_full_balance.1.json
+│   │   │   ├── test_withdraw_locked.1.json
+│   │   │   ├── test_withdraw_time_locked_goal_after_unlock.1.json
+│   │   │   ├── test_withdraw_time_locked_goal_before_unlock.1.json
+│   │   │   ├── test_withdraw_too_much.1.json
+│   │   │   ├── test_withdraw_unauthorized.1.json
+│   │   │   └── test_zero_amount_fails.1.json
+│   │   ├── test_add_to_goal_multiple_large_contributions.1.json
+│   │   ├── test_add_to_goal_overflow_panics.1.json
+│   │   ├── test_add_to_goal_unauthorized_access.1.json
+│   │   ├── test_add_to_goal_with_large_amount.1.json
+│   │   ├── test_batch_add_with_large_amounts.1.json
+│   │   ├── test_create_goal_near_max_i128.1.json
+│   │   ├── test_edge_case_i128_max_minus_one.1.json
+│   │   ├── test_export_import_snapshot_with_large_amounts.1.json
+│   │   ├── test_goal_completion_with_large_amounts.1.json
+│   │   ├── test_lock_unlock_with_large_amounts.1.json
+│   │   ├── test_multiple_goals_with_large_amounts.1.json
+│   │   ├── test_pagination_with_large_amounts.1.json
+│   │   ├── test_sequential_large_operations.1.json
+│   │   ├── test_time_lock_with_large_amounts.1.json
+│   │   └── test_withdraw_from_goal_with_large_amount.1.json
+│   └── tests
+│       ├── add_to_goal.rs
+│       ├── gas_bench.rs
+│       ├── stress_test_large_amounts.rs
+│       └── stress_tests.rs
+├── scenarios
+│   ├── Cargo.toml
+│   ├── src
+│   │   └── lib.rs
+│   ├── test_snapshots
+│   │   └── test_end_to_end_flow.1.json
+│   └── tests
+│       └── flow.rs
+├── SCHEDULE_GAS_BENCHMARKS_SUMMARY.md
+├── scripts
+│   ├── bootstrap_deploy.sh
+│   ├── compare_gas_results.sh
+│   ├── run_gas_benchmarks.sh
+│   ├── seed_local.sh
+│   ├── update_baseline.sh
+│   └── verify_cross_contract_invariants.py
+├── SECURITY_REVIEW_SUMMARY.md
+├── src
+│   └── main.rs
+├── STORAGE_LAYOUT.md
+├── TAGGING_FEATURE.md
+├── test_admin_implementation.exe
+├── test_admin_implementation.pdb
+├── test_admin_implementation.rs
+├── TEST_EXECUTION_GUIDE.md
+├── TEST_INSTRUCTIONS.md
+├── test_output_simulation.md
+├── test_temp.rs
+├── testutils
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+├── THREAT_MODEL.md
+├── tree.txt
+├── UPGRADE_GUIDE.md
+├── validate_admin_security.sh
+└── VERSION_COMPATIBILITY.md
+
+80 directories, 686 files
