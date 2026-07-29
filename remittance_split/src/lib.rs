@@ -11,9 +11,21 @@ mod tests_safe_math;
 
 use remitwise_common::{
     clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD,
+    Timestamp, ToI128Checked, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
     PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
+
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
+    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+};
+
+// Event topics
+const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
+const SPLIT_CALCULATED: Symbol = symbol_short!("calc");
+
+// Request hash domain separator for signing (prevents cross-domain attacks)
+const DISTRIBUTE_USDC_DOMAIN: &[u8] = b"distribute_usdc_v1";
 
 mod fee_math;
 
@@ -94,6 +106,10 @@ pub enum RemittanceSplitError {
     DuplicateCorridorId = 38,
     /// Fee rounding error.
     FeeRounding = 39,
+    /// `batch_transfer`'s `recipients` and `amounts` vectors have different lengths.
+    BatchLengthMismatch = 40,
+    /// `batch_transfer`'s recipient count exceeds `remitwise_common::MAX_BATCH_SIZE`.
+    BatchSizeExceeded = 41,
 }
 
 #[derive(Clone)]
@@ -724,6 +740,11 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::Unauthorized);
         }
 
+        // Harden against proposing a treasury nothing can ever accept as.
+        if new_treasury == env.current_contract_address() {
+            return Err(RemittanceSplitError::InvalidTreasuryAddress);
+        }
+
         Self::set_pending_treasury(&env, &new_treasury);
 
         env.events().publish(
@@ -1244,14 +1265,14 @@ impl RemittanceSplit {
             EventCategory::State,
             EventPriority::Medium,
             symbol_short!("init"),
-            owner,
+            owner.clone(),
         );
 
         // Emit event for audit trail
         env.events()
             .publish((symbol_short!("admin"), SplitEvent::Initialized), owner);
 
-        true
+        Ok(true)
     }
 
     pub fn update_split(
@@ -1316,7 +1337,7 @@ impl RemittanceSplit {
         env.events()
             .publish((symbol_short!("admin"), SplitEvent::Updated), caller);
 
-        true
+        Ok(true)
     }
 
     /// Rotate the split configuration's owner.
@@ -1671,7 +1692,7 @@ impl RemittanceSplit {
         Self::require_nonce_hardened(&env, &from, nonce, deadline, request_hash, expected_hash)?;
 
         // 9. Calculate split amounts and execute transfers.
-        let amounts = Self::calculate_split_amounts(&env, total_amount, false)?;
+        let amounts = Self::calculate_split_amounts(&env, &config, total_amount, false)?;
         let token = TokenClient::new(&env, &usdc_contract);
 
         if amounts[0] > 0 {
@@ -1814,7 +1835,7 @@ impl RemittanceSplit {
         Self::require_nonce(&env, &request.from, request.nonce)?;
 
         // Calculate split amounts
-        let amounts = Self::calculate_split_amounts(&env, request.total_amount, false)?;
+        let amounts = Self::calculate_split_amounts(&env, &config, request.total_amount, false)?;
         let token = TokenClient::new(&env, &request.usdc_contract);
 
         // Execute transfers
@@ -1835,6 +1856,80 @@ impl RemittanceSplit {
         Self::increment_nonce(&env, &request.from)?;
         Self::append_audit(&env, symbol_short!("distH"), &request.from, true);
         Self::emit_distribution_completed(&env, &request.from, request.total_amount, &amounts);
+        Ok(true)
+    }
+
+    /// Transfers the configured USDC asset from `caller` to each address in
+    /// `recipients`, in the paired `amounts`, in one call.
+    ///
+    /// Unlike `distribute_usdc` (which always splits into the four fixed
+    /// spending/savings/bills/insurance accounts), this sends arbitrary
+    /// amounts to arbitrary recipients -- for owner-directed payouts that
+    /// don't follow the split percentages.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if the split has not been initialized.
+    /// - `Unauthorized` if `caller` is not the configured owner.
+    /// - `UntrustedTokenContract` if `usdc_contract` != the trusted address
+    ///   pinned at initialization.
+    /// - `BatchLengthMismatch` if `recipients.len() != amounts.len()`.
+    /// - `BatchSizeExceeded` if `recipients.len() > MAX_BATCH_SIZE`.
+    /// - `InvalidAmount` if any amount is <= 0.
+    /// - `InvalidNonce` on replay.
+    pub fn batch_transfer(
+        env: Env,
+        caller: Address,
+        nonce: u64,
+        usdc_contract: Address,
+        recipients: Vec<Address>,
+        amounts: Vec<i128>,
+    ) -> Result<bool, RemittanceSplitError> {
+        caller.require_auth();
+        Self::require_not_paused(&env)?;
+
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .ok_or(RemittanceSplitError::NotInitialized)?;
+        if config.owner != caller {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
+        if config.usdc_contract != usdc_contract {
+            Self::append_audit(&env, symbol_short!("batchtx"), &caller, false);
+            return Err(RemittanceSplitError::UntrustedTokenContract);
+        }
+
+        if recipients.len() != amounts.len() {
+            return Err(RemittanceSplitError::BatchLengthMismatch);
+        }
+        if recipients.len() > MAX_BATCH_SIZE {
+            return Err(RemittanceSplitError::BatchSizeExceeded);
+        }
+
+        Self::require_nonce(&env, &caller, nonce)?;
+
+        for amount in amounts.iter() {
+            if amount <= 0 {
+                return Err(RemittanceSplitError::InvalidAmount);
+            }
+        }
+
+        let token = TokenClient::new(&env, &usdc_contract);
+        for i in 0..recipients.len() {
+            let recipient = recipients.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            let amount = amounts.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            token.transfer(&caller, &recipient, &amount);
+        }
+
+        Self::increment_nonce(&env, &caller)?;
+        Self::append_audit(&env, symbol_short!("batchtx"), &caller, true);
+        env.events().publish(
+            (symbol_short!("split"), symbol_short!("batch_tx")),
+            (caller, recipients.len()),
+        );
+
         Ok(true)
     }
 
@@ -2540,8 +2635,14 @@ impl RemittanceSplit {
     ///   allocation is computed.
     /// - [`RemittanceSplitError::Overflow`] — any `checked_mul` or `checked_sub` step fails;
     ///   returned immediately before any partial allocation value is produced.
+    /// Takes `config` by reference rather than re-reading `CONFIG` from
+    /// storage (as `Self::get_split(env)` would) -- every caller already
+    /// has it loaded for owner/token validation, so re-fetching the same
+    /// instance-storage entry a second time within the same call was a
+    /// redundant read of the fee/split table for no reason.
     fn calculate_split_amounts(
         env: &Env,
+        config: &SplitConfig,
         total_amount: i128,
         emit_events: bool,
     ) -> Result<[i128; 4], RemittanceSplitError> {
@@ -2549,25 +2650,18 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        let split = Self::get_split(env);
-        let s0 = match split.get(0) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s1 = match split.get(1) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s2 = match split.get(2) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
+        let s0 = config
+            .spending_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
+        let s1 = config
+            .savings_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
+        let s2 = config
+            .bills_percent
+            .to_i128_checked()
+            .map_err(|_| RemittanceSplitError::Overflow)?;
 
         let spending = total_amount
             .checked_mul(s0)
@@ -2615,6 +2709,17 @@ impl RemittanceSplit {
         Ok([spending, savings, bills, insurance])
     }
 
+    /// Extend the TTL of a persistent storage entry using
+    /// PERSISTENT_BUMP_AMOUNT / PERSISTENT_LIFETIME_THRESHOLD from
+    /// remitwise-common.
+    fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     /// Extend the TTL of instance storage using INSTANCE_BUMP_AMOUNT / INSTANCE_LIFETIME_THRESHOLD
     /// from remitwise-common.
     fn extend_instance_ttl(env: &Env) {
@@ -2622,6 +2727,8 @@ impl RemittanceSplit {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
+ validate/rotate-admin-same-address
+}
 
 #[cfg(test)]
 mod tests {
@@ -2671,6 +2778,8 @@ mod tests {
         assert_eq!(token_client.balance(&payer), 0);
     }
 
+=======
+ main
     /// Create a new automatic remittance schedule for the split owner.
     ///
     /// # Arguments
@@ -3263,6 +3372,98 @@ mod tests {
             count,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _},
+        token::{StellarAssetClient, TokenClient},
+        Env, TryFromVal,
+    };
+
+    #[test]
+    fn distribute_usdc_apportions_tokens_to_recipients() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, RemittanceSplit);
+        let client = RemittanceSplitClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
+        let payer = Address::generate(&env);
+        let amount = 1_000i128;
+
+        StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
+
+        let spending = Address::generate(&env);
+        let savings = Address::generate(&env);
+        let bills = Address::generate(&env);
+        let insurance = Address::generate(&env);
+
+        let accounts = AccountGroup {
+            spending: spending.clone(),
+            savings: savings.clone(),
+            bills: bills.clone(),
+            insurance: insurance.clone(),
+        };
+
+        client.initialize_split(
+            &payer,
+            &0,
+            &token_contract.address(),
+            &5000,
+            &3000,
+            &1500,
+            &500,
+        );
+
+        let nonce = 1u64; // initialize_split already consumed nonce 0 for `payer`
+        let deadline = env.ledger().timestamp() + 100;
+        let request_hash = RemittanceSplit::compute_request_hash(
+            symbol_short!("distrib"),
+            payer.clone(),
+            nonce,
+            amount,
+            deadline,
+        );
+
+        let distributed = client.distribute_usdc(
+            &token_contract.address(),
+            &payer,
+            &nonce,
+            &deadline,
+            &request_hash,
+            &accounts,
+            &amount,
+        );
+
+        assert!(distributed);
+
+        let token_client = TokenClient::new(&env, &token_contract.address());
+        assert_eq!(token_client.balance(&spending), 500);
+        assert_eq!(token_client.balance(&savings), 300);
+        assert_eq!(token_client.balance(&bills), 150);
+        assert_eq!(token_client.balance(&insurance), 50);
+        assert_eq!(token_client.balance(&payer), 0);
+
+        // get_usdc_balance() is the contract's own read-only balance view --
+        // it must reflect the transfers `distribute_usdc` just made in this
+        // same call, not whatever the balance was before the transaction
+        // that moved the funds. It has no storage-backed cache of its own
+        // (it always queries the token contract directly), so this pins
+        // down that the view is never stale relative to a transfer that
+        // already landed.
+        assert_eq!(
+            client.get_usdc_balance(&token_contract.address(), &payer),
+            0
+        );
+        assert_eq!(
+            client.get_usdc_balance(&token_contract.address(), &spending),
+            500
+        );
+    }
 
     /// Returns the `Symbol` topic prefix (the first element of the topic
     /// tuple) of the most recently published event.
@@ -3280,10 +3481,12 @@ mod tests {
         let client = RemittanceSplitClient::new(&env, &contract_id);
 
         let owner = Address::generate(&env);
-        client.initialize_split(&owner, &50, &30, &15, &5);
+        let usdc_admin = Address::generate(&env);
+        let usdc_contract = env.register_stellar_asset_contract_v2(usdc_admin).address();
+        client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
         assert_eq!(last_event_topic_prefix(&env), symbol_short!("admin"));
 
-        client.update_split(&owner, &40, &30, &20, &10);
+        client.update_split(&owner, &1, &4000, &3000, &2000, &1000);
         assert_eq!(last_event_topic_prefix(&env), symbol_short!("admin"));
     }
 
@@ -3308,7 +3511,9 @@ mod tests {
 
         let owner = Address::generate(&env);
         let new_owner = Address::generate(&env);
-        client.initialize_split(&owner, &50, &30, &15, &5);
+        let usdc_admin = Address::generate(&env);
+        let usdc_contract = env.register_stellar_asset_contract_v2(usdc_admin).address();
+        client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
         client.rotate_owner(&owner, &new_owner);
 
@@ -3326,7 +3531,9 @@ mod tests {
         let owner = Address::generate(&env);
         let stranger = Address::generate(&env);
         let new_owner = Address::generate(&env);
-        client.initialize_split(&owner, &50, &30, &15, &5);
+        let usdc_admin = Address::generate(&env);
+        let usdc_contract = env.register_stellar_asset_contract_v2(usdc_admin).address();
+        client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
         client.rotate_owner(&stranger, &new_owner);
     }
@@ -3340,7 +3547,9 @@ mod tests {
         let client = RemittanceSplitClient::new(&env, &contract_id);
 
         let owner = Address::generate(&env);
-        client.initialize_split(&owner, &50, &30, &15, &5);
+        let usdc_admin = Address::generate(&env);
+        let usdc_contract = env.register_stellar_asset_contract_v2(usdc_admin).address();
+        client.initialize_split(&owner, &0, &usdc_contract, &5000, &3000, &1500, &500);
 
         client.rotate_owner(&owner, &contract_id);
     }

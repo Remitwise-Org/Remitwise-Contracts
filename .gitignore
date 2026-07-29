@@ -2,6 +2,7 @@
 **/*.rs.bk
 *.wasm
 .env
+.envrc
 *.log
 
 # Generated client bindings (regenerate with `make bindings`)

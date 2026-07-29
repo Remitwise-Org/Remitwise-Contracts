@@ -247,6 +247,17 @@ pub struct ProposalInvalidatedEvent {
     pub timestamp: u64,
 }
 
+/// Emitted when `pause` halts the wallet. `reason` lets off-chain monitors
+/// distinguish a routine admin pause from an incident-driven one without
+/// having to correlate against out-of-band reports.
+#[contracttype]
+#[derive(Clone)]
+pub struct PauseEvent {
+    pub paused_by: Address,
+    pub paused_at: u64,
+    pub reason: Symbol,
+}
+
 /// Emitted when `configure_multisig` successfully sets or updates the
 /// threshold, signer set, or spending limit for a `TransactionType`.
 ///
@@ -425,6 +436,17 @@ impl FamilyWallet {
             return false;
         }
         owner.require_auth();
+        // Reject an oversized initial member list up front, before any storage
+        // writes. `initial_members` is fully caller-controlled and, without this
+        // cap, is looped over unbounded below — an attacker (or a careless
+        // caller) could pass an arbitrarily large list and burn CPU/memory
+        // proportional to its length instead of hitting the same
+        // MAX_FAMILY_MEMBERS cap every other member-adding entrypoint
+        // (`batch_add_family_members`) already enforces. `+1` accounts for the
+        // owner, who is also added as a member below.
+        if initial_members.len().saturating_add(1) > MAX_FAMILY_MEMBERS {
+            panic!("Initial member cap exceeded");
+        }
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
         if existing.is_some() {
             return false;
@@ -2116,7 +2138,7 @@ impl FamilyWallet {
         true
     }
 
-    pub fn pause(env: Env, caller: Address) -> bool {
+    pub fn pause(env: Env, caller: Address, reason: Symbol) -> bool {
         if remitwise_common::require_no_active_kill_switch(&env).is_err() {
             return false;
         }
@@ -2134,11 +2156,14 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
-        env.events()
-            .publish((symbol_short!("wallet"), symbol_short!("paused")), ());
+        env.events().publish(
+            (symbol_short!("wallet"), symbol_short!("paused")),
+            PauseEvent {
+                paused_by: caller.clone(),
+                paused_at: env.ledger().timestamp(),
+                reason,
+            },
+        );
         Self::append_access_audit(&env, symbol_short!("pause"), &caller, None, true);
         true
     }

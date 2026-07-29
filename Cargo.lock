@@ -152,10 +152,8 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bill_payments"
 version = "0.1.0"
 dependencies = [
- "proptest",
  "remitwise-common",
  "soroban-sdk",
- "testutils",
 ]
 
 [[package]]
@@ -888,7 +886,6 @@ version = "0.1.0"
 dependencies = [
  "remitwise-common",
  "soroban-sdk",
- "testutils",
 ]
 
 [[package]]
@@ -1346,10 +1343,8 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "remittance_split"
 version = "0.1.0"
 dependencies = [
- "proptest",
  "remitwise-common",
  "soroban-sdk",
- "testutils",
 ]
 
 [[package]]
@@ -1375,15 +1370,11 @@ dependencies = [
 name = "remitwise-contracts"
 version = "0.1.0"
 dependencies = [
- "bill_payments",
  "ed25519-dalek",
  "family_wallet",
- "insurance",
  "orchestrator",
- "remittance_split",
  "remitwise-common",
  "reporting",
- "savings_goals",
  "soroban-sdk",
 ]
 
@@ -1462,10 +1453,8 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "savings_goals"
 version = "0.1.0"
 dependencies = [
- "data_migration",
  "remitwise-common",
  "soroban-sdk",
- "testutils",
 ]
 
 [[package]]
