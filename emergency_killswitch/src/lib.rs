@@ -117,9 +117,7 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::KillSwitchEpoch)
             .unwrap_or(0);
-        let new_epoch = old_epoch
-            .checked_add(1)
-            .ok_or(Error::InvalidAdmin)?; // Overflow guard — saturate on wrap
+        let new_epoch = old_epoch.checked_add(1).ok_or(Error::InvalidAdmin)?; // Overflow guard — saturate on wrap
         env.storage()
             .instance()
             .set(&DataKey::KillSwitchEpoch, &new_epoch);

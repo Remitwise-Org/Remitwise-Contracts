@@ -827,7 +827,7 @@ fn test_canonicalise_symbols_invalid_element_short_circuits() {
     let env = Env::default();
     let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
     inputs.push_back(soroban_sdk::String::from_str(&env, "valid_one"));
-    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char"));  // hyphen at pos 3
+    inputs.push_back(soroban_sdk::String::from_str(&env, "bad-char")); // hyphen at pos 3
     inputs.push_back(soroban_sdk::String::from_str(&env, "valid_two"));
 
     assert_eq!(
@@ -842,7 +842,10 @@ fn test_canonicalise_symbols_too_long_element() {
     let env = Env::default();
     let mut inputs: soroban_sdk::Vec<soroban_sdk::String> = soroban_sdk::Vec::new(&env);
     inputs.push_back(soroban_sdk::String::from_str(&env, "ok"));
-    inputs.push_back(soroban_sdk::String::from_str(&env, "abcdefghijklmnopqrstuvwxyzabcdefg")); // 33 chars
+    inputs.push_back(soroban_sdk::String::from_str(
+        &env,
+        "abcdefghijklmnopqrstuvwxyzabcdefg",
+    )); // 33 chars
 
     assert_eq!(
         canonicalise_symbols(&env, &inputs),
@@ -985,7 +988,10 @@ fn test_period_key_month_bucket_epoch_and_dec_2023() {
     assert_eq!(Timestamp::to_period_key(ts, PeriodKind::Month), 202312);
     // Jan 1, 2024 00:00:00 UTC
     let jan1_2024 = 1704067200;
-    assert_eq!(Timestamp::to_period_key(jan1_2024, PeriodKind::Month), 202401);
+    assert_eq!(
+        Timestamp::to_period_key(jan1_2024, PeriodKind::Month),
+        202401
+    );
 }
 
 #[test]
@@ -993,10 +999,19 @@ fn test_period_key_exact_rollover_edges() {
     // Midnight UTC at 2021-02-28 to Mar 1st transition, and leap-year
     let feb_28_2020 = 1582848000; // 2020-02-28 00:00:00 UTC
     let feb_29_2020 = 1582934400; // 2020-02-29 00:00:00 UTC (leap)
-    let mar_1_2020  = 1583020800; // 2020-03-01 00:00:00 UTC
-    assert_eq!(Timestamp::to_period_key(feb_28_2020, PeriodKind::Month), 202002);
-    assert_eq!(Timestamp::to_period_key(feb_29_2020, PeriodKind::Month), 202002);
-    assert_eq!(Timestamp::to_period_key(mar_1_2020, PeriodKind::Month), 202003);
+    let mar_1_2020 = 1583020800; // 2020-03-01 00:00:00 UTC
+    assert_eq!(
+        Timestamp::to_period_key(feb_28_2020, PeriodKind::Month),
+        202002
+    );
+    assert_eq!(
+        Timestamp::to_period_key(feb_29_2020, PeriodKind::Month),
+        202002
+    );
+    assert_eq!(
+        Timestamp::to_period_key(mar_1_2020, PeriodKind::Month),
+        202003
+    );
 }
 
 #[test]
@@ -1406,7 +1421,10 @@ fn test_sign_for_domain_a_replay_against_domain_b_fails() {
     prefixed.extend_from_slice(message);
     let signature = sk.sign(&prefixed).to_bytes();
 
-    assert_eq!(verify_signature(&env, domain_a, message, &signature, &pk), Ok(()));
+    assert_eq!(
+        verify_signature(&env, domain_a, message, &signature, &pk),
+        Ok(())
+    );
     let _ = verify_signature(&env, domain_b, message, &signature, &pk);
 }
 
@@ -1490,22 +1508,24 @@ fn test_verify_slash_signature_invalid() {
 #[test]
 fn test_require_matching_cross_contract_epoch() {
     let env = Env::default();
-    
+
     // Default is 0, so epoch 0 matches
     assert_eq!(require_matching_cross_contract_epoch(&env, 0), Ok(()));
-    
+
     // Set epoch to 5
-    env.storage().instance().set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
-    
+    env.storage()
+        .instance()
+        .set(&STORAGE_CROSS_CONTRACT_EPOCH, &5u64);
+
     // Exact match is accepted
     assert_eq!(require_matching_cross_contract_epoch(&env, 5), Ok(()));
-    
+
     // Stale epoch (less than current) is rejected
     assert_eq!(
         require_matching_cross_contract_epoch(&env, 4),
         Err(CrossContractEpochError::EpochMismatch)
     );
-    
+
     // Future epoch (greater than current) is rejected
     assert_eq!(
         require_matching_cross_contract_epoch(&env, 6),
@@ -2187,4 +2207,3 @@ fn test_same_address_symmetric() {
     let b = soroban_sdk::Address::generate(&env);
     assert_eq!(crate::same_address(&a, &b), crate::same_address(&b, &a));
 }
-

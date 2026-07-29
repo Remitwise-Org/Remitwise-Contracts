@@ -83,7 +83,9 @@ pub fn require_no_panic_in_view_fn(source: &str) -> Vec<PanicViolation> {
             cursor = fn_kw_start + 7;
             continue;
         };
-        let fn_name = source[name_start..name_start + rel_paren].trim().to_string();
+        let fn_name = source[name_start..name_start + rel_paren]
+            .trim()
+            .to_string();
 
         // Only inspect view functions.
         if !fn_name.starts_with("get_") && !fn_name.starts_with("is_") {

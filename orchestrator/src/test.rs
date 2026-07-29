@@ -185,7 +185,7 @@ fn wasm_size_budgets() -> &'static [(&'static str, usize)] {
         ("remittance_split.wasm", 110_000),
         ("savings_goals.wasm", 112_000),
         ("bill_payments.wasm", 135_000),
-        ("insurance.wasm", 58_000),  // Increased from 57_000 to 58_000 to accommodate small test coverage additions
+        ("insurance.wasm", 58_000), // Increased from 57_000 to 58_000 to accommodate small test coverage additions
         ("family_wallet.wasm", 130_000),
     ]
 }
@@ -2600,7 +2600,10 @@ fn test_get_fee_schedule_returns_none_when_invalid_split() {
 
     // Call the view function - should return None for invalid split
     let result = client.get_fee_schedule();
-    assert!(result.is_none(), "fee schedule should be None for invalid split");
+    assert!(
+        result.is_none(),
+        "fee schedule should be None for invalid split"
+    );
 }
 
 #[test]
@@ -2612,5 +2615,8 @@ fn test_get_fee_schedule_returns_none_when_not_initialized() {
 
     // Don't initialize - should return None
     let result = client.get_fee_schedule();
-    assert!(result.is_none(), "fee schedule should be None when not initialized");
+    assert!(
+        result.is_none(),
+        "fee schedule should be None when not initialized"
+    );
 }

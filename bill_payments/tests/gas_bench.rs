@@ -911,7 +911,10 @@ fn bench_get_unpaid_bills_all_pages_100_total() {
     let mem = budget.memory_bytes_cost();
 
     assert_eq!(total_items, 100, "cursor walk must visit all 100 items");
-    assert_eq!(pages, 2, "100 bills with limit=50 must yield exactly 2 pages");
+    assert_eq!(
+        pages, 2,
+        "100 bills with limit=50 must yield exactly 2 pages"
+    );
 
     emit_bench_result(
         "get_unpaid_bills",
@@ -966,8 +969,14 @@ fn bench_get_overdue_bills_all_pages_100_total() {
     let cpu = budget.cpu_instruction_cost();
     let mem = budget.memory_bytes_cost();
 
-    assert_eq!(total_items, 100, "cursor walk must visit all 100 overdue bills");
-    assert_eq!(pages, 2, "100 overdue bills with limit=50 must yield exactly 2 pages");
+    assert_eq!(
+        total_items, 100,
+        "cursor walk must visit all 100 overdue bills"
+    );
+    assert_eq!(
+        pages, 2,
+        "100 overdue bills with limit=50 must yield exactly 2 pages"
+    );
 
     emit_bench_result(
         "get_overdue_bills",
@@ -1031,8 +1040,14 @@ fn bench_get_all_bills_for_owner_all_pages_100_total() {
     let cpu = budget.cpu_instruction_cost();
     let mem = budget.memory_bytes_cost();
 
-    assert_eq!(total_items, 100, "cursor walk must visit all 100 owner bills");
-    assert_eq!(pages, 2, "100 owner bills with limit=50 must yield exactly 2 pages");
+    assert_eq!(
+        total_items, 100,
+        "cursor walk must visit all 100 owner bills"
+    );
+    assert_eq!(
+        pages, 2,
+        "100 owner bills with limit=50 must yield exactly 2 pages"
+    );
 
     emit_bench_result(
         "get_all_bills_for_owner",
@@ -1079,9 +1094,13 @@ fn bench_get_overdue_bills_for_owner_page_50_total() {
     // Second owner — their bills must be invisible to `owner`.
     create_many_overdue(&client, &env, &other, "OtherOverdue", 20);
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_overdue_bills_for_owner(&owner, &0u32, &50u32));
-    assert_eq!(page.count, 50, "must return exactly the owner's 50 overdue bills");
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_overdue_bills_for_owner(&owner, &0u32, &50u32)
+    });
+    assert_eq!(
+        page.count, 50,
+        "must return exactly the owner's 50 overdue bills"
+    );
     assert_eq!(page.items.len(), 50);
     assert_eq!(page.next_cursor, 0, "all 50 fit on one page");
     for bill in page.items.iter() {
@@ -1119,8 +1138,9 @@ fn bench_get_overdue_bills_for_owner_page_200_total() {
 
     create_many_overdue(&client, &env, &owner, "OwnOverdue200", 200);
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_overdue_bills_for_owner(&owner, &0u32, &50u32));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_overdue_bills_for_owner(&owner, &0u32, &50u32)
+    });
     assert_eq!(page.count, 50, "first page must return 50 items");
     assert_eq!(page.items.len(), 50);
     assert!(
@@ -1222,8 +1242,7 @@ fn scale_get_overdue_bills_page_cost_sublinear_50_vs_100() {
     let client_a = BillPaymentsClient::new(&env_a, &id_a);
     let owner_a = <Address as AddressTrait>::generate(&env_a);
     create_many_overdue(&client_a, &env_a, &owner_a, "OvScaleA", 50);
-    let (cpu_a, mem_a, page_a) =
-        measure(&env_a, || client_a.get_overdue_bills(&0u32, &50u32));
+    let (cpu_a, mem_a, page_a) = measure(&env_a, || client_a.get_overdue_bills(&0u32, &50u32));
     assert_eq!(page_a.count, 50);
 
     let env_b = bench_env();
@@ -1231,8 +1250,7 @@ fn scale_get_overdue_bills_page_cost_sublinear_50_vs_100() {
     let client_b = BillPaymentsClient::new(&env_b, &id_b);
     let owner_b = <Address as AddressTrait>::generate(&env_b);
     create_many_overdue(&client_b, &env_b, &owner_b, "OvScaleB", 100);
-    let (cpu_b, mem_b, page_b) =
-        measure(&env_b, || client_b.get_overdue_bills(&0u32, &50u32));
+    let (cpu_b, mem_b, page_b) = measure(&env_b, || client_b.get_overdue_bills(&0u32, &50u32));
     assert_eq!(page_b.count, 50);
 
     let cpu_slack = cpu_a / 2;
