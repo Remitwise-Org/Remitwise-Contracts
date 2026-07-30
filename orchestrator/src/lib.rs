@@ -609,6 +609,18 @@ impl Orchestrator {
     ///
     /// Useful for idempotent retries or best-effort distribution where partial progress
     /// is preferable to full rollback.
+    ///
+    /// # Memoised fee lookup — fix for #1339
+    /// Dependency addresses and execution IDs are read from instance storage exactly
+    /// once via `FlowRouting::from_storage`, and the split allocation is computed via
+    /// a single `calculate_split` cross-contract call.  Previous versions called
+    /// 6 individual `instance().get(...)` lookups and used a hardcoded `amount / 3`
+    /// approximation rather than the configured split percentages.
+    ///
+    /// # Correct succeeded semantics — fix for #1345
+    /// `succeeded` is set to `true` when the downstream `try_*` call returns `Ok`,
+    /// and `false` when it returns `Err`.  The previous code used `.is_err()` for
+    /// all three assignments, which inverted both per-step flags and `all_succeeded`.
     pub fn execute_flow_fanout(
         env: Env,
         executor: Address,
@@ -621,64 +633,59 @@ impl Orchestrator {
             return Err(OrchestratorError::InvalidAmount);
         }
 
-        let sg_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("SG_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let bp_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BP_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let ins_addr: Address = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("INS_ADDR"))
-            .ok_or(OrchestratorError::InvalidDependency)?;
-        let goal_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("GOAL_ID"))
-            .unwrap_or(1);
-        let bill_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("BILL_ID"))
-            .unwrap_or(1);
-        let policy_id: u32 = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("POL_ID"))
-            .unwrap_or(1);
+        // --- #1339: read all dependency addresses and IDs in one pass ----------
+        let routing = FlowRouting::from_storage(&env)?;
 
-        let split = amount / 3;
-        let remainder = amount - split * 3;
+        // --- #1339: single cross-contract call to fetch the configured split ---
+        // `calculate_split` returns [spending, savings, bills, insurance] amounts.
+        // We call it once and reuse the result for all three fan-out steps,
+        // so the fee schedule is fetched exactly once per batch invocation.
+        let rs_client = interface::RemittanceSplitClient::new(&env, &routing.remittance_split);
+        let allocations = rs_client.calculate_split(&amount);
 
-        let s_ok = interface::SavingsGoalsClient::new(&env, &sg_addr)
-            .try_add_to_goal(&executor, &goal_id, &(split + remainder))
-            .is_err();
-        let b_ok = interface::BillPaymentsClient::new(&env, &bp_addr)
-            .try_pay_bill(&executor, &bill_id, &split)
-            .is_err();
-        let i_ok = interface::InsuranceClient::new(&env, &ins_addr)
-            .try_pay_premium(&executor, &policy_id, &split)
-            .is_err();
+        if allocations.len() < 4 {
+            return Err(OrchestratorError::InvalidAmount);
+        }
+
+        let savings_amt = allocations
+            .get(1)
+            .ok_or(OrchestratorError::InvalidAmount)?;
+        let bills_amt = allocations
+            .get(2)
+            .ok_or(OrchestratorError::InvalidAmount)?;
+        let insurance_amt = allocations
+            .get(3)
+            .ok_or(OrchestratorError::InvalidAmount)?;
+
+        if savings_amt < 0 || bills_amt < 0 || insurance_amt < 0 {
+            return Err(OrchestratorError::InvalidAmount);
+        }
+
+        // --- #1345: use .is_ok() so succeeded=true when the call succeeds -----
+        let s_ok = interface::SavingsGoalsClient::new(&env, &routing.savings)
+            .try_add_to_goal(&executor, &routing.goal_id, &savings_amt)
+            .is_ok();
+        let b_ok = interface::BillPaymentsClient::new(&env, &routing.bills)
+            .try_pay_bill(&executor, &routing.bill_id, &bills_amt)
+            .is_ok();
+        let i_ok = interface::InsuranceClient::new(&env, &routing.insurance)
+            .try_pay_premium(&executor, &routing.policy_id, &insurance_amt)
+            .is_ok();
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
             succeeded: s_ok,
-            amount: split + remainder,
+            amount: savings_amt,
         };
         let bills = FanOutStepResult {
             step: FlowStep::BillPayment,
             succeeded: b_ok,
-            amount: split,
+            amount: bills_amt,
         };
         let insurance = FanOutStepResult {
             step: FlowStep::InsurancePremium,
             succeeded: i_ok,
-            amount: split,
+            amount: insurance_amt,
         };
         let all_succeeded = s_ok && b_ok && i_ok;
 

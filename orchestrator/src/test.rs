@@ -2614,3 +2614,281 @@ fn test_get_fee_schedule_returns_none_when_not_initialized() {
     let result = client.get_fee_schedule();
     assert!(result.is_none(), "fee schedule should be None when not initialized");
 }
+
+// ---------------------------------------------------------------------------
+// execute_flow_fanout — #1339 (memoised fee lookup) + #1345 (error semantics)
+// ---------------------------------------------------------------------------
+//
+// Setup convention for all fanout tests:
+//  • `mock_remittance_split::Contract` returns allocations [5000, 3000, 1500, 500]
+//    for any input amount, so with total=10_000: savings=3000, bills=1500, ins=500.
+//  • `MockContract` succeeds for every downstream call.
+//  • Failing mocks (mock_fail_savings, mock_fail_bill, mock_fail_insurance) panic
+//    inside their respective method, which the `try_*` harness surfaces as Err.
+
+// ---------------------------------------------------------------------------
+// #1345 happy-path: succeeded must be true when calls succeed
+// ---------------------------------------------------------------------------
+
+/// When all three downstream calls succeed, every `succeeded` flag must be
+/// `true` and `all_succeeded` must be `true`.
+///
+/// Before the fix, `.is_err()` was used instead of `.is_ok()`, so a successful
+/// call would set `succeeded = false`.
+#[test]
+fn test_fanout_all_succeed_flags_are_true() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+    assert!(
+        result.savings.succeeded,
+        "savings.succeeded must be true when add_to_goal succeeds (fix for #1345)"
+    );
+    assert!(
+        result.bills.succeeded,
+        "bills.succeeded must be true when pay_bill succeeds (fix for #1345)"
+    );
+    assert!(
+        result.insurance.succeeded,
+        "insurance.succeeded must be true when pay_premium succeeds (fix for #1345)"
+    );
+    assert!(
+        result.all_succeeded,
+        "all_succeeded must be true when all steps succeed (fix for #1345)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// #1345 failure-path: succeeded must be false when a call fails
+// ---------------------------------------------------------------------------
+
+/// When the savings step fails (mock panics), savings.succeeded must be
+/// false and all_succeeded must be false, but bills and insurance still run.
+#[test]
+fn test_fanout_savings_failure_reports_succeeded_false() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    // savings-goals uses the panicking mock; fw and other deps use the no-op mock
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, mock_fail_savings::Contract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+    assert!(
+        !result.savings.succeeded,
+        "savings.succeeded must be false when add_to_goal fails (fix for #1345)"
+    );
+    // bills and insurance still attempt and succeed independently
+    assert!(
+        result.bills.succeeded,
+        "bills.succeeded should be true — fan-out continues after savings failure"
+    );
+    assert!(
+        result.insurance.succeeded,
+        "insurance.succeeded should be true — fan-out continues after savings failure"
+    );
+    assert!(
+        !result.all_succeeded,
+        "all_succeeded must be false when any step fails (fix for #1345)"
+    );
+}
+
+/// When the bill step fails, bills.succeeded is false, all_succeeded is false,
+/// and savings/insurance retain their own outcomes.
+#[test]
+fn test_fanout_bill_failure_reports_succeeded_false() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, mock_fail_bill::Contract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+    assert!(result.savings.succeeded, "savings step should succeed");
+    assert!(
+        !result.bills.succeeded,
+        "bills.succeeded must be false when pay_bill fails (fix for #1345)"
+    );
+    assert!(result.insurance.succeeded, "insurance step should succeed");
+    assert!(!result.all_succeeded, "all_succeeded must be false");
+}
+
+/// When the insurance step fails, insurance.succeeded is false.
+#[test]
+fn test_fanout_insurance_failure_reports_succeeded_false() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, mock_fail_insurance::Contract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+    assert!(result.savings.succeeded, "savings step should succeed");
+    assert!(result.bills.succeeded, "bills step should succeed");
+    assert!(
+        !result.insurance.succeeded,
+        "insurance.succeeded must be false when pay_premium fails (fix for #1345)"
+    );
+    assert!(!result.all_succeeded, "all_succeeded must be false");
+}
+
+// ---------------------------------------------------------------------------
+// #1339 memoised fee lookup: allocations come from calculate_split, not amount/3
+// ---------------------------------------------------------------------------
+
+/// The allocated amounts must match the split percentages returned by the
+/// remittance-split contract, not a naive `amount / 3` division.
+///
+/// `mock_remittance_split::Contract` returns [5000, 3000, 1500, 500] for any
+/// amount, so with total = 10_000:
+///   savings   = 3000
+///   bills     = 1500
+///   insurance = 500
+///
+/// The old hardcoded path produced  savings=3334, bills=3333, insurance=3333.
+#[test]
+fn test_fanout_amounts_match_calculate_split_not_hardcoded_thirds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.execute_flow_fanout(&executor, &10_000i128);
+
+    // Amounts must reflect the split percentages, not amount/3.
+    assert_eq!(
+        result.savings.amount, 3000,
+        "savings amount must be 3000 (30% of 10_000 from calculate_split) — fix for #1339"
+    );
+    assert_eq!(
+        result.bills.amount, 1500,
+        "bills amount must be 1500 (15% of 10_000 from calculate_split) — fix for #1339"
+    );
+    assert_eq!(
+        result.insurance.amount, 500,
+        "insurance amount must be 500 (5% of 10_000 from calculate_split) — fix for #1339"
+    );
+}
+
+/// InvalidAmount is returned when amount ≤ 0 (explicit failure mode).
+#[test]
+fn test_fanout_rejects_zero_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    let rs = env.register_contract(None, mock_remittance_split::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.try_execute_flow_fanout(&executor, &0i128);
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::InvalidAmount)),
+        "fanout must reject zero amount"
+    );
+}
+
+/// InvalidAmount is returned when calculate_split returns fewer than 4 entries.
+#[test]
+fn test_fanout_rejects_short_split_vector() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.budget().reset_unlimited();
+
+    let owner = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let orch_id = env.register_contract(None, Orchestrator);
+    let fw = env.register_contract(None, MockContract);
+    // mock_remittance_split_invalid returns only 2 entries
+    let rs = env.register_contract(None, mock_remittance_split_invalid::Contract);
+    let sg = env.register_contract(None, MockContract);
+    let bp = env.register_contract(None, MockContract);
+    let ins = env.register_contract(None, MockContract);
+
+    let client = OrchestratorClient::new(&env, &orch_id);
+    client.init(&owner, &fw, &rs, &sg, &bp, &ins);
+
+    let result = client.try_execute_flow_fanout(&executor, &10_000i128);
+    assert_eq!(
+        result,
+        Err(Ok(OrchestratorError::InvalidAmount)),
+        "fanout must return InvalidAmount when split vector is short"
+    );
+}
+
+
