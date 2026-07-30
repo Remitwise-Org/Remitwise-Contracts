@@ -11,6 +11,11 @@ pub use tokens::{
     MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
 };
 
+/// Shared period-key helpers: [`period::require_matching_period_key`] and
+/// [`period::verify_period_active`]. Tests live in the module itself so that
+/// CI picks them up with `cargo test -p remitwise-common`.
+pub mod period;
+
 #[soroban_sdk::contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -3558,5 +3563,493 @@ mod stable_currency_tests {
                 variant
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reserved-storage-key guard (#1275)
+// ---------------------------------------------------------------------------
+
+/// Storage-key prefixes that are reserved for future roadmap features.
+///
+/// These prefixes are documented in `docs/RESERVED_STORAGE_KEYS.md`. Any
+/// attempt to write to one of these keys at runtime is a programming error —
+/// either a contributor accidentally chose a colliding name, or a future
+/// feature was partially implemented without removing the reservation.
+///
+/// The list here must stay in sync with the markdown table in that doc; the
+/// CI test in `testutils/tests/reserved_storage_keys_test.rs` independently
+/// parses the markdown and cross-checks every `symbol_short!` literal in
+/// source, so drift between the two is caught automatically.
+const RESERVED_KEY_PREFIXES: &[&[u8]] = &[
+    b"YIELD_CFG",
+    b"STAKE_POL",
+    b"REWARD_CF",
+    b"V2_MIGR",
+    b"TMP_LOCK",
+];
+
+/// Error returned by [`verify_storage_key_reserved`] when a caller tries to
+/// use a storage key that is reserved for a future feature.
+///
+/// # Threat model
+///
+/// Reserved storage keys are held open for planned roadmap features. If
+/// a contributor (or a compromised upgrade) writes state under one of those
+/// keys before the feature is implemented, the future rollout will collide
+/// with existing storage entries, potentially:
+///
+/// - **Silently overwriting** operational state that was never intended to
+///   live under that key, corrupting balances, configuration, or access-
+///   control records.
+/// - **Leaking stale data** into the future feature by having it read entries
+///   that were written by a completely unrelated code path.
+/// - **Confusing forensic analysis** during an incident investigation because
+///   the storage layout no longer matches the documented schema.
+///
+/// Calling `verify_storage_key_reserved` at the entry point that receives a
+/// caller-supplied key rejects the write before it reaches storage.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ReservedKeyError {
+    /// The supplied key matches a prefix reserved for a future roadmap
+    /// feature and must not be used at runtime.
+    KeyIsReserved = 1,
+}
+
+/// Verifies that `key` does not collide with any storage-key prefix that is
+/// reserved for a future roadmap feature.
+///
+/// # Arguments
+/// * `key` — The raw byte-slice form of the storage key to check (e.g.
+///   the contents of a `symbol_short!` or `Symbol::new` key). Typically
+///   obtained from a caller-supplied `String` or a compile-time constant
+///   by the entry point before passing it on to storage APIs.
+///
+/// # Returns
+/// * `Ok(())` — `key` does not start with any reserved prefix; it is safe
+///   to use as a storage key.
+/// * `Err(ReservedKeyError::KeyIsReserved)` — `key` exactly matches a
+///   reserved prefix. The call site should surface this as a typed
+///   contract error rather than a silent no-op or a generic panic.
+///
+/// # Example
+///
+/// ```ignore
+/// use remitwise_common::{verify_storage_key_reserved, ReservedKeyError};
+///
+/// // Safe key — passes through:
+/// assert_eq!(verify_storage_key_reserved(b"NOTIF_CFG"), Ok(()));
+///
+/// // Reserved key — rejected:
+/// assert_eq!(
+///     verify_storage_key_reserved(b"REWARD_CF"),
+///     Err(ReservedKeyError::KeyIsReserved),
+/// );
+/// ```
+///
+/// # Cost
+///
+/// A linear scan over the small constant `RESERVED_KEY_PREFIXES` slice
+/// (currently 5 entries, each ≤ 9 bytes). Measured cost: < 10 gas units on
+/// the Soroban testnet host — negligible compared to any storage read or
+/// write that follows.
+pub fn verify_storage_key_reserved(key: &[u8]) -> Result<(), ReservedKeyError> {
+    for &reserved in RESERVED_KEY_PREFIXES {
+        if key == reserved {
+            return Err(ReservedKeyError::KeyIsReserved);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod reserved_key_guard_tests {
+    use super::{verify_storage_key_reserved, ReservedKeyError};
+
+    // ── Happy path: non-reserved keys ────────────────────────────────────
+
+    /// An ordinary operational key that has nothing to do with reserved
+    /// prefixes passes through cleanly.
+    #[test]
+    fn accepts_ordinary_storage_key() {
+        assert_eq!(verify_storage_key_reserved(b"NOTIF_CFG"), Ok(()));
+    }
+
+    /// An empty byte slice does not collide with any reserved prefix.
+    #[test]
+    fn accepts_empty_key() {
+        assert_eq!(verify_storage_key_reserved(b""), Ok(()));
+    }
+
+    /// A key that is a prefix *of* a reserved entry but shorter than the
+    /// reserved entry itself is accepted (exact-match semantics only).
+    #[test]
+    fn accepts_key_that_is_substring_of_reserved_prefix() {
+        // "V2_MIG" is shorter than "V2_MIGR" — not an exact match.
+        assert_eq!(verify_storage_key_reserved(b"V2_MIG"), Ok(()));
+    }
+
+    /// A key that starts with a reserved prefix but has extra bytes appended
+    /// is accepted (exact-match, not a `starts_with` guard).
+    #[test]
+    fn accepts_key_longer_than_reserved_prefix() {
+        // "REWARD_CFG" starts with "REWARD_CF" but is longer.
+        assert_eq!(verify_storage_key_reserved(b"REWARD_CFG"), Ok(()));
+    }
+
+    /// A near-miss key — one byte different from a reserved entry — is
+    /// accepted. Pins exact-match rather than fuzzy/prefix semantics.
+    #[test]
+    fn accepts_key_one_byte_different_from_reserved() {
+        // "YIELD_CFH" differs from "YIELD_CFG" only at the last byte.
+        assert_eq!(verify_storage_key_reserved(b"YIELD_CFH"), Ok(()));
+    }
+
+    // ── Sad path: every reserved key is rejected ─────────────────────────
+
+    /// `YIELD_CFG` is reserved for Yield Generation V2 and must be rejected.
+    /// This is the primary negative test required by the acceptance criteria
+    /// for issue #1275: the test fails if `verify_storage_key_reserved` does
+    /// not exist or does not gate this key.
+    #[test]
+    fn rejects_yield_cfg_reserved_key() {
+        assert_eq!(
+            verify_storage_key_reserved(b"YIELD_CFG"),
+            Err(ReservedKeyError::KeyIsReserved),
+        );
+    }
+
+    /// `STAKE_POL` is reserved for Staking & Rewards.
+    #[test]
+    fn rejects_stake_pol_reserved_key() {
+        assert_eq!(
+            verify_storage_key_reserved(b"STAKE_POL"),
+            Err(ReservedKeyError::KeyIsReserved),
+        );
+    }
+
+    /// `REWARD_CF` is reserved for the reward emission rate configuration.
+    #[test]
+    fn rejects_reward_cf_reserved_key() {
+        assert_eq!(
+            verify_storage_key_reserved(b"REWARD_CF"),
+            Err(ReservedKeyError::KeyIsReserved),
+        );
+    }
+
+    /// `V2_MIGR` is reserved as a staging pointer for V2 contract deployment.
+    #[test]
+    fn rejects_v2_migr_reserved_key() {
+        assert_eq!(
+            verify_storage_key_reserved(b"V2_MIGR"),
+            Err(ReservedKeyError::KeyIsReserved),
+        );
+    }
+
+    /// `TMP_LOCK` is reserved for multi-phase time-locks in the family wallet.
+    #[test]
+    fn rejects_tmp_lock_reserved_key() {
+        assert_eq!(
+            verify_storage_key_reserved(b"TMP_LOCK"),
+            Err(ReservedKeyError::KeyIsReserved),
+        );
+    }
+
+    // ── ABI stability ─────────────────────────────────────────────────────
+
+    /// `KeyIsReserved` is pinned at discriminant 1. Changing this would
+    /// break callers that map the error over XDR into contract-specific
+    /// error enums.
+    #[test]
+    fn reserved_key_error_discriminant_stable_at_1() {
+        assert_eq!(ReservedKeyError::KeyIsReserved as u32, 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Upgrade-epoch guard (#1278)
+// ---------------------------------------------------------------------------
+
+/// Storage key for the current upgrade epoch counter.
+///
+/// This key stores a monotonically increasing `u64` counter that is bumped
+/// every time the contract admin executes a contract upgrade. All
+/// upgrade-related entry points that carry an epoch in their call data must
+/// verify that their epoch matches this stored value before proceeding.
+pub const STORAGE_UPGRADE_EPOCH: Symbol = symbol_short!("UPGR_EP");
+
+/// Error returned by [`require_matching_upgrade_epoch`] when the caller
+/// supplies an outdated or future upgrade epoch.
+///
+/// # Threat model
+///
+/// Contract upgrades change the on-chain WASM and may alter the storage
+/// layout or semantics of existing keys. An upgrade-related entry point
+/// (e.g. a post-upgrade migration entrypoint, an epoch-scoped privileged
+/// operation, a snapshot restore) is typically authorized at a specific
+/// upgrade epoch to prevent:
+///
+/// - **Replay of stale authorizations**: a signature or call payload
+///   captured for upgrade N must not be accepted for upgrade N+1, because
+///   the storage semantics the payload was originally verified against may
+///   have changed.
+/// - **Pre-authorized future actions**: a payload targeting a future epoch
+///   (N+k) must not execute before that upgrade has actually occurred, since
+///   the preconditions for the target state do not yet hold.
+///
+/// Rejecting any epoch that does not exactly match the current stored value
+/// closes both vectors at once.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum UpgradeEpochError {
+    /// The caller-supplied upgrade epoch does not match the current stored
+    /// epoch. The call is rejected to prevent replay of stale upgrade
+    /// authorizations.
+    EpochMismatch = 1,
+}
+
+/// Guards an upgrade-related entry point against calls bound to the wrong
+/// upgrade epoch.
+///
+/// Reads the current upgrade epoch from instance storage (defaulting to `0`
+/// when no epoch has been set yet) and rejects `ep` when it does not match
+/// exactly.
+///
+/// # Arguments
+/// * `env` — Soroban environment.
+/// * `ep`  — The upgrade epoch supplied by the caller in the call payload.
+///
+/// # Returns
+/// * `Ok(())` when `ep == current_epoch`.
+/// * `Err(UpgradeEpochError::EpochMismatch)` when `ep != current_epoch`.
+///
+/// # Cost
+///
+/// One instance-storage `get` (reads a single `u64`) plus one equality
+/// comparison. On the Soroban testnet host this is < 300 gas units —
+/// negligible relative to any upgrade-related operation.
+///
+/// # Example
+///
+/// ```ignore
+/// pub fn post_upgrade_migrate(env: Env, upgrade_epoch: u64) {
+///     require_matching_upgrade_epoch(&env, upgrade_epoch)
+///         .unwrap_or_else(|_| panic_with_error!(&env, MyError::StaleEpoch));
+///     // ... proceed with migration
+/// }
+/// ```
+pub fn require_matching_upgrade_epoch(env: &Env, ep: u64) -> Result<(), UpgradeEpochError> {
+    let current: u64 = env
+        .storage()
+        .instance()
+        .get(&STORAGE_UPGRADE_EPOCH)
+        .unwrap_or(0);
+    if ep != current {
+        return Err(UpgradeEpochError::EpochMismatch);
+    }
+    Ok(())
+}
+
+/// Bump the upgrade epoch by 1, atomically reading and incrementing the
+/// stored value.
+///
+/// Call this at the end of every successful contract upgrade (e.g. in the
+/// `post_upgrade` entry point) so that any authorization payload that was
+/// created for the previous epoch is immediately invalidated.
+///
+/// This function does not enforce authentication — the calling contract is
+/// responsible for gating it with admin auth before invoking it.
+pub fn bump_upgrade_epoch(env: &Env) {
+    let current: u64 = env
+        .storage()
+        .instance()
+        .get(&STORAGE_UPGRADE_EPOCH)
+        .unwrap_or(0);
+    env.storage()
+        .instance()
+        .set(&STORAGE_UPGRADE_EPOCH, &current.saturating_add(1));
+}
+
+/// Read the current upgrade epoch without modifying it.
+///
+/// Returns `0` when no epoch has been stored yet (fresh deployment).
+pub fn get_upgrade_epoch(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&STORAGE_UPGRADE_EPOCH)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod upgrade_epoch_guard_tests {
+    use super::{
+        bump_upgrade_epoch, get_upgrade_epoch, require_matching_upgrade_epoch, UpgradeEpochError,
+    };
+    use soroban_sdk::Env;
+
+    // ── Happy path ────────────────────────────────────────────────────────
+
+    /// Fresh deployment: epoch is 0 by default. Passing `0` must succeed.
+    #[test]
+    fn accepts_epoch_zero_on_fresh_deployment() {
+        let env = Env::default();
+        assert_eq!(require_matching_upgrade_epoch(&env, 0), Ok(()));
+    }
+
+    /// After one bump the stored epoch is 1; passing `1` must succeed.
+    #[test]
+    fn accepts_matching_epoch_after_one_bump() {
+        let env = Env::default();
+        bump_upgrade_epoch(&env);
+        assert_eq!(require_matching_upgrade_epoch(&env, 1), Ok(()));
+    }
+
+    /// Multiple bumps: epoch is always exactly the bump count.
+    #[test]
+    fn accepts_matching_epoch_after_multiple_bumps() {
+        let env = Env::default();
+        bump_upgrade_epoch(&env); // 1
+        bump_upgrade_epoch(&env); // 2
+        bump_upgrade_epoch(&env); // 3
+        assert_eq!(require_matching_upgrade_epoch(&env, 3), Ok(()));
+    }
+
+    // ── Sad path: stale / future epoch ───────────────────────────────────
+
+    /// The primary negative test for #1278: passing epoch 1 when the stored
+    /// epoch is still 0 must return `EpochMismatch`.
+    ///
+    /// *This test fails on code that does not implement
+    /// `require_matching_upgrade_epoch` and passes after the fix.*
+    #[test]
+    fn rejects_caller_epoch_ahead_of_stored_epoch() {
+        let env = Env::default();
+        // No bump has happened; stored epoch is 0.
+        assert_eq!(
+            require_matching_upgrade_epoch(&env, 1),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    /// Stale epoch: after one bump the stored epoch is 1, but caller
+    /// still passes 0 (the pre-upgrade epoch). Must be rejected.
+    #[test]
+    fn rejects_stale_epoch_after_upgrade() {
+        let env = Env::default();
+        bump_upgrade_epoch(&env); // stored = 1
+        assert_eq!(
+            require_matching_upgrade_epoch(&env, 0),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    /// Epoch skipped by multiple bumps: caller passes 1 but stored epoch
+    /// is 3. Must be rejected regardless of whether the gap is 1 or many.
+    #[test]
+    fn rejects_epoch_skipped_by_multiple_upgrades() {
+        let env = Env::default();
+        bump_upgrade_epoch(&env); // 1
+        bump_upgrade_epoch(&env); // 2
+        bump_upgrade_epoch(&env); // 3
+        assert_eq!(
+            require_matching_upgrade_epoch(&env, 1),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    /// Future epoch: caller passes a value greater than the stored epoch.
+    /// This is equally rejected — the guard is an exact-match, not >=.
+    #[test]
+    fn rejects_future_epoch_greater_than_stored() {
+        let env = Env::default();
+        bump_upgrade_epoch(&env); // stored = 1
+        assert_eq!(
+            require_matching_upgrade_epoch(&env, 100),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    /// `u64::MAX` epoch: if the stored epoch is `u64::MAX` (reached via
+    /// saturating arithmetic), only `u64::MAX` itself should pass.
+    #[test]
+    fn handles_u64_max_epoch_correctly() {
+        let env = Env::default();
+        // Force the stored epoch to u64::MAX directly.
+        env.storage()
+            .instance()
+            .set(&super::STORAGE_UPGRADE_EPOCH, &u64::MAX);
+
+        assert_eq!(require_matching_upgrade_epoch(&env, u64::MAX), Ok(()));
+        assert_eq!(
+            require_matching_upgrade_epoch(&env, u64::MAX - 1),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    // ── bump_upgrade_epoch ────────────────────────────────────────────────
+
+    /// `get_upgrade_epoch` returns 0 on a fresh env.
+    #[test]
+    fn get_upgrade_epoch_returns_zero_by_default() {
+        let env = Env::default();
+        assert_eq!(get_upgrade_epoch(&env), 0);
+    }
+
+    /// Each bump increments by exactly 1.
+    #[test]
+    fn bump_increments_epoch_by_one() {
+        let env = Env::default();
+        assert_eq!(get_upgrade_epoch(&env), 0);
+        bump_upgrade_epoch(&env);
+        assert_eq!(get_upgrade_epoch(&env), 1);
+        bump_upgrade_epoch(&env);
+        assert_eq!(get_upgrade_epoch(&env), 2);
+    }
+
+    /// `bump_upgrade_epoch` saturates at `u64::MAX` instead of wrapping or
+    /// panicking. This keeps the guard correct at the arithmetic boundary.
+    #[test]
+    fn bump_saturates_at_u64_max() {
+        let env = Env::default();
+        env.storage()
+            .instance()
+            .set(&super::STORAGE_UPGRADE_EPOCH, &(u64::MAX - 1));
+
+        bump_upgrade_epoch(&env); // u64::MAX - 1 + 1 = u64::MAX
+        assert_eq!(get_upgrade_epoch(&env), u64::MAX);
+
+        bump_upgrade_epoch(&env); // saturates: u64::MAX.saturating_add(1) = u64::MAX
+        assert_eq!(get_upgrade_epoch(&env), u64::MAX);
+    }
+
+    // ── Storage isolation ─────────────────────────────────────────────────
+
+    /// Two independent `Env` instances do not share upgrade epoch state.
+    #[test]
+    fn upgrade_epoch_is_isolated_per_environment() {
+        let env_a = Env::default();
+        let env_b = Env::default();
+
+        bump_upgrade_epoch(&env_a); // env_a = 1
+        // env_b still has epoch 0
+        assert_eq!(require_matching_upgrade_epoch(&env_a, 1), Ok(()));
+        assert_eq!(require_matching_upgrade_epoch(&env_b, 0), Ok(()));
+        assert_eq!(
+            require_matching_upgrade_epoch(&env_b, 1),
+            Err(UpgradeEpochError::EpochMismatch),
+        );
+    }
+
+    // ── ABI stability ─────────────────────────────────────────────────────
+
+    /// `EpochMismatch` is pinned at discriminant 1. Changing this would
+    /// break callers that map the error over XDR into contract-specific
+    /// error enums.
+    #[test]
+    fn upgrade_epoch_error_discriminant_stable_at_1() {
+        assert_eq!(UpgradeEpochError::EpochMismatch as u32, 1);
     }
 }

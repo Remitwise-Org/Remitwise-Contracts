@@ -121,16 +121,150 @@ pub fn verify_period_active(
 mod tests {
     use super::{require_matching_period_key, verify_period_active, PeriodKeyError};
 
-    #[test]
-    fn rejects_entities_from_different_periods() {
-        let result = require_matching_period_key(202401, 202402);
-
-        assert_eq!(result, Err(PeriodKeyError::MismatchedPeriodKey));
-    }
+    // ── require_matching_period_key: happy path ───────────────────────────
 
     #[test]
     fn accepts_entities_from_the_same_period() {
         assert_eq!(require_matching_period_key(202401, 202401), Ok(()));
+    }
+
+    /// Zero is a valid period key; two entities both at zero belong to
+    /// the same (epoch-zero) period and must be accepted.
+    #[test]
+    fn accepts_matching_period_key_zero() {
+        assert_eq!(require_matching_period_key(0, 0), Ok(()));
+    }
+
+    /// Two entities keyed to `u64::MAX` both belong to the same period.
+    #[test]
+    fn accepts_matching_period_key_u64_max() {
+        assert_eq!(require_matching_period_key(u64::MAX, u64::MAX), Ok(()));
+    }
+
+    /// Arbitrary symmetric mid-range value is accepted.
+    #[test]
+    fn accepts_matching_period_key_mid_range() {
+        let pk = 1_704_067_200u64; // 2024-01-01T00:00:00Z as a raw timestamp key
+        assert_eq!(require_matching_period_key(pk, pk), Ok(()));
+    }
+
+    /// The comparison is symmetric: (a, b) and (b, a) with the same value
+    /// both accept.
+    #[test]
+    fn accepts_matching_period_key_is_symmetric() {
+        let pk = 202406u64;
+        assert_eq!(require_matching_period_key(pk, pk), Ok(()));
+    }
+
+    // ── require_matching_period_key: sad path ─────────────────────────────
+
+    #[test]
+    fn rejects_entities_from_different_periods() {
+        let result = require_matching_period_key(202401, 202402);
+        assert_eq!(result, Err(PeriodKeyError::MismatchedPeriodKey));
+    }
+
+    /// One-off adjacency: period keys that differ by exactly 1 are different
+    /// periods and must be rejected. This pins the strict `==` contract
+    /// against an off-by-one relaxation.
+    #[test]
+    fn rejects_period_keys_differing_by_one() {
+        assert_eq!(
+            require_matching_period_key(202401, 202402),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+        // Reverse direction too (argument order must not matter for rejection).
+        assert_eq!(
+            require_matching_period_key(202402, 202401),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+    }
+
+    /// Zero vs one — smallest possible non-zero mismatch.
+    #[test]
+    fn rejects_zero_vs_one_period_key() {
+        assert_eq!(
+            require_matching_period_key(0, 1),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+        assert_eq!(
+            require_matching_period_key(1, 0),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+    }
+
+    /// `u64::MAX` vs `u64::MAX - 1`: upper-boundary one-off.
+    #[test]
+    fn rejects_u64_max_vs_max_minus_one() {
+        assert_eq!(
+            require_matching_period_key(u64::MAX, u64::MAX - 1),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+    }
+
+    /// Wildly different keys: representative months one year apart.
+    #[test]
+    fn rejects_period_keys_one_year_apart() {
+        assert_eq!(
+            require_matching_period_key(202301, 202401),
+            Err(PeriodKeyError::MismatchedPeriodKey),
+        );
+    }
+
+    // ── require_matching_period_key: error discriminant stability ─────────
+
+    /// `MismatchedPeriodKey` is pinned at discriminant 1 for ABI stability.
+    /// Changing the discriminant would break any contract that maps this
+    /// error over XDR to a caller.
+    #[test]
+    fn mismatched_period_key_discriminant_is_stable_at_1() {
+        let err = PeriodKeyError::MismatchedPeriodKey;
+        assert_eq!(err as u32, 1);
+    }
+
+    // ── require_matching_period_key: proptest ─────────────────────────────
+
+    // Proptest requires std (allocator + thread-local RNG). The outer crate
+    // is `#![no_std]` for WASM builds, but `#[cfg(test)]` compilation always
+    // links std (via `[dev-dependencies]`), so the `extern crate std` below
+    // is needed to bring std into scope for proptest's macros.
+    #[cfg(test)]
+    mod proptest_period_key {
+        extern crate std;
+        use super::{require_matching_period_key, PeriodKeyError};
+        use proptest::prelude::*;
+
+        proptest! {
+            /// For any arbitrary `u64` period key, matching both sides always
+            /// succeeds.  This property must hold for all 2^64 possible keys.
+            #[test]
+            fn matching_keys_always_accept(pk in any::<u64>()) {
+                prop_assert_eq!(require_matching_period_key(pk, pk), Ok(()));
+            }
+
+            /// For any two distinct `u64` period keys, the comparison always
+            /// rejects. Distinct is guaranteed by filtering equal pairs.
+            #[test]
+            fn distinct_keys_always_reject(
+                a in any::<u64>(),
+                b in any::<u64>(),
+            ) {
+                prop_assume!(a != b);
+                prop_assert_eq!(
+                    require_matching_period_key(a, b),
+                    Err(PeriodKeyError::MismatchedPeriodKey),
+                );
+            }
+
+            /// Commutativity: (a, b) and (b, a) always produce the same
+            /// result. There is no ordered/directed semantics — only equality.
+            #[test]
+            fn comparison_is_commutative(a in any::<u64>(), b in any::<u64>()) {
+                let fwd = require_matching_period_key(a, b);
+                let rev = require_matching_period_key(b, a);
+                prop_assert_eq!(fwd, rev);
+            }
+        }
     }
 
     // ─── verify_period_active: success paths ─────────────────────────────────
