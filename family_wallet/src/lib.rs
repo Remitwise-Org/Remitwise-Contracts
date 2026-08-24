@@ -597,9 +597,11 @@ impl FamilyWallet {
             return false;
         }
 
-        // Owner and Admin are never restricted
-        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
-            return true;
+        // Owner and Admin are never restricted. Viewers are read-only.
+        match member.role {
+            FamilyRole::Owner | FamilyRole::Admin => return true,
+            FamilyRole::Member => {},
+            FamilyRole::Viewer => return false,
         }
 
         // 0 means unlimited for regular members too
@@ -944,7 +946,9 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        proposer.require_auth();
         Self::require_not_paused(&env);
+        Self::require_active_spender(&env, &proposer);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -1013,7 +1017,12 @@ impl FamilyWallet {
         member: Address,
         new_role: FamilyRole,
     ) -> u64 {
+        proposer.require_auth();
         Self::require_not_paused(&env);
+        Self::require_role_at_least(&env, &proposer, FamilyRole::Admin);
+        if new_role == FamilyRole::Owner {
+            panic!("Cannot assign Owner role");
+        }
         Self::propose_transaction(
             env,
             proposer,
@@ -1033,7 +1042,9 @@ impl FamilyWallet {
         recipient: Address,
         amount: i128,
     ) -> u64 {
+        proposer.require_auth();
         Self::require_not_paused(&env);
+        Self::require_active_spender(&env, &proposer);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -2772,6 +2783,7 @@ impl FamilyWallet {
         data: &TransactionData,
         require_auth: bool,
     ) -> u64 {
+        Self::require_active_spender(env, proposer);
         match data {
             TransactionData::Withdrawal(token, recipient, amount) => {
                 // RE-COMPUTE TIER (CRITICAL FIX)
@@ -2942,6 +2954,23 @@ impl FamilyWallet {
         }
         if Self::role_ordinal(member.role) > Self::role_ordinal(min_role) {
             panic!("Insufficient role");
+        }
+    }
+
+    fn require_active_spender(env: &Env, caller: &Address) {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
+        if Self::role_has_expired(env, caller) {
+            panic!("Role has expired");
+        }
+        if member.role == FamilyRole::Viewer {
+            panic!("Viewer cannot spend");
         }
     }
 

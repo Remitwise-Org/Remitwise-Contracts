@@ -6661,3 +6661,81 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     assert!(client.get_family_member(&member2).is_some());
     assert!(client.get_spending_tracker(&member2).is_none());
 }
+
+#[test]
+fn test_viewer_cannot_spend() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let viewer = Address::generate(&env);
+
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &viewer, &FamilyRole::Viewer);
+
+    assert!(!client.check_spending_limit(&viewer, &1));
+    assert!(client.try_withdraw(&viewer, &Address::generate(&env), &Address::generate(&env), &1).is_err());
+}
+
+#[test]
+fn test_member_cannot_self_escalate_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    assert!(client
+        .try_propose_role_change(&member, &member, &FamilyRole::Admin)
+        .is_err());
+    assert_eq!(client.get_family_member(&member).unwrap().role, FamilyRole::Member);
+}
+
+#[test]
+fn test_removed_proposer_cannot_replay_pending_withdrawal() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let signer = Address::generate(&env);
+    let token = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, proposer.clone(), signer.clone()]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, signer.clone()],
+        &1000_0000000,
+    );
+    let tx_id = client.withdraw(&proposer, &token, &recipient, &1);
+    client.remove_family_member(&owner, &proposer);
+
+    assert!(client.try_sign_transaction(&signer, &tx_id).is_err());
+    assert!(client.get_pending_transaction(&tx_id).is_some());
+}
+
+#[test]
+fn test_role_expiry_update_blocks_spending_at_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, member.clone()]);
+    set_ledger_time(&env, 100, 1_000);
+    client.set_role_expiry(&owner, &member, &Some(101));
+    set_ledger_time(&env, 101, 1_000);
+
+    assert!(!client.check_spending_limit(&member, &1));
+    assert!(client.try_withdraw(&member, &Address::generate(&env), &Address::generate(&env), &1).is_err());
+}
