@@ -732,9 +732,12 @@ impl FamilyWallet {
             return false;
         }
 
-        // Owner and Admin are never restricted
-        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
-            return true;
+        // Viewer is read-only. Spending roles are explicit so a new role
+        // cannot inherit spending permission from ordinal comparisons.
+        match member.role {
+            FamilyRole::Owner | FamilyRole::Admin => return true,
+            FamilyRole::Member => {}
+            FamilyRole::Viewer => return false,
         }
 
         // 0 means unlimited for regular members too
@@ -3142,6 +3145,8 @@ impl FamilyWallet {
                     panic!("Transaction tier mismatch: invalid multisig enforcement");
                 }
 
+                Self::require_active_spending_role(env, proposer);
+
                 if require_auth {
                     proposer.require_auth();
                 }
@@ -3166,6 +3171,10 @@ impl FamilyWallet {
             TransactionData::SplitConfigChange(..) => 0,
 
             TransactionData::RoleChange(member, new_role) => {
+                if member == proposer || *new_role == FamilyRole::Owner {
+                    panic_with_error!(env, Error::InvalidRole);
+                }
+
                 let mut members: Map<Address, FamilyMember> = env
                     .storage()
                     .instance()
@@ -3191,6 +3200,8 @@ impl FamilyWallet {
             }
 
             TransactionData::EmergencyTransfer(token, recipient, amount) => {
+                Self::require_active_spending_role(env, proposer);
+
                 if require_auth {
                     proposer.require_auth();
                 }
@@ -3224,6 +3235,23 @@ impl FamilyWallet {
             .unwrap_or_else(|| Map::new(env));
 
         members.get(address.clone()).is_some()
+    }
+
+    fn require_active_spending_role(env: &Env, address: &Address) {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(address.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
+        if Self::role_has_expired(env, address) {
+            panic!("Role has expired");
+        }
+        if matches!(member.role, FamilyRole::Viewer) {
+            panic!("Insufficient role");
+        }
     }
 
     fn is_owner_or_admin(env: &Env, address: &Address) -> bool {

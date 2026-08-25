@@ -22,9 +22,13 @@
 
 #![cfg(test)]
 
-use family_wallet::{FamilyWallet, FamilyWalletClient};
+use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionType};
 use remitwise_common::FamilyRole;
-use soroban_sdk::{testutils::Address as _, vec, Address, Env};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{StellarAssetClient, TokenClient},
+    vec, Address, Env,
+};
 use testutils::set_ledger_time;
 
 /// `init` creates an Owner with no members. After that, a freshly generated
@@ -255,4 +259,80 @@ fn re_register_revoked_operator_restores_registered_state() {
 
     // Privileged action succeeds again.
     assert!(client.configure_emergency(&admin, &1000_0000000, &3600, &0, &10000_0000000));
+}
+
+#[test]
+#[should_panic]
+fn member_cannot_self_escalate_through_role_change() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    let signers = vec![&env, owner.clone(), member.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    let tx_id = client.propose_role_change(&member, &member, &FamilyRole::Admin);
+    client.sign_transaction(&owner, &tx_id);
+}
+
+#[test]
+fn demoted_operator_cannot_replay_pending_spend() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    client.init(&owner, &vec![&env, member.clone()]);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+    let token = token_contract.address();
+    StellarAssetClient::new(&env, &token).mint(&member, &1000);
+
+    let withdrawal_signers = vec![&env, owner.clone(), member.clone()];
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &2,
+        &withdrawal_signers,
+        &1000,
+    );
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RoleChange,
+        &1,
+        &vec![&env, owner.clone()],
+        &0,
+    );
+
+    let tx_id = client.withdraw(&member, &token, &recipient, &100);
+    let demotion_id = client.propose_role_change(&owner, &member, &FamilyRole::Viewer);
+    assert_eq!(demotion_id, 0);
+
+    let result = client.try_sign_transaction(&member, &tx_id);
+    assert!(result.is_err());
+    assert_eq!(TokenClient::new(&env, &token).balance(&recipient), 0);
+}
+
+#[test]
+fn viewer_cannot_spend_with_unlimited_legacy_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    let viewer = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+    client.add_family_member(&owner, &viewer, &FamilyRole::Viewer);
+
+    assert!(!client.check_spending_limit(&viewer, &1));
 }
