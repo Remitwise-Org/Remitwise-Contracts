@@ -21,6 +21,7 @@ const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 // Signature expiration time constants
 const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
 const MAX_PROPOSAL_EXPIRY: u64 = 604_800; // 7 days
+const PRECISION_PERIOD_DURATION: u64 = 86_400;
 
 // Multisig configuration bounds
 const MIN_THRESHOLD: u32 = 1;
@@ -1137,7 +1138,9 @@ impl FamilyWallet {
             panic!("Spending limit exceeded");
         }
 
-        if let Err(e) = Self::validate_precision_spending_internal(env.clone(), proposer.clone(), amount) {
+        if let Err(e) =
+            Self::validate_precision_spending_internal(env.clone(), proposer.clone(), amount)
+        {
             panic_with_error!(env, e);
         }
 
@@ -2039,11 +2042,79 @@ impl FamilyWallet {
 
     /// Get the persisted cumulative spending tracker for a member, if any.
     pub fn get_spending_tracker(env: Env, member: Address) -> Option<SpendingTracker> {
-        env.storage()
+        let trackers: Map<Address, SpendingTracker> = env
+            .storage()
             .instance()
-            .get::<_, Map<Address, SpendingTracker>>(&symbol_short!("SPND_TRK"))
-            .unwrap_or_else(|| Map::new(&env))
-            .get(member)
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(&env));
+        if trackers.get(member.clone()).is_some() {
+            Some(Self::current_spending_tracker(&env, &member))
+        } else {
+            None
+        }
+    }
+
+    /// Return the current period tracker without persisting a rollover.
+    ///
+    /// Validation must be read-only. Persisting a reset here would make a
+    /// rejected withdrawal mutate allowance state before a successful transfer
+    /// has been recorded. `record_precision_spending` is the commit point for
+    /// the reset and the new amount.
+    fn current_spending_tracker(env: &Env, proposer: &Address) -> SpendingTracker {
+        let current_time = env.ledger().timestamp();
+        let period_start = Self::precision_period_start(current_time);
+
+        let trackers: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap_or_else(|| Map::new(env));
+
+        if let Some(existing) = trackers.get(proposer.clone()) {
+            if existing.period.period_start == period_start {
+                existing
+            } else {
+                SpendingTracker {
+                    current_spent: 0,
+                    last_tx_timestamp: 0,
+                    tx_count: 0,
+                    period: SpendingPeriod {
+                        period_type: 0,
+                        period_start,
+                        period_duration: PRECISION_PERIOD_DURATION,
+                    },
+                }
+            }
+        } else {
+            SpendingTracker {
+                current_spent: 0,
+                last_tx_timestamp: 0,
+                tx_count: 0,
+                period: SpendingPeriod {
+                    period_type: 0,
+                    period_start,
+                    period_duration: PRECISION_PERIOD_DURATION,
+                },
+            }
+        }
+    }
+
+    /// Align a ledger timestamp to the UTC daily spending-period boundary.
+    /// Timestamps in `[start, start + 86_399]` share one allowance; exactly
+    /// `start + 86_400` begins the next allowance. This policy is shared by
+    /// validation, reads, and the commit-time tracker update.
+    fn precision_period_start(timestamp: u64) -> u64 {
+        (timestamp / PRECISION_PERIOD_DURATION) * PRECISION_PERIOD_DURATION
+    }
+
+    fn checked_period_spend(current_spent: i128, amount: i128, limit: i128) -> Result<(), Error> {
+        let new_spent = current_spent
+            .checked_add(amount)
+            .ok_or(Error::InvalidSpendingLimit)?;
+        if new_spent > limit {
+            return Err(Error::InvalidSpendingLimit);
+        }
+        Ok(())
     }
 
     /// Paginated listing of family-member addresses for downstream readers.
@@ -2283,53 +2354,6 @@ impl FamilyWallet {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
 
-    fn current_spending_tracker(env: &Env, proposer: &Address) -> SpendingTracker {
-        let current_time = env.ledger().timestamp();
-        let period_duration = 86_400u64;
-        let period_start = (current_time / period_duration) * period_duration;
-
-        let mut trackers: Map<Address, SpendingTracker> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("SPND_TRK"))
-            .unwrap_or_else(|| Map::new(env));
-
-        let tracker = if let Some(existing) = trackers.get(proposer.clone()) {
-            if existing.period.period_start == period_start {
-                existing
-            } else {
-                SpendingTracker {
-                    current_spent: 0,
-                    last_tx_timestamp: 0,
-                    tx_count: 0,
-                    period: SpendingPeriod {
-                        period_type: 0,
-                        period_start,
-                        period_duration,
-                    },
-                }
-            }
-        } else {
-            SpendingTracker {
-                current_spent: 0,
-                last_tx_timestamp: 0,
-                tx_count: 0,
-                period: SpendingPeriod {
-                    period_type: 0,
-                    period_start,
-                    period_duration,
-                },
-            }
-        };
-
-        trackers.set(proposer.clone(), tracker.clone());
-        env.storage()
-            .instance()
-            .set(&symbol_short!("SPND_TRK"), &trackers);
-
-        tracker
-    }
-
     fn record_precision_spending(env: &Env, proposer: &Address, amount: i128) {
         let members: Map<Address, FamilyMember> = env
             .storage()
@@ -2408,14 +2432,7 @@ impl FamilyWallet {
 
             if limit.enable_rollover {
                 let tracker = Self::current_spending_tracker(&env, &proposer);
-                // Overflow-safe addition to prevent DoS via integer overflow in accumulated spend
-                let new_spent = tracker
-                    .current_spent
-                    .checked_add(amount)
-                    .ok_or(Error::InvalidSpendingLimit)?;
-                if new_spent > limit.limit {
-                    return Err(Error::InvalidSpendingLimit);
-                }
+                Self::checked_period_spend(tracker.current_spent, amount, limit.limit)?;
             }
 
             return Ok(());
