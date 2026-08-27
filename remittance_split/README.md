@@ -235,6 +235,17 @@ Restores a split configuration from a previously exported snapshot.
 | 3 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
 | 4 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
 | 5 | Sum of percentages `== 10_000` | `PercentagesDoNotSumTo100` |
+
+Percentage validation runs before the configuration is mutated, so an invalid
+`update_split` leaves the previous configuration and timestamp unchanged.
+Each allocation is basis-point based (`10_000 == 100%`); values above the
+per-bucket cap return `PercentageOutOfRange` and incomplete allocations return
+`PercentagesDoNotSumTo100`.
+
+`batch_transfer` also validates its complete recipient set before any token
+transfer: an empty set returns `EmptyBatch`, duplicate addresses return
+`DuplicateRecipient`, mismatched vectors return `BatchLengthMismatch`, and
+inputs above the bounded batch size return `BatchSizeExceeded`.
 | 6 | `config.timestamp` and `exported_at` not in the future | `FutureTimestamp` |
 | 7 | Caller is the current contract owner | `Unauthorized` |
 | 8 | `snapshot.config.owner == caller` | `OwnerMismatch` |

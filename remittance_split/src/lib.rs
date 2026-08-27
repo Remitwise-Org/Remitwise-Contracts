@@ -105,6 +105,10 @@ pub enum RemittanceSplitError {
     BatchSizeExceeded = 41,
     /// A `set_min_deposit` value is below `params::MIN_CORRIDOR_AMOUNT`.
     InvalidMinDeposit = 42,
+    /// `batch_transfer` cannot operate on an empty recipient set.
+    EmptyBatch = 43,
+    /// A recipient may occur only once in a batch transfer.
+    DuplicateRecipient = 44,
 }
 
 #[derive(Clone)]
@@ -1063,6 +1067,38 @@ impl RemittanceSplit {
         Ok(())
     }
 
+    /// Validate the complete batch before any nonce or token state can change.
+    /// The map makes duplicate detection linear within the bounded batch size.
+    fn validate_batch_transfer(
+        env: &Env,
+        recipients: &Vec<Address>,
+        amounts: &Vec<i128>,
+    ) -> Result<(), RemittanceSplitError> {
+        if recipients.len() != amounts.len() {
+            return Err(RemittanceSplitError::BatchLengthMismatch);
+        }
+        if recipients.is_empty() {
+            return Err(RemittanceSplitError::EmptyBatch);
+        }
+        if recipients.len() > MAX_BATCH_SIZE {
+            return Err(RemittanceSplitError::BatchSizeExceeded);
+        }
+
+        let mut seen: Map<Address, bool> = Map::new(env);
+        for i in 0..recipients.len() {
+            let recipient = recipients.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            let amount = amounts.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            if amount <= 0 {
+                return Err(RemittanceSplitError::InvalidAmount);
+            }
+            if seen.contains_key(recipient.clone()) {
+                return Err(RemittanceSplitError::DuplicateRecipient);
+            }
+            seen.set(recipient, true);
+        }
+        Ok(())
+    }
+
     /// Validate that the ingress token is a supported stable asset contract.
     ///
     /// This is a defence-in-depth check against rebase/deflationary token contracts
@@ -1929,20 +1965,8 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::UntrustedTokenContract);
         }
 
-        if recipients.len() != amounts.len() {
-            return Err(RemittanceSplitError::BatchLengthMismatch);
-        }
-        if recipients.len() > MAX_BATCH_SIZE {
-            return Err(RemittanceSplitError::BatchSizeExceeded);
-        }
-
+        Self::validate_batch_transfer(&env, &recipients, &amounts)?;
         Self::require_nonce(&env, &caller, nonce)?;
-
-        for amount in amounts.iter() {
-            if amount <= 0 {
-                return Err(RemittanceSplitError::InvalidAmount);
-            }
-        }
 
         let token = TokenClient::new(&env, &usdc_contract);
         for i in 0..recipients.len() {
