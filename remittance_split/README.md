@@ -525,3 +525,7 @@ Test coverage includes:
 - Multiple sequential distributions with nonce advancement
 - Event emission verification
 - TTL extension on initialization
+
+> **Security note:** The authorization, request-binding, asset-identity, batch,
+> and rollback guarantees for USDC distribution are documented in
+> [`docs/usdc-distribution-security.md`](docs/usdc-distribution-security.md).

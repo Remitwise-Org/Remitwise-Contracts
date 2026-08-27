@@ -89,6 +89,8 @@ pub enum RemittanceSplitError {
     UnsupportedTokenContract = 31,
     /// No active treasury has accepted a treasury proposal yet.
     TreasuryNotConfigured = 32,
+    /// A treasury proposal targeted the contract's own address.
+    InvalidTreasuryAddress = 33,
     /// The number of configured corridors exceeds the maximum allowed.
     CorridorCountExceeded = 35,
     /// A corridor's fee (in basis points) exceeds the maximum allowed.
@@ -1840,6 +1842,13 @@ impl RemittanceSplit {
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
+        // The signed payer must also be the configured split owner. The
+        // request hash binds the payer, but a valid signature from another
+        // funded account must not authorize an owner-only distribution.
+        if config.owner != request.from {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
         if config.usdc_contract.ne(&request.usdc_contract) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::UntrustedTokenContract);
