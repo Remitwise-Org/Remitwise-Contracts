@@ -1531,32 +1531,25 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        let split = Self::get_split(&env);
-        let s0 = match split.get(0) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
+        let allocations = if let Some(config) = env
+            .storage()
+            .instance()
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+        {
+            Self::calculate_split_amounts(&env, &config, total_amount, false)?
+        } else {
+            // Preserve the read-only default preview for an uninitialized
+            // deployment while using the same checked remainder policy.
+            let split = Self::get_split(&env);
+            let spending = split.get(0).ok_or(RemittanceSplitError::Overflow)?;
+            let savings = split.get(1).ok_or(RemittanceSplitError::Overflow)?;
+            let bills = split.get(2).ok_or(RemittanceSplitError::Overflow)?;
+            let (spending, savings, bills, insurance) =
+                fee_math::split_amounts(total_amount, spending, savings, bills)
+                    .ok_or(RemittanceSplitError::Overflow)?;
+            [spending, savings, bills, insurance]
         };
-        let s1 = match split.get(1) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s2 = match split.get(2) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-
-        let (spending, savings, bills, insurance) = fee_math::split_amounts(
-            total_amount,
-            split.get(0).unwrap(),
-            split.get(1).unwrap(),
-            split.get(2).unwrap(),
-        );
+        let [spending, savings, bills, insurance] = allocations;
 
         // Emit SplitCalculated event
 
@@ -2639,7 +2632,7 @@ impl RemittanceSplit {
     /// is computed via integer (floor) division:
     ///
     /// ```text
-    /// alloc[i] = floor(total_amount * percent[i] / 100)
+    /// alloc[i] = floor(total_amount * percent[i] / 10_000)
     /// ```
     ///
     /// Insurance (index 3) receives the **remainder / dust**:

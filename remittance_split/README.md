@@ -330,6 +330,17 @@ Storage-read-only calculation — returns `[spending, savings, bills, insurance]
 Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
 This helper remains callable while paused.
 
+### Deterministic remainder policy
+
+Split math uses basis points and floors the spending, savings, and bills
+shares. Insurance receives the exact remainder after those three checked
+subtractions, so every valid positive amount is conserved exactly. This
+policy is shared by the read-only preview (`calculate_split` and
+`get_split_allocations`) and both distribution entrypoints. Zero and negative
+amounts are rejected; a one-unit amount follows the same floor-plus-remainder
+rule. Recipient ordering cannot affect the allocation because the four
+destinations are fixed configuration fields.
+
 #### `set_pause_admin(env, caller, new_admin) -> ()`
 
 Transfers pause authority to `new_admin`. Owner-only and blocked while paused.
