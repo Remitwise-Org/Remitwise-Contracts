@@ -777,6 +777,48 @@ pub fn verify_migration_completed(tracker: &MigrationTracker) -> Result<(), Migr
     }
 }
 
+/// Apply an imported snapshot atomically with caller-owned side effects.
+///
+/// The callback receives staged state and tracker values. Changes become
+/// observable only when the callback returns `Ok(())`; an error restores both
+/// values to their exact pre-operation state. This lets callers include their
+/// database, contract, queue, and event writes in one compensating boundary.
+///
+/// The callback must not publish irreversible effects that cannot be compensated.
+/// Such effects should be emitted only after this function returns successfully.
+pub fn apply_snapshot_atomically<F>(
+    state: &mut Option<ExportSnapshot>,
+    tracker: &mut MigrationTracker,
+    snapshot: ExportSnapshot,
+    timestamp_ms: u64,
+    apply: F,
+) -> Result<(), MigrationError>
+where
+    F: FnOnce(&mut Option<ExportSnapshot>, &mut MigrationTracker) -> Result<(), MigrationError>,
+{
+    snapshot.validate_for_import()?;
+
+    let previous_state = state.clone();
+    let previous_tracker = tracker.clone();
+    let mut staged_state = previous_state.clone();
+    let mut staged_tracker = previous_tracker.clone();
+    staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
+    staged_state = Some(snapshot);
+
+    match apply(&mut staged_state, &mut staged_tracker) {
+        Ok(()) => {
+            *state = staged_state;
+            *tracker = staged_tracker;
+            Ok(())
+        }
+        Err(error) => {
+            *state = previous_state;
+            *tracker = previous_tracker;
+            Err(error)
+        }
+    }
+}
+
 /// Export snapshot to JSON bytes.
 pub fn export_to_json(snapshot: &ExportSnapshot) -> Result<Vec<u8>, MigrationError> {
     snapshot.validate_payload_constraints()?;
@@ -1625,6 +1667,85 @@ mod tests {
 
         let result = tracker.mark_imported(&snapshot, 2_000);
         assert_eq!(result.unwrap_err(), MigrationError::DuplicateImport);
+    }
+
+    #[test]
+    fn test_atomic_apply_commits_state_and_replay_marker_on_success() {
+        let previous = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let next = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut state = Some(previous.clone());
+        let mut tracker = MigrationTracker::new();
+
+        apply_snapshot_atomically(
+            &mut state,
+            &mut tracker,
+            next.clone(),
+            42,
+            |staged, staged_tracker| {
+                assert_eq!(staged.as_ref(), Some(&next));
+                assert!(staged_tracker.is_imported(&next));
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(state, Some(next.clone()));
+        assert!(tracker.is_imported(&next));
+        assert!(!tracker.is_imported(&previous));
+    }
+
+    #[test]
+    fn test_atomic_apply_rolls_back_state_and_tracker_on_side_effect_failure() {
+        let previous = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let next = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut state = Some(previous.clone());
+        let mut tracker = MigrationTracker::new();
+        tracker.mark_imported(&previous, 7).unwrap();
+        let tracker_before = tracker.clone();
+
+        let result = apply_snapshot_atomically(
+            &mut state,
+            &mut tracker,
+            next.clone(),
+            42,
+            |staged, staged_tracker| {
+                *staged = None;
+                staged_tracker.mark_completed();
+                Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+            },
+        );
+
+        assert_eq!(
+            result,
+            Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+        );
+        assert_eq!(state, Some(previous));
+        assert_eq!(tracker, tracker_before);
+        assert!(!tracker.is_imported(&next));
+    }
+
+    #[test]
+    fn test_atomic_apply_rejects_duplicate_without_invoking_side_effects() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut state = None;
+        let mut tracker = MigrationTracker::new();
+        tracker.mark_imported(&snapshot, 1).unwrap();
+        let mut invoked = false;
+
+        let result = apply_snapshot_atomically(
+            &mut state,
+            &mut tracker,
+            snapshot,
+            2,
+            |_, _| {
+                invoked = true;
+                Ok(())
+            },
+        );
+
+        assert_eq!(result, Err(MigrationError::DuplicateImport));
+        assert!(!invoked);
+        assert!(state.is_none());
     }
 
     #[test]

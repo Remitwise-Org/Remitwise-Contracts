@@ -136,7 +136,29 @@ data_migration::check_version_compatibility(snapshot.header.version)?;
 
 // Full validation (version + payload bounds + checksum + semantic invariants)
 snapshot.validate_for_import()?;
+
+// Atomic state/tracker update around compensatable side effects
+let mut state = None;
+data_migration::apply_snapshot_atomically(
+    &mut state,
+    &mut tracker,
+    snapshot,
+    timestamp_ms,
+    |staged_state, staged_tracker| {
+        // Update database/contract/queue representations using staged values.
+        // Return Err on any failure; state and replay metadata are restored.
+        let _ = (staged_state, staged_tracker);
+        Ok(())
+    },
+)?;
 ```
+
+`apply_snapshot_atomically` validates before staging, records the replay identity
+in a cloned tracker, and commits both state and tracker only after the callback
+succeeds. Callback errors restore both to their exact pre-operation values,
+including when the callback partially edits either staged value. Irreversible
+external effects must be delayed until successful return or be compensatable by
+the caller.
 
 ### Semantic invariants enforced at import
 
@@ -206,6 +228,22 @@ operator restarts, replay attacks — requires a long-lived `MigrationTracker`. 
 | `RemittanceSplit` | `RemittanceSplitExport` | Remittance allocation config |
 | `SavingsGoals` | `SavingsGoalsExport` | Goals list + next ID |
 | `Generic` | `HashMap<String, Value>` | Arbitrary JSON map for future use |
+
+## Atomicity and rollback invariants
+
+Migration application follows a stage/commit protocol:
+
+1. Validate the complete snapshot before any mutation.
+2. Clone the current state and replay tracker.
+3. Apply the snapshot and caller-owned compensatable side effects to the staged copies.
+4. Commit both copies together only after success.
+5. On any error, discard staged copies and preserve the original state and tracker.
+
+This guarantees rejected, duplicate, and injected failure paths cannot leave a
+partial snapshot or replay marker. It does not make arbitrary external systems
+transactional: callers must either use compensating operations inside the
+callback or publish irreversible events only after successful return. The API
+is backwards-compatible; existing import and rollback helpers remain available.
 
 ## Error types
 
