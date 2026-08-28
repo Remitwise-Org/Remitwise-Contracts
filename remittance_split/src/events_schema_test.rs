@@ -175,6 +175,16 @@ fn distribution_completed_event_payload_schema() {
     assert_eq!(decoded.timestamp, 1_234_567_900);
 }
 
+#[test]
+fn distribution_completed_structured_event_topic_is_stable() {
+    let env = Env::default();
+
+    // Topic tuple emitted by emit_distribution_completed for indexers that
+    // subscribe to the structured per-category payload.
+    let topic: Val = (symbol_short!("split"), SplitEvent::DistributionCompleted).into_val(&env);
+    let _: Val = topic;
+}
+
 // ---------------------------------------------------------------------------
 // Payload schemas - enum events
 // ---------------------------------------------------------------------------

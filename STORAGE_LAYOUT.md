@@ -15,18 +15,23 @@ Scope: current implementation in this repository, focused on auditability and mi
 
 ## Storage Key Naming Conventions
 
+Contract documentation uses `Storage` consistently for Soroban instance and
+persistent storage. `Store` is reserved for describing an action (for example,
+storing a report), not as the name of a storage abstraction or key namespace.
+
 All storage keys follow strict naming conventions to ensure consistency and compatibility with Soroban's `symbol_short!` macro:
 
 - **Maximum length:** 9 characters (enforced by `symbol_short!`)
 - **Format:** UPPERCASE_WITH_UNDERSCORES
 - **Valid characters:** A-Z, 0-9, \_ (underscore)
 
-These conventions are automatically validated in CI. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
+These conventions are automatically validated in CI by three complementary test suites: a hand-maintained catalogue check (`storage_key_naming_test.rs`), a live source scan (`storage_key_source_scan_test.rs`) that parses each contract's `src/lib.rs` directly so a key added or renamed in code can't silently drift out of sync with the documented conventions, and a reserved-key check (`reserved_storage_keys_test.rs`) that fails the build if a contract reuses a key set aside for a future roadmap feature. See [Storage Key Naming Conventions](docs/storage-key-naming-conventions.md) for detailed guidelines, [Reserved Storage Keys](docs/RESERVED_STORAGE_KEYS.md) for the list of keys not yet available for reuse, and [testutils/tests/README.md](testutils/tests/README.md) for information about the automated validation tests.
 
 **Run validation tests:**
 
 ```bash
-cargo test --package testutils storage_key_naming_test -- --nocapture
+# Catalogue check + live source scan
+cargo test --package testutils storage_key -- --nocapture
 ```
 
 ## Common Patterns
@@ -75,13 +80,13 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | Key         | Type                           | Notes                                                        |
 | ----------- | ------------------------------ | ------------------------------------------------------------ |
 | `CONFIG`    | `SplitConfig`                  | Owner + percentages + initialized flag                       |
-| `SPLIT`     | `Vec<u32>`                     | Ordered percentages: `[spending, savings, bills, insurance]` |
 | `NONCES`    | `Map<Address, u64>`            | Replay protection for owner-authorized mutating calls        |
 | `AUDIT`     | `Vec<AuditEntry>`              | Rotating audit log, max `MAX_AUDIT_ENTRIES` (100)            |
 | `REM_SCH`   | `Map<u32, RemittanceSchedule>` | Remittance schedules                                         |
 | `NEXT_RSCH` | `u32`                          | Next remittance schedule ID                                  |
 | `PAUSE_ADM` | `Address`                      | Pause admin                                                  |
 | `PAUSED`    | `bool`                         | Global pause flag                                            |
+| `PAUSED_AT` | `u64`                          | Timestamp when contract was paused                           |
 | `UPG_ADM`   | `Address`                      | Upgrade admin                                                |
 | `VERSION`   | `u32`                          | Contract version                                             |
 
@@ -112,6 +117,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `AUDIT`     | `Vec<AuditEntry>`           | Rotating audit log, max 100            |
 | `PAUSE_ADM` | `Address`                   | Pause admin                            |
 | `PAUSED`    | `bool`                      | Global pause flag                      |
+| `PausedSince` | `u64`                    | Timestamp when contract was paused     |
 | `PAUSED_FN` | `Map<Symbol, bool>`         | Per-function pause switches            |
 | `UNP_AT`    | `u64`                       | Optional time-locked unpause timestamp |
 | `UPG_ADM`   | `Address`                   | Upgrade admin                          |
@@ -142,6 +148,7 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 | `STOR_STAT` | `StorageStats`           | Aggregated storage metrics                                                                                                   |
 | `PAUSE_ADM` | `Address`                | Pause admin                                                                                                                  |
 | `PAUSED`    | `bool`                   | Global pause flag                                                                                                            |
+| `PAUSED_AT` | `u64`                    | Timestamp when contract was paused                                                                                           |
 | `PAUSED_FN` | `Map<Symbol, bool>`      | Per-function pause switches                                                                                                  |
 | `UNP_AT`    | `u64`                    | Optional unpause timestamp                                                                                                   |
 | `UPG_ADM`   | `Address`                | Upgrade admin                                                                                                                |

@@ -47,7 +47,7 @@ fn bench_get_all_goals_worst_case() {
 
     let name = String::from_str(&env, "BenchGoal");
     for _ in 0..100 {
-        client.create_goal(&owner, &name, &1_000i128, &1_800_000u64);
+        client.create_goal(&owner, &name, &1_000i128, &1_800_000u64, &false);
     }
 
     let (cpu, mem, goals) = measure(&env, || client.get_all_goals(&owner));
@@ -69,7 +69,7 @@ fn bench_batch_add_to_goals_sized(s: u32) {
     let mut contributions = Vec::new(&env);
 
     for _ in 0..s {
-        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+        let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64, &false);
         contributions.push_back(ContributionItem {
             goal_id,
             amount: 100,
@@ -105,7 +105,6 @@ fn bench_batch_add_to_goals_max() {
     bench_batch_add_to_goals_sized(50);
 }
 
-
 #[test]
 fn bench_execute_due_savings_schedules() {
     let env = bench_env();
@@ -114,7 +113,7 @@ fn bench_execute_due_savings_schedules() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64);
+    let goal_id = client.create_goal(&owner, &name, &100_000i128, &1_800_000u64, &false);
 
     // Create 50 schedules
     let current_time = 1_700_000_000;
@@ -152,7 +151,7 @@ fn bench_create_savings_schedule() {
     let owner = <Address as AddressTrait>::generate(&env);
 
     let name = String::from_str(&env, "ScheduleGoal");
-    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64);
+    let goal_id = client.create_goal(&owner, &name, &10_000i128, &1_800_000u64, &false);
 
     let current_time = 1_700_000_000;
     let next_due = current_time + 10;
@@ -175,15 +174,22 @@ fn bench_create_savings_schedule() {
 // owned by the caller. These benchmarks document that scaling behaviour and
 // flag regressions if the pagination index or storage layout changes.
 //
-// Archive queries are not benchmarked here because the savings_goals contract
-// does not yet expose an archive function. When archival is added a separate
-// bench_get_archived_goals_page_* suite should be added alongside it.
+// Archived goal pagination benchmarks mirror the active `get_goals` suite below.
 // ---------------------------------------------------------------------------
+
+fn setup_archived_goals(client: &SavingsGoalContractClient, owner: &Address, n: u32) {
+    let name = String::from_str(&client.env, "G");
+    for _ in 0..n {
+        let goal_id = client.create_goal(owner, &name, &10_000i128, &1_800_000u64, &false);
+        client.add_to_goal(owner, &goal_id, &10_000i128);
+        client.archive_goal(owner, &goal_id);
+    }
+}
 
 fn setup_goals(client: &SavingsGoalContractClient, owner: &Address, n: u32) {
     let name = String::from_str(&client.env, "G");
     for _ in 0..n {
-        client.create_goal(owner, &name, &10_000i128, &1_800_000u64);
+        client.create_goal(owner, &name, &10_000i128, &1_800_000u64, &false);
     }
 }
 
@@ -317,6 +323,150 @@ fn bench_get_goals_page_last_n1000() {
 
     println!(
         r#"{{"contract":"savings_goals","method":"get_goals","scenario":"last_page_n1000","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// First-page archived-goal fetch with 50 archived goals in the store.
+#[test]
+fn bench_get_archived_goals_page_first_n50() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 50);
+
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
+    assert_eq!(page.count, MAX_PAGE_LIMIT);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"first_page_n50","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// First-page archived-goal fetch with 200 archived goals in the store.
+#[test]
+fn bench_get_archived_goals_page_first_n200() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 200);
+
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
+    assert_eq!(page.count, MAX_PAGE_LIMIT);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"first_page_n200","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// First-page archived-goal fetch with 1000 archived goals in the store.
+#[test]
+fn bench_get_archived_goals_page_first_n1000() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 1000);
+
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &0, &MAX_PAGE_LIMIT)
+    });
+    assert_eq!(page.count, MAX_PAGE_LIMIT);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"first_page_n1000","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// Last-page archived-goal fetch with 50 archived goals.
+#[test]
+fn bench_get_archived_goals_page_last_n50() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 50);
+
+    let mut cursor = 0u32;
+    let mut last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    while last_page.next_cursor != 0 {
+        cursor = last_page.next_cursor;
+        last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    }
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
+    assert!(page.count > 0);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"last_page_n50","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// Last-page archived-goal fetch with 200 archived goals.
+#[test]
+fn bench_get_archived_goals_page_last_n200() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 200);
+
+    let mut cursor = 0u32;
+    let mut last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    while last_page.next_cursor != 0 {
+        cursor = last_page.next_cursor;
+        last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    }
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
+    assert!(page.count > 0);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"last_page_n200","cpu":{},"mem":{}}}"#,
+        cpu, mem
+    );
+}
+
+/// Last-page archived-goal fetch with 1000 archived goals — maximum-scale worst case.
+#[test]
+fn bench_get_archived_goals_page_last_n1000() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+
+    setup_archived_goals(&client, &owner, 1000);
+
+    let mut cursor = 0u32;
+    let mut last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    while last_page.next_cursor != 0 {
+        cursor = last_page.next_cursor;
+        last_page = client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT);
+    }
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_archived_goals_page(&owner, &cursor, &MAX_PAGE_LIMIT)
+    });
+    assert!(page.count > 0);
+
+    println!(
+        r#"{{"contract":"savings_goals","method":"get_archived_goals_page","scenario":"last_page_n1000","cpu":{},"mem":{}}}"#,
         cpu, mem
     );
 }

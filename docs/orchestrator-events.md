@@ -27,7 +27,7 @@ Events related to contract state changes:
 ### Event: Flow Started
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow execution begins after passing validation checks
 
 **Data Structure:**
@@ -56,7 +56,7 @@ pub struct FlowStartedEvent {
 ### Event: Flow Completed Successfully
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_ok")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow completes successfully
 
 **Data Structure:**
@@ -86,7 +86,7 @@ pub struct FlowCompletedEvent {
 ### Event: Flow Failed
 
 **Topic:** `("Remitwise", EventCategory::Transaction, EventPriority::High, "flow_fail")`  
-**Emitted by:** `execute_remittance_flow`  
+**Emitted by:** `execute_remittance_flow`, `execute_remittance_flow_signed`  
 **Trigger:** Emitted when a remittance flow execution fails
 
 **Data Structure:**

@@ -129,6 +129,15 @@ When imported into a spreadsheet, the leading single quote instructs the applica
 
 Upon **re-importing** via `import_goals_from_csv()`, the leading quote is stripped by the CSV parser, and the goal name is reconstructed as-is: `=IMPORTXML(...)`. This is the correct behavior: the escaping is a **transport-layer safety measure**, not a data transformation.
 
+**Validation Constraints:**
+
+Importing CSV data is strictly fail-closed. Any malformed input will be rejected with `MigrationError` rather than being skipped or coerced:
+- **Wrong Column Count:** Rows missing fields or containing extra fields trigger `MigrationError::DeserializeError`.
+- **Type Mismatches:** Non-numeric strings in amount or date fields trigger `MigrationError::DeserializeError`.
+- **Negative Values:** Negative amounts (`target_amount` or `current_amount`) trigger `MigrationError::ValidationFailed`.
+- **Missing/Incorrect Header:** A missing or mismatched header row prevents mapping fields, triggering `MigrationError::DeserializeError`.
+- **Capacity Bounds:** Payloads exceeding `MAX_MIGRATION_RECORDS` (1,024 records) trigger `MigrationError::TooManyRecords`.
+
 **Import/Export functions:**
 
 - `export_to_csv(payload: &SavingsGoalsExport) -> Result<Vec<u8>, MigrationError>`

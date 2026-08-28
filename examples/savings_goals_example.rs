@@ -24,7 +24,7 @@ fn main() {
         "Creating savings goal: '{:?}' with target: {}",
         goal_name, target_amount
     );
-    let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date);
+    let goal_id = client.create_goal(&owner, &goal_name, &target_amount, &target_date, &false);
     println!("Goal created successfully with ID: {}", goal_id);
 
     // 5. [Read] Fetch the goal to check progress

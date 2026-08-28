@@ -3,6 +3,11 @@
 A Soroban smart contract for configuring and executing percentage-based USDC distributions
 across spending, savings, bills, and insurance categories.
 
+This contract also stores per-corridor fee configuration (`Corridor.fee_bps`) — see
+[docs/FEES.md](../docs/FEES.md) for exactly how that's computed and stored, and how it
+differs from the spending/savings/bills/insurance split percentages (which the orchestrator
+calls a "fee schedule" even though no funds are removed by them).
+
 ## Security Model
 
 `distribute_usdc` is the only function that moves funds. It enforces the following invariants
@@ -125,6 +130,25 @@ pub struct AccountGroup {
 
 ### Functions
 
+#### `treasury_balance(env) -> i128`
+
+Returns the accepted treasury address's balance of the USDC token pinned during
+`initialize_split`. This read-only audit view takes no token or account argument,
+so it cannot be used to query an arbitrary asset or address.
+
+**Errors:**
+
+| Error | Condition |
+|---|---|
+| `NotInitialized` | The split has not been initialized. |
+| `TreasuryNotConfigured` | No treasury has completed the two-step treasury acceptance flow. |
+
+#### `min_deposit(env) -> i128`
+
+Returns the minimum amount accepted for a remittance deposit. The value is the
+same lower bound used to validate every configured corridor's `min_amount` and
+is available before initialization.
+
 #### `initialize_split(env, owner, nonce, usdc_contract, spending_percent, savings_percent, bills_percent, insurance_percent) -> bool`
 
 Initializes the split configuration and pins the trusted USDC token contract address.
@@ -209,8 +233,19 @@ Restores a split configuration from a previously exported snapshot.
 | 1 | `snapshot.version` within `[MIN_SNAPSHOT_VERSION, SNAPSHOT_VERSION]` | `UnsupportedVersion` |
 | 2 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
 | 3 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
-| 4 | Each percentage field `<= 100` | `InvalidPercentageRange` |
-| 5 | Sum of percentages `== 100` | `InvalidPercentages` |
+| 4 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
+| 5 | Sum of percentages `== 10_000` | `PercentagesDoNotSumTo100` |
+
+Percentage validation runs before the configuration is mutated, so an invalid
+`update_split` leaves the previous configuration and timestamp unchanged.
+Each allocation is basis-point based (`10_000 == 100%`); values above the
+per-bucket cap return `PercentageOutOfRange` and incomplete allocations return
+`PercentagesDoNotSumTo100`.
+
+`batch_transfer` also validates its complete recipient set before any token
+transfer: an empty set returns `EmptyBatch`, duplicate addresses return
+`DuplicateRecipient`, mismatched vectors return `BatchLengthMismatch`, and
+inputs above the bounded batch size return `BatchSizeExceeded`.
 | 6 | `config.timestamp` and `exported_at` not in the future | `FutureTimestamp` |
 | 7 | Caller is the current contract owner | `Unauthorized` |
 | 8 | `snapshot.config.owner == caller` | `OwnerMismatch` |
@@ -255,8 +290,8 @@ failure.
 | 2 | `snapshot.version` within `[MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION]` | `UnsupportedVersion` |
 | 3 | FNV-1a checksum matches recomputed value | `ChecksumMismatch` |
 | 4 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
-| 5 | Each percentage field `<= 100` | `InvalidPercentageRange` |
-| 6 | Sum of all four percentage fields `== 100` | `InvalidPercentages` |
+| 5 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
+| 6 | Sum of all four percentage fields `== 10_000` | `PercentagesDoNotSumTo100` |
 | 7 | `snapshot.config.timestamp` and `exported_at` are not in the future | `InvalidAmount` |
 | 8 | Caller is the current on-chain owner (`existing.owner == caller`) | `Unauthorized` |
 | 9 | Snapshot owner matches caller (`snapshot.config.owner == caller`) | `OwnerMismatch` |
@@ -288,8 +323,8 @@ writing state.
 | 1 | Schema version within supported range | `UnsupportedVersion` |
 | 2 | FNV-1a checksum integrity | `ChecksumMismatch` |
 | 3 | `config.initialized == true` | `SnapshotNotInitialized` |
-| 4 | Per-field percentage range (`<= 100`) | `InvalidPercentageRange` |
-| 5 | Percentage sum `== 100` | `InvalidPercentages` |
+| 4 | Per-field percentage range (`<= 10_000`) | `PercentageOutOfRange` |
+| 5 | Percentage sum `== 10_000` | `PercentagesDoNotSumTo100` |
 | 6 | Timestamp not in the future | `InvalidAmount` |
 
 **Not checked by `verify_snapshot`:**
@@ -305,6 +340,17 @@ caller to be the contract owner. It returns `true` when all structural checks pa
 Storage-read-only calculation — returns `[spending, savings, bills, insurance]` amounts.
 Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
 This helper remains callable while paused.
+
+### Deterministic remainder policy
+
+Split math uses basis points and floors the spending, savings, and bills
+shares. Insurance receives the exact remainder after those three checked
+subtractions, so every valid positive amount is conserved exactly. This
+policy is shared by the read-only preview (`calculate_split` and
+`get_split_allocations`) and both distribution entrypoints. Zero and negative
+amounts are rejected; a one-unit amount follows the same floor-plus-remainder
+rule. Recipient ordering cannot affect the allocation because the four
+destinations are fixed configuration fields.
 
 #### `set_pause_admin(env, caller, new_admin) -> ()`
 
@@ -501,3 +547,7 @@ Test coverage includes:
 - Multiple sequential distributions with nonce advancement
 - Event emission verification
 - TTL extension on initialization
+
+> **Security note:** The authorization, request-binding, asset-identity, batch,
+> and rollback guarantees for USDC distribution are documented in
+> [`docs/usdc-distribution-security.md`](docs/usdc-distribution-security.md).

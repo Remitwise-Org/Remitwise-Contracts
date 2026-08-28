@@ -1,0 +1,51 @@
+# Example direnv config for the local Soroban sandbox (testnet).
+#
+# Usage:
+#   cp .envrc.example .envrc
+#   direnv allow
+#
+# .envrc is gitignored — edit your copy freely; this file is the template.
+# Every variable below has a script-side default (shown in comments), so
+# .envrc only needs to override what you actually want to change.
+
+# Network to deploy/seed against. See .soroban/config.toml for the
+# testnet/mainnet RPC endpoints and passphrases this resolves to.
+# Used by: scripts/bootstrap_deploy.sh, scripts/seed_local.sh
+# Default: testnet
+export NETWORK=testnet
+
+# Soroban CLI identity used as the deployer/source account for all
+# deploy/seed/invoke calls. Create it once with:
+#   soroban keys generate deployer --network testnet
+# Used by: scripts/bootstrap_deploy.sh, scripts/seed_local.sh
+# Default: deployer
+export SOURCE=deployer
+
+# Set to 1 to skip the WASM build step in bootstrap_deploy.sh (e.g. when
+# contracts are already built and you're only re-running deployment).
+# Used by: scripts/bootstrap_deploy.sh
+# Default: 0
+export SKIP_BUILD=0
+
+# Where bootstrap_deploy.sh writes the deployed contract ID manifest.
+# Used by: scripts/bootstrap_deploy.sh
+# Default: ./deployed-contracts.json
+export OUTPUT_FILE=./deployed-contracts.json
+
+# Set to 1 to also seed example family_wallet data (requires
+# FAMILY_WALLET_ID to be set below).
+# Used by: scripts/seed_local.sh
+# Default: 0
+export SEED_FAMILY=0
+
+# Contract IDs to seed example data into. Leave unset to pass them as
+# positional args instead — see scripts/seed_local.sh's usage comment.
+# After a bootstrap_deploy.sh run, copy these from its OUTPUT_FILE
+# manifest (jq -r '.contracts.remittance_split' deployed-contracts.json,
+# etc.) so seed_local.sh can pick them up from the environment.
+# Used by: scripts/seed_local.sh
+# export REMITTANCE_SPLIT_ID=
+# export SAVINGS_GOALS_ID=
+# export BILL_PAYMENTS_ID=
+# export INSURANCE_ID=
+# export FAMILY_WALLET_ID=

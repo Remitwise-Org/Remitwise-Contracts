@@ -1,12 +1,12 @@
 use bill_payments::{BillPayments, BillPaymentsClient};
-use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionData, TransactionType};
+use family_wallet::{FamilyWallet, FamilyWalletClient, TransactionType};
 use insurance::{Insurance, InsuranceClient};
 use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError, RemittanceFlowParams};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use remitwise_common::{CoverageType, FamilyRole};
 use reporting::{ReportingContract, ReportingContractClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{symbol_short, Address, Env, String as SorobanString};
 
 fn make_env() -> Env {
@@ -61,10 +61,15 @@ fn test_orchestrated_multisig_flow() {
     );
 
     // Set low spending limit for user to force multisig/role change
-    family_wallet_client.update_spending_limit(&admin, &user, &100i128);
+    family_wallet_client
+        .try_update_spending_limit(&admin, &user, &100i128)
+        .unwrap()
+        .unwrap();
 
     let mock_usdc = Address::generate(&env);
-    remittance_client.initialize_split(&admin, &0u64, &mock_usdc, &40u32, &30u32, &20u32, &10u32);
+    remittance_client.initialize_split(
+        &admin, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
+    );
 
     savings_client.init();
 
@@ -96,6 +101,7 @@ fn test_orchestrated_multisig_flow() {
         &SorobanString::from_str(&env, "Test Goal"),
         &10000i128,
         &2000000000u64,
+        &false,
     );
     let bill_id = bills_client.create_bill(
         &user,
@@ -117,24 +123,22 @@ fn test_orchestrated_multisig_flow() {
     );
 
     // 3. Scenario: Quorum not met
-    /// Scenario: User attempts flow exceeding their limit.
-    /// In this system, "quorum" for exceeding limits is handled by role elevation.
-    /// Since the user is not yet an Admin, the Orchestrator check fails.
+    // Scenario: User attempts flow exceeding their limit.
+    // In this system, "quorum" for exceeding limits is handled by role elevation.
+    // Since the user is not yet an Admin, the Orchestrator check fails.
     let total_amount = 5000i128;
-    let result = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
 
     match result {
         Err(Ok(OrchestratorError::Unauthorized)) => (),
@@ -142,8 +146,8 @@ fn test_orchestrated_multisig_flow() {
     }
 
     // 4. Scenario: Reaching Quorum
-    /// Scenario: Propose and sign a role change to elevate the user to Admin.
-    /// This demonstrates the multisig quorum logic in FamilyWallet.
+    // Scenario: Propose and sign a role change to elevate the user to Admin.
+    // This demonstrates the multisig quorum logic in FamilyWallet.
     family_wallet_client.configure_multisig(
         &admin,
         &TransactionType::RoleChange,
@@ -155,8 +159,8 @@ fn test_orchestrated_multisig_flow() {
     let tx_id = family_wallet_client.propose_role_change(&admin, &user, &FamilyRole::Admin);
 
     // Assert flow still fails (quorum not yet met)
-    let result_still_fails = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
+    let result_still_fails =
+        orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
             caller: user.clone(),
             total_amount,
             family_wallet: family_wallet_id.clone(),
@@ -167,8 +171,7 @@ fn test_orchestrated_multisig_flow() {
             goal_id,
             bill_id,
             policy_id,
-        },
-    );
+        });
     assert!(result_still_fails.is_err());
 
     // Sign to reach quorum
@@ -190,25 +193,23 @@ fn test_orchestrated_multisig_flow() {
     });
 
     // 5. Scenario: Paused Orchestrator (Downstream contract paused)
-    /// Scenario: Pause the SavingsGoalContract.
-    /// Since the Orchestrator depends on it, the flow should now fail.
+    // Scenario: Pause the SavingsGoalContract.
+    // Since the Orchestrator depends on it, the flow should now fail.
     savings_client.set_pause_admin(&admin, &admin);
     savings_client.pause(&admin);
 
-    let result_paused = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result_paused = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
     assert!(
         result_paused.is_err(),
         "Flow should fail when a dependency is paused"
@@ -218,28 +219,26 @@ fn test_orchestrated_multisig_flow() {
     savings_client.unpause(&admin);
 
     // 6. Scenario: EXEC_LOCK behavior
-    /// Scenario: Manually set the EXEC_LOCK to simulate an active execution.
-    /// The Orchestrator should prevent a second concurrent execution.
+    // Scenario: Manually set the EXEC_LOCK to simulate an active execution.
+    // The Orchestrator should prevent a second concurrent execution.
     env.as_contract(&orchestrator_id, || {
         env.storage()
             .instance()
             .set(&symbol_short!("EXEC_LOCK"), &true);
     });
 
-    let result_locked = orchestrator_client.try_execute_remittance_flow(
-        &RemittanceFlowParams {
-            caller: user.clone(),
-            total_amount,
-            family_wallet: family_wallet_id.clone(),
-            remittance_split: remittance_id.clone(),
-            savings: savings_id.clone(),
-            bills: bills_id.clone(),
-            insurance: insurance_id.clone(),
-            goal_id,
-            bill_id,
-            policy_id,
-        },
-    );
+    let result_locked = orchestrator_client.try_execute_remittance_flow(&RemittanceFlowParams {
+        caller: user.clone(),
+        total_amount,
+        family_wallet: family_wallet_id.clone(),
+        remittance_split: remittance_id.clone(),
+        savings: savings_id.clone(),
+        bills: bills_id.clone(),
+        insurance: insurance_id.clone(),
+        goal_id,
+        bill_id,
+        policy_id,
+    });
 
     match result_locked {
         Err(Ok(OrchestratorError::ExecutionLocked)) => (),

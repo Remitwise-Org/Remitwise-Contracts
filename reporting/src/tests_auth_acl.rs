@@ -3,11 +3,14 @@
 //! This module validates Issue SC-003 requirements:
 //! - All user-facing query endpoints enforce access control
 //! - Storage key isolation prevents cross-user data access
+#![allow(deprecated)]
 //! - Unauthorized callers are rejected
 
 #![cfg(test)]
+#![allow(deprecated, clippy::all)]
 
 use soroban_sdk::{testutils::Address as _, Address, Env};
+use testutils::same_address;
 
 use crate::{ReportingContract, ReportingContractClient, ReportingError};
 
@@ -17,7 +20,7 @@ use crate::{ReportingContract, ReportingContractClient, ReportingError};
 
 fn create_test_env() -> Env {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env
 }
 
@@ -63,7 +66,7 @@ fn test_get_remittance_summary_requires_auth() {
 
     // Verify auth was recorded
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(
         found,
         "get_remittance_summary must enforce auth for the user"
@@ -173,7 +176,7 @@ fn test_authorization_enforcement_present() {
         client.get_remittance_summary(&user, &10_000i128, &1_704_067_200u64, &1_706_745_600u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(found, "require_auth() must be called for user data access");
 }
 
@@ -230,7 +233,7 @@ fn test_sc_003_auth_enforcement() {
     let _ = client.get_remittance_summary(&user, &10_000i128, &1_704_067_200u64, &1_706_745_600u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(
         found,
         "SC-003: All query endpoints must enforce require_auth()"
@@ -309,7 +312,7 @@ fn test_authorization_call_count() {
 
     // Auth must be recorded
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(found, "Auth enforcement must record calls");
 }
 
@@ -406,6 +409,24 @@ fn test_admin_rotation_non_admin_cannot_propose() {
         client.try_accept_admin_rotation(&target),
         Err(Ok(ReportingError::NotAdminProposed)),
         "attacker's rejected proposal must not have set a pending admin"
+    );
+}
+
+/// Administrative maintenance entrypoints must reject an authenticated
+/// caller who is not the configured admin, even when the operation is empty.
+#[test]
+fn test_report_maintenance_requires_configured_admin() {
+    let env = create_test_env();
+    let (client, _admin) = setup_reporting(&env);
+    let attacker = Address::generate(&env);
+
+    assert_eq!(
+        client.try_archive_old_reports(&attacker, &0u64),
+        Err(Ok(ReportingError::Unauthorized)),
+    );
+    assert_eq!(
+        client.try_cleanup_old_reports(&attacker, &0u64),
+        Err(Ok(ReportingError::Unauthorized)),
     );
 }
 
@@ -527,31 +548,57 @@ fn test_admin_rotation_accept_with_no_pending_proposal() {
     assert_eq!(client.get_admin(), Some(admin));
 }
 
-/// Edge case "proposing the current admin as the new admin": this is a safe
-/// no-op rotation. The admin proposes itself, accepts, remains admin, and the
-/// pending proposal is cleared (a second accept reports `NotAdminProposed`).
+/// Proposing the current admin as the new admin is rejected at the boundary
+/// with a structured `SameAdmin` error. The admin and pending-proposal state
+/// remain unchanged.
 #[test]
-fn test_admin_rotation_propose_current_admin_is_safe() {
+fn test_admin_rotation_reject_propose_current_admin() {
     let env = create_test_env();
     let (client, admin) = setup_reporting(&env);
 
-    client.propose_new_admin(&admin, &admin);
-    assert_eq!(client.try_accept_admin_rotation(&admin), Ok(Ok(())));
+    assert_eq!(
+        client.try_propose_new_admin(&admin, &admin),
+        Err(Ok(ReportingError::SameAdmin)),
+        "self-proposal must be rejected"
+    );
 
-    // Admin is still the same address...
+    // Admin is unchanged, no pending proposal exists.
     assert_eq!(client.get_admin(), Some(admin.clone()));
-    // ...and the pending slot was cleared by the successful accept.
     assert_eq!(
         client.try_accept_admin_rotation(&admin),
         Err(Ok(ReportingError::NotAdminProposed)),
-        "pending proposal must be cleared after acceptance"
+        "no pending proposal after rejected self-proposal"
     );
 
-    // The admin retains its privileges (self-rotation is a harmless no-op).
+    // The admin retains its privileges.
     let (a, b, c, d, e) = fresh_dependency_addresses(&env);
     assert_eq!(
         client.try_configure_addresses(&admin, &a, &b, &c, &d, &e),
         Ok(Ok(()))
+    );
+}
+
+/// Proposing the contract's own address as the new admin must be rejected —
+/// accepting it would brick admin control forever, since the contract can
+/// never produce a `require_auth()` signature for itself as an external
+/// caller to complete `accept_admin_rotation`.
+#[test]
+fn test_admin_rotation_reject_propose_self_contract_as_admin() {
+    let env = create_test_env();
+    let (client, admin) = setup_reporting(&env);
+
+    assert_eq!(
+        client.try_propose_new_admin(&admin, &client.address),
+        Err(Ok(ReportingError::InvalidAdmin)),
+        "proposing the contract's own address must be rejected"
+    );
+
+    // Admin is unchanged, no pending proposal exists.
+    assert_eq!(client.get_admin(), Some(admin.clone()));
+    assert_eq!(
+        client.try_accept_admin_rotation(&admin),
+        Err(Ok(ReportingError::NotAdminProposed)),
+        "no pending proposal after rejected self-contract proposal"
     );
 }
 

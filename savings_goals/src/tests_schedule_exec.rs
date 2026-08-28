@@ -33,15 +33,13 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::{
-    symbol_short,
-    testutils::Address as AddressTrait,
-    Address, Env, String, Symbol, TryFromVal,
+    symbol_short, testutils::Address as AddressTrait, Address, Env, String, Symbol, TryFromVal,
 };
 use testutils::set_ledger_time;
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
 
-fn setup(env: &Env) -> (SavingsGoalContractClient, Address) {
+fn setup(env: &Env) -> (SavingsGoalContractClient<'_>, Address) {
     let contract_id = env.register_contract(None, SavingsGoalContract);
     let client = SavingsGoalContractClient::new(env, &contract_id);
     env.mock_all_auths();
@@ -57,6 +55,7 @@ fn make_goal(env: &Env, client: &SavingsGoalContractClient, owner: &Address, tar
         &String::from_str(env, "Test Goal"),
         &target,
         &2_000_000_000u64,
+        &false,
     )
 }
 
@@ -285,17 +284,20 @@ fn test_second_schedule_skipped_when_first_fills_to_cap() {
 /// A **locked** goal still receives scheduled credits: the executor does not
 /// check `goal.locked`. Goals are locked by default on creation.
 /// This test intentionally leaves the goal locked and confirms the credit lands.
+///  FIND:
+/// Goals are locked by default on creation.
+// REPLACE:
+/// The goal is explicitly locked before the schedule runs.
 #[test]
 fn test_locked_goal_receives_scheduled_credit() {
     let env = Env::default();
     let (client, owner) = setup(&env);
-
     let goal_id = make_goal(&env, &client, &owner, 2_000);
-
+    client.lock_goal(&owner, &goal_id);
     let locked_goal = client.get_goal(&goal_id).unwrap();
     assert!(
         locked_goal.locked,
-        "goal must be locked by default for this test to be meaningful"
+        "goal must be locked for this test to be meaningful"
     );
 
     client.create_savings_schedule(&owner, &goal_id, &400, &3_000, &0);
@@ -472,11 +474,16 @@ fn test_schedule_executed_event_emitted_with_correct_id() {
             .unwrap_or(false);
 
         if t0_ok && t1_ok {
-            let data_id: u32 = u32::try_from_val(&env, &ev.2).unwrap();
+            let evt = ScheduleExecutedEvent::try_from_val(&env, &ev.2)
+                .expect("ScheduleExecuted payload must decode as ScheduleExecutedEvent");
             assert_eq!(
-                data_id, sched_id,
+                evt.schedule_id, sched_id,
                 "ScheduleExecuted event data must carry the schedule ID"
             );
+            assert_eq!(evt.goal_id, goal_id);
+            assert_eq!(evt.owner, owner);
+            assert_eq!(evt.amount, 200);
+            assert_eq!(evt.timestamp, 3_500);
             found = true;
         }
     }
@@ -689,5 +696,39 @@ fn test_one_shot_schedule_deactivates_after_execution() {
     assert_eq!(
         goal.current_amount, 200,
         "goal balance must not change after the schedule is deactivated"
+    );
+}
+
+// ─── Pause must be respected on the permissionless executor ──────────────────
+
+/// Issue #1589: `execute_due_savings_schedules` is permissionless and only
+/// checked the separate global kill switch, never this contract's own
+/// `Paused` flag set via `pause()`. That meant an admin pausing the contract
+/// had no effect on scheduled fund movement: anyone could still call the
+/// executor and have it credit due schedules while the contract was
+/// supposedly paused.
+#[test]
+fn test_execute_due_savings_schedules_returns_empty_when_paused() {
+    let env = Env::default();
+    let (client, owner) = setup(&env);
+
+    let goal_id = make_goal(&env, &client, &owner, 2_000);
+    client.create_savings_schedule(&owner, &goal_id, &500, &3_000, &0);
+
+    client.set_pause_admin(&owner, &owner);
+    client.pause(&owner);
+
+    set_ledger_time(&env, 2, 3_500);
+    let executed = client.execute_due_savings_schedules();
+
+    assert_eq!(
+        executed.len(),
+        0,
+        "executor must not run any schedules while the contract is paused"
+    );
+    let goal = client.get_goal(&goal_id).unwrap();
+    assert_eq!(
+        goal.current_amount, 0,
+        "goal balance must be untouched while paused"
     );
 }

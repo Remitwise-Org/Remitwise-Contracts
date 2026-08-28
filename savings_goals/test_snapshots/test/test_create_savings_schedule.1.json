@@ -27,6 +27,9 @@
                 },
                 {
                   "u64": 5000
+                },
+                {
+                  "bool": false
                 }
               ]
             }
@@ -142,7 +145,7 @@
                         "symbol": "locked"
                       },
                       "val": {
-                        "bool": true
+                        "bool": false
                       }
                     },
                     {
@@ -666,6 +669,9 @@
                 },
                 {
                   "u64": 5000
+                },
+                {
+                  "bool": false
                 }
               ]
             }
@@ -705,6 +711,14 @@
                   },
                   "val": {
                     "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "locked"
+                  },
+                  "val": {
+                    "bool": false
                   }
                 },
                 {
@@ -842,6 +856,14 @@
                   },
                   "val": {
                     "u32": 1
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "locked"
+                  },
+                  "val": {
+                    "bool": false
                   }
                 },
                 {

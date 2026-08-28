@@ -10,8 +10,9 @@ role can repoint reporting at arbitrary contracts, so the admin handover is a
 
 Handover uses a **two-step rotation** (propose → accept) so that:
 
-- a fat-fingered or malicious address cannot be installed in a single call, and
-- the incoming admin must actively claim the role, proving it controls the key.
+- a fat-fingered or malicious address cannot be installed in a single call,
+- the incoming admin must actively claim the role, proving it controls the key, and
+- the transfer is not final until the proposed admin accepts, creating a persistent handoff window between steps.
 
 This document pins the rotation **state machine** and the negative paths that
 make it safe.
@@ -46,6 +47,27 @@ make it safe.
 | `accept_admin_rotation(caller)` | `caller.require_auth()` **and** `PEND_ADM` exists **and** `caller == PEND_ADM` | Sets `ADMIN = PEND_ADM`, then removes `PEND_ADM` |
 
 ---
+
+## Handoff window
+
+The pending proposal stored in `PEND_ADM` creates an explicit handoff window
+between the `propose_new_admin` and `accept_admin_rotation` steps. During this
+window, the current admin retains authority and the proposed address must
+actively accept the transfer before the upgrade-admin role changes hands.
+
+This handshake functions as the effective timelock for upgrade-admin handoff:
+there is no single-call swap, and the transfer only completes after the same
+proposed target proves control of its address.
+
+### Example
+
+```rust
+let admin: Address = ...;
+let proposed_admin: Address = ...;
+
+contract.propose_new_admin(env.clone(), admin.clone(), proposed_admin.clone())?;
+contract.accept_admin_rotation(env.clone(), proposed_admin.clone())?;
+```
 
 ## Negative paths (all must reject)
 

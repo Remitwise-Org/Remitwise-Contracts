@@ -44,7 +44,7 @@ fn try_create(ct: CoverageType, premium: i128, coverage: i128) -> bool {
     let client = InsuranceClient::new(&env, &contract_id);
     let name = String::from_str(&env, "P");
     client
-        .try_create_policy(&caller, &name, &ct, &premium, &coverage)
+        .try_create_policy(&caller, &name, &ct, &premium, &coverage, &None)
         .is_ok()
 }
 
@@ -62,6 +62,7 @@ fn ratio_boundary_exact_is_accepted() {
         &CoverageType::Health,
         &premium,
         &coverage,
+        &None,
     );
     assert_eq!(id, 1);
 
@@ -84,6 +85,7 @@ fn ratio_boundary_plus_one_is_rejected() {
         &CoverageType::Health,
         &premium,
         &coverage,
+        &None,
     );
     assert!(
         res.is_err(),

@@ -100,14 +100,15 @@ let b64 = data_migration::export_to_encrypted_payload(&ciphertext_bytes);
 
 ### Importing
 
-All import functions validate version compatibility and SHA-256 checksum before returning. An `Err` is returned if either check fails — the caller must not use the snapshot data if validation fails.
+All import functions validate version compatibility, SHA-256 checksum, **and payload-type semantic invariants** before returning. An `Err` is returned if any check fails — the caller must not use the snapshot data if validation fails.
 
 ```rust
-// JSON
-let snapshot = data_migration::import_from_json(&json_bytes)?;
+// JSON (tracked — provides cross-call duplicate/replay protection)
+let mut tracker = MigrationTracker::new();
+let snapshot = data_migration::import_from_json(&json_bytes, &mut tracker, timestamp_ms)?;
 
-// Binary
-let snapshot = data_migration::import_from_binary(&bin_bytes)?;
+// Binary (tracked — provides cross-call duplicate/replay protection)
+let snapshot = data_migration::import_from_binary(&bin_bytes, &mut tracker, timestamp_ms)?;
 
 // CSV (goals only; no header checksum)
 let goals = data_migration::import_goals_from_csv(&csv_bytes)?;
@@ -116,15 +117,75 @@ let goals = data_migration::import_goals_from_csv(&csv_bytes)?;
 let plain_bytes = data_migration::import_from_encrypted_payload(&b64)?;
 ```
 
+> **⚠️ Untracked variants do NOT provide cross-call duplicate/replay protection.**
+>
+> [`import_from_json_untracked`] and [`import_from_binary_untracked`] construct a
+> throwaway [`MigrationTracker`] on each call. Importing the same payload twice via
+> these helpers **succeeds both times** — no error is raised on the second call.
+>
+> Use these functions only for true one-shot scenarios (e.g. migration scripts
+> guaranteed to run exactly once). Prefer the tracked variants in all other contexts.
+> See the [Tracked vs Untracked duplicate protection](#tracked-vs-untracked-duplicate-protection)
+> section below for the full behavioural matrix.
+
 ### Manual validation
 
 ```rust
 // Check version only
 data_migration::check_version_compatibility(snapshot.header.version)?;
 
-// Full validation (version + checksum)
+// Full validation (version + payload bounds + checksum + semantic invariants)
 snapshot.validate_for_import()?;
 ```
+
+### Semantic invariants enforced at import
+
+`validate_for_import` (and therefore all `import_from_*` helpers) is **fail-closed**: in addition to structural checks it enforces the same business rules the live contracts enforce at write-time.
+
+| Payload type | Invariant | Error on violation |
+|---|---|---|
+| `RemittanceSplit` | `spending + savings + bills + insurance == 100` | `ValidationFailed` — sum and individual values included in message |
+| `SavingsGoals` | `next_id >= max(goal.id)` across all goals | `ValidationFailed` — both ids included in message |
+| `SavingsGoals` | `current_amount <= target_amount` for every goal | `ValidationFailed` — goal id and amounts included in message |
+| `Generic` | *(none beyond size/count bounds)* | — |
+
+**Why this matters:** migration is where contract invariants are most easily bypassed, because data arrives pre-formed rather than through guarded entry-points. A split config that sums to 73% or 140%, or a savings snapshot with a wound-back `next_id`, would produce corrupt on-chain state that the contract would subsequently refuse to touch — a silent data-integrity bug introduced at the import boundary.
+
+## Tracked vs Untracked duplicate protection
+
+[`MigrationTracker`] is how this crate prevents the same snapshot from being applied
+to on-chain state more than once. The tracker records every successfully imported
+snapshot by its `(checksum, version)` identity. Passing the **same long-lived tracker**
+to every `import_from_json` / `import_from_binary` call means a second attempt with
+the same payload is always rejected with `MigrationError::DuplicateImport`.
+
+The `_untracked` variants are **convenience wrappers that construct and immediately
+discard a throwaway tracker**. There is no persistent state between calls. Because
+of this:
+
+| Scenario | `import_from_json` / `import_from_binary` | `import_from_json_untracked` / `import_from_binary_untracked` |
+|---|:---:|:---:|
+| First import | ✅ `Ok` | ✅ `Ok` |
+| Second import, same payload, same call session | ❌ `Err(DuplicateImport)` | ✅ `Ok` (footgun!) |
+| Structural validation (size, version, checksum, semantics) | ✅ enforced | ✅ enforced |
+
+### When `_untracked` is safe
+
+- The import runs exactly once and there is no possibility of a retry or replay
+  (e.g. a CI migration script that runs as a one-shot job).
+- You manage duplicate detection outside this crate (e.g. idempotency keys at the
+  transport layer).
+
+### When `_untracked` is NOT safe
+
+Any scenario where the same snapshot bytes could arrive twice — network retries,
+operator restarts, replay attacks — requires a long-lived `MigrationTracker`. Use
+[`import_from_json`] / [`import_from_binary`] and persist the tracker.
+
+> **Deprecation note:** The `_untracked` variants are retained for legacy one-shot
+> call sites. New code should use the tracked variants and pass an explicit
+> `MigrationTracker`. A future breaking release may remove the untracked helpers
+> entirely.
 
 ## Data structures
 
@@ -155,7 +216,7 @@ snapshot.validate_for_import()?;
 | `UnknownHashAlgorithm` | `header.hash_algorithm` is not `Sha256` |
 | `InvalidFormat` | CSV or serialisation format error |
 | `DeserializeError` | JSON/binary deserialisation failure |
-| `ValidationFailed` | General validation failure |
+| `ValidationFailed` | Semantic invariant violated (percent sum ≠ 100, `next_id` wound back, `current_amount > target_amount`) |
 
 ## Security assumptions
 

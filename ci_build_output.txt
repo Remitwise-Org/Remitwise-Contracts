@@ -1,0 +1,148 @@
+﻿cargo : warning: profiles for the non root package will be ignored, specify 
+profiles at the workspace root:
+At line:1 char:1
++ cargo build --release --target wasm32-unknown-unknown --workspace --e ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: profil...workspace root: 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+package:   C:\Users\yunus\Desktop\Remitwise-Contracts2\insurance\Cargo.toml
+workspace: C:\Users\yunus\Desktop\Remitwise-Contracts2\Cargo.toml
+   Compiling proc-macro2 v1.0.106
+       Fresh unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde v1.0.228
+   Compiling zmij v1.0.21
+     Running 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\proc-macro2-1.0.106\build.rs 
+--error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat 
+--crate-type bin --emit=dep-info,link -C embed-bitcode=no -C 
+debug-assertions=off -C overflow-checks=on --cfg "feature=\"default\"" --cfg 
+"feature=\"proc-macro\"" --check-cfg cfg(docsrs,test) --check-cfg 
+"cfg(feature, values(\"default\", \"nightly\", \"proc-macro\", 
+\"span-locations\"))" -C metadata=d832908317952f0d -C 
+extra-filename=-8868e6cde2eb2090 --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\proc-macro2-8868e6cde2eb2090 -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow`
+     Running 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\quote-1.0.46\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --cfg "feature=\"default\"" --cfg "feature=\"proc-macro\"" 
+--check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values(\"default\", 
+\"proc-macro\"))" -C metadata=809ba5be3e0c095a -C 
+extra-filename=-97a0afa7320acb1f --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\quote-97a0afa7320acb1f -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow`
+     Running 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --cfg "feature=\"default\"" --cfg "feature=\"derive\"" 
+--cfg "feature=\"serde_derive\"" --cfg "feature=\"std\"" --check-cfg 
+cfg(docsrs,test) --check-cfg "cfg(feature, values(\"alloc\", \"default\", 
+\"derive\", \"rc\", \"serde_derive\", \"std\", \"unstable\"))" -C 
+metadata=00a6d81c1ac059fa -C extra-filename=-7b0a42f1d6ea7368 --out-dir C:\User
+s\yunus\Desktop\Remitwise-Contracts2\target\release\build\serde-7b0a42f1d6ea736
+8 -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow`
+     Running 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\zmij-1.0.21\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, 
+values(\"no-panic\"))" -C metadata=188dfe1272b11dee -C 
+extra-filename=-4420909d0c97fbec --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\zmij-4420909d0c97fbec -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow`
+error: linker `link.exe` not found
+  |
+  = note: program not found
+
+note: the msvc targets depend on the msvc linker but `link.exe` was not found
+
+note: please ensure that Visual Studio 2017 or later, or Build Tools for 
+Visual Studio were installed with the Visual C++ option
+
+note: VS Code is a different product, and is not sufficient
+
+error: could not compile `quote` (build script) due to 1 previous error
+
+Caused by:
+  process didn't exit successfully: 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\quote-1.0.46\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --cfg "feature=\"default\"" --cfg "feature=\"proc-macro\"" 
+--check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values(\"default\", 
+\"proc-macro\"))" -C metadata=809ba5be3e0c095a -C 
+extra-filename=-97a0afa7320acb1f --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\quote-97a0afa7320acb1f -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow` (exit code: 1)
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `zmij` (build script) due to 1 previous error
+
+Caused by:
+  process didn't exit successfully: 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\zmij-1.0.21\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, 
+values(\"no-panic\"))" -C metadata=188dfe1272b11dee -C 
+extra-filename=-4420909d0c97fbec --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\zmij-4420909d0c97fbec -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow` (exit code: 1)
+error: could not compile `proc-macro2` (build script) due to 1 previous error
+
+Caused by:
+  process didn't exit successfully: 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\proc-macro2-1.0.106\build.rs 
+--error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat 
+--crate-type bin --emit=dep-info,link -C embed-bitcode=no -C 
+debug-assertions=off -C overflow-checks=on --cfg "feature=\"default\"" --cfg 
+"feature=\"proc-macro\"" --check-cfg cfg(docsrs,test) --check-cfg 
+"cfg(feature, values(\"default\", \"nightly\", \"proc-macro\", 
+\"span-locations\"))" -C metadata=d832908317952f0d -C 
+extra-filename=-8868e6cde2eb2090 --out-dir C:\Users\yunus\Desktop\Remitwise-Con
+tracts2\target\release\build\proc-macro2-8868e6cde2eb2090 -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow` (exit code: 1)
+error: could not compile `serde` (build script) due to 1 previous error
+
+Caused by:
+  process didn't exit successfully: 
+`C:\Users\yunus\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe 
+--crate-name build_script_build --edition=2021 C:\Users\yunus\.cargo\registry\s
+rc\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\build.rs --error-format=json 
+--json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin 
+--emit=dep-info,link -C embed-bitcode=no -C debug-assertions=off -C 
+overflow-checks=on --cfg "feature=\"default\"" --cfg "feature=\"derive\"" 
+--cfg "feature=\"serde_derive\"" --cfg "feature=\"std\"" --check-cfg 
+cfg(docsrs,test) --check-cfg "cfg(feature, values(\"alloc\", \"default\", 
+\"derive\", \"rc\", \"serde_derive\", \"std\", \"unstable\"))" -C 
+metadata=00a6d81c1ac059fa -C extra-filename=-7b0a42f1d6ea7368 --out-dir C:\User
+s\yunus\Desktop\Remitwise-Contracts2\target\release\build\serde-7b0a42f1d6ea736
+8 -C strip=symbols -L 
+dependency=C:\Users\yunus\Desktop\Remitwise-Contracts2\target\release\deps 
+--cap-lints allow` (exit code: 1)

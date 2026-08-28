@@ -101,6 +101,14 @@ Tags are normalized before storage using the following rules:
 3. **Length validation**: Tags must be 1-32 characters after normalization
 4. **Rejection**: Tags with invalid characters (e.g., @, !, #, spaces) are rejected with an error
 
+#### Shared helpers (`remitwise-common`)
+Tag validation is centralized in `remitwise-common`:
+
+- **`canonicalize_tags_checked(env, tags) -> Result<Vec<String>, TagError>`** — preferred for untrusted or indexer-supplied input. Returns typed errors (`Empty`, `TooLong`, `InvalidChar { position }`) and short-circuits on the first violation.
+- **`canonicalize_tags(env, tags, on_invalid_char)`** — legacy panic-based wrapper retained for backward compatibility. New contract code should prefer the checked variant and map `TagError` to each crate's contract errors (e.g. `SavingsGoalError::InvalidTagContent`).
+
+`TAG_MAX_LEN` (32) in `remitwise-common` is the single source of truth for maximum tag length.
+
 #### Examples
 - `"URGENT-1_Tag"` → `"urgent-1_tag"` (normalized)
 - `"Monthly-Bill"` → `"monthly-bill"` (normalized)
