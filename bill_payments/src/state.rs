@@ -2,16 +2,18 @@ use soroban_sdk::{contracttype, Env};
 
 use crate::{Bill, BillPaymentsError};
 
+/// The actual states of a bill in the system.
+/// Note: "Cancelled" is not a persisted state - cancelled bills are deleted.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BillState {
-    Active,
-    Paid,
-    Cancelled,
-    Archived,
+    Active,   // Bill exists and is unpaid
+    Paid,     // Bill exists and is paid
+    Archived, // Bill is in archive storage
 }
 
 impl BillState {
+    /// Derive state from bill data
     pub fn from_bill(bill: &Bill, is_archived: bool) -> Self {
         if is_archived {
             return BillState::Archived;
@@ -23,22 +25,20 @@ impl BillState {
         }
     }
 
+    /// Check if transition is legal
     pub fn can_transition_to(&self, target: BillState) -> bool {
         use BillState::*;
         matches!(
             (self, target),
-            (Active, Paid)
-                | (Active, Cancelled)
-                | (Active, Active)
-                | (Active, Archived)
-                | (Paid, Archived)
-                | (Paid, Paid)
-                | (Cancelled, Archived)
-                | (Cancelled, Cancelled)
-                | (Archived, Active)
+            (Active, Paid)      // Pay bill
+                | (Active, Active)  // No change
+                | (Active, Archived) // Archive (only if paid, checked elsewhere)
+                | (Paid, Archived)   // Archive paid bill
+                | (Archived, Active) // Restore
         )
     }
 
+    /// Validate a state transition
     pub fn validate_transition(
         current: &Bill,
         is_archived: bool,
@@ -53,20 +53,25 @@ impl BillState {
     }
 }
 
+/// Check bill invariants
 pub fn check_invariants(
     _env: &Env,
     bill: &Bill,
     _is_archived: bool,
 ) -> Result<(), BillPaymentsError> {
+    // Paid bills must have paid_at
     if bill.paid && bill.paid_at.is_none() {
         return Err(BillPaymentsError::InvariantViolation);
     }
+    // Unpaid bills must NOT have paid_at
     if !bill.paid && bill.paid_at.is_some() {
         return Err(BillPaymentsError::InvariantViolation);
     }
+    // Recurring bills need frequency > 0
     if bill.recurring && bill.frequency_days == 0 {
         return Err(BillPaymentsError::InvariantViolation);
     }
+    // Amount must be positive
     if bill.amount <= 0 {
         return Err(BillPaymentsError::InvalidAmount);
     }
@@ -81,13 +86,17 @@ mod tests {
 
     #[test]
     fn test_state_transitions() {
+        // Legal transitions
         assert!(BillState::Active.can_transition_to(BillState::Paid));
-        assert!(BillState::Active.can_transition_to(BillState::Cancelled));
+        assert!(BillState::Active.can_transition_to(BillState::Active));
         assert!(BillState::Active.can_transition_to(BillState::Archived));
-        assert!(!BillState::Paid.can_transition_to(BillState::Cancelled));
-        assert!(!BillState::Cancelled.can_transition_to(BillState::Paid));
-        assert!(!BillState::Archived.can_transition_to(BillState::Paid));
+        assert!(BillState::Paid.can_transition_to(BillState::Archived));
         assert!(BillState::Archived.can_transition_to(BillState::Active));
+
+        // Illegal transitions
+        assert!(!BillState::Paid.can_transition_to(BillState::Active));
+        assert!(!BillState::Archived.can_transition_to(BillState::Paid));
+        assert!(!BillState::Archived.can_transition_to(BillState::Archived));
     }
 
     #[test]

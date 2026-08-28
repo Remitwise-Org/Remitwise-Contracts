@@ -1804,8 +1804,8 @@ impl BillPayments {
         let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
         // State transition validation
-        use crate::state::{check_invariants, BillState};
-        BillState::validate_transition(&bill, false, BillState::Cancelled, "cancel_bill")?;
+        // Check invariants before deletion
+        use crate::state::check_invariants;
         check_invariants(&env, &bill, false)?;
 
         if bill.owner != caller {
@@ -2081,15 +2081,19 @@ impl BillPayments {
     ///
     /// @param caller Authenticated owner attempting the batch payment.
     /// @param bill_ids Candidate bill IDs to process.
-    /// @return Number of successfully paid bills.
+    /// @return `Ok(())` after processing the requested bill IDs.
     /// @security Cross-owner payments are rejected per item; oversized batches are rejected
     /// before iteration.
-    pub fn batch_pay_bills(env: Env, caller: Address, bill_ids: Vec<u32>) -> Result<u32, Error> {
+    pub fn batch_pay_bills(
+        env: Env,
+        caller: Address,
+        bill_ids: Vec<u32>,
+    ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
         if bill_ids.len() > MAX_BATCH_SIZE {
-            return Err(Error::BatchTooLarge);
+            return Err(BillPaymentsError::BatchTooLarge);
         }
 
         Self::extend_instance_ttl(&env);
@@ -2099,7 +2103,6 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut success_count = 0u32;
         let mut unpaid_delta = 0i128;
         let current_time = env.ledger().timestamp();
         let mut next_id = env
@@ -2110,23 +2113,33 @@ impl BillPayments {
 
         for bill_id in bill_ids.iter() {
             let mut bill = match bills.get(bill_id) {
-                Some(b) => b,
+                Some(bill) => bill,
                 None => continue,
             };
 
-            if bill.owner != caller || bill.paid {
-                continue;
+            // Skip unauthorized or already paid bills
+            if bill.owner != caller {
+                continue; // Skip but don't fail - matches test expectation
+            }
+            if bill.paid {
+                continue; // Skip already paid
             }
 
-            let amount = bill.amount;
+            // State transition validation
+            use crate::state::{check_invariants, BillState};
+            BillState::validate_transition(&bill, false, BillState::Paid, "batch_pay_bills")?;
+            check_invariants(&env, &bill, false)?;
+
+            // Process payment
             bill.paid = true;
             bill.paid_at = Some(current_time);
 
+            // Handle recurring bills
             if bill.recurring {
-                next_id = next_id.saturating_add(1);
                 let period = (bill.frequency_days as u64)
                     .checked_mul(SECONDS_PER_DAY)
                     .ok_or(Error::InvalidFrequency)?;
+
                 let mut next_due_date = bill
                     .due_date
                     .checked_add(period)
@@ -2136,11 +2149,14 @@ impl BillPayments {
                         .checked_add(period)
                         .ok_or(Error::InvalidDueDate)?;
                 }
+
+                next_id = next_id.checked_add(1).ok_or(Error::InvalidDueDate)?;
+
                 let next_bill = Bill {
                     id: next_id,
                     owner: bill.owner.clone(),
                     name: bill.name.clone(),
-                    external_ref: None, // Do not clone ref to avoid uniqueness conflict
+                    external_ref: None,
                     amount: bill.amount,
                     due_date: next_due_date,
                     recurring: true,
@@ -2153,27 +2169,24 @@ impl BillPayments {
                     currency: bill.currency.clone(),
                 };
                 bills.set(next_id, next_bill);
-                // Update owner index for the newly spawned recurring bill
                 Self::index_add_active(&env, &caller, next_id);
-                // Update currency index for the newly spawned recurring bill
                 Self::index_add_currency(&env, &caller, &bill.currency, next_id);
                 env.events().publish(
                     (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                     (next_id, bill_id, next_due_date),
                 );
             } else {
-                unpaid_delta = unpaid_delta.saturating_sub(amount);
+                unpaid_delta = unpaid_delta.saturating_sub(bill.amount);
             }
 
+            let paid_amount = bill.amount;
             bills.set(bill_id, bill);
-            success_count += 1;
-
             RemitwiseEvents::emit(
                 &env,
                 EventCategory::Transaction,
                 EventPriority::High,
                 symbol_short!("paid"),
-                (bill_id, caller.clone(), amount),
+                (bill_id, caller.clone(), paid_amount),
             );
         }
 
@@ -2189,8 +2202,7 @@ impl BillPayments {
         }
 
         Self::update_storage_stats(&env);
-
-        Ok(success_count)
+        Ok(())
     }
 
     /// Sum of all **unpaid** bill amounts for the given `owner`.
@@ -2499,3 +2511,6 @@ impl BillPayments {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_state_invariants;
