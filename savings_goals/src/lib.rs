@@ -2621,6 +2621,10 @@ impl SavingsGoalContract {
             panic!("Next due date must be in the future");
         }
 
+        if interval > 0 && next_due.checked_add(interval).is_none() {
+            panic!("Interval too large causing overflow");
+        }
+
         Self::extend_instance_ttl(&env);
 
         let next_schedule_id = env
@@ -2690,6 +2694,10 @@ impl SavingsGoalContract {
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             panic!("Next due date must be in the future");
+        }
+
+        if interval > 0 && next_due.checked_add(interval).is_none() {
+            panic!("Interval too large causing overflow");
         }
 
         Self::extend_instance_ttl(&env);
@@ -2932,14 +2940,24 @@ impl SavingsGoalContract {
             schedule.last_executed = Some(current_time);
 
             if schedule.recurring && schedule.interval > 0 {
-                let mut missed = 0u32;
-                let mut next = schedule.next_due + schedule.interval;
-                while next <= current_time {
-                    missed = missed.saturating_add(1);
-                    next = next.saturating_add(schedule.interval);
+                let elapsed = current_time.saturating_sub(schedule.next_due);
+                let periods = elapsed / schedule.interval;
+                let missed = periods as u32;
+                let periods_to_add = periods.saturating_add(1) as u64;
+
+                let next = periods_to_add
+                    .checked_mul(schedule.interval)
+                    .and_then(|advance| schedule.next_due.checked_add(advance));
+
+                match next {
+                    Some(n) => {
+                        schedule.missed_count = schedule.missed_count.saturating_add(missed);
+                        schedule.next_due = n;
+                    }
+                    None => {
+                        schedule.active = false;
+                    }
                 }
-                schedule.missed_count = schedule.missed_count.saturating_add(missed);
-                schedule.next_due = next;
 
                 if missed > 0 {
                     env.events().publish(
