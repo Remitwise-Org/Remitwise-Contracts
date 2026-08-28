@@ -12,6 +12,8 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+mod state;
+
 fn is_valid_currency_chars(s: &[u8]) -> bool {
     !s.is_empty() && s.iter().all(|&b| b.is_ascii_alphabetic())
 }
@@ -128,6 +130,10 @@ pub enum BillPaymentsError {
     OwnerBillCapExceeded = 18,
     /// Tag content contains invalid characters (must be [a-z0-9-_])
     InvalidTagContent = 19,
+    /// State transition is not allowed
+    InvalidStateTransition = 20,
+    /// Invariant violation detected - bill data is inconsistent
+    InvariantViolation = 21,
 }
 
 pub type Error = BillPaymentsError;
@@ -388,7 +394,7 @@ impl BillPayments {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
         let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
-        
+
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);
         let mut inserted = false;
@@ -1102,11 +1108,18 @@ impl BillPayments {
         let mut bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
         let _bill_external_ref = bill.external_ref.clone();
 
-        if bill.owner != caller {
-            return Err(BillPaymentsError::Unauthorized);
-        }
+        // Check paid status FIRST for backward compatibility
         if bill.paid {
             return Err(BillPaymentsError::BillAlreadyPaid);
+        }
+
+        // State transition validation (only for unpaid bills)
+        use crate::state::{check_invariants, BillState};
+        BillState::validate_transition(&bill, false, BillState::Paid, "pay_bill")?;
+        check_invariants(&env, &bill, false)?;
+
+        if bill.owner != caller {
+            return Err(BillPaymentsError::Unauthorized);
         }
 
         let current_time = env.ledger().timestamp();
@@ -1188,7 +1201,6 @@ impl BillPayments {
 
         Ok(())
     }
-
     // -----------------------------------------------------------------------
     // Tag management
     // -----------------------------------------------------------------------
@@ -1790,6 +1802,12 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
         let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
+
+        // State transition validation
+        use crate::state::{check_invariants, BillState};
+        BillState::validate_transition(&bill, false, BillState::Cancelled, "cancel_bill")?;
+        check_invariants(&env, &bill, false)?;
+
         if bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
         }
