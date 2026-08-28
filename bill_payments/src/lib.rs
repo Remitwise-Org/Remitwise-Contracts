@@ -105,6 +105,20 @@ pub struct BillPage {
     pub count: u32,
 }
 
+/// Paginated result for bill schedule queries.
+///
+/// See [Pagination Handbook](../../docs/PAGINATION_HANDBOOK.md) for cursor semantics.
+#[contracttype]
+#[derive(Clone)]
+pub struct BillSchedulePage {
+    /// The bill schedules for this page, ordered by ascending schedule ID.
+    pub items: Vec<BillSchedule>,
+    /// The ID to pass as `cursor` for the next page. `0` means no more pages.
+    pub next_cursor: u32,
+    /// Number of items returned in this page.
+    pub count: u32,
+}
+
 /// An archived bill that has been moved from active storage to cold storage.
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -1883,6 +1897,111 @@ impl BillPayments {
             }
         }
         result
+    }
+
+    /// Returns a deterministic, cursor-paginated page of bill schedules for `owner`.
+    ///
+    /// See [Pagination Handbook](../../docs/PAGINATION_HANDBOOK.md)
+    /// for invariants all paginated reads must satisfy, cursor semantics, and the
+    /// reviewer checklist.
+    ///
+    /// # Parameters
+    /// - `owner` — account whose schedules are fetched (requires auth)
+    /// - `cursor` — exclusive schedule ID boundary; pass `0` to start from the first
+    ///   schedule. Pass `next_cursor` from the previous page to continue.
+    /// - `limit` — max schedules per page. `0` is normalised to `DEFAULT_PAGE_LIMIT`
+    ///   (20). Values above `MAX_PAGE_LIMIT` (50) are clamped to `MAX_PAGE_LIMIT`.
+    ///
+    /// # Returns
+    /// `BillSchedulePage { items, next_cursor, count }`.
+    /// `next_cursor == 0` means this is the final (or only) page.
+    /// An out-of-range cursor or an owner with no schedules returns an empty page
+    /// with `next_cursor == 0` — not an error — so callers can safely detect
+    /// end-of-list without special-casing.
+    ///
+    /// # Ordering
+    /// Results are ordered by schedule ID ascending (creation order within the
+    /// owner index). This ordering is stable across repeated calls provided no
+    /// schedules are created between pages, making `cursor` safe to resume with.
+    ///
+    /// # Cursor semantics (EXCLUSIVE)
+    /// - `cursor = 0` — start from the first schedule
+    /// - `cursor = N` — return only schedules whose ID is strictly greater than `N`
+    /// - `next_cursor` returned is the ID of the last item on this page (or `0` on
+    ///   the final page)
+    ///
+    /// # Security
+    /// Only schedules belonging to `owner` are returned. The index is per-owner, so
+    /// no cross-owner schedule leakage can occur via cursor manipulation.
+    pub fn get_bill_schedules_page(
+        env: Env,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> BillSchedulePage {
+        owner.require_auth();
+        let effective_limit = clamp_limit(limit);
+
+        let ids = Self::get_owner_bill_schedules(&env, &owner);
+
+        if ids.is_empty() {
+            return BillSchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        }
+
+        let schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        // Collect up to effective_limit + 1 items to detect whether a next page exists.
+        let mut staging: Vec<BillSchedule> = Vec::new(&env);
+        for id in ids.iter() {
+            if id <= cursor {
+                continue;
+            }
+            if let Some(schedule) = schedules.get(id) {
+                staging.push_back(schedule);
+            }
+            if staging.len() > effective_limit {
+                break;
+            }
+        }
+
+        let has_next = staging.len() > effective_limit;
+        let mut next_cursor: u32 = 0;
+
+        if has_next {
+            // next_cursor is the ID of the last item on the current page (not the first skipped).
+            let last_idx = effective_limit.saturating_sub(1);
+            if let Some(sched) = staging.get(last_idx) {
+                next_cursor = sched.id;
+            }
+            // Truncate to effective_limit items.
+            let mut truncated: Vec<BillSchedule> = Vec::new(&env);
+            for i in 0..effective_limit {
+                if let Some(s) = staging.get(i) {
+                    truncated.push_back(s);
+                }
+            }
+            let count = truncated.len();
+            return BillSchedulePage {
+                items: truncated,
+                next_cursor,
+                count,
+            };
+        }
+
+        let count = staging.len();
+        BillSchedulePage {
+            items: staging,
+            next_cursor: 0,
+            count,
+        }
     }
 
     pub fn get_bill_schedule(env: Env, schedule_id: u32) -> Option<BillSchedule> {
