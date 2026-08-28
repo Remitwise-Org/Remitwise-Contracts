@@ -23,7 +23,10 @@
 //! be evicted independently of) the rest of this contract's instance
 //! storage.
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, require_stable_currency, require_within_settlement_window,
+    bump_cross_contract_epoch, check_and_increment_rate_limit, clamp_limit,
+    get_cross_contract_epoch, get_trusted_orchestrator, guard_cross_contract_write,
+    require_no_active_kill_switch, require_stable_currency, require_within_settlement_window,
+    set_trusted_orchestrator, CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{BillPaymentsReversible, ReversibleOpError},
     EventCategory, EventPriority, RemitwiseEvents, Timestamp,
     ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
@@ -31,8 +34,8 @@ use remitwise_common::{
     SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
 
@@ -2077,9 +2080,17 @@ impl BillPayments {
     /// * `Unauthorized` - If `caller != bill.owner`
     /// * `InvalidDueDate` - If child due_date arithmetic overflows `u64`
     /// * `InvalidFrequency` - If period arithmetic overflows `u64`
-    pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
+    pub fn pay_bill(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
@@ -3766,6 +3777,44 @@ impl BillPayments {
             .instance()
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract admin may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .unwrap_or_else(|| panic!("Contract not initialized"));
+        if caller != admin {
+            panic_with_error!(&env, BillPaymentsError::Unauthorized);
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events()
+            .publish((symbol_short!("bp"), symbol_short!("orch_set")), orchestrator.clone());
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("bp"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3779,10 +3828,14 @@ impl BillPaymentsReversible for BillPayments {
     /// Returns `Ok(false)` when the bill was already unpaid (idempotent).
     fn reverse_payment(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         bill_id: u32,
         _amount: i128,
     ) -> Result<bool, ReversibleOpError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
             .map_err(|_| ReversibleOpError::InvalidState)?;
         Self::extend_instance_ttl(&env);

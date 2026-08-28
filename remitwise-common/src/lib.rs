@@ -2,8 +2,8 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use soroban_sdk::{
-    contracterror, contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol,
-    TryFromVal, Val,
+    contracterror, contracttype, panic_with_error, symbol_short, Address, Bytes, BytesN, Env,
+    Map, Symbol, TryFromVal, Val,
 };
 pub mod tokens;
 pub use tokens::{
@@ -423,6 +423,176 @@ pub fn require_matching_cross_contract_epoch(
         return Err(CrossContractEpochError::EpochMismatch);
     }
     Ok(())
+}
+
+/// Set the current cross-contract epoch directly.
+///
+/// Intended to be called once at contract initialisation (mirroring the
+/// orchestrator's actor epoch) and whenever the orchestrator performs a
+/// coordinated epoch bump. This function does not enforce authentication — the
+/// calling contract is responsible for gating it with the appropriate admin or
+/// trusted-orchestrator auth before invoking it.
+pub fn set_cross_contract_epoch(env: &Env, epoch: u64) {
+    env.storage()
+        .instance()
+        .set(&STORAGE_CROSS_CONTRACT_EPOCH, &epoch);
+}
+
+/// Read the current cross-contract epoch without modifying it.
+///
+/// Returns `0` when no epoch has been stored yet (fresh deployment), matching
+/// the orchestrator's actor-epoch default.
+pub fn get_cross_contract_epoch(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&STORAGE_CROSS_CONTRACT_EPOCH)
+        .unwrap_or(0)
+}
+
+/// Bump the cross-contract epoch by 1, atomically reading and incrementing the
+/// stored value.
+///
+/// Returns the new epoch value. Saturates on overflow (a 64-bit epoch whose
+/// value is `u64::MAX` is unreachable in practice). This is the per-contract
+/// half of the coordinated cross-contract epoch bump driven by the orchestrator:
+/// the orchestrator calls this on every downstream contract inside a single
+/// transaction, so either all downstream epochs advance together or the whole
+/// transaction reverts (`fail safe`).
+///
+/// This function does not enforce authentication — the calling contract is
+/// responsible for gating it with trusted-orchestrator auth before invoking it.
+pub fn bump_cross_contract_epoch(env: &Env) -> u64 {
+    let current: u64 = get_cross_contract_epoch(env);
+    let next = current.saturating_add(1);
+    env.storage()
+        .instance()
+        .set(&STORAGE_CROSS_CONTRACT_EPOCH, &next);
+    next
+}
+
+/// Typed error returned when a trusted-orchestrator identity check fails.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum TrustedOrchestratorError {
+    /// No trusted orchestrator address has been configured yet.
+    NotConfigured = 38,
+    /// The immediate caller is not the configured trusted orchestrator.
+    Unauthorized = 39,
+}
+
+/// Storage key under which a contract records the single trusted orchestrator
+/// address that is permitted to drive privileged cross-contract operations.
+pub const STORAGE_TRUSTED_ORCHESTRATOR: Symbol = symbol_short!("ORCH");
+
+/// Record the trusted orchestrator address.
+///
+/// Should be called at initialisation (or via an owner-gated setter) so that
+/// downstream contracts can verify the identity of the contract invoking their
+/// privileged cross-contract entry points. No authentication is enforced here;
+/// the caller must gate this with owner/admin auth.
+pub fn set_trusted_orchestrator(env: &Env, orchestrator: &Address) {
+    env.storage()
+        .instance()
+        .set(&STORAGE_TRUSTED_ORCHESTRATOR, orchestrator);
+}
+
+/// Read the trusted orchestrator address, if one has been configured.
+pub fn get_trusted_orchestrator(env: &Env) -> Option<Address> {
+    env.storage()
+        .instance()
+        .get(&STORAGE_TRUSTED_ORCHESTRATOR)
+}
+
+/// Verify that the supplied `orchestrator` address is exactly the configured
+/// trusted orchestrator **and** that the caller actually is that contract.
+///
+/// This is the "contract identity" half of the cross-contract epoch guard: even
+/// if an attacker supplies the correct epoch value *and* the known orchestrator
+/// address, they cannot satisfy this check because `orchestrator.require_auth()`
+/// only succeeds when the immediate invoker is the orchestrator contract itself
+/// (Soroban authorises the direct invoker for the cross-contract call). When no
+/// trusted orchestrator has been configured the check fails with
+/// `TrustedOrchestratorError::NotConfigured` rather than silently allowing the
+/// call.
+///
+/// # Arguments
+/// * `env` — Soroban environment.
+/// * `orchestrator` — The orchestrator address presented by the caller (the
+///   orchestrator passes its own `env.current_contract_address()`).
+///
+/// # Returns
+/// * `Ok(())` if `orchestrator == stored` and the caller is authorised as it.
+/// * `Err(TrustedOrchestratorError::NotConfigured)` if unset.
+/// * `Err(TrustedOrchestratorError::Unauthorized)` if the address differs or the
+///   caller cannot authorise for it.
+pub fn require_trusted_orchestrator(
+    env: &Env,
+    orchestrator: &Address,
+) -> Result<(), TrustedOrchestratorError> {
+    let trusted: Address = get_trusted_orchestrator(env)
+        .ok_or(TrustedOrchestratorError::NotConfigured)?;
+    if orchestrator != &trusted {
+        return Err(TrustedOrchestratorError::Unauthorized);
+    }
+    orchestrator.require_auth();
+    Ok(())
+}
+
+/// Verify that `orchestrator` equals the configured trusted orchestrator **without**
+/// requiring authentication.
+///
+/// Used by read-only cross-contract entry points (e.g. `calculate_split`,
+/// `get_split`, `check_spending_limit`) where authorising the invoker is
+/// undesirable but the caller must still present the expected orchestrator
+/// identity and a matching epoch. The epoch itself is still enforced by the
+/// caller via [`require_matching_cross_contract_epoch`].
+pub fn verify_orchestrator_identity(
+    env: &Env,
+    orchestrator: &Address,
+) -> Result<(), TrustedOrchestratorError> {
+    let trusted: Address = get_trusted_orchestrator(env)
+        .ok_or(TrustedOrchestratorError::NotConfigured)?;
+    if orchestrator != &trusted {
+        return Err(TrustedOrchestratorError::Unauthorized);
+    }
+    Ok(())
+}
+
+/// Full guard for a *privileged write* cross-contract entry point.
+///
+/// Enforces, in order, before any local mutation:
+/// 1. The supplied `orchestrator` is the configured trusted orchestrator **and**
+///    the caller is authorised as that contract (`require_auth`).
+/// 2. The supplied `epoch` matches the contract's current cross-contract epoch.
+///
+/// Returns the downstream contract's own epoch-mismatch error type by panicking
+/// with [`CrossContractEpochError::EpochMismatch`] on a mismatch and
+/// [`TrustedOrchestratorError`] on an identity failure, so downstream entry
+/// points can call this with a single `?` after mapping the result.
+pub fn guard_cross_contract_write(
+    env: &Env,
+    orchestrator: &Address,
+    epoch: u64,
+) -> Result<(), CrossContractEpochError> {
+    require_trusted_orchestrator(env, orchestrator)
+        .unwrap_or_else(|e| panic_with_error!(env, e));
+    require_matching_cross_contract_epoch(env, epoch)
+}
+
+/// Full guard for a *read-only* cross-contract entry point.
+///
+/// Like [`guard_cross_contract_write`] but does not require the invoker to
+/// authorise (read-only views should remain callable without auth); it only
+/// checks the presented orchestrator identity and the epoch.
+pub fn guard_cross_contract_read(
+    env: &Env,
+    orchestrator: &Address,
+    epoch: u64,
+) -> Result<(), CrossContractEpochError> {
+    verify_orchestrator_identity(env, orchestrator)
+        .unwrap_or_else(|e| panic_with_error!(env, e));
+    require_matching_cross_contract_epoch(env, epoch)
 }
 
 // ---------------------------------------------------------------------------

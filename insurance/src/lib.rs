@@ -1,11 +1,15 @@
 #![no_std]
 use remitwise_common::{
-    clamp_limit, CoverageType, EventCategory, EventPriority, RemitwiseEvents, DEFAULT_PAGE_LIMIT,
-    INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT, PERSISTENT_BUMP_AMOUNT,
-    PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    bump_cross_contract_epoch, clamp_limit, CoverageType, EventCategory, EventPriority,
+    get_cross_contract_epoch, get_trusted_orchestrator, guard_cross_contract_write,
+    set_trusted_orchestrator, CrossContractEpochError, TrustedOrchestratorError, RemitwiseEvents,
+    DEFAULT_PAGE_LIMIT, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_PAGE_LIMIT,
+    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    reversible_op::{InsuranceReversible, ReversibleOpError},
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, String, Vec,
 };
 
 mod fee_math;
@@ -163,6 +167,39 @@ pub enum DataKey {
     NextScheduleId,
     Schedule(u32),
     OwnerSchedules(Address),
+}
+
+/// Typed error returned by the insurance contract.
+///
+/// Previously referenced throughout the contract but never defined, which left
+/// the crate uncompilable. All variants used across the contract body are
+/// enumerated here with stable discriminants.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum InsuranceError {
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    Unauthorized = 3,
+    PolicyNotFound = 4,
+    MaxPoliciesReached = 5,
+    InvalidName = 6,
+    InvalidPremium = 7,
+    PolicyLimitExceeded = 8,
+    PolicyAlreadyActive = 9,
+    PolicyDeactivationTooSoon = 10,
+    InvalidExternalRef = 11,
+    PolicyInactive = 12,
+    ScheduleNotFound = 13,
+    ScheduleIntervalTooShort = 14,
+    ScheduleLeadTimeTooLong = 15,
+    SnapshotNotFound = 16,
+    SnapshotTooOld = 17,
+    MonthlyPremiumTooLow = 18,
+    CoverageAmountTooLow = 19,
+    MonthlyPremiumTooHigh = 20,
+    CoverageAmountTooHigh = 21,
+    UnsupportedCombination = 22,
 }
 
 /// Pre-upgrade snapshot for upgrade rollback protection.
@@ -747,7 +784,15 @@ impl Insurance {
     /// Pay the premium for a policy.
     /// Returns `true` on success, `false` if the policy is not found, inactive, or
     /// the caller is not the owner.
-    pub fn pay_premium(env: Env, caller: Address, policy_id: u32) -> bool {
+    pub fn pay_premium(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        policy_id: u32,
+    ) -> bool {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         if Self::require_initialized(&env).is_err() {
             return false;
         }
@@ -1855,6 +1900,85 @@ impl Insurance {
         }
 
         executed
+    }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract owner may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Owner)
+            .unwrap_or_else(|| panic!("Contract not initialized"));
+        if caller != owner {
+            panic_with_error!(&env, InsuranceError::Unauthorized);
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events()
+            .publish((symbol_short!("ins"), symbol_short!("orch_set")), orchestrator.clone());
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("ins"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
+}
+
+#[contractimpl]
+impl InsuranceReversible for Insurance {
+    /// Reverse a previous `pay_premium` call for the given policy (compensation).
+    ///
+    /// Requires the trusted orchestrator and a matching epoch. Rolls the policy
+    /// back to its pre-premium state (clears the last-payment timestamp and
+    /// resets the next due date to the creation date) so the premium is treated
+    /// as unpaid during compensation. Idempotent: returns `Ok(false)` when the
+    /// policy is already inactive.
+    fn reverse_premium(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        user: Address,
+        policy_id: u32,
+        _amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        let mut policy = match Self::load_policy(&env, policy_id) {
+            Ok(p) => p,
+            Err(_) => return Err(ReversibleOpError::NotFound),
+        };
+        if policy.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+        if !policy.active {
+            return Ok(false);
+        }
+        policy.last_payment_at = 0;
+        policy.next_payment_date = policy.created_at;
+        env.storage()
+            .instance()
+            .set(&DataKey::Policy(policy_id), &policy);
+        Self::extend_instance_ttl(&env);
+        env.events()
+            .publish((symbol_short!("insurance"), symbol_short!("prem_rev")), policy_id);
+        Ok(true)
     }
 }
 

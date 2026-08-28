@@ -6,8 +6,11 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, RoleGrantedEvent, RoleRevokedEvent,
-    CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
+    bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
+    guard_cross_contract_read, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    CrossContractEpochError, EventCategory, EventPriority, FamilyRole, RemitwiseEvents,
+    RoleGrantedEvent, RoleRevokedEvent, TrustedOrchestratorError, CONTRACT_VERSION,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -712,7 +715,22 @@ impl FamilyWallet {
     /// 3. Owner / Admin → always true (unlimited)
     /// 4. Member with `spending_limit == 0` → unlimited → true
     /// 5. Member with `spending_limit > 0` → true iff `amount <= spending_limit`
-    pub fn check_spending_limit(env: Env, caller: Address, amount: i128) -> bool {
+    ///
+    /// # Cross-contract epoch guard
+    /// This is a privileged read used by the orchestrator's fan-out. Every call
+    /// must carry the expected `epoch` and the orchestrator's contract
+    /// `identity`; a stale or mismatched epoch is rejected before any state is
+    /// read so an old orchestrator cannot observe a newer contract's member
+    /// configuration.
+    pub fn check_spending_limit(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        amount: i128,
+    ) -> bool {
+        guard_cross_contract_read(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         if amount < 0 {
             return false;
         }
@@ -1614,6 +1632,42 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         members.get(member)
+    }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract owner may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let owner = Self::get_owner(env.clone());
+        if caller != owner {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events().publish(
+            (symbol_short!("fw"), symbol_short!("orch_set")),
+            orchestrator.clone(),
+        );
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("fw"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
     }
 
     pub fn get_owner(env: Env) -> Address {

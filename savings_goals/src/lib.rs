@@ -1,12 +1,15 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
+    bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
+    guard_cross_contract_write, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
 /// Mirrors `bill_payments::Error`'s naming convention (`*NotFound`,
@@ -1084,10 +1087,14 @@ impl SavingsGoalContract {
     /// * If `caller` does not authorize the transaction
     pub fn add_to_goal(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         caller: Address,
         goal_id: u32,
         amount: i128,
     ) -> Result<i128, SavingsGoalError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
@@ -3013,6 +3020,52 @@ impl SavingsGoalContract {
         ids.push_back(schedule_id);
         env.storage().persistent().set(&key, &ids);
     }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard.
+    ///
+    /// Unlike the other orchestrated contracts, `savings_goals` has no global
+    /// admin, so bootstrapping is performed by the orchestrator itself: the
+    /// first call must be made by the `orchestrator` address being configured
+    /// (i.e. the orchestrator registers itself). After that, only the already
+    /// configured orchestrator may rotate the trusted address. This prevents a
+    /// third party from claiming the trust slot before the orchestrator does.
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        match get_trusted_orchestrator(&env) {
+            None => {
+                if caller != orchestrator {
+                    panic_with_error!(&env, Error::Unauthorized);
+                }
+            }
+            Some(existing) => {
+                if caller != existing {
+                    panic_with_error!(&env, Error::Unauthorized);
+                }
+            }
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events()
+            .publish((symbol_short!("sg"), symbol_short!("orch_set")), orchestrator.clone());
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("sg"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3027,10 +3080,14 @@ impl SavingsGoalsReversible for SavingsGoalContract {
     /// already zero (idempotent no-op).
     fn remove_from_goal(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         goal_id: u32,
         amount: i128,
     ) -> Result<bool, ReversibleOpError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         Self::require_not_paused(&env, pause_functions::REMOVE_FROM);
         Self::extend_instance_ttl(&env);
 

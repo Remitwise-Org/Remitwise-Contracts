@@ -184,6 +184,46 @@ cargo test -p orchestrator
 
 ---
 
+## Cross-contract propagation (Issue #1720)
+
+The actor epoch is the **single source of truth** not just inside the
+orchestrator but across the whole fan-out.  Every privileged downstream call the
+orchestrator makes now carries the orchestrator's own contract address and its
+current `ACTOR_EPOCH` value:
+
+- `family_wallet::check_spending_limit(env, orchestrator, epoch, user, amount)`
+- `remittance_split::calculate_split(env, orchestrator, epoch, total_amount)`
+- `remittance_split::get_split(env, orchestrator, epoch)`
+- `savings_goals::add_to_goal(env, orchestrator, epoch, caller, goal_id, amount)`
+- `bill_payments::pay_bill(env, orchestrator, epoch, caller, bill_id)`
+- `insurance::pay_premium(env, orchestrator, epoch, caller, policy_id)`
+- compensation paths: `remove_from_goal`, `reverse_payment`, `reverse_premium`
+
+Each downstream validates, *before mutating state*:
+
+1. `orchestrator` equals the address it stores as its **trusted orchestrator**
+   (`set_trusted_orchestrator`), and
+2. `epoch` equals its own stored `XC_EPOCH` (`get_cross_contract_epoch`).
+
+A mismatch aborts with `CrossContractEpochError::EpochMismatch`
+(discriminant `37`).  Identity is verified with
+`require_trusted_orchestrator` (which also triggers `orchestrator.require_auth()`),
+and freshness with `require_matching_cross_contract_epoch`.
+
+### Coordinated bump
+
+`bump_actor_epoch` is now coordinated and atomic.  After incrementing its own
+`ACTOR_EPOCH`, the orchestrator calls `bump_cross_contract_epoch` on every
+configured downstream (`FW_ADDR`, `RS_ADDR`, `SG_ADDR`, `BP_ADDR`, `INS_ADDR`).
+Each downstream advances its `XC_EPOCH` by 1, keeping all epochs in lockstep.  If
+any downstream is missing or not configured with the trusted orchestrator, the
+whole `bump_actor_epoch` transaction reverts — epochs can never silently drift.
+
+See [docs/OPERATOR_EPOCHS.md](OPERATOR_EPOCHS.md) for the deployment and
+operational runbook (trust setup, bumping, reconciliation, troubleshooting).
+
+---
+
 ## See also
 
 - [docs/OBSERVABILITY_MODEL.md](OBSERVABILITY_MODEL.md) — `epoch_bump` event

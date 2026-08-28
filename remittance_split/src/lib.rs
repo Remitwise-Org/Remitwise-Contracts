@@ -11,13 +11,16 @@ mod test;
 mod tests_safe_math;
 
 use remitwise_common::{
-    clamp_limit, guard_bytes_len, verify_no_dust, EventCategory, EventPriority, RemitwiseEvents,
-    Timestamp, ToI128Checked,
+    bump_cross_contract_epoch, clamp_limit, get_cross_contract_epoch, get_trusted_orchestrator,
+    guard_bytes_len, guard_cross_contract_read, require_matching_cross_contract_epoch,
+    set_cross_contract_epoch, set_trusted_orchestrator, verify_no_dust, CrossContractEpochError,
+    EventCategory, EventPriority, RemitwiseEvents, Timestamp, ToI128Checked,
+    TrustedOrchestratorError,
 };
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
-    Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::TokenClient, vec, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 mod fee_math;
@@ -1410,8 +1413,16 @@ impl RemittanceSplit {
     ///
     /// # Returns
     /// Vec containing [spending, savings, bills, insurance] percentages
-    pub fn get_split(env: &Env) -> Vec<u32> {
+    ///
+    /// # Cross-contract epoch guard
+    /// This is a privileged read surface used by the orchestrator. Every call must
+    /// carry the expected `epoch` and the orchestrator's contract `identity`. A
+    /// stale or mismatched epoch is rejected before any state is read so an old
+    /// orchestrator cannot observe a newer contract's configuration.
+    pub fn get_split(env: &Env, orchestrator: Address, epoch: u64) -> Vec<u32> {
         Self::extend_instance_ttl(env);
+        guard_cross_contract_read(env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(env, CrossContractEpochError::EpochMismatch));
         // Derive split percentages from the canonical CONFIG key (single source of truth).
         // Previously percentages were written to a separate SPLIT key, duplicating the
         // same data and creating a desynchronisation risk.  See PR description for details.
@@ -1433,6 +1444,48 @@ impl RemittanceSplit {
     pub fn get_config(env: Env) -> Option<SplitConfig> {
         Self::extend_instance_ttl(&env);
         env.storage().instance().get(&symbol_short!("CONFIG"))
+    }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract owner may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let config: SplitConfig = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("CONFIG"))
+            .expect("Split not initialized");
+        if config.owner != caller {
+            panic!("Only the current owner can set the trusted orchestrator");
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events().publish(
+            (symbol_short!("rs"), symbol_short!("orch_set")),
+            orchestrator.clone(),
+        );
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events().publish(
+            (symbol_short!("rs"), symbol_short!("epch_bump")),
+            new_epoch,
+        );
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
     }
 
     /// Configure the list of supported remittance corridors.
@@ -1563,8 +1616,12 @@ impl RemittanceSplit {
 
     pub fn calculate_split(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         total_amount: i128,
     ) -> Result<Vec<i128>, RemittanceSplitError> {
+        guard_cross_contract_read(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }

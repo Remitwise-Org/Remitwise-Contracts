@@ -42,15 +42,15 @@ struct MockDownstream;
 
 #[contractimpl]
 impl MockDownstream {
-    pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+    pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
         true
     }
-    pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+    pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
         soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
     }
-    pub fn add_to_goal(_env: Env, _caller: Address, _goal_id: u32, _amount: i128) {}
-    pub fn pay_bill(_env: Env, _caller: Address, _bill_id: u32, _amount: i128) {}
-    pub fn pay_premium(_env: Env, _caller: Address, _policy_id: u32, _amount: i128) {}
+    pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, _amount: i128) {}
+    pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _bill_id: u32) {}
+    pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) {}
 }
 
 // ---------------------------------------------------------------------------

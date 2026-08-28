@@ -30,6 +30,8 @@ pub trait SavingsGoalsReversible {
     /// nothing to reverse (e.g. the goal had already been cleared).
     fn remove_from_goal(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         goal_id: u32,
         amount: i128,
@@ -48,6 +50,8 @@ pub trait BillPaymentsReversible {
     /// was nothing to reverse.
     fn reverse_payment(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         bill_id: u32,
         amount: i128,
@@ -67,6 +71,8 @@ pub trait InsuranceReversible {
     /// was nothing to reverse.
     fn reverse_premium(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         policy_id: u32,
         amount: i128,
