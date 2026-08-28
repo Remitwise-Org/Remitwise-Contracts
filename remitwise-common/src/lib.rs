@@ -749,15 +749,11 @@ pub fn require_within_settlement_window(
 /// Require that `timestamp` is strictly in the future relative to the current
 /// ledger time.
 ///
-/// Returns `Ok(())` when `timestamp > ledger.timestamp()` and `Err(())`
-/// otherwise.  Callers typically map the error to a domain-specific error
+/// Returns `true` when `timestamp > ledger.timestamp()` and `false` otherwise.
+/// Callers typically map a `false` result to a domain-specific error
 /// (e.g. `Error::RoleExpiryInPast`).
-pub fn require_future_timestamp(env: &Env, timestamp: u64) -> Result<(), ()> {
-    if timestamp <= env.ledger().timestamp() {
-        Err(())
-    } else {
-        Ok(())
-    }
+pub fn require_future_timestamp(env: &Env, timestamp: u64) -> bool {
+    timestamp > env.ledger().timestamp()
 }
 
 /// Rate limiting constants
