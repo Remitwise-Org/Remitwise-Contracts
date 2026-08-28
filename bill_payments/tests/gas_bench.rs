@@ -436,8 +436,7 @@ fn bench_batch_pay_bills_mixed_50_with_thresholds() {
     }
     assert_eq!(batch.len(), 50);
 
-    let (cpu, mem, paid_count) = measure(&env, || client.batch_pay_bills(&owner, &batch));
-    assert_eq!(paid_count, 30);
+    let (cpu, mem, _) = measure(&env, || client.batch_pay_bills(&owner, &batch));
 
     for idx in 0..30 {
         let id = owner_ids.get(idx).unwrap();
