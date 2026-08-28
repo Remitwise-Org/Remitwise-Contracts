@@ -14,6 +14,23 @@ pub enum Error {
     InvalidSchedule = 5,
     InvalidAdmin = 6,
     EpochMismatch = 7,
+    InvalidSignerThreshold = 8,
+    DuplicateSigner = 9,
+    SignerNotConfigured = 10,
+    DuplicateApproval = 11,
+    ActivationAlreadyActive = 12,
+    RecoveryTooEarly = 13,
+    NotActive = 14,
+    ScopeRequired = 15,
+}
+
+/// The exact pause surface affected by a threshold-approved activation.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PauseScope {
+    Global,
+    Module(Symbol),
+    Function(Symbol, Symbol),
 }
 
 #[contracttype]
@@ -27,7 +44,17 @@ enum DataKey {
     PausedFunctions(Symbol),
     UnpauseSchedule,
     KillSwitchEpoch,
+    Signers,
+    SignerThreshold,
+    SignerEpoch,
+    ActivationEpoch,
+    ActiveScope,
+    RecoveryReadyAt,
+    ScopeWasPaused,
 }
+
+/// Delay between a threshold-approved activation and recovery.
+pub const RECOVERY_DELAY: u64 = 3600;
 
 pub const MAX_PAUSED_FUNCTIONS: u32 = 10;
 
@@ -69,6 +96,249 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .set(&DataKey::KillSwitchEpoch, &0u64);
+        Ok(())
+    }
+
+    fn configured_signers(env: &Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Signers)
+            .unwrap_or(Vec::new(env))
+    }
+
+    fn validate_approvals(env: &Env, approvals: &Vec<Address>) -> Result<(), Error> {
+        let signers = Self::configured_signers(env);
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SignerThreshold)
+            .ok_or(Error::SignerNotConfigured)?;
+        let mut accepted = 0u32;
+        for approval in approvals.iter() {
+            if !signers.contains(approval) {
+                return Err(Error::SignerNotConfigured);
+            }
+            if accepted > 0 {
+                let mut prior = 0u32;
+                for seen in approvals.iter() {
+                    if seen == approval {
+                        prior += 1;
+                    }
+                    if seen == approval && prior > 1 {
+                        return Err(Error::DuplicateApproval);
+                    }
+                }
+            }
+            accepted += 1;
+        }
+        if accepted < threshold {
+            return Err(Error::InvalidSignerThreshold);
+        }
+        Ok(())
+    }
+
+    /// Configure the signer set used by the explicit activation protocol.
+    /// Updating the set increments its epoch and invalidates all old approval
+    /// bundles. The admin remains the only authority that can change policy.
+    pub fn configure_signers(
+        env: Env,
+        caller: Address,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<u64, Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin || signers.is_empty() || threshold == 0 || threshold > signers.len() {
+            return Err(Error::InvalidSignerThreshold);
+        }
+        for (index, signer) in signers.iter().enumerate() {
+            if *signer == env.current_contract_address() {
+                return Err(Error::InvalidAdmin);
+            }
+            for prior in signers.iter().take(index) {
+                if prior == signer {
+                    return Err(Error::DuplicateSigner);
+                }
+            }
+        }
+        let old_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SignerEpoch)
+            .unwrap_or(0);
+        let epoch = old_epoch.checked_add(1).ok_or(Error::EpochMismatch)?;
+        env.storage().instance().set(&DataKey::Signers, &signers);
+        env.storage()
+            .instance()
+            .set(&DataKey::SignerThreshold, &threshold);
+        env.storage().instance().set(&DataKey::SignerEpoch, &epoch);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("signers_set")),
+            (epoch, threshold, signers.len()),
+        );
+        Ok(epoch)
+    }
+
+    pub fn get_signer_epoch(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SignerEpoch)
+            .unwrap_or(0)
+    }
+
+    pub fn get_signer_threshold(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SignerThreshold)
+            .unwrap_or(0)
+    }
+
+    /// Activate exactly one explicit scope after validating a current-epoch
+    /// signer quorum. A second activation is rejected until recovery completes.
+    pub fn activate(
+        env: Env,
+        epoch: u64,
+        approvals: Vec<Address>,
+        scope: PauseScope,
+    ) -> Result<(), Error> {
+        if approvals.is_empty() {
+            return Err(Error::InvalidSignerThreshold);
+        }
+        if epoch != Self::get_signer_epoch(env.clone()) {
+            return Err(Error::EpochMismatch);
+        }
+        if env.storage().instance().has(&DataKey::ActivationEpoch) {
+            return Err(Error::ActivationAlreadyActive);
+        }
+        Self::validate_approvals(&env, &approvals)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivationEpoch, &epoch);
+        env.storage().instance().set(&DataKey::ActiveScope, &scope);
+        env.storage().instance().set(
+            &DataKey::RecoveryReadyAt,
+            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
+        );
+        let scope_was_paused = match scope.clone() {
+            PauseScope::Global => env
+                .storage()
+                .instance()
+                .get(&DataKey::GlobalPaused)
+                .unwrap_or(false),
+            PauseScope::Module(module) => env
+                .storage()
+                .instance()
+                .get(&DataKey::ModulePaused(module))
+                .unwrap_or(false),
+            PauseScope::Function(module, function) => env
+                .storage()
+                .instance()
+                .get(&DataKey::PausedFunctions(module))
+                .unwrap_or(Vec::new(&env))
+                .contains(function),
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::ScopeWasPaused, &scope_was_paused);
+        match scope.clone() {
+            PauseScope::Global => env.storage().instance().set(&DataKey::GlobalPaused, &true),
+            PauseScope::Module(module) => env
+                .storage()
+                .instance()
+                .set(&DataKey::ModulePaused(module), &true),
+            PauseScope::Function(module, function) => {
+                let mut paused = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::PausedFunctions(module.clone()))
+                    .unwrap_or(Vec::new(&env));
+                if !paused.contains(function.clone()) {
+                    if paused.len() >= MAX_PAUSED_FUNCTIONS {
+                        return Err(Error::LimitExceeded);
+                    }
+                    paused.push_back(function);
+                    env.storage()
+                        .instance()
+                        .set(&DataKey::PausedFunctions(module), &paused);
+                }
+            }
+        }
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("activated")),
+            (epoch, scope),
+        );
+        Ok(())
+    }
+
+    /// Recover the active scope after the mandatory delay and a fresh quorum.
+    /// The epoch is checked again so a signer-set rotation invalidates a stale
+    /// recovery bundle. Clearing the activation marker makes recovery retryable
+    /// only after a new activation, never by replaying the same request.
+    pub fn recover(env: Env, epoch: u64, approvals: Vec<Address>) -> Result<(), Error> {
+        let active_epoch: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActivationEpoch)
+            .ok_or(Error::NotActive)?;
+        if epoch != active_epoch || epoch != Self::get_signer_epoch(env.clone()) {
+            return Err(Error::EpochMismatch);
+        }
+        let ready_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::RecoveryReadyAt)
+            .ok_or(Error::RecoveryTooEarly)?;
+        if env.ledger().timestamp() < ready_at {
+            return Err(Error::RecoveryTooEarly);
+        }
+        Self::validate_approvals(&env, &approvals)?;
+        let scope: PauseScope = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveScope)
+            .ok_or(Error::NotActive)?;
+        let scope_was_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::ScopeWasPaused)
+            .unwrap_or(false);
+        match scope.clone() {
+            PauseScope::Global if !scope_was_paused => {
+                env.storage().instance().set(&DataKey::GlobalPaused, &false)
+            }
+            PauseScope::Global => {}
+            PauseScope::Module(module) => env
+                .storage()
+                .instance()
+                .set(&DataKey::ModulePaused(module), &scope_was_paused),
+            PauseScope::Function(module, function) => {
+                if !scope_was_paused {
+                    let mut paused = env
+                        .storage()
+                        .instance()
+                        .get(&DataKey::PausedFunctions(module.clone()))
+                        .unwrap_or(Vec::new(&env));
+                    if let Some(index) = paused.first_index_of(function) {
+                        paused.remove(index);
+                    }
+                    env.storage()
+                        .instance()
+                        .set(&DataKey::PausedFunctions(module), &paused);
+                }
+            }
+        }
+        env.storage().instance().remove(&DataKey::ActivationEpoch);
+        env.storage().instance().remove(&DataKey::ActiveScope);
+        env.storage().instance().remove(&DataKey::RecoveryReadyAt);
+        env.storage().instance().remove(&DataKey::ScopeWasPaused);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("recovered")),
+            (epoch, scope),
+        );
         Ok(())
     }
 
@@ -829,6 +1099,9 @@ mod tests {
         assert_eq!(res, Err(Ok(Error::Unauthorized)));
     }
 }
+
+#[cfg(test)]
+mod threshold_tests;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expanded kill-switch-epoch guard tests (#1293)

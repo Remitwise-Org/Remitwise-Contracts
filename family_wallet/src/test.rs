@@ -166,6 +166,33 @@ proptest! {
             assert_eq!(tier, WithdrawalTier::Large);
         }
     }
+
+    #[test]
+    fn test_checked_period_spend_conserves_allowance(
+        current_spent in any::<u64>(),
+        amount in 1u64..=u64::MAX,
+        limit in any::<u64>()
+    ) {
+        let result = FamilyWallet::checked_period_spend(
+            current_spent as i128,
+            amount as i128,
+            limit as i128,
+        );
+        let expected = (current_spent as i128 + amount as i128) <= limit as i128;
+        prop_assert_eq!(result.is_ok(), expected);
+    }
+}
+
+#[test]
+fn test_checked_period_spend_rejects_i128_overflow() {
+    assert_eq!(
+        FamilyWallet::checked_period_spend(i128::MAX, 1, i128::MAX),
+        Err(Error::InvalidSpendingLimit)
+    );
+    assert_eq!(
+        FamilyWallet::checked_period_spend(i128::MAX - 1, 1, i128::MAX),
+        Ok(())
+    );
 }
 
 #[test]
@@ -3927,6 +3954,203 @@ fn test_spending_period_rollover_resets_limits() {
     // Should be able to spend again (period rolled over)
     let tx2 = client.withdraw(&member, &token_contract.address(), &recipient, &500_0000000);
     assert_eq!(tx2, 0);
+}
+
+#[test]
+fn test_spending_period_boundary_is_read_only_and_exact() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let recipient = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
+
+    client.init(&owner, &vec![&env]);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
+    assert!(client.set_precision_spending_limit(
+        &owner,
+        &member,
+        &PrecisionSpendingLimit {
+            limit: 1000_0000000,
+            min_precision: 1_0000000,
+            max_single_tx: 1000_0000000,
+            enable_rollover: true,
+        },
+    ));
+
+    let day_start = 1640995200u64;
+    env.ledger().with_mut(|li| li.timestamp = day_start);
+    assert_eq!(
+        client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000),
+        0
+    );
+
+    // Before the boundary, the persisted allowance remains in the current day.
+    env.ledger()
+        .with_mut(|li| li.timestamp = day_start + 86_399);
+    let before = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(before.current_spent, 400_0000000);
+    assert_eq!(before.period.period_start, day_start);
+
+    // At exactly 24 hours, reads project a fresh period without writing it.
+    env.ledger()
+        .with_mut(|li| li.timestamp = day_start + 86_400);
+    let at_boundary = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(at_boundary.current_spent, 0);
+    assert_eq!(at_boundary.tx_count, 0);
+    assert_eq!(at_boundary.period.period_start, day_start + 86_400);
+    let persisted = env.as_contract(&contract_id, || {
+        let trackers: Map<Address, SpendingTracker> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("SPND_TRK"))
+            .unwrap();
+        trackers.get(member.clone()).unwrap()
+    });
+    assert_eq!(persisted.current_spent, 400_0000000);
+    assert_eq!(persisted.tx_count, 1);
+    assert_eq!(persisted.period.period_start, day_start);
+
+    // A rejected request cannot consume the projected new-period allowance.
+    assert!(client
+        .try_withdraw(
+            &member,
+            &token_contract.address(),
+            &recipient,
+            &1001_0000000,
+        )
+        .is_err());
+    let after_failed = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(after_failed.current_spent, 0);
+    assert_eq!(after_failed.tx_count, 0);
+
+    // The first successful post-boundary spend is the sole reset commit.
+    assert_eq!(
+        client.withdraw(&member, &token_contract.address(), &recipient, &900_0000000),
+        0
+    );
+    let after_success = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(after_success.current_spent, 900_0000000);
+    assert_eq!(after_success.tx_count, 1);
+    assert_eq!(after_success.period.period_start, day_start + 86_400);
+}
+
+#[test]
+fn test_failed_token_transfer_does_not_consume_period_allowance() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let recipient = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &500_0000000);
+
+    client.init(&owner, &vec![&env]);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
+    assert!(client.set_precision_spending_limit(
+        &owner,
+        &member,
+        &PrecisionSpendingLimit {
+            limit: 1000_0000000,
+            min_precision: 1_0000000,
+            max_single_tx: 1000_0000000,
+            enable_rollover: true,
+        },
+    ));
+
+    assert_eq!(
+        client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000),
+        0
+    );
+    // The allowance permits 600 more, but the member has only 100 tokens left.
+    assert!(client
+        .try_withdraw(&member, &token_contract.address(), &recipient, &600_0000000)
+        .is_err());
+
+    let tracker = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(tracker.current_spent, 400_0000000);
+    assert_eq!(tracker.tx_count, 1);
+}
+
+#[test]
+fn test_reducing_limit_preserves_consumed_allowance() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let member = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let recipient = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
+
+    client.init(&owner, &vec![&env]);
+    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env, owner.clone(), member.clone()],
+        &1000_0000000,
+    );
+    assert!(client.set_precision_spending_limit(
+        &owner,
+        &member,
+        &PrecisionSpendingLimit {
+            limit: 700_0000000,
+            min_precision: 1_0000000,
+            max_single_tx: 700_0000000,
+            enable_rollover: true,
+        },
+    ));
+    assert_eq!(
+        client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000),
+        0
+    );
+
+    // Lowering the limit cannot make the already-consumed 400 disappear.
+    assert!(client.set_precision_spending_limit(
+        &owner,
+        &member,
+        &PrecisionSpendingLimit {
+            limit: 300_0000000,
+            min_precision: 1_0000000,
+            max_single_tx: 300_0000000,
+            enable_rollover: true,
+        },
+    ));
+    assert!(client
+        .try_withdraw(&member, &token_contract.address(), &recipient, &1_0000000)
+        .is_err());
+
+    let tracker = client.get_spending_tracker(&member).unwrap();
+    assert_eq!(tracker.current_spent, 400_0000000);
+    assert_eq!(tracker.tx_count, 1);
 }
 
 #[test]

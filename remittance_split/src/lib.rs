@@ -89,6 +89,8 @@ pub enum RemittanceSplitError {
     UnsupportedTokenContract = 31,
     /// No active treasury has accepted a treasury proposal yet.
     TreasuryNotConfigured = 32,
+    /// A treasury proposal targeted the contract's own address.
+    InvalidTreasuryAddress = 33,
     /// The number of configured corridors exceeds the maximum allowed.
     CorridorCountExceeded = 35,
     /// A corridor's fee (in basis points) exceeds the maximum allowed.
@@ -105,6 +107,10 @@ pub enum RemittanceSplitError {
     BatchSizeExceeded = 41,
     /// A `set_min_deposit` value is below `params::MIN_CORRIDOR_AMOUNT`.
     InvalidMinDeposit = 42,
+    /// `batch_transfer` cannot operate on an empty recipient set.
+    EmptyBatch = 43,
+    /// A recipient may occur only once in a batch transfer.
+    DuplicateRecipient = 44,
 }
 
 #[derive(Clone)]
@@ -1063,6 +1069,38 @@ impl RemittanceSplit {
         Ok(())
     }
 
+    /// Validate the complete batch before any nonce or token state can change.
+    /// The map makes duplicate detection linear within the bounded batch size.
+    fn validate_batch_transfer(
+        env: &Env,
+        recipients: &Vec<Address>,
+        amounts: &Vec<i128>,
+    ) -> Result<(), RemittanceSplitError> {
+        if recipients.len() != amounts.len() {
+            return Err(RemittanceSplitError::BatchLengthMismatch);
+        }
+        if recipients.is_empty() {
+            return Err(RemittanceSplitError::EmptyBatch);
+        }
+        if recipients.len() > MAX_BATCH_SIZE {
+            return Err(RemittanceSplitError::BatchSizeExceeded);
+        }
+
+        let mut seen: Map<Address, bool> = Map::new(env);
+        for i in 0..recipients.len() {
+            let recipient = recipients.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            let amount = amounts.get(i).ok_or(RemittanceSplitError::Overflow)?;
+            if amount <= 0 {
+                return Err(RemittanceSplitError::InvalidAmount);
+            }
+            if seen.contains_key(recipient.clone()) {
+                return Err(RemittanceSplitError::DuplicateRecipient);
+            }
+            seen.set(recipient, true);
+        }
+        Ok(())
+    }
+
     /// Validate that the ingress token is a supported stable asset contract.
     ///
     /// This is a defence-in-depth check against rebase/deflationary token contracts
@@ -1531,32 +1569,25 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidAmount);
         }
 
-        let split = Self::get_split(&env);
-        let s0 = match split.get(0) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
+        let allocations = if let Some(config) = env
+            .storage()
+            .instance()
+            .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
+        {
+            Self::calculate_split_amounts(&env, &config, total_amount, false)?
+        } else {
+            // Preserve the read-only default preview for an uninitialized
+            // deployment while using the same checked remainder policy.
+            let split = Self::get_split(&env);
+            let spending = split.get(0).ok_or(RemittanceSplitError::Overflow)?;
+            let savings = split.get(1).ok_or(RemittanceSplitError::Overflow)?;
+            let bills = split.get(2).ok_or(RemittanceSplitError::Overflow)?;
+            let (spending, savings, bills, insurance) =
+                fee_math::split_amounts(total_amount, spending, savings, bills)
+                    .ok_or(RemittanceSplitError::Overflow)?;
+            [spending, savings, bills, insurance]
         };
-        let s1 = match split.get(1) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-        let s2 = match split.get(2) {
-            Some(v) => v
-                .to_i128_checked()
-                .map_err(|_| RemittanceSplitError::Overflow)?,
-            None => return Err(RemittanceSplitError::Overflow),
-        };
-
-        let (spending, savings, bills, insurance) = fee_math::split_amounts(
-            total_amount,
-            split.get(0).unwrap(),
-            split.get(1).unwrap(),
-            split.get(2).unwrap(),
-        );
+        let [spending, savings, bills, insurance] = allocations;
 
         // Emit SplitCalculated event
 
@@ -1840,6 +1871,13 @@ impl RemittanceSplit {
             .instance()
             .get(&symbol_short!("CONFIG"))
             .ok_or(RemittanceSplitError::NotInitialized)?;
+        // The signed payer must also be the configured split owner. The
+        // request hash binds the payer, but a valid signature from another
+        // funded account must not authorize an owner-only distribution.
+        if config.owner != request.from {
+            Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
+            return Err(RemittanceSplitError::Unauthorized);
+        }
         if config.usdc_contract.ne(&request.usdc_contract) {
             Self::append_audit(&env, symbol_short!("distH"), &request.from, false);
             return Err(RemittanceSplitError::UntrustedTokenContract);
@@ -1929,20 +1967,8 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::UntrustedTokenContract);
         }
 
-        if recipients.len() != amounts.len() {
-            return Err(RemittanceSplitError::BatchLengthMismatch);
-        }
-        if recipients.len() > MAX_BATCH_SIZE {
-            return Err(RemittanceSplitError::BatchSizeExceeded);
-        }
-
+        Self::validate_batch_transfer(&env, &recipients, &amounts)?;
         Self::require_nonce(&env, &caller, nonce)?;
-
-        for amount in amounts.iter() {
-            if amount <= 0 {
-                return Err(RemittanceSplitError::InvalidAmount);
-            }
-        }
 
         let token = TokenClient::new(&env, &usdc_contract);
         for i in 0..recipients.len() {
@@ -2639,7 +2665,7 @@ impl RemittanceSplit {
     /// is computed via integer (floor) division:
     ///
     /// ```text
-    /// alloc[i] = floor(total_amount * percent[i] / 100)
+    /// alloc[i] = floor(total_amount * percent[i] / 10_000)
     /// ```
     ///
     /// Insurance (index 3) receives the **remainder / dust**:

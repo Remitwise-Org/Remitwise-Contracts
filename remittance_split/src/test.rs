@@ -3310,6 +3310,42 @@ fn test_batch_transfer_rejects_length_mismatch() {
 }
 
 #[test]
+fn test_batch_transfer_rejects_empty_recipient_set() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4000, 3000, 2000, 1000);
+    let recipients = vec![&env];
+    let amounts = vec![&env];
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &1,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::EmptyBatch)));
+}
+
+#[test]
+fn test_batch_transfer_rejects_duplicate_recipients_before_transfer() {
+    let env = Env::default();
+    let harness = setup_split(&env, 4000, 3000, 2000, 1000);
+    let recipient = Address::generate(&env);
+    let recipients = vec![&env, recipient.clone(), recipient];
+    let amounts = vec![&env, 10, 20];
+
+    let result = harness.client.try_batch_transfer(
+        &harness.owner,
+        &1,
+        &harness.token_addr,
+        &recipients,
+        &amounts,
+    );
+    assert_eq!(result, Err(Ok(RemittanceSplitError::DuplicateRecipient)));
+    assert_eq!(harness.stellar_client.balance(&harness.owner), 0);
+}
+
+#[test]
 fn test_batch_transfer_rejects_batch_over_max_size() {
     let env = Env::default();
     let harness = setup_split(&env, 4_000, 3_000, 2_000, 1_000);

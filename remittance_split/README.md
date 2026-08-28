@@ -235,6 +235,17 @@ Restores a split configuration from a previously exported snapshot.
 | 3 | `snapshot.config.initialized == true` | `SnapshotNotInitialized` |
 | 4 | Each percentage field `<= 10_000` | `PercentageOutOfRange` |
 | 5 | Sum of percentages `== 10_000` | `PercentagesDoNotSumTo100` |
+
+Percentage validation runs before the configuration is mutated, so an invalid
+`update_split` leaves the previous configuration and timestamp unchanged.
+Each allocation is basis-point based (`10_000 == 100%`); values above the
+per-bucket cap return `PercentageOutOfRange` and incomplete allocations return
+`PercentagesDoNotSumTo100`.
+
+`batch_transfer` also validates its complete recipient set before any token
+transfer: an empty set returns `EmptyBatch`, duplicate addresses return
+`DuplicateRecipient`, mismatched vectors return `BatchLengthMismatch`, and
+inputs above the bounded batch size return `BatchSizeExceeded`.
 | 6 | `config.timestamp` and `exported_at` not in the future | `FutureTimestamp` |
 | 7 | Caller is the current contract owner | `Unauthorized` |
 | 8 | `snapshot.config.owner == caller` | `OwnerMismatch` |
@@ -329,6 +340,17 @@ caller to be the contract owner. It returns `true` when all structural checks pa
 Storage-read-only calculation — returns `[spending, savings, bills, insurance]` amounts.
 Insurance receives the integer-division remainder to guarantee `sum == total_amount`.
 This helper remains callable while paused.
+
+### Deterministic remainder policy
+
+Split math uses basis points and floors the spending, savings, and bills
+shares. Insurance receives the exact remainder after those three checked
+subtractions, so every valid positive amount is conserved exactly. This
+policy is shared by the read-only preview (`calculate_split` and
+`get_split_allocations`) and both distribution entrypoints. Zero and negative
+amounts are rejected; a one-unit amount follows the same floor-plus-remainder
+rule. Recipient ordering cannot affect the allocation because the four
+destinations are fixed configuration fields.
 
 #### `set_pause_admin(env, caller, new_admin) -> ()`
 
@@ -525,3 +547,7 @@ Test coverage includes:
 - Multiple sequential distributions with nonce advancement
 - Event emission verification
 - TTL extension on initialization
+
+> **Security note:** The authorization, request-binding, asset-identity, batch,
+> and rollback guarantees for USDC distribution are documented in
+> [`docs/usdc-distribution-security.md`](docs/usdc-distribution-security.md).

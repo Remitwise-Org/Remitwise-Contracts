@@ -272,6 +272,33 @@ pub enum ReportingError {
     /// for itself as an external caller. Mirrors `emergency_killswitch`'s
     /// `InvalidAdmin` guard on `transfer_admin`.
     InvalidAdmin = 12,
+    /// A grant expiry is in the past or is not strictly after the current ledger time.
+    InvalidGrantExpiry = 13,
+    /// A viewer grant does not exist or is no longer active.
+    ViewerNotGranted = 14,
+    /// A viewer cannot be granted access to the owner identity itself.
+    InvalidViewer = 15,
+}
+
+/// Explicit report data scopes that can be delegated independently.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportScope {
+    /// Stored full financial-health reports.
+    Stored = 0,
+    /// Archived health-score summaries.
+    Archived = 1,
+}
+
+/// The subject and viewer identity recorded in an ACL event.
+#[contracttype]
+#[derive(Clone)]
+pub struct ViewerGrant {
+    pub owner: Address,
+    pub viewer: Address,
+    pub scope: ReportScope,
+    /// Zero means no expiry; otherwise access is valid while now < expires_at.
+    pub expires_at: u64,
 }
 
 #[contracttype]
@@ -282,6 +309,8 @@ pub enum ReportEvent {
     AddressesConfigured,
     ReportsArchived,
     ArchivesCleaned,
+    ViewerGranted,
+    ViewerRevoked,
 }
 
 /// Archived report - compressed summary
@@ -685,6 +714,143 @@ impl ReportingContract {
             .set(&symbol_short!("ADMIN"), &admin);
 
         Ok(())
+    }
+
+    // ---------------------------------------------------------------------
+    // Delegated report access
+    // ---------------------------------------------------------------------
+
+    /// Return the storage map used for explicit subject-to-viewer grants.
+    ///
+    /// The owner is part of the key, so a viewer grant for one subject can
+    /// never authorize access to another subject's records.
+    fn viewer_grants(env: &Env) -> Map<(Address, Address, ReportScope), u64> {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("VIEW_ACL"))
+            .unwrap_or_else(|| Map::new(env))
+    }
+
+    fn viewer_is_authorized(
+        env: &Env,
+        caller: &Address,
+        owner: &Address,
+        scope: ReportScope,
+    ) -> bool {
+        if caller == owner {
+            return true;
+        }
+        let grants = Self::viewer_grants(env);
+        match grants.get((owner.clone(), caller.clone(), scope)) {
+            Some(expires_at) => expires_at == 0 || env.ledger().timestamp() < expires_at,
+            None => false,
+        }
+    }
+
+    fn require_viewer(
+        env: &Env,
+        caller: &Address,
+        owner: &Address,
+        scope: ReportScope,
+    ) -> Result<(), ReportingError> {
+        caller.require_auth();
+        if Self::viewer_is_authorized(env, caller, owner, scope) {
+            Ok(())
+        } else {
+            // Every denied subject/scope pair returns the same error. This
+            // prevents callers from probing whether a report exists.
+            Err(ReportingError::Unauthorized)
+        }
+    }
+
+    /// Grant a viewer access to one explicit report scope.
+    ///
+    /// `expires_at == 0` creates a non-expiring grant. Any non-zero expiry
+    /// must be in the future. Only the subject can grant or revoke access;
+    /// viewers cannot delegate the subject's authority onward.
+    pub fn grant_viewer(
+        env: Env,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+        expires_at: u64,
+    ) -> Result<(), ReportingError> {
+        owner.require_auth();
+        let admin: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
+        if admin.is_none() {
+            return Err(ReportingError::NotInitialized);
+        }
+        if viewer == owner || viewer == env.current_contract_address() {
+            return Err(ReportingError::InvalidViewer);
+        }
+        if expires_at != 0 && expires_at <= env.ledger().timestamp() {
+            return Err(ReportingError::InvalidGrantExpiry);
+        }
+
+        let mut grants = Self::viewer_grants(&env);
+        grants.set((owner.clone(), viewer.clone(), scope), expires_at);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VIEW_ACL"), &grants);
+        Self::extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("report"), ReportEvent::ViewerGranted),
+            ViewerGrant {
+                owner,
+                viewer,
+                scope,
+                expires_at,
+            },
+        );
+        Ok(())
+    }
+
+    /// Revoke a viewer's access immediately for future queries.
+    pub fn revoke_viewer(
+        env: Env,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+    ) -> Result<(), ReportingError> {
+        owner.require_auth();
+        let _: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(ReportingError::NotInitialized)?;
+        let mut grants = Self::viewer_grants(&env);
+        grants.remove((owner.clone(), viewer.clone(), scope));
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VIEW_ACL"), &grants);
+        Self::extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("report"), ReportEvent::ViewerRevoked),
+            ViewerGrant {
+                owner,
+                viewer,
+                scope,
+                expires_at: 0,
+            },
+        );
+        Ok(())
+    }
+
+    /// Read the effective grant without exposing report existence.
+    pub fn get_viewer_grant(
+        env: Env,
+        caller: Address,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+    ) -> Result<Option<u64>, ReportingError> {
+        caller.require_auth();
+        if caller != owner && caller != viewer {
+            return Err(ReportingError::Unauthorized);
+        }
+        Ok(Self::viewer_grants(&env)
+            .get((owner, viewer, scope))
+            .filter(|expiry| *expiry == 0 || env.ledger().timestamp() < *expiry))
     }
 
     /// Propose a new administrator for the contract.
@@ -1691,12 +1857,7 @@ impl ReportingContract {
         remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
             .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
-        Self::get_top_bills_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        )
+        Self::get_top_bills_report_internal(&env, user, period_start, period_end)
     }
 
     /// ✅ FIXED: Now returns Result and uses proper error handling
@@ -1776,12 +1937,7 @@ impl ReportingContract {
         remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
             .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
-        Self::get_top_savings_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        )
+        Self::get_top_savings_report_internal(&env, user, period_start, period_end)
     }
 
     /// ✅ FIXED: Now returns Result and uses proper error handling
@@ -1959,6 +2115,25 @@ impl ReportingContract {
             .unwrap_or_else(|| Map::new(&env));
 
         reports.get((user, period_key))
+    }
+
+    /// Delegated equivalent of [`get_stored_report`]. The viewer must hold an
+    /// active `Stored` grant for this exact owner; the owner may always read
+    /// their own report. Unauthorized calls fail before the storage map is
+    /// inspected, so report existence is not distinguishable.
+    pub fn get_stored_report_for(
+        env: Env,
+        viewer: Address,
+        owner: Address,
+        period_key: u64,
+    ) -> Result<Option<FinancialHealthReport>, ReportingError> {
+        Self::require_viewer(&env, &viewer, &owner, ReportScope::Stored)?;
+        let reports: Map<(Address, u64), FinancialHealthReport> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("REPORTS"))
+            .unwrap_or_else(|| Map::new(&env));
+        Ok(reports.get((owner, period_key)))
     }
 
     /// Get configured contract addresses.
@@ -2211,6 +2386,55 @@ impl ReportingContract {
         }
     }
 
+    /// Delegated, paginated archive read with the same cursor semantics as the
+    /// owner-only endpoint. The scope is `Archived`, not `Stored`, so granting
+    /// archive access never exposes full stored reports.
+    pub fn get_archived_reports_page_for(
+        env: Env,
+        viewer: Address,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<ArchivedPage, ReportingError> {
+        Self::require_viewer(&env, &viewer, &owner, ReportScope::Archived)?;
+        let arch_idx: Map<Address, Vec<u64>> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_IDX"))
+            .unwrap_or_else(|| Map::new(&env));
+        let user_idx = arch_idx
+            .get(owner.clone())
+            .unwrap_or_else(|| Vec::new(&env));
+        let total_count = user_idx.len();
+        let archived: Map<(Address, u64), ArchivedReport> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_RPT"))
+            .unwrap_or_else(|| Map::new(&env));
+        let mut items = Vec::new(&env);
+        if cursor >= total_count {
+            return Ok(ArchivedPage {
+                items,
+                next_cursor: 0,
+                count: total_count,
+            });
+        }
+        let normalized_limit = remitwise_common::clamp_limit(limit);
+        let end = cursor.saturating_add(normalized_limit).min(total_count);
+        for i in cursor..end {
+            if let Some(period_key) = user_idx.get(i) {
+                if let Some(report) = archived.get((owner.clone(), period_key)) {
+                    items.push_back(report);
+                }
+            }
+        }
+        Ok(ArchivedPage {
+            items,
+            next_cursor: if end < total_count { end } else { 0 },
+            count: total_count,
+        })
+    }
+
     /// Permanently delete old archives before specified timestamp (admin only).
     ///
     /// # Arguments
@@ -2387,3 +2611,6 @@ mod tests_archived_pagination_bound;
 
 #[cfg(test)]
 mod tests_safe_math;
+
+#[cfg(test)]
+mod tests_viewer_acl;
