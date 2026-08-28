@@ -115,7 +115,7 @@ impl EmergencyKillswitch {
             .ok_or(Error::SignerNotConfigured)?;
         let mut accepted = 0u32;
         for approval in approvals.iter() {
-            if !signers.contains(approval) {
+            if !signers.contains(&approval) {
                 return Err(Error::SignerNotConfigured);
             }
             if accepted > 0 {
@@ -156,7 +156,7 @@ impl EmergencyKillswitch {
             return Err(Error::InvalidSignerThreshold);
         }
         for (index, signer) in signers.iter().enumerate() {
-            if *signer == env.current_contract_address() {
+            if signer == env.current_contract_address() {
                 return Err(Error::InvalidAdmin);
             }
             for prior in signers.iter().take(index) {
@@ -177,7 +177,7 @@ impl EmergencyKillswitch {
             .set(&DataKey::SignerThreshold, &threshold);
         env.storage().instance().set(&DataKey::SignerEpoch, &epoch);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("signers_set")),
+            (symbol_short!("emergency"), Symbol::new(&env, "signers_set")),
             (epoch, threshold, signers.len()),
         );
         Ok(epoch)
