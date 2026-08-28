@@ -85,6 +85,31 @@ This PR closes #1720 by making every privileged cross-contract entrypoint:
 - Native host builds (`integration_tests`) blocked by missing `dlltool.exe` in the
   mingw toolchain on this machine — intended to be run in CI.
 
+## Deferred: `insurance` contract corruption (out of scope for this PR)
+
+The `insurance/src/lib.rs` contract source is **pervasively corrupted in all recent
+committed history** (verified against `7cbadf90`, `586acc63`, and the branch base
+`cf43a0af`). Symptoms:
+
+- Duplicate const definitions (`INSTANCE_BUMP_AMOUNT` / `INSTANCE_LIFETIME_THRESHOLD`
+  are both imported from `remitwise_common` *and* defined locally).
+- A duplicated `InsuranceEvent` enum.
+- A single `impl Insurance` block containing **duplicated method definitions with
+  divergent bodies** — e.g. `get_policy` returns `Option<InsurancePolicy>` in one copy
+  and `Option<Policy>` in the other; `deactivate_policy` appears twice (a simple stub
+  and a full `load_policy`/`get_owner` version).
+
+This is not a simple "unclosed delimiter" — it requires deciding which implementation is
+canonical for each method, which is a design decision that should not be guessed for a
+financial contract. Because `insurance` is already excluded from the workspace `wasm32`
+build, this does not block the PR's build. The corruption should be fixed in a dedicated
+follow-up (recover from a known-good revision or carefully reconstruct the contract) and
+the #1720 epoch changes for `insurance` (`pay_premium` epoch guard, `reverse_premium`,
+`set_trusted_orchestrator`) re-applied on top of the repaired file.
+
+`family_wallet`'s `require_future_timestamp` build break **is** fixed in this PR
+(`remitwise_common::require_future_timestamp`).
+
 ## Notes / follow-ups
 - Coordinator downstream bump is best-effort (`try_`) so legacy/mock downstream
   contracts that do not implement `bump_cross_contract_epoch` still function.
