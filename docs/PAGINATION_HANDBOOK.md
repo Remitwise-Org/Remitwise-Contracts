@@ -253,6 +253,55 @@ Example: `" usdc "` → `"USDC"`, `""` → `"XLM"`
 ---
 
 
+### `get_bill_schedules_page(owner, cursor, limit)` — Bill Payments
+
+**File:** `bill_payments/src/lib.rs` (added in Issue #1751)
+
+**Purpose:** Returns a deterministic, cursor-paginated page of recurring bill schedules for an owner.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `owner` | `Address` | Account whose schedules to fetch (requires auth) |
+| `cursor` | `u32` | Exclusive schedule ID boundary (0 = start) |
+| `limit` | `u32` | Max schedules to return (clamped to `MAX_PAGE_LIMIT = 50`) |
+
+**Returns:** `BillSchedulePage { items: Vec<BillSchedule>, next_cursor: u32, count: u32 }`
+
+**Storage reads:**
+- Index: `STORAGE_OWNER_BSCH_IDX` (`symbol_short!("OWN_BSCH")`) → `Map<Address, Vec<u32>>` of owner → schedule IDs
+- Items: `STORAGE_BSCHEDS` (`symbol_short!("BSCHEDS")`) → `Map<u32, BillSchedule>` for each ID in range
+
+**Ordering:** Ascending by schedule ID (creation order within owner index).
+
+**Limit enforcement:**
+```rust
+let effective_limit = clamp_limit(limit);  // 0→20, 1-50→pass, >50→50
+```
+
+**Cursor semantics (EXCLUSIVE):**
+- `cursor = 0`: Start from first schedule
+- `cursor = N` (where N exists): Skip to schedules with ID > N, then take `effective_limit` items
+- Returns `next_cursor = ID of last returned item` when more pages exist
+- Returns `next_cursor = 0` when final page reached
+
+**Edge cases:**
+- No schedules for owner: Returns empty page with `next_cursor = 0` (not an error)
+- `cursor` beyond max schedule ID: Returns empty page with `next_cursor = 0`
+- Cancelled schedules (removed from owner index): Never appear in results
+
+**Security:**
+- `owner.require_auth()` enforced at function entry
+- Per-owner index means cursor values from one owner cannot leak another owner's schedules
+
+**Prior art:** `get_bill_schedules()` (same file) returns an unbounded `Vec<BillSchedule>` and is retained for backward compatibility. Prefer `get_bill_schedules_page()` for all new callers.
+
+**Tests:** `bill_payments/tests/tests_recurring.rs` — 13 regression tests covering empty owner, single-page, first/second page cursors, exact-fit, out-of-range cursor, cursor at last ID, idempotent repeat, limit=0 normalisation, large limit clamping, full traversal no duplicates, owner isolation, cancelled schedule exclusion, concurrent insert stability, and field integrity.
+
+---
+
+
 ### `get_active_policies(owner, cursor, limit)` — Insurance
 
 **File:** `insurance/src/lib.rs:742`
@@ -1188,6 +1237,7 @@ for id in ids {
 | Savings Goals | `get_archived_goals_page()` | Exclusive ID | 50 | `ArchivedGoalPage` | lib.rs:1904 |
 | Bill Payments | `get_unpaid_bills()` | Exclusive ID | 50 | `BillPage` | lib.rs:2153 |
 | Bill Payments | `get_unpaid_bills_by_currency()` | Exclusive ID | 50 | `BillPage` | lib.rs:3286 |
+| Bill Payments | `get_bill_schedules_page()` | Exclusive ID | 50 | `BillSchedulePage` | lib.rs (Issue #1751) |
 | Insurance | `get_active_policies()` | Exclusive ID | 50 | `PolicyPage` | lib.rs:742 |
 | Insurance | `get_deactivated_policies()` | Exclusive ID | 50 | `PolicyPage` | lib.rs:799 |
 | Remittance Split | `get_audit_log()` | Absolute Index | 50 | `AuditPage` | lib.rs:1856 |

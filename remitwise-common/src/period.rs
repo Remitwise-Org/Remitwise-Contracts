@@ -29,10 +29,7 @@ pub enum PeriodKeyError {
 }
 
 /// Require two entities to belong to the same period.
-pub fn require_matching_period_key(
-    a_pk: u64,
-    b_pk: u64,
-) -> Result<(), PeriodKeyError> {
+pub fn require_matching_period_key(a_pk: u64, b_pk: u64) -> Result<(), PeriodKeyError> {
     if a_pk == b_pk {
         Ok(())
     } else {
@@ -78,12 +75,12 @@ pub fn require_matching_period_key(
 /// unit-testable.
 ///
 /// # Arguments
-    /// * `period_start`  — the timestamp at which the period started (e.g. the
-    ///   Unix-second start boundary of a `pk = YYYYMM`, the day-start of a
-    ///   `pk = YYYYMMDD`, or the Unix-second boundary itself).
-    /// * `now`           — the current ledger timestamp (`env.ledger().timestamp()`).
-    /// * `is_archived`   — `true` iff the caller has already moved the period to
-    ///   its archive storage; `false` otherwise.
+/// * `period_start`  — the timestamp at which the period started (e.g. the
+///   Unix-second start boundary of a `pk = YYYYMM`, the day-start of a
+///   `pk = YYYYMMDD`, or the Unix-second boundary itself).
+/// * `now`           — the current ledger timestamp (`env.ledger().timestamp()`).
+/// * `is_archived`   — `true` iff the caller has already moved the period to
+///   its archive storage; `false` otherwise.
 ///
 /// # Errors
 /// * [`PeriodKeyError::PeriodNotActive`] when `is_archived == true` or
@@ -282,10 +279,7 @@ mod tests {
     /// inclusive boundary).
     #[test]
     fn accepts_period_at_its_start_boundary() {
-        assert_eq!(
-            verify_period_active(PK_START, PK_START, false),
-            Ok(()),
-        );
+        assert_eq!(verify_period_active(PK_START, PK_START, false), Ok(()),);
     }
 
     /// Even far into the next year, a non-archived period whose start has
@@ -363,10 +357,7 @@ mod tests {
         let now = u64::MAX;
         // period_start = u64::MAX - 1, now = u64::MAX ⇒ period opened 1
         // second ago at the very top of the range, still in window.
-        assert_eq!(
-            verify_period_active(u64::MAX - 1, now, false),
-            Ok(()),
-        );
+        assert_eq!(verify_period_active(u64::MAX - 1, now, false), Ok(()),);
     }
 
     /// Boundary: when `period_start` is one second past `now`, the period

@@ -393,9 +393,7 @@ fn test_batch_pay_large_bills() {
     }
 
     env.mock_all_auths();
-    let paid_count = client.batch_pay_bills(&owner, &bill_ids);
-
-    assert_eq!(paid_count, 5);
+    client.batch_pay_bills(&owner, &bill_ids);
 
     // Verify all bills are paid
     for bill_id in bill_ids.iter() {

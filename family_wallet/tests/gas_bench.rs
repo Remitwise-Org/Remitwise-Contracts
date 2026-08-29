@@ -122,14 +122,7 @@ fn emit_bench(method: &str, scenario: &str, cpu: u64, mem: u64) {
 /// designated signers. This pattern is what makes a propose call land in the
 /// pending map (valid_signatures for the proposer = 0 < threshold) which is
 /// required to benchmark the full sign→execute lifecycle.
-fn populated_setup(
-    env: &Env,
-    signer_count: u32,
-) -> (
-    FamilyWalletClient,
-    Address,
-    Vec<Address>,
-) {
+fn populated_setup(env: &Env, signer_count: u32) -> (FamilyWalletClient, Address, Vec<Address>) {
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(env, &contract_id);
 
@@ -176,11 +169,7 @@ fn propose_split(client: &FamilyWalletClient, owner: &Address) -> u64 {
 /// `owner` is NOT a signer, so the proposal entered PEND_TXS at propose time
 /// with 0 valid quorum signatures; we add `signer_count` further valid sigs
 /// to reach threshold.
-fn execute_pending(
-    client: &FamilyWalletClient,
-    signers: &Vec<Address>,
-    tx_id: u64,
-) {
+fn execute_pending(client: &FamilyWalletClient, signers: &Vec<Address>, tx_id: u64) {
     for i in 0..signers.len() {
         let signer = signers.get(i).unwrap();
         client.sign_transaction(&signer, &tx_id);
@@ -229,12 +218,7 @@ fn bench_configure_multisig_worst_case() {
     });
     assert!(configured);
 
-    emit_bench(
-        "configure_multisig",
-        "9_signers_threshold_all",
-        cpu,
-        mem,
-    );
+    emit_bench("configure_multisig", "9_signers_threshold_all", cpu, mem);
 }
 
 // =====================================================================
@@ -534,18 +518,23 @@ fn bench_get_pending_page_first_n(n: u32) {
         let _ = propose_split(&client, &owner);
     }
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_pending_transactions_page(&owner, &0u64, &50u32));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_pending_transactions_page(&owner, &0u64, &50u32)
+    });
     assert_eq!(
         page.items.len(),
         50,
         "first page of size 50 must return the requested 50 items",
     );
     assert_eq!(
-        page.count, page.items.len(),
+        page.count,
+        page.items.len(),
         "page.count and items.len() must agree for consistent pagination",
     );
-    assert!(page.next_cursor > 0, "next_cursor must point forward for n > 50");
+    assert!(
+        page.next_cursor > 0,
+        "next_cursor must point forward for n > 50"
+    );
 
     emit_bench(
         "get_pending_transactions_page",

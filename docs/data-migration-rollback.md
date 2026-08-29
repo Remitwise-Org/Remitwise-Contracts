@@ -14,9 +14,13 @@ Capture
 Import
 
 1. Validate the snapshot using `ExportSnapshot::validate_for_import()`.
-2. Apply the snapshot to the contract state.
-3. Mark the snapshot as imported in the `MigrationTracker` via `mark_imported()`.
-4. If the import completes successfully, discard the persisted `RollbackMetadata`.
+2. Start an observable attempt with `MigrationTracker::begin_import()`.
+3. Apply the snapshot to the contract state in bounded batches, recording each
+   successful checkpoint with `MigrationTracker::record_progress()`.
+4. Mark the snapshot as imported in the `MigrationTracker` via `mark_imported()`.
+5. Once the full migration is coherent, call `mark_completed()` so guarded
+   writes can resume.
+6. If the import completes successfully, discard the persisted `RollbackMetadata`.
 
 Failure & Restore
 
@@ -24,11 +28,15 @@ Failure & Restore
 2. Call `RollbackMetadata::restore(&rollback, &mut state, &mut tracker)` to:
    - Revert the in-memory representation of the contract to the captured pre-import snapshot.
    - Remove the replay-tracking entry for the attempted (failed) import so retries are permitted.
+   - Mark any active matching attempt as `RolledBack` in tracker history.
 
 Notes & Guarantees
 
 - `RollbackMetadata::restore` is idempotent: it is safe to call it multiple times.
 - The design preserves previously-recorded imported snapshots; restore only removes the marker for the attempted failed import.
+- Progress checkpoints are monotonic and bounded by the snapshot record count.
+- `fail_import` records a failed attempt without creating a replay marker, so a
+  later retry with the same snapshot remains possible.
 - Operators should prefer capturing before any mutation and discarding the metadata only after a fully successful import.
 
 Examples

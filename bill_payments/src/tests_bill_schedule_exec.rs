@@ -438,3 +438,48 @@ fn test_schedule_events_emitted() {
         "ScheduleExecuted event must be emitted"
     );
 }
+
+// --- 10. Pagination and limits ------------------------------------------------
+#[test]
+fn test_execute_due_bill_schedules_paginates_at_max_batch_size() {
+    let (env, client, owner) = setup();
+    let now = env.ledger().timestamp();
+
+    // MAX_BATCH_SIZE is 50. Create 55 schedules.
+    for i in 0..55 {
+        client.create_bill_schedule(
+            &owner,
+            &String::from_str(&env, &format!("Bill {}", i)),
+            &1000,
+            &String::from_str(&env, "XLM"),
+            &(now + 1000),
+            &86400,
+        );
+    }
+
+    set_ledger_time(&env, 1, now + 2000);
+
+    // First execution should process 50 schedules
+    let executed_first = client.execute_due_bill_schedules();
+    assert_eq!(
+        executed_first.len(),
+        50,
+        "First execution should process exactly MAX_BATCH_SIZE schedules"
+    );
+
+    // Second execution should process the remaining 5 schedules
+    let executed_second = client.execute_due_bill_schedules();
+    assert_eq!(
+        executed_second.len(),
+        5,
+        "Second execution should process remaining 5 schedules"
+    );
+
+    // Third execution should process 0
+    let executed_third = client.execute_due_bill_schedules();
+    assert_eq!(
+        executed_third.len(),
+        0,
+        "Third execution should process 0 schedules"
+    );
+}

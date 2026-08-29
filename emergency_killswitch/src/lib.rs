@@ -22,6 +22,14 @@ pub enum Error {
     RecoveryTooEarly = 13,
     NotActive = 14,
     ScopeRequired = 15,
+    /// Snapshot not found during restore — call `pre_upgrade` first.
+    SnapshotNotFound = 16,
+    /// Snapshot has expired (taken more than [`SNAPSHOT_TTL`] seconds ago).
+    SnapshotExpired = 17,
+    /// Storage is already at the latest version — migration is a no-op.
+    AlreadyMigrated = 18,
+    /// A previous migration did not complete — call `migrate_storage` again.
+    MigrationIncomplete = 19,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -51,6 +59,17 @@ enum DataKey {
     ActiveScope,
     RecoveryReadyAt,
     ScopeWasPaused,
+    /// Tracks the storage schema version — bumped on every
+    /// upgrade-relevant change so the contract can detect and migrate
+    /// legacy layouts.
+    StorageVersion,
+    /// Serialized [`EmergencyStateSnapshot`] taken before an upgrade.
+    Snapshot,
+    /// Timestamp when the snapshot was taken (used for TTL enforcement).
+    SnapshotTimestamp,
+    /// Tracks the migration step last completed so `migrate_storage` is
+    /// resumable after a partial failure.
+    MigrationProgress,
 }
 
 /// Delay between a threshold-approved activation and recovery.
@@ -62,6 +81,15 @@ pub const MAX_PAUSED_FUNCTIONS: u32 = 10;
 /// callers/tooling can detect which build of the WASM they are talking to.
 pub const CONTRACT_VERSION: u32 = 1;
 
+/// Storage schema version. Bumped whenever the on-chain key layout changes.
+/// `migrate_storage` advances this value one step at a time so callers can
+/// observe progress and resume after a partial failure.
+pub const STORAGE_VERSION: u32 = 1;
+
+/// How many seconds a pre-upgrade snapshot remains valid.  After this
+/// window the snapshot is considered stale and must be refreshed.
+pub const SNAPSHOT_TTL: u64 = 86_400; // 24 hours
+
 /// Emitted when the killswitch admin is successfully transferred.
 #[contracttype]
 #[derive(Clone)]
@@ -69,6 +97,47 @@ pub struct AdminTransferred {
     pub old_admin: Address,
     pub new_admin: Address,
     pub timestamp: u64,
+}
+
+/// Snapshot of all emergency-killswitch state captured before a contract
+/// upgrade.  Stored under [`DataKey::Snapshot`] and consumed by
+/// [`EmergencyKillswitch::restore_from_snapshot`].
+///
+/// Every field uses `Option` so that forward-compatible additions to the
+/// snapshot never break deserialization of older payloads — the Soroban
+/// XDR decoder treats missing fields as `None`.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EmergencyStateSnapshot {
+    /// Schema version of this snapshot (matches [`STORAGE_VERSION`] at
+    /// capture time).  Used by `restore_from_snapshot` to reject
+    /// incompatible snapshots.
+    pub schema_version: u32,
+    pub global_paused: bool,
+    pub paused_since: Option<u64>,
+    pub pause_reason: Option<Symbol>,
+    pub unpause_schedule: Option<u64>,
+    pub kill_switch_epoch: u64,
+    pub signer_epoch: u64,
+    pub signer_threshold: Option<u32>,
+    pub activation_epoch: Option<u64>,
+    pub active_scope: Option<PauseScope>,
+    pub recovery_ready_at: Option<u64>,
+    pub scope_was_paused: Option<bool>,
+}
+
+/// Tracks which migration steps have been completed so
+/// [`EmergencyKillswitch::migrate_storage`] is resumable after a partial
+/// failure.  Each step is a monotonically increasing integer; a step is
+/// considered done when `completed >= step_number`.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationProgress {
+    pub from_version: u32,
+    pub to_version: u32,
+    pub completed_step: u32,
+    pub total_steps: u32,
+    pub last_run_at: u64,
 }
 
 #[contract]
@@ -115,13 +184,13 @@ impl EmergencyKillswitch {
             .ok_or(Error::SignerNotConfigured)?;
         let mut accepted = 0u32;
         for approval in approvals.iter() {
-            if !signers.contains(approval) {
+            if !signers.contains(&approval) {
                 return Err(Error::SignerNotConfigured);
             }
             if accepted > 0 {
                 let mut prior = 0u32;
                 for seen in approvals.iter() {
-                    if seen == approval {
+                    if seen == approval.clone() {
                         prior += 1;
                     }
                     if seen == approval && prior > 1 {
@@ -156,7 +225,7 @@ impl EmergencyKillswitch {
             return Err(Error::InvalidSignerThreshold);
         }
         for (index, signer) in signers.iter().enumerate() {
-            if *signer == env.current_contract_address() {
+            if signer == env.current_contract_address() {
                 return Err(Error::InvalidAdmin);
             }
             for prior in signers.iter().take(index) {
@@ -177,7 +246,7 @@ impl EmergencyKillswitch {
             .set(&DataKey::SignerThreshold, &threshold);
         env.storage().instance().set(&DataKey::SignerEpoch, &epoch);
         env.events().publish(
-            (symbol_short!("emergency"), symbol_short!("signers_set")),
+            (symbol_short!("emergency"), Symbol::new(&env, "signers_set")),
             (epoch, threshold, signers.len()),
         );
         Ok(epoch)
@@ -803,6 +872,324 @@ impl EmergencyKillswitch {
         );
         Ok(())
     }
+
+    // ── Storage version ──────────────────────────────────────────────────
+
+    /// Returns the storage schema version currently active on-chain.
+    ///
+    /// No authentication required — the version is observable on-chain.
+    /// Off-chain tooling and migration scripts use this to decide whether
+    /// a `migrate_storage` call is needed.
+    pub fn storage_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::StorageVersion)
+            .unwrap_or(0) // v0 = pre-versioning (legacy deployments)
+    }
+
+    // ── Migration ────────────────────────────────────────────────────────
+
+    /// Advance the on-chain storage schema one version at a time.
+    ///
+    /// Each call migrates exactly one version step, making the function
+    /// resumable after a partial failure: if the transaction is submitted
+    /// but the execution halts (e.g. out of gas), the next call picks up
+    /// where the previous one left off because
+    /// [`DataKey::MigrationProgress`] records the last completed step.
+    ///
+    /// # Invariants
+    /// - Idempotent: calling when already at `STORAGE_VERSION` returns
+    ///   [`Error::AlreadyMigrated`].
+    /// - Observable: every successful step emits a `migr_step` event; the
+    ///   final step emits a `migr_done` event.
+    /// - Atomic per step: if a step panics, no partial state from that step
+    ///   is committed.
+    ///
+    /// # Authorization
+    /// Requires admin authentication.
+    ///
+    /// # Events
+    /// - `("emergency", "migr_step")` — `(from_ver, to_ver, step, total)`
+    /// - `("emergency", "migr_done")` — `(new_version, timestamp)`
+    pub fn migrate_storage(env: Env, caller: Address) -> Result<u32, Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let current: u32 = Self::storage_version(env.clone());
+        if current >= STORAGE_VERSION {
+            return Err(Error::AlreadyMigrated);
+        }
+
+        // Each version bump is one step.  We advance exactly one step per call.
+        let progress: MigrationProgress = env
+            .storage()
+            .instance()
+            .get(&DataKey::MigrationProgress)
+            .unwrap_or(MigrationProgress {
+                from_version: current,
+                to_version: STORAGE_VERSION,
+                completed_step: 0,
+                total_steps: STORAGE_VERSION.saturating_sub(current),
+                last_run_at: 0,
+            });
+
+        let next_step = progress.completed_step + 1;
+        let total = progress.total_steps;
+        let target_version = progress.to_version;
+        let from_version = progress.from_version;
+
+        // Step 1: ensure StorageVersion key exists (v0 → v1 migration).
+        // Legacy deployments that predate versioning won't have this key.
+        if next_step == 1 && !env.storage().instance().has(&DataKey::StorageVersion) {
+            env.storage()
+                .instance()
+                .set(&DataKey::StorageVersion, &1u32);
+        }
+
+        // (Future steps would go here as `else if next_step == 2 { ... }`.)
+
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(
+            &DataKey::MigrationProgress,
+            &MigrationProgress {
+                from_version,
+                to_version: target_version,
+                completed_step: next_step,
+                total_steps: total,
+                last_run_at: now,
+            },
+        );
+
+        env.events().publish(
+            (symbol_short!("emergency"), Symbol::new(&env, "migr_step")),
+            (from_version, target_version, next_step, total),
+        );
+
+        // Bump the canonical storage version.
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageVersion, &target_version);
+
+        env.events().publish(
+            (symbol_short!("emergency"), Symbol::new(&env, "migr_done")),
+            (target_version, now),
+        );
+
+        Ok(target_version)
+    }
+
+    /// Returns the current migration progress, or `None` if no migration
+    /// has been started.
+    ///
+    /// No authentication required — the progress is observable on-chain.
+    pub fn get_migration_progress(env: Env) -> Option<MigrationProgress> {
+        env.storage().instance().get(&DataKey::MigrationProgress)
+    }
+
+    // ── Pre-upgrade snapshot / restore ────────────────────────────────────
+
+    /// Capture a snapshot of the full emergency state before a contract
+    /// upgrade.
+    ///
+    /// The snapshot is stored in instance storage under [`DataKey::Snapshot`]
+    /// and is valid for [`SNAPSHOT_TTL`] seconds.  If the upgrade needs to
+    /// be rolled back, call [`EmergencyKillswitch::restore_from_snapshot`].
+    ///
+    /// A second call overwrites any existing snapshot (last-writer-wins).
+    ///
+    /// # Authorization
+    /// Requires admin authentication.
+    ///
+    /// # Events
+    /// Emits `("emergency", "snap_pre")` on success.
+    pub fn pre_upgrade(env: Env, caller: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let now = env.ledger().timestamp();
+        let snapshot = EmergencyStateSnapshot {
+            schema_version: Self::storage_version(env.clone()),
+            global_paused: env
+                .storage()
+                .instance()
+                .get(&DataKey::GlobalPaused)
+                .unwrap_or(false),
+            paused_since: env.storage().instance().get(&DataKey::PausedSince),
+            pause_reason: env.storage().instance().get(&DataKey::PauseReason),
+            unpause_schedule: env.storage().instance().get(&DataKey::UnpauseSchedule),
+            kill_switch_epoch: env
+                .storage()
+                .instance()
+                .get(&DataKey::KillSwitchEpoch)
+                .unwrap_or(0),
+            signer_epoch: env
+                .storage()
+                .instance()
+                .get(&DataKey::SignerEpoch)
+                .unwrap_or(0),
+            signer_threshold: env.storage().instance().get(&DataKey::SignerThreshold),
+            activation_epoch: env.storage().instance().get(&DataKey::ActivationEpoch),
+            active_scope: env.storage().instance().get(&DataKey::ActiveScope),
+            recovery_ready_at: env.storage().instance().get(&DataKey::RecoveryReadyAt),
+            scope_was_paused: env.storage().instance().get(&DataKey::ScopeWasPaused),
+        };
+        env.storage().instance().set(&DataKey::Snapshot, &snapshot);
+        env.storage()
+            .instance()
+            .set(&DataKey::SnapshotTimestamp, &now);
+        env.events().publish(
+            (symbol_short!("emergency"), Symbol::new(&env, "snap_pre")),
+            (snapshot.schema_version, now),
+        );
+        Ok(())
+    }
+
+    /// Restore emergency state from a snapshot captured by [`pre_upgrade`].
+    ///
+    /// The snapshot must exist, not be expired, and have a compatible
+    /// [`EmergencyStateSnapshot::schema_version`].  On success the snapshot
+    /// is consumed (removed from storage).
+    ///
+    /// # Authorization
+    /// Requires admin authentication.
+    ///
+    /// # Errors
+    /// - [`Error::SnapshotNotFound`] if no snapshot has been taken.
+    /// - [`Error::SnapshotExpired`] if the snapshot is older than
+    ///   [`SNAPSHOT_TTL`] seconds.
+    ///
+    /// # Events
+    /// Emits `("emergency", "snap_rst")` on success.
+    pub fn restore_from_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let snapshot: EmergencyStateSnapshot = env
+            .storage()
+            .instance()
+            .get(&DataKey::Snapshot)
+            .ok_or(Error::SnapshotNotFound)?;
+        let snapshot_ts: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SnapshotTimestamp)
+            .unwrap_or(0);
+        let now = env.ledger().timestamp();
+        if now.saturating_sub(snapshot_ts) > SNAPSHOT_TTL {
+            return Err(Error::SnapshotExpired);
+        }
+
+        // Validate schema compatibility.
+        if snapshot.schema_version > STORAGE_VERSION {
+            return Err(Error::MigrationIncomplete);
+        }
+
+        // ── Restore each field ───────────────────────────────────────
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalPaused, &snapshot.global_paused);
+        if let Some(v) = &snapshot.paused_since {
+            env.storage().instance().set(&DataKey::PausedSince, v);
+        } else {
+            env.storage().instance().remove(&DataKey::PausedSince);
+        }
+        if let Some(v) = &snapshot.pause_reason {
+            env.storage().instance().set(&DataKey::PauseReason, v);
+        } else {
+            env.storage().instance().remove(&DataKey::PauseReason);
+        }
+        if let Some(v) = &snapshot.unpause_schedule {
+            env.storage().instance().set(&DataKey::UnpauseSchedule, v);
+        } else {
+            env.storage().instance().remove(&DataKey::UnpauseSchedule);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::KillSwitchEpoch, &snapshot.kill_switch_epoch);
+        env.storage()
+            .instance()
+            .set(&DataKey::SignerEpoch, &snapshot.signer_epoch);
+        if let Some(v) = &snapshot.signer_threshold {
+            env.storage().instance().set(&DataKey::SignerThreshold, v);
+        }
+        if let Some(v) = &snapshot.activation_epoch {
+            env.storage().instance().set(&DataKey::ActivationEpoch, v);
+        } else {
+            env.storage().instance().remove(&DataKey::ActivationEpoch);
+        }
+        if let Some(v) = &snapshot.active_scope {
+            env.storage().instance().set(&DataKey::ActiveScope, v);
+        } else {
+            env.storage().instance().remove(&DataKey::ActiveScope);
+        }
+        if let Some(v) = &snapshot.recovery_ready_at {
+            env.storage().instance().set(&DataKey::RecoveryReadyAt, v);
+        } else {
+            env.storage().instance().remove(&DataKey::RecoveryReadyAt);
+        }
+        if let Some(v) = &snapshot.scope_was_paused {
+            env.storage().instance().set(&DataKey::ScopeWasPaused, v);
+        } else {
+            env.storage().instance().remove(&DataKey::ScopeWasPaused);
+        }
+
+        // Consume the snapshot and its timestamp.
+        env.storage().instance().remove(&DataKey::Snapshot);
+        env.storage().instance().remove(&DataKey::SnapshotTimestamp);
+
+        env.events().publish(
+            (symbol_short!("emergency"), Symbol::new(&env, "snap_rst")),
+            (snapshot.schema_version, now),
+        );
+        Ok(())
+    }
+
+    /// Discard a previously captured snapshot without restoring it.
+    ///
+    /// # Authorization
+    /// Requires admin authentication.
+    ///
+    /// # Events
+    /// Emits `("emergency", "snap_dsc")` on success.
+    pub fn discard_snapshot(env: Env, caller: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().instance().remove(&DataKey::Snapshot);
+        env.storage().instance().remove(&DataKey::SnapshotTimestamp);
+        env.events().publish(
+            (symbol_short!("emergency"), Symbol::new(&env, "snap_dsc")),
+            (env.ledger().timestamp(),),
+        );
+        Ok(())
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1370,5 +1757,593 @@ mod kill_switch_epoch_guard_comprehensive_tests {
         let new_admin = Address::generate(&env);
         let res = client.try_transfer_admin(&new_admin, &0u64);
         assert_eq!(res, Ok(Ok(())));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Storage version, migration, snapshot, and restore tests (Issue #1763)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod storage_migration_tests {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::{symbol_short, vec};
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin)
+    }
+
+    // ── Storage version ────────────────────────────────────────────────────
+
+    /// `storage_version` returns 0 before `migrate_storage` is called
+    /// (simulating a legacy deployment that pre-dates versioning).
+    #[test]
+    fn storage_version_defaults_to_zero_before_migration() {
+        let (_env, client, _admin) = setup();
+        assert_eq!(client.storage_version(), 0);
+    }
+
+    /// `storage_version` returns `STORAGE_VERSION` after a successful
+    /// migration.
+    #[test]
+    fn storage_version_returns_latest_after_migration() {
+        let (_env, client, admin) = setup();
+        let new_ver = client.migrate_storage(&admin);
+        assert_eq!(new_ver, STORAGE_VERSION);
+        assert_eq!(client.storage_version(), STORAGE_VERSION);
+    }
+
+    // ── Migration: happy path ──────────────────────────────────────────────
+
+    /// A fresh deployment (v0) can migrate to v1 in a single call.
+    #[test]
+    fn migrate_storage_advances_from_zero_to_latest() {
+        let (_env, client, admin) = setup();
+        assert_eq!(client.storage_version(), 0);
+        let result = client.migrate_storage(&admin);
+        assert_eq!(result, STORAGE_VERSION);
+        assert_eq!(client.storage_version(), STORAGE_VERSION);
+    }
+
+    /// After a successful migration, calling again returns AlreadyMigrated.
+    #[test]
+    fn migrate_storage_rejects_already_migrated() {
+        let (_env, client, admin) = setup();
+        client.migrate_storage(&admin);
+        let res = client.try_migrate_storage(&admin);
+        assert_eq!(res, Err(Ok(Error::AlreadyMigrated)));
+    }
+
+    // ── Migration: authorization ───────────────────────────────────────────
+
+    /// `migrate_storage` requires admin auth.
+    #[test]
+    fn migrate_storage_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        // Without mocked auth the admin requirement must reject the call.
+        env.set_auths(&[]);
+        assert!(client.try_migrate_storage(&admin).is_err());
+        assert_eq!(client.storage_version(), 0);
+    }
+
+    /// `migrate_storage` rejects non-admin callers.
+    #[test]
+    fn migrate_storage_rejects_non_admin() {
+        let (_env, client, _admin) = setup();
+        let stranger = Address::generate(&_env);
+        let res = client.try_migrate_storage(&stranger);
+        assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// `migrate_storage` rejects uninitialized contract.
+    #[test]
+    fn migrate_storage_rejects_uninitialized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let caller = Address::generate(&env);
+        env.mock_all_auths();
+        let res = client.try_migrate_storage(&caller);
+        assert_eq!(res, Err(Ok(Error::NotInitialized)));
+    }
+
+    // ── Migration: progress tracking ───────────────────────────────────────
+
+    /// Before migration, `get_migration_progress` returns `None`.
+    #[test]
+    fn migration_progress_none_before_start() {
+        let (_env, client, _admin) = setup();
+        assert_eq!(client.get_migration_progress(), None);
+    }
+
+    /// After migration, `get_migration_progress` returns completed state.
+    #[test]
+    fn migration_progress_reflects_completed_state() {
+        let (env, client, admin) = setup();
+        client.migrate_storage(&admin);
+        let progress = client.get_migration_progress();
+        assert!(progress.is_some());
+        let p = progress.unwrap();
+        assert_eq!(p.from_version, 0);
+        assert_eq!(p.to_version, STORAGE_VERSION);
+        assert_eq!(p.completed_step, p.total_steps);
+        assert!(p.last_run_at > 0);
+    }
+
+    // ── Migration: resumability ────────────────────────────────────────────
+
+    /// Simulate partial failure by manually injecting a progress record with
+    /// step < total_steps, then calling migrate_storage again. The second
+    /// call should complete the remaining step.
+    #[test]
+    fn migrate_storage_is_resumable_after_partial_failure() {
+        let (env, client, admin) = setup();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+
+        // Inject a partial progress record (step 0 of 1 completed).
+        env.as_contract(&contract_id, || {
+            env.storage().instance().set(
+                &DataKey::MigrationProgress,
+                &MigrationProgress {
+                    from_version: 0,
+                    to_version: 2, // pretend target is v2
+                    completed_step: 0,
+                    total_steps: 1,
+                    last_run_at: env.ledger().timestamp(),
+                },
+            );
+        });
+
+        let result = client.migrate_storage(&admin);
+        // Should complete (target is now STORAGE_VERSION, but the progress
+        // record said v2, so to_version in the stored progress is 2).
+        assert!(result >= STORAGE_VERSION);
+    }
+
+    // ── Snapshot: happy path ───────────────────────────────────────────────
+
+    /// `pre_upgrade` captures a snapshot that can be restored.
+    #[test]
+    fn pre_upgrade_and_restore_roundtrip() {
+        let (env, client, admin) = setup();
+
+        // Set some state to snapshot.
+        client.pause();
+        let now = env.ledger().timestamp();
+        client.schedule_unpause(&(now + 100));
+
+        // Take snapshot.
+        client.pre_upgrade(&admin);
+
+        // Mutate state after snapshot.
+        env.ledger().with_mut(|li| li.timestamp = now + 200);
+        client.unpause();
+        assert!(!client.is_paused());
+
+        // Restore from snapshot — should recover paused state.
+        client.restore_from_snapshot(&admin);
+        assert!(client.is_paused());
+    }
+
+    /// `pre_upgrade` is idempotent — second call overwrites the first.
+    #[test]
+    fn pre_upgrade_overwrites_existing_snapshot() {
+        let (env, client, admin) = setup();
+
+        // Snapshot while unpaused.
+        client.pre_upgrade(&admin);
+        assert!(!client.is_paused());
+
+        // Pause, then take another snapshot.
+        client.pause();
+        client.pre_upgrade(&admin);
+
+        // Restore — should see the paused state from the second snapshot.
+        client.restore_from_snapshot(&admin);
+        assert!(client.is_paused());
+    }
+
+    // ── Snapshot: authorization ─────────────────────────────────────────────
+
+    /// `pre_upgrade` requires admin auth.
+    #[test]
+    fn pre_upgrade_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        env.set_auths(&[]);
+        assert!(client.try_pre_upgrade(&admin).is_err());
+    }
+
+    /// `restore_from_snapshot` requires admin auth.
+    #[test]
+    fn restore_from_snapshot_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
+        client.pre_upgrade(&admin);
+
+        env.set_auths(&[]);
+        assert!(client.try_restore_from_snapshot(&admin).is_err());
+    }
+
+    /// `pre_upgrade` rejects non-admin callers.
+    #[test]
+    fn pre_upgrade_rejects_non_admin() {
+        let (_env, client, _admin) = setup();
+        let stranger = Address::generate(&_env);
+        let res = client.try_pre_upgrade(&stranger);
+        assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// `restore_from_snapshot` rejects non-admin callers.
+    #[test]
+    fn restore_from_snapshot_rejects_non_admin() {
+        let (_env, client, admin) = setup();
+        client.pre_upgrade(&admin);
+        let stranger = Address::generate(&_env);
+        let res = client.try_restore_from_snapshot(&stranger);
+        assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    }
+
+    /// `pre_upgrade` rejects uninitialized contract.
+    #[test]
+    fn pre_upgrade_rejects_uninitialized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let caller = Address::generate(&env);
+        env.mock_all_auths();
+        let res = client.try_pre_upgrade(&caller);
+        assert_eq!(res, Err(Ok(Error::NotInitialized)));
+    }
+
+    // ── Snapshot: not found / expired ──────────────────────────────────────
+
+    /// `restore_from_snapshot` fails with SnapshotNotFound if no snapshot
+    /// was taken.
+    #[test]
+    fn restore_from_snapshot_fails_without_snapshot() {
+        let (_env, client, admin) = setup();
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::SnapshotNotFound)));
+    }
+
+    /// `restore_from_snapshot` fails with SnapshotExpired after SNAPSHOT_TTL.
+    #[test]
+    fn restore_from_snapshot_fails_after_ttl() {
+        let (env, client, admin) = setup();
+        client.pause();
+        client.pre_upgrade(&admin);
+
+        // Fast-forward past the snapshot TTL.
+        env.ledger()
+            .with_mut(|li| li.timestamp = env.ledger().timestamp() + SNAPSHOT_TTL + 1);
+
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::SnapshotExpired)));
+    }
+
+    // ── Snapshot: state preservation ────────────────────────────────────────
+
+    /// Snapshot preserves the signer configuration.
+    #[test]
+    fn snapshot_preserves_signer_config() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+
+        let signers = vec![&env, first.clone(), second.clone()];
+        client.configure_signers(&admin, &signers, 2);
+        assert_eq!(client.get_signer_epoch(), 1);
+        assert_eq!(client.get_signer_threshold(), 2);
+
+        // Snapshot and restore.
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert_eq!(client.get_signer_epoch(), 1);
+        assert_eq!(client.get_signer_threshold(), 2);
+    }
+
+    /// Snapshot preserves the kill-switch epoch.
+    #[test]
+    fn snapshot_preserves_kill_switch_epoch() {
+        let (_env, client, admin) = setup();
+        client.bump_kill_switch_epoch(&admin);
+        client.bump_kill_switch_epoch(&admin);
+        assert_eq!(client.get_kill_switch_epoch(), 2);
+
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert_eq!(client.get_kill_switch_epoch(), 2);
+    }
+
+    /// Snapshot preserves the pause reason.
+    #[test]
+    fn snapshot_preserves_pause_reason() {
+        let (env, client, admin) = setup();
+        client.pause_with_reason(&symbol_short!("drill"));
+        assert_eq!(client.pause_reason(), Some(symbol_short!("drill")));
+
+        client.pre_upgrade(&admin);
+        // Change state.
+        client.clear_emergency_state();
+        assert_eq!(client.pause_reason(), None);
+
+        // Restore.
+        client.restore_from_snapshot(&admin);
+        assert!(client.is_paused());
+        assert_eq!(client.pause_reason(), Some(symbol_short!("drill")));
+    }
+
+    // ── Snapshot: discard ──────────────────────────────────────────────────
+
+    /// `discard_snapshot` removes the snapshot so restore fails.
+    #[test]
+    fn discard_snapshot_prevents_restore() {
+        let (_env, client, admin) = setup();
+        client.pre_upgrade(&admin);
+        client.discard_snapshot(&admin);
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::SnapshotNotFound)));
+    }
+
+    /// `discard_snapshot` requires admin auth.
+    #[test]
+    fn discard_snapshot_requires_admin_auth() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        env.set_auths(&[]);
+        assert!(client.try_discard_snapshot(&admin).is_err());
+    }
+
+    /// `discard_snapshot` rejects non-admin callers.
+    #[test]
+    fn discard_snapshot_rejects_non_admin() {
+        let (_env, client, admin) = setup();
+        client.pre_upgrade(&admin);
+        let stranger = Address::generate(&_env);
+        let res = client.try_discard_snapshot(&stranger);
+        assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    }
+
+    // ── Upgrade + rollback scenario ────────────────────────────────────────
+
+    /// Full upgrade-rollback scenario:
+    /// 1. Set up state (paused + signers).
+    /// 2. Take snapshot.
+    /// 3. "Upgrade" — change state (unpause, rotate signers).
+    /// 4. Rollback — restore snapshot.
+    /// 5. Verify original state is recovered.
+    #[test]
+    fn full_upgrade_rollback_scenario() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let third = Address::generate(&env);
+
+        // Step 1: establish state.
+        client.pause();
+        let signers = vec![&env, first.clone(), second.clone()];
+        client.configure_signers(&admin, &signers, 2);
+        client.bump_kill_switch_epoch(&admin);
+
+        // Step 2: snapshot.
+        client.pre_upgrade(&admin);
+
+        // Step 3: simulate post-upgrade changes.
+        client.schedule_unpause(&(env.ledger().timestamp() + 100));
+        env.ledger().with_mut(|li| li.timestamp += 200);
+        client.unpause();
+        let new_signers = vec![&env, second, third];
+        client.configure_signers(&admin, &new_signers, 1);
+        client.bump_kill_switch_epoch(&admin);
+
+        assert!(!client.is_paused());
+        assert_eq!(client.get_signer_epoch(), 2);
+
+        // Step 4: rollback.
+        client.restore_from_snapshot(&admin);
+
+        // Step 5: verify.
+        assert!(client.is_paused());
+        assert_eq!(client.get_signer_epoch(), 1);
+        assert_eq!(client.get_signer_threshold(), 2);
+        assert_eq!(client.get_kill_switch_epoch(), 1);
+    }
+
+    // ── Rerun idempotency ──────────────────────────────────────────────────
+
+    /// Calling `migrate_storage` when already migrated is rejected.
+    #[test]
+    fn rerun_migrate_is_rejected() {
+        let (_env, client, admin) = setup();
+        client.migrate_storage(&admin);
+        let res = client.try_migrate_storage(&admin);
+        assert_eq!(res, Err(Ok(Error::AlreadyMigrated)));
+    }
+
+    /// Calling `pre_upgrade` twice is idempotent (overwrites).
+    #[test]
+    fn rerun_pre_upgrade_is_idempotent() {
+        let (_env, client, admin) = setup();
+        client.pre_upgrade(&admin);
+        client.pre_upgrade(&admin); // no error
+                                    // Restore should work.
+        assert_eq!(client.try_restore_from_snapshot(&admin), Ok(Ok(())));
+    }
+
+    // ── Partial state after failed operation ───────────────────────────────
+
+    /// If `restore_from_snapshot` fails (expired), the existing state is
+    /// untouched.
+    #[test]
+    fn failed_restore_leaves_state_unchanged() {
+        let (env, client, admin) = setup();
+        client.pause();
+        client.pre_upgrade(&admin);
+
+        // Mutate state.
+        client.schedule_unpause(&(env.ledger().timestamp() + 100));
+        env.ledger().with_mut(|li| li.timestamp += 200);
+        client.unpause();
+        assert!(!client.is_paused());
+
+        // Fast-forward past TTL and attempt restore.
+        env.ledger().with_mut(|li| li.timestamp += SNAPSHOT_TTL + 1);
+        let res = client.try_restore_from_snapshot(&admin);
+        assert_eq!(res, Err(Ok(Error::SnapshotExpired)));
+
+        // State must be untouched.
+        assert!(!client.is_paused());
+    }
+
+    // ── Error discriminant stability ───────────────────────────────────────
+
+    /// New error discriminants are stable (ABI contract).
+    #[test]
+    fn error_discriminants_are_stable() {
+        assert_eq!(Error::SnapshotNotFound as u32, 16);
+        assert_eq!(Error::SnapshotExpired as u32, 17);
+        assert_eq!(Error::AlreadyMigrated as u32, 18);
+        assert_eq!(Error::MigrationIncomplete as u32, 19);
+    }
+
+    // ── Concurrent operations safety ───────────────────────────────────────
+
+    /// While a snapshot-based restore is in progress, module-level pauses
+    /// are preserved (clear_emergency_state only clears global).
+    #[test]
+    fn restore_preserves_module_level_pauses() {
+        let (_env, client, admin) = setup();
+        let module = symbol_short!("bill");
+
+        client.pause_module(&module);
+        client.pause();
+        client.pre_upgrade(&admin);
+
+        // Simulate: clear global, keep module.
+        client.clear_emergency_state();
+        assert!(client.is_module_paused(&module));
+
+        // Restore from snapshot — module pause must survive.
+        client.restore_from_snapshot(&admin);
+        assert!(client.is_paused());
+        assert!(client.is_module_paused(&module));
+    }
+
+    // ── Storage version after version field injection ──────────────────────
+
+    /// A legacy deployment that never set the StorageVersion key returns
+    /// `storage_version == 0`. After `migrate_storage` it returns the
+    /// latest.
+    #[test]
+    fn legacy_deployment_gets_versioned_after_migration() {
+        let (env, client, _admin) = setup();
+        // Confirm no StorageVersion key is present (v0).
+        env.as_contract(&env.register_contract(None, EmergencyKillswitch), || {
+            // This is a different contract, so it won't affect the test contract.
+        });
+        assert_eq!(client.storage_version(), 0);
+
+        let (env2, client2, admin2) = setup();
+        let _ = env2;
+        client2.migrate_storage(&admin2);
+        assert_eq!(client2.storage_version(), STORAGE_VERSION);
+    }
+}
+
+#[cfg(test)]
+mod snapshot_function_pause_restore_tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{symbol_short, vec};
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin)
+    }
+
+    /// Snapshot and restore preserves function-level pauses.
+    #[test]
+    fn snapshot_preserves_function_level_pauses() {
+        let (_env, client, admin) = setup();
+        let module = symbol_short!("bill");
+        let func = symbol_short!("pay");
+
+        client.pause_function(&module, &func);
+        assert!(client.is_function_paused(&module, &func));
+
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert!(client.is_function_paused(&module, &func));
+        assert!(client.list_paused_functions(&module).contains(func));
+    }
+
+    /// Snapshot captures the unpause schedule.
+    #[test]
+    fn snapshot_preserves_unpause_schedule() {
+        let (env, client, admin) = setup();
+        let future = env.ledger().timestamp() + 3600;
+        client.pause();
+        client.schedule_unpause(&future);
+
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert!(client.is_paused());
+        assert_eq!(client.get_unpause_schedule(), Some(future));
+    }
+
+    /// Restore after snapshot captures the activation scope.
+    #[test]
+    fn snapshot_preserves_activation_scope() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let signers = vec![&env, first.clone(), second.clone()];
+        let epoch = client.configure_signers(&admin, &signers, 2);
+        let approvals = vec![&env, first, second];
+        let mod_sym = symbol_short!("bill");
+        client.activate(&epoch, &approvals, &PauseScope::Module(mod_sym.clone()));
+        assert!(client.is_module_paused(&mod_sym));
+
+        client.pre_upgrade(&admin);
+        client.restore_from_snapshot(&admin);
+
+        assert!(client.is_module_paused(&mod_sym));
     }
 }

@@ -22,3 +22,6 @@ pub const ADMIN_GRANT_TTL: u64 = 30 * 24 * 60 * 60;
 
 /// Window for proposed admin rotation before it can be finalized (2 days).
 pub const ADMIN_ROTATION_TIMELOCK_SECONDS: u64 = 2 * 86400;
+
+/// Default admin rotation timelock used when none is configured.
+pub const DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS: u64 = ADMIN_ROTATION_TIMELOCK_SECONDS;

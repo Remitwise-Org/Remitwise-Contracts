@@ -8490,3 +8490,218 @@ fn test_signer_cap_boundary_one_over_rejected() {
     );
     assert_eq!(result, Err(Ok(Error::TooManySigners)));
 }
+
+// ========================================================================
+// Issue #1715 — Role lifecycle security tests
+//
+// These tests close the gap identified in the pre-merge review:
+//   1. Role removal takes effect immediately
+//   2. Concurrent role update vs in-flight operation
+//   3. Unauthorized failure before any token/storage mutation
+// ========================================================================
+
+// --- Test 1: Role removal takes effect immediately ----------------------------------
+//
+// Policy: After an Owner removes a Member, the removed address must be
+// rejected at the `require_role_at_least` / `is_family_member` gate on the
+// *very next* transaction attempt — no grace period, no deferred effect.
+//
+// We verify this by:
+//   a) Creating a wallet with a 2-of-2 multisig (signer_a, signer_b).
+//   b) signer_a proposes (their sig is auto-added).
+//   c) Owner removes signer_a.
+//   d) Asserts signer_a's sig was stripped and the proposal is invalidated.
+//   e) signer_a then tries to `sign_transaction` and gets rejected.
+#[test]
+fn test_role_removal_takes_effect_immediately() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 5_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let signer_a = Address::generate(&env);
+    let signer_b = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, signer_a.clone(), signer_b.clone()]);
+
+    // 2-of-2 multisig for RoleChange proposals.
+    let signers = vec![&env, signer_a.clone(), signer_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    // signer_a proposes — their signature is auto-added (1 of 2).
+    let tx_id = client.propose_role_change(&signer_a, &signer_a, &FamilyRole::Admin);
+    assert!(tx_id > 0);
+    let before = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(before.signatures.len(), 1, "proposer's sig must be present");
+
+    // Owner removes signer_a — triggers auto-revalidation.
+    // This tests the *immediate* revocation: signer_a's sig is stripped and
+    // the proposal becomes invalid in the same transaction.
+    client.remove_family_member(&owner, &signer_a);
+
+    // (a) Signature stripped, proposal invalidated.
+    let after = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(
+        after.signatures.len(),
+        0,
+        "removed member's signature must be stripped immediately"
+    );
+    assert_eq!(
+        after.expires_at, 5_000,
+        "proposal must be invalidated (expires_at == now)"
+    );
+
+    // (b) Removed member cannot sign any transaction.
+    let sign_result = client.try_sign_transaction(&signer_a, &tx_id);
+    assert_eq!(
+        sign_result,
+        Err(Ok(Error::SignerNotMember)),
+        "removed member must be rejected at the sign gate"
+    );
+}
+
+// --- Test 2: Concurrent role update vs in-flight operation ---------------------------
+//
+// Policy: When a member's role is changed (demoted) while they have an
+// in-flight proposal, the system must:
+//   - Strip their signature from the pending proposal.
+//   - Reject any subsequent sign attempt by the demoted member.
+//
+// Because `remove_family_member` blocks during pending operations, we
+// simulate the concurrent scenario by directly mutating the member's role
+// in storage (bypassing the guard), which is the same state transition
+// the contract would reach via a completed RoleChange proposal.
+#[test]
+fn test_concurrent_role_demotion_strips_signature_and_blocks_signing() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 5_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let admin_a = Address::generate(&env);
+    let admin_b = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, admin_a.clone(), admin_b.clone()]);
+
+    // 2-of-2 multisig for RoleChange.
+    let signers = vec![&env, admin_a.clone(), admin_b.clone()];
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+
+    // admin_a proposes — auto-signs.
+    let tx_id = client.propose_role_change(&admin_a, &admin_b, &FamilyRole::Member);
+    assert!(tx_id > 0);
+    let before = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(before.signatures.len(), 1);
+
+    // --- Simulate concurrent role demotion ---
+    // Mutate admin_a's role to Viewer directly in storage (same state as
+    // a completed RoleChange proposal would produce). This bypasses the
+    // pending-operations guard to test the signature-stripping logic.
+    env.as_contract(&contract_id, || {
+        let mut members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap();
+        let mut data = members.get(admin_a.clone()).unwrap();
+        data.role = FamilyRole::Viewer;
+        members.set(admin_a.clone(), data);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("MEMBERS"), &members);
+    });
+
+    // Trigger revalidation to apply the role change to pending proposals.
+    client.revalidate_proposals(&owner);
+
+    // (a) Demoted member's signature stripped.
+    let after = client.get_pending_transaction(&tx_id).unwrap();
+    assert_eq!(
+        after.signatures.len(),
+        0,
+        "demoted member's signature must be stripped after revalidation"
+    );
+    assert_eq!(
+        after.expires_at, 5_000,
+        "proposal must be invalidated (quorum unreachable with 1 signer < threshold 2)"
+    );
+
+    // (b) Demoted member cannot sign — Viewer < Member.
+    let sign_result = client.try_sign_transaction(&admin_a, &tx_id);
+    assert!(sign_result.is_err(), "demoted member must be rejected at sign gate");
+}
+
+// --- Test 3: Unauthorized failure before any token/storage mutation ------------------
+//
+// Policy: When an unauthorized caller attempts a privileged operation, the
+// rejection must happen at the authorization gate (before require_auth /
+// role check) and must not produce any side-effects: no token transfers, no
+// storage writes, no event emissions.
+//
+// We verify this for a Viewer attempting to:
+//   a) propose a transaction (blocked by require_role_at_least(Member))
+//   b) sign a transaction (blocked by require_role_at_least(Member))
+//   c) add a family member (blocked by is_owner_or_admin)
+//   d) verify no pending transactions or member changes were created.
+#[test]
+fn test_unauthorized_viewer_fails_before_mutation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_ledger_time(&env, 100, 5_000);
+
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let viewer = Address::generate(&env);
+    let target = Address::generate(&env);
+
+    client.init(&owner, &vec![&env, viewer.clone()]);
+
+    // Snapshot state before unauthorized attempts.
+    let page_before = client.get_pending_transactions_page(&owner, &0, &100);
+    let count_before = page_before.count;
+    let target_before = client.get_family_member(&target);
+    let viewer_before = client.get_family_member(&viewer).unwrap();
+
+    // (a) Viewer attempts to propose — must fail at role gate.
+    let propose_result = client.try_propose_role_change(&viewer, &target, &FamilyRole::Admin);
+    assert!(
+        propose_result.is_err(),
+        "Viewer must be rejected when attempting to propose"
+    );
+
+    // (b) Viewer attempts to sign — must fail at role gate.
+    let sign_result = client.try_sign_transaction(&viewer, &1);
+    assert!(sign_result.is_err(), "Viewer must be rejected when attempting to sign");
+
+    // (c) Viewer attempts to add a member — must fail at role gate.
+    let add_result = client.try_add_family_member(&viewer, &target, &FamilyRole::Member);
+    assert!(add_result.is_err(), "Viewer must be rejected when attempting to add member");
+
+    // (d) Verify no state was mutated:
+    //     - No new pending transactions.
+    let page_after = client.get_pending_transactions_page(&owner, &0, &100);
+    assert_eq!(
+        page_after.count, count_before,
+        "no new pending transactions must be created by unauthorized attempts"
+    );
+    //     - target was not added as a member.
+    assert_eq!(
+        client.get_family_member(&target),
+        target_before,
+        "target must not exist as a member after unauthorized add attempt"
+    );
+    //     - viewer's role unchanged.
+    let viewer_after = client.get_family_member(&viewer).unwrap();
+    assert_eq!(
+        viewer_after.role, viewer_before.role,
+        "viewer's role must not change after unauthorized attempts"
+    );
+}

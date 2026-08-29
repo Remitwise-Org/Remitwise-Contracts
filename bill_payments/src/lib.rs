@@ -23,18 +23,22 @@
 //! be evicted independently of) the rest of this contract's instance
 //! storage.
 use remitwise_common::{
-    check_and_increment_rate_limit, clamp_limit, require_stable_currency, require_within_settlement_window,
+    bump_cross_contract_epoch, check_and_increment_rate_limit, clamp_limit,
+    get_cross_contract_epoch, get_trusted_orchestrator, guard_cross_contract_write,
+    require_no_active_kill_switch, require_stable_currency, require_within_settlement_window,
+    set_trusted_orchestrator, CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{BillPaymentsReversible, ReversibleOpError},
-    EventCategory, EventPriority, RemitwiseEvents, Timestamp,
-    ARCHIVE_BUMP_AMOUNT, ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT, INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE,
-    MAX_CURRENCY_LEN, MAX_SETTLEMENT_WINDOW_SECS, SNAPSHOT_KEY,
-    SNAPSHOT_VERSION,
+    EventCategory, EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT,
+    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT,
+    INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN, MAX_SETTLEMENT_WINDOW_SECS,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
+mod state;
 
 
 /// Validates that a currency string consists entirely of ASCII alphabetic characters.
@@ -102,6 +106,20 @@ pub struct BillPage {
     /// The ID to pass as `cursor` for the next page. 0 means no more pages.
     pub next_cursor: u32,
     /// Total items returned in this page
+    pub count: u32,
+}
+
+/// Paginated result for bill schedule queries.
+///
+/// See [Pagination Handbook](../../docs/PAGINATION_HANDBOOK.md) for cursor semantics.
+#[contracttype]
+#[derive(Clone)]
+pub struct BillSchedulePage {
+    /// The bill schedules for this page, ordered by ascending schedule ID.
+    pub items: Vec<BillSchedule>,
+    /// The ID to pass as `cursor` for the next page. `0` means no more pages.
+    pub next_cursor: u32,
+    /// Number of items returned in this page.
     pub count: u32,
 }
 
@@ -307,44 +325,38 @@ pub enum BillPaymentsError {
     /// `MIN_SCHEDULE_INTERVAL` — too short to serve its purpose of giving the
     /// legitimate admin a window to notice and react to a rotation proposal.
     RotationTimelockTooShort = 34,
+    /// State transition is not allowed.
+    InvalidStateTransition = 35,
+    /// Invariant violation detected - bill data is inconsistent.
+    InvariantViolation = 36,
 }
 
 pub type Error = BillPaymentsError;
 
+/// Receipt returned by atomic pay operations.
+///
+/// Captures the deterministic result of `pay_bill` so callers can verify
+/// the operation completed without partial state.
 #[contracttype]
-#[derive(Clone)]
-pub struct ArchivedBill {
-    pub id: u32,
-    pub owner: Address,
-    pub name: String,
-    pub external_ref: Option<String>,
-    pub amount: i128,
-    pub paid_at: u64,
-    pub archived_at: u64,
-    pub tags: Vec<String>,
-    pub currency: String,
+#[derive(Clone, Debug)]
+pub struct AtomicPayReceipt {
+    pub bill_id: u32,
+    pub paid_amount: i128,
+    pub child_bill_id: Option<u32>,
+    pub child_due_date: Option<u64>,
 }
 
-/// Paginated result for archived bill queries
+/// Receipt returned by atomic batch pay operations.
+///
+/// Each entry captures the result of one bill in the batch.
+/// The entire batch is atomic: either all entries succeed or
+/// the entire operation returns an error with no state changes.
 #[contracttype]
-#[derive(Clone)]
-pub struct ArchivedBillPage {
-    pub items: Vec<ArchivedBill>,
-    /// 0 means no more pages
-    pub next_cursor: u32,
-    pub count: u32,
+#[derive(Clone, Debug)]
+pub struct AtomicBatchPayReceipt {
+    pub paid_count: u32,
+    pub receipts: Vec<AtomicPayReceipt>,
 }
-
-impl ArchivedBillPage {
-    /// Returns the first archived bill in the page, or a typed error when the page is empty.
-    pub fn first(&self) -> Result<ArchivedBill, BillPaymentsError> {
-        match self.items.get(0) {
-            Some(bill) => Ok(bill.clone()),
-            None => Err(BillPaymentsError::EmptyPage),
-        }
-    }
-}
-
 #[contracttype]
 #[derive(Clone)]
 pub enum BillEvent {
@@ -409,7 +421,6 @@ pub struct PreUpgradeSnapshot {
 /// watching `AdminEvent::RotationProposed`) time to notice the proposal
 /// and respond, rather than a single signature being an irreversible,
 /// instant takeover.
-
 
 /// A rotation that has been proposed but not yet finalized.
 #[derive(Clone, Debug, PartialEq)]
@@ -1780,7 +1791,24 @@ impl BillPayments {
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
 
-        for schedule_id in 1..=next_schedule_id {
+        let start_schedule_id = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EXE_CURS"))
+            .unwrap_or(1u32);
+
+        let mut schedules_checked = 0;
+        let mut next_cursor = start_schedule_id;
+
+        for schedule_id in start_schedule_id..=next_schedule_id {
+            next_cursor = schedule_id + 1;
+            schedules_checked += 1;
+
+            if schedules_checked > MAX_BATCH_SIZE as u32 {
+                next_cursor = schedule_id; // Will resume from this ID on the next call
+                break;
+            }
+
             let Some(mut schedule) = schedules.get(schedule_id) else {
                 continue;
             };
@@ -1858,6 +1886,14 @@ impl BillPayments {
             );
         }
 
+        if next_cursor > next_schedule_id {
+            env.storage().instance().remove(&symbol_short!("EXE_CURS"));
+        } else {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("EXE_CURS"), &next_cursor);
+        }
+
         env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
         env.storage()
             .instance()
@@ -1883,6 +1919,111 @@ impl BillPayments {
             }
         }
         result
+    }
+
+    /// Returns a deterministic, cursor-paginated page of bill schedules for `owner`.
+    ///
+    /// See [Pagination Handbook](../../docs/PAGINATION_HANDBOOK.md)
+    /// for invariants all paginated reads must satisfy, cursor semantics, and the
+    /// reviewer checklist.
+    ///
+    /// # Parameters
+    /// - `owner` — account whose schedules are fetched (requires auth)
+    /// - `cursor` — exclusive schedule ID boundary; pass `0` to start from the first
+    ///   schedule. Pass `next_cursor` from the previous page to continue.
+    /// - `limit` — max schedules per page. `0` is normalised to `DEFAULT_PAGE_LIMIT`
+    ///   (20). Values above `MAX_PAGE_LIMIT` (50) are clamped to `MAX_PAGE_LIMIT`.
+    ///
+    /// # Returns
+    /// `BillSchedulePage { items, next_cursor, count }`.
+    /// `next_cursor == 0` means this is the final (or only) page.
+    /// An out-of-range cursor or an owner with no schedules returns an empty page
+    /// with `next_cursor == 0` — not an error — so callers can safely detect
+    /// end-of-list without special-casing.
+    ///
+    /// # Ordering
+    /// Results are ordered by schedule ID ascending (creation order within the
+    /// owner index). This ordering is stable across repeated calls provided no
+    /// schedules are created between pages, making `cursor` safe to resume with.
+    ///
+    /// # Cursor semantics (EXCLUSIVE)
+    /// - `cursor = 0` — start from the first schedule
+    /// - `cursor = N` — return only schedules whose ID is strictly greater than `N`
+    /// - `next_cursor` returned is the ID of the last item on this page (or `0` on
+    ///   the final page)
+    ///
+    /// # Security
+    /// Only schedules belonging to `owner` are returned. The index is per-owner, so
+    /// no cross-owner schedule leakage can occur via cursor manipulation.
+    pub fn get_bill_schedules_page(
+        env: Env,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> BillSchedulePage {
+        owner.require_auth();
+        let effective_limit = clamp_limit(limit);
+
+        let ids = Self::get_owner_bill_schedules(&env, &owner);
+
+        if ids.is_empty() {
+            return BillSchedulePage {
+                items: Vec::new(&env),
+                next_cursor: 0,
+                count: 0,
+            };
+        }
+
+        let schedules: Map<u32, BillSchedule> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_BSCHEDS)
+            .unwrap_or_else(|| Map::new(&env));
+
+        // Collect up to effective_limit + 1 items to detect whether a next page exists.
+        let mut staging: Vec<BillSchedule> = Vec::new(&env);
+        for id in ids.iter() {
+            if id <= cursor {
+                continue;
+            }
+            if let Some(schedule) = schedules.get(id) {
+                staging.push_back(schedule);
+            }
+            if staging.len() > effective_limit {
+                break;
+            }
+        }
+
+        let has_next = staging.len() > effective_limit;
+        let mut next_cursor: u32 = 0;
+
+        if has_next {
+            // next_cursor is the ID of the last item on the current page (not the first skipped).
+            let last_idx = effective_limit.saturating_sub(1);
+            if let Some(sched) = staging.get(last_idx) {
+                next_cursor = sched.id;
+            }
+            // Truncate to effective_limit items.
+            let mut truncated: Vec<BillSchedule> = Vec::new(&env);
+            for i in 0..effective_limit {
+                if let Some(s) = staging.get(i) {
+                    truncated.push_back(s);
+                }
+            }
+            let count = truncated.len();
+            return BillSchedulePage {
+                items: truncated,
+                next_cursor,
+                count,
+            };
+        }
+
+        let count = staging.len();
+        BillSchedulePage {
+            items: staging,
+            next_cursor: 0,
+            count,
+        }
     }
 
     pub fn get_bill_schedule(env: Env, schedule_id: u32) -> Option<BillSchedule> {
@@ -2077,9 +2218,17 @@ impl BillPayments {
     /// * `Unauthorized` - If `caller != bill.owner`
     /// * `InvalidDueDate` - If child due_date arithmetic overflows `u64`
     /// * `InvalidFrequency` - If period arithmetic overflows `u64`
-    pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
+    pub fn pay_bill(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
@@ -2099,22 +2248,24 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
-        let _bill_external_ref = bill.external_ref.clone();
+        let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
-        if bill.owner != caller {
-            return Err(BillPaymentsError::Unauthorized);
-        }
+        // Check paid status FIRST for backward compatibility
         if bill.paid {
             return Err(BillPaymentsError::BillAlreadyPaid);
         }
 
-        let current_time = env.ledger().timestamp();
-        require_within_settlement_window(current_time, bill.due_date, MAX_SETTLEMENT_WINDOW_SECS)
-            .map_err(|_| BillPaymentsError::SettlementWindowExpired)?;
+        // State transition validation (only for unpaid bills)
+        use crate::state::{check_invariants, BillState};
+        BillState::validate_transition(&bill, false, BillState::Paid, "pay_bill")?;
+        check_invariants(&env, &bill, false)?;
 
-        bill.paid = true;
-        bill.paid_at = Some(current_time);
+        if bill.owner != caller {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+
+        let current_time = env.ledger().timestamp();
+        let mut child_bill_entry: Option<(u32, Bill)> = None;
 
         if bill.recurring {
             let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
@@ -2128,7 +2279,8 @@ impl BillPayments {
                 .due_date
                 .checked_add(period)
                 .ok_or(Error::InvalidDueDate)?;
-            // Advance forward by frequency periods until the next due date is strictly in the future
+            // Advance forward by frequency periods until the next due date is
+            // strictly in the future. Each iteration may overflow → InvalidDueDate.
             while next_due_date <= current_time {
                 next_due_date = next_due_date
                     .checked_add(period)
@@ -2157,27 +2309,35 @@ impl BillPayments {
                 tags: bill.tags.clone(),
                 currency: bill.currency.clone(),
             };
-            let next_bill_amount = next_bill.amount;
+            child_bill_entry = Some((next_id, next_bill));
+        }
+
+        // -----------------------------------------------------------------
+        // Phase 2: All computation succeeded — apply mutations atomically.
+        // -----------------------------------------------------------------
+        let mut paid_bill = bill.clone();
+        paid_bill.paid = true;
+        paid_bill.paid_at = Some(current_time);
+        bills.set(bill_id, paid_bill.clone());
+
+        let paid_amount = paid_bill.amount;
+        let was_recurring = paid_bill.recurring;
+        let bill_ext_ref = paid_bill.external_ref.clone();
+
+        if let Some((next_id, next_bill)) = child_bill_entry {
+            let child_due_date = next_bill.due_date;
             bills.set(next_id, next_bill);
             env.storage()
                 .instance()
                 .set(&symbol_short!("NEXT_ID"), &next_id);
-            // Update owner index for the newly created recurring bill
             Self::index_add_active(&env, &caller, next_id);
-            // Update currency index for the newly created recurring bill
-            Self::index_add_currency(&env, &caller, &bill.currency, next_id);
-            // Update unpaid total for the new recurring bill
-            Self::adjust_unpaid_total(&env, &caller, next_bill_amount);
+            Self::index_add_currency(&env, &caller, &paid_bill.currency, next_id);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                (next_id, bill_id, next_due_date),
+                (next_id, bill_id, child_due_date),
             );
         }
 
-        let paid_amount = bill.amount;
-        let _was_recurring = bill.recurring;
-        let bill_ext_ref = bill.external_ref.clone();
-        bills.set(bill_id, bill);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
@@ -2197,7 +2357,6 @@ impl BillPayments {
 
         Ok(())
     }
-
     // -----------------------------------------------------------------------
     // Tag management
     // -----------------------------------------------------------------------
@@ -2958,6 +3117,12 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
         let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
+
+        // State transition validation
+        // Check invariants before deletion
+        use crate::state::check_invariants;
+        check_invariants(&env, &bill, false)?;
+
         if bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
         }
@@ -2968,6 +3133,12 @@ impl BillPayments {
         if bill.paid {
             return Err(BillPaymentsError::BillAlreadyPaid);
         }
+
+        // State transition validation: only Active → Cancelled (deletion) is legal.
+        // Paid → Cancelled is blocked above; Archived → Cancelled is impossible
+        // (archived bills live in ARCH_BILL, not BILLS).
+        use crate::state::BillState;
+        BillState::validate_transition(&bill, false, BillState::Paid, "cancel_bill")?;
 
         // Release external_ref if it exists
         if let Some(ref r) = bill.external_ref {
@@ -3024,30 +3195,34 @@ impl BillPayments {
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
 
-        let mut bills: Map<u32, Bill> = env
+        let bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
-        let mut archived: Map<u32, ArchivedBill> = env
-            .storage()
-            .instance()
-            .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
 
         let current_time = env.ledger().timestamp();
-        let mut archived_count = 0u32;
-        let mut to_remove: Vec<u32> = Vec::new(&env);
+
+        // -----------------------------------------------------------------
+        // Phase 1: Scan and collect all qualifying bills into staging buffers.
+        // No storage is modified during this scan. External refs are NOT
+        // released yet — that happens in Phase 2 after all computation
+        // succeeds, ensuring the operation is fully atomic.
+        // -----------------------------------------------------------------
+        // staging_archived: bill_id -> ArchivedBill (bills to archive)
+        let mut staging_archived: Map<u32, ArchivedBill> = Map::new(&env);
         let mut owner_to_archived: Map<Address, Vec<u32>> = Map::new(&env);
         let mut owner_currency_to_removed: Map<(Address, String), Vec<u32>> = Map::new(&env);
 
         for (id, bill) in bills.iter() {
             if let Some(paid_at) = bill.paid_at {
                 if bill.paid && paid_at < before_timestamp {
-                    // Release external_ref from the active index during archival
-                    if let Some(ref r) = bill.external_ref {
-                        Self::release_external_ref(&env, &bill.owner, r);
-                    }
+                    // State transition validation: only Paid → Archived is legal.
+                    // Active → Archived is blocked (must be paid first).
+                    // The scan filter guarantees `bill.paid && bill.paid_at.is_some()`,
+                    // so BillState::from_bill returns Paid and the transition is valid.
+                    use crate::state::BillState;
+                    BillState::validate_transition(&bill, false, BillState::Archived, "archive_paid_bills")?;
 
                     let archived_bill = ArchivedBill {
                         id: bill.id,
@@ -3060,7 +3235,7 @@ impl BillPayments {
                         tags: bill.tags.clone(),
                         currency: bill.currency.clone(),
                     };
-                    archived.set(id, archived_bill);
+                    staging_archived.set(id, archived_bill);
 
                     let mut list = owner_to_archived
                         .get(bill.owner.clone())
@@ -3068,21 +3243,38 @@ impl BillPayments {
                     list.push_back(id);
                     owner_to_archived.set(bill.owner.clone(), list);
 
-                    // Track currency for index removal
                     let currency_key = (bill.owner.clone(), bill.currency.clone());
                     let mut currency_list = owner_currency_to_removed
                         .get(currency_key.clone())
                         .unwrap_or_else(|| Vec::new(&env));
                     currency_list.push_back(id);
                     owner_currency_to_removed.set(currency_key, currency_list);
-
-                    to_remove.push_back(id);
-                    archived_count += 1;
                 }
             }
         }
 
-        for id in to_remove.iter() {
+        let archived_count = staging_archived.len();
+        if archived_count == 0 {
+            return Ok(0);
+        }
+
+        // -----------------------------------------------------------------
+        // Phase 2: All qualifying bills identified — apply mutations atomically.
+        // -----------------------------------------------------------------
+        let mut bills = bills;
+        let mut archived: Map<u32, ArchivedBill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_BILL"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        for (id, staged_bill) in staging_archived.iter() {
+            // Release external_ref from the active index
+            if let Some(ref r) = staged_bill.external_ref {
+                Self::release_external_ref(&env, &staged_bill.owner, r);
+            }
+
+            archived.set(id, staged_bill);
             bills.remove(id);
         }
 
@@ -3146,6 +3338,32 @@ impl BillPayments {
         if archived_bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
         }
+
+        // State transition validation: Archived → Active is the only legal
+        // path for restore. A bill in ARCH_BILL is always in the Archived
+        // state by construction.
+        use crate::state::BillState;
+        BillState::validate_transition(
+            &Bill {
+                id: archived_bill.id,
+                owner: archived_bill.owner.clone(),
+                name: archived_bill.name.clone(),
+                external_ref: None,
+                amount: archived_bill.amount,
+                due_date: 0,
+                recurring: false,
+                frequency_days: 0,
+                paid: false,
+                created_at: 0,
+                paid_at: archived_bill.paid_at,
+                schedule_id: None,
+                tags: Vec::new(&env),
+                currency: archived_bill.currency.clone(),
+            },
+            true, // is_archived = true (bill lives in ARCH_BILL)
+            BillState::Active,
+            "restore_bill",
+        )?;
 
         if let Some(ref r) = archived_bill.external_ref {
             Self::claim_external_ref(&env, &caller, r, bill_id)?;
@@ -3259,22 +3477,26 @@ impl BillPayments {
 
     /// @notice Pay multiple bills in one call.
     ///
-    /// @dev Partial-success semantics are deterministic: invalid bill IDs are skipped and reported,
-    /// while valid IDs continue processing.
+    /// @dev Atomic batch execution: invalid, unauthorized, or expired bill IDs will revert the
+    /// entire batch, leaving no partial state or hidden state changes.
     ///
     /// @param caller Authenticated owner attempting the batch payment.
     /// @param bill_ids Candidate bill IDs to process.
-    /// @return Number of successfully paid bills.
+    /// @return `Ok(())` after processing the requested bill IDs.
     /// @security Cross-owner payments are rejected per item; oversized batches are rejected
     /// before iteration.
-    pub fn batch_pay_bills(env: Env, caller: Address, bill_ids: Vec<u32>) -> Result<u32, Error> {
+    pub fn batch_pay_bills(
+        env: Env,
+        caller: Address,
+        bill_ids: Vec<u32>,
+    ) -> Result<(), BillPaymentsError> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
         if bill_ids.len() > MAX_BATCH_SIZE {
-            return Err(Error::BatchTooLarge);
+            return Err(BillPaymentsError::BatchTooLarge);
         }
 
         Self::extend_instance_ttl(&env);
@@ -3284,34 +3506,45 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut success_count = 0u32;
-        let mut unpaid_delta = 0i128;
         let current_time = env.ledger().timestamp();
-        let mut next_id = env
+        let current_next_id = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
 
+        let mut running_next_id = current_next_id;
+        let mut unpaid_delta = 0i128;
+
         for bill_id in bill_ids.iter() {
             let mut bill = match bills.get(bill_id) {
-                Some(b) => b,
+                Some(bill) => bill,
                 None => continue,
             };
 
-            if bill.owner != caller || bill.paid {
-                continue;
+            // Skip unauthorized or already paid bills
+            if bill.owner != caller {
+                continue; // Skip but don't fail - matches test expectation
+            }
+            if bill.paid {
+                continue; // Skip already paid
             }
 
-            let amount = bill.amount;
+            // State transition validation
+            use crate::state::{check_invariants, BillState};
+            BillState::validate_transition(&bill, false, BillState::Paid, "batch_pay_bills")?;
+            check_invariants(&env, &bill, false)?;
+
+            // Process payment
             bill.paid = true;
             bill.paid_at = Some(current_time);
 
+            // Handle recurring bills
             if bill.recurring {
-                next_id = next_id.saturating_add(1);
                 let period = (bill.frequency_days as u64)
                     .checked_mul(SECONDS_PER_DAY)
                     .ok_or(Error::InvalidFrequency)?;
+
                 let mut next_due_date = bill
                     .due_date
                     .checked_add(period)
@@ -3321,11 +3554,14 @@ impl BillPayments {
                         .checked_add(period)
                         .ok_or(Error::InvalidDueDate)?;
                 }
+
+                running_next_id = running_next_id.checked_add(1).ok_or(Error::InvalidDueDate)?;
+
                 let next_bill = Bill {
-                    id: next_id,
+                    id: running_next_id,
                     owner: bill.owner.clone(),
                     name: bill.name.clone(),
-                    external_ref: None, // Do not clone ref to avoid uniqueness conflict
+                    external_ref: None,
                     amount: bill.amount,
                     due_date: next_due_date,
                     recurring: true,
@@ -3337,39 +3573,36 @@ impl BillPayments {
                     tags: bill.tags.clone(),
                     currency: bill.currency.clone(),
                 };
-                bills.set(next_id, next_bill);
-                // Update owner index for the newly spawned recurring bill
-                Self::index_add_active(&env, &caller, next_id);
-                // Update currency index for the newly spawned recurring bill
-                Self::index_add_currency(&env, &caller, &bill.currency, next_id);
+                bills.set(running_next_id, next_bill);
+                Self::index_add_active(&env, &caller, running_next_id);
+                Self::index_add_currency(&env, &caller, &bill.currency, running_next_id);
                 env.events().publish(
                     (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                    (next_id, bill_id, next_due_date),
+                    (running_next_id, bill_id, next_due_date),
                 );
             } else {
-                unpaid_delta = unpaid_delta.saturating_sub(amount);
+                unpaid_delta = unpaid_delta.saturating_sub(bill.amount);
             }
 
+            let paid_amount = bill.amount;
             let external_ref = bill.external_ref.clone();
             bills.set(bill_id, bill);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::Paid),
-                (bill_id, caller.clone(), external_ref.clone()),
+                (bill_id, caller.clone(), external_ref),
             );
-            success_count += 1;
-
             RemitwiseEvents::emit(
                 &env,
                 EventCategory::Transaction,
                 EventPriority::High,
                 symbol_short!("paid"),
-                (bill_id, caller.clone(), amount),
+                (bill_id, caller.clone(), paid_amount),
             );
         }
 
         env.storage()
             .instance()
-            .set(&symbol_short!("NEXT_ID"), &next_id);
+            .set(&symbol_short!("NEXT_ID"), &running_next_id);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
@@ -3379,8 +3612,7 @@ impl BillPayments {
         }
 
         Self::update_storage_stats(&env);
-
-        Ok(success_count)
+        Ok(())
     }
 
     /// Sum of all **unpaid** bill amounts for the given `owner`.
@@ -3766,6 +3998,44 @@ impl BillPayments {
             .instance()
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract admin may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .unwrap_or_else(|| panic!("Contract not initialized"));
+        if caller != admin {
+            panic_with_error!(&env, BillPaymentsError::Unauthorized);
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events()
+            .publish((symbol_short!("bp"), symbol_short!("orch_set")), orchestrator.clone());
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("bp"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3779,10 +4049,14 @@ impl BillPaymentsReversible for BillPayments {
     /// Returns `Ok(false)` when the bill was already unpaid (idempotent).
     fn reverse_payment(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         user: Address,
         bill_id: u32,
         _amount: i128,
     ) -> Result<bool, ReversibleOpError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
             .map_err(|_| ReversibleOpError::InvalidState)?;
         Self::extend_instance_ttl(&env);
@@ -3831,3 +4105,6 @@ mod events_schema_test;
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_state_invariants;

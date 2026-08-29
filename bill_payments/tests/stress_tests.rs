@@ -727,10 +727,7 @@ fn stress_batch_pay_mixed_50() {
     assert_eq!(batch.len(), 50);
 
     // Measure and execute
-    let (cpu, mem, success_count) = measure(&env, || client.batch_pay_bills(&owner, &batch));
-
-    // Only the 30 valid IDs should succeed
-    assert_eq!(success_count, 30);
+    let (cpu, mem, _) = measure(&env, || client.batch_pay_bills(&owner, &batch));
 
     println!(
         r#"{{"contract":"bill_payments","method":"batch_pay_bills","scenario":"mixed_batch_50","cpu":{},"mem":{}}}"#,

@@ -499,7 +499,9 @@ fn test_fee_configuration_key_cannot_collide_with_generic_config() {
     let fee_config = "FEE_CFG";
     assert_ne!(fee_config, generic_config);
     assert!(fee_config.len() <= MAX_KEY_LENGTH);
-    assert!(fee_config.chars().all(|ch| ch.is_ascii_uppercase() || ch == '_'));
+    assert!(fee_config
+        .chars()
+        .all(|ch| ch.is_ascii_uppercase() || ch == '_'));
 }
 
 #[test]

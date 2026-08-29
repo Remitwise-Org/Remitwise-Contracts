@@ -6,8 +6,11 @@ use soroban_sdk::{
 };
 
 use remitwise_common::{
-    EventCategory, EventPriority, FamilyRole, RemitwiseEvents, RoleGrantedEvent, RoleRevokedEvent,
-    CONTRACT_VERSION, SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
+    bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
+    guard_cross_contract_read, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    CrossContractEpochError, EventCategory, EventPriority, FamilyRole, RemitwiseEvents,
+    RoleGrantedEvent, RoleRevokedEvent, TrustedOrchestratorError, CONTRACT_VERSION,
+    SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data
@@ -712,7 +715,22 @@ impl FamilyWallet {
     /// 3. Owner / Admin → always true (unlimited)
     /// 4. Member with `spending_limit == 0` → unlimited → true
     /// 5. Member with `spending_limit > 0` → true iff `amount <= spending_limit`
-    pub fn check_spending_limit(env: Env, caller: Address, amount: i128) -> bool {
+    ///
+    /// # Cross-contract epoch guard
+    /// This is a privileged read used by the orchestrator's fan-out. Every call
+    /// must carry the expected `epoch` and the orchestrator's contract
+    /// `identity`; a stale or mismatched epoch is rejected before any state is
+    /// read so an old orchestrator cannot observe a newer contract's member
+    /// configuration.
+    pub fn check_spending_limit(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        amount: i128,
+    ) -> bool {
+        guard_cross_contract_read(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         if amount < 0 {
             return false;
         }
@@ -733,9 +751,12 @@ impl FamilyWallet {
             return false;
         }
 
-        // Owner and Admin are never restricted
-        if member.role == FamilyRole::Owner || member.role == FamilyRole::Admin {
-            return true;
+        // Viewer is read-only. Spending roles are explicit so a new role
+        // cannot inherit spending permission from ordinal comparisons.
+        match member.role {
+            FamilyRole::Owner | FamilyRole::Admin => return true,
+            FamilyRole::Member => {}
+            FamilyRole::Viewer => return false,
         }
 
         // 0 means unlimited for regular members too
@@ -1616,6 +1637,42 @@ impl FamilyWallet {
         members.get(member)
     }
 
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard. Only the contract owner may set this. Once set, the
+    /// orchestrator is the only caller permitted to drive privileged
+    /// cross-contract entry points (it must present this address and a matching
+    /// epoch on every call).
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        let owner = Self::get_owner(env.clone());
+        if caller != owner {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events().publish(
+            (symbol_short!("fw"), symbol_short!("orch_set")),
+            orchestrator.clone(),
+        );
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("fw"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
+
     pub fn get_owner(env: Env) -> Address {
         env.storage()
             .instance()
@@ -1951,7 +2008,7 @@ impl FamilyWallet {
         // expired role timestamp would immediately lock the member out of
         // their role with no way to recover except through admin intervention.
         if let Some(t) = expires_at {
-            if remitwise_common::require_future_timestamp(&env, t).is_err() {
+            if !remitwise_common::require_future_timestamp(&env, t) {
                 panic_with_error!(&env, Error::RoleExpiryInPast);
             }
         }
@@ -3159,6 +3216,8 @@ impl FamilyWallet {
                     panic!("Transaction tier mismatch: invalid multisig enforcement");
                 }
 
+                Self::require_active_spending_role(env, proposer);
+
                 if require_auth {
                     proposer.require_auth();
                 }
@@ -3183,6 +3242,10 @@ impl FamilyWallet {
             TransactionData::SplitConfigChange(..) => 0,
 
             TransactionData::RoleChange(member, new_role) => {
+                if member == proposer || *new_role == FamilyRole::Owner {
+                    panic_with_error!(env, Error::InvalidRole);
+                }
+
                 let mut members: Map<Address, FamilyMember> = env
                     .storage()
                     .instance()
@@ -3208,6 +3271,8 @@ impl FamilyWallet {
             }
 
             TransactionData::EmergencyTransfer(token, recipient, amount) => {
+                Self::require_active_spending_role(env, proposer);
+
                 if require_auth {
                     proposer.require_auth();
                 }
@@ -3241,6 +3306,23 @@ impl FamilyWallet {
             .unwrap_or_else(|| Map::new(env));
 
         members.get(address.clone()).is_some()
+    }
+
+    fn require_active_spending_role(env: &Env, address: &Address) {
+        let members: Map<Address, FamilyMember> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("MEMBERS"))
+            .unwrap_or_else(|| panic!("Wallet not initialized"));
+        let member = members
+            .get(address.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
+        if Self::role_has_expired(env, address) {
+            panic!("Role has expired");
+        }
+        if matches!(member.role, FamilyRole::Viewer) {
+            panic!("Insufficient role");
+        }
     }
 
     fn is_owner_or_admin(env: &Env, address: &Address) -> bool {

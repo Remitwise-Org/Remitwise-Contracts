@@ -481,3 +481,467 @@ fn test_sum_unpaid_bills_equals_get_total_unpaid() {
     );
     assert_eq!(sum_after_pay_recurring, get_total_after_pay_recurring);
 }
+
+// ===========================================================================
+// Bill Schedule Pagination Tests — Issue #1751
+//
+// Verifies `get_bill_schedules_page` cursor semantics, ordering guarantees,
+// limit enforcement, owner isolation, and end-of-stream behavior.
+//
+// Cursor semantics (EXCLUSIVE):
+//   - cursor = 0  → start from first schedule
+//   - cursor = N  → return only schedules with ID strictly > N
+//   - next_cursor = last returned ID when more pages exist
+//   - next_cursor = 0 on final (or only) page
+//
+// All invariants match the Pagination Handbook
+// (docs/PAGINATION_HANDBOOK.md).
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Schedule pagination harness
+// ---------------------------------------------------------------------------
+
+struct SchedulePaginationHarness<'a> {
+    env: Env,
+    client: BillPaymentsClient<'a>,
+    owner: Address,
+}
+
+impl SchedulePaginationHarness<'_> {
+    fn new() -> Self {
+        let env = Env::default();
+        env.ledger().set_timestamp(1_000_000);
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, bill_payments::BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        Self { env, client, owner }
+    }
+
+    /// Create a recurring schedule and return its ID.
+    fn create_schedule(&self, name: &str) -> u32 {
+        self.client
+            .create_bill_schedule(
+                &self.owner,
+                &String::from_str(&self.env, name),
+                &1000i128,
+                &String::from_str(&self.env, "XLM"),
+                &2_000_000u64, // next_due far in future
+                &86400u64,     // 1-day interval
+            )
+    }
+
+    /// Collect all schedule IDs via full page traversal.
+    fn collect_all_ids(&self) -> std::vec::Vec<u32> {
+        let mut ids = std::vec::Vec::new();
+        let mut cursor = 0u32;
+        loop {
+            let page = self.client.get_bill_schedules_page(&self.owner, &cursor, &50u32);
+            for sched in page.items.iter() {
+                ids.push(sched.id);
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        ids
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Basic / first-page tests
+// ---------------------------------------------------------------------------
+
+/// Empty owner → empty page, next_cursor == 0.
+#[test]
+fn test_schedule_page_empty_owner_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+/// Single schedule → returned on first page, next_cursor == 0.
+#[test]
+fn test_schedule_page_single_schedule_fits_first_page() {
+    let h = SchedulePaginationHarness::new();
+    let id = h.create_schedule("One");
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.next_cursor, 0, "next_cursor must be 0 on final page");
+    assert_eq!(page.items.get(0).unwrap().id, id);
+}
+
+/// First page with limit < total → returns `limit` items, non-zero next_cursor.
+#[test]
+fn test_schedule_page_first_page_has_correct_items_and_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("Sched{i}"));
+    }
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &3u32);
+    assert_eq!(page.count, 3);
+    assert!(page.next_cursor > 0, "must have next_cursor when more items exist");
+    // Items must be in ascending ID order
+    let ids: std::vec::Vec<u32> = page.items.iter().map(|s| s.id).collect();
+    for i in 1..ids.len() {
+        assert!(ids[i - 1] < ids[i], "items must be strictly ascending");
+    }
+}
+
+/// Second page resumes correctly after first page.
+#[test]
+fn test_schedule_page_second_page_continues_from_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=6u32 {
+        h.create_schedule(&std::format!("S{i}"));
+    }
+
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &3u32);
+    assert_eq!(page1.count, 3);
+    assert!(page1.next_cursor > 0);
+
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &page1.next_cursor, &3u32);
+    assert_eq!(page2.count, 3);
+    assert_eq!(page2.next_cursor, 0, "final page must have next_cursor == 0");
+
+    // No overlap between pages
+    let ids1: std::vec::Vec<u32> = page1.items.iter().map(|s| s.id).collect();
+    let ids2: std::vec::Vec<u32> = page2.items.iter().map(|s| s.id).collect();
+    for id in &ids2 {
+        assert!(!ids1.contains(id), "ID {id} appeared on both pages");
+    }
+    // All IDs on page2 must be strictly greater than all on page1
+    let max1 = ids1.iter().max().copied().unwrap_or(0);
+    let min2 = ids2.iter().min().copied().unwrap_or(u32::MAX);
+    assert!(min2 > max1, "page2 IDs must all be greater than page1 IDs");
+}
+
+// ---------------------------------------------------------------------------
+// End-of-stream and cursor boundary tests
+// ---------------------------------------------------------------------------
+
+/// Exact-fit: items == limit → next_cursor == 0 (no more pages).
+#[test]
+fn test_schedule_page_exact_fit_no_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=4u32 {
+        h.create_schedule(&std::format!("E{i}"));
+    }
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &4u32);
+    assert_eq!(page.count, 4);
+    assert_eq!(
+        page.next_cursor, 0,
+        "exact-fit must return next_cursor == 0"
+    );
+}
+
+/// Out-of-range cursor (beyond all IDs) → empty page, next_cursor == 0.
+#[test]
+fn test_schedule_page_out_of_range_cursor_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    h.create_schedule("A");
+    h.create_schedule("B");
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &999_999u32, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+/// Cursor at the ID of the last schedule → empty page.
+#[test]
+fn test_schedule_page_cursor_at_last_id_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("First");
+    let _id2 = h.create_schedule("Second");
+    let id3 = h.create_schedule("Third");
+
+    // cursor = id3 → no items with ID > id3
+    let page = h.client.get_bill_schedules_page(&h.owner, &id3, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+
+    // Sanity: cursor at id1 should return items id2 and id3
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &id1, &10u32);
+    assert_eq!(page2.count, 2);
+    assert_eq!(page2.next_cursor, 0);
+}
+
+/// Calling with next_cursor == 0 on the final page is idempotent.
+#[test]
+fn test_schedule_page_idempotent_repeat_final_page() {
+    let h = SchedulePaginationHarness::new();
+    h.create_schedule("X");
+    h.create_schedule("Y");
+
+    // First traversal
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page1.next_cursor, 0);
+
+    // Repeating with cursor=0 must return the same page
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page1.count, page2.count);
+    for i in 0..page1.items.len() {
+        assert_eq!(
+            page1.items.get(i).unwrap().id,
+            page2.items.get(i).unwrap().id
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Limit enforcement tests
+// ---------------------------------------------------------------------------
+
+/// limit == 0 is normalised to DEFAULT_PAGE_LIMIT (20).
+#[test]
+fn test_schedule_page_limit_zero_normalised_to_default() {
+    // DEFAULT_PAGE_LIMIT = 20
+    let h = SchedulePaginationHarness::new();
+    // Create more than DEFAULT_PAGE_LIMIT schedules to see clamping.
+    // MAX_BILL_SCHEDULES_PER_OWNER limits how many we can create; use 5 for simplicity.
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("N{i}"));
+    }
+
+    let page_default = h.client.get_bill_schedules_page(&h.owner, &0u32, &0u32);
+    let page_explicit = h.client.get_bill_schedules_page(&h.owner, &0u32, &20u32);
+    // Both should return the same set because 5 < DEFAULT_PAGE_LIMIT (20)
+    assert_eq!(page_default.count, page_explicit.count);
+    assert_eq!(page_default.next_cursor, page_explicit.next_cursor);
+}
+
+/// limit > MAX_PAGE_LIMIT is clamped to MAX_PAGE_LIMIT.
+#[test]
+fn test_schedule_page_large_limit_clamped() {
+    // MAX_PAGE_LIMIT = 50
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("L{i}"));
+    }
+
+    // Request well above MAX_PAGE_LIMIT (50)
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &100_000u32);
+    assert!(
+        page.count <= 50,
+        "count {} must be <= MAX_PAGE_LIMIT 50",
+        page.count,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-page traversal / no-duplicates test
+// ---------------------------------------------------------------------------
+
+/// Full multi-page traversal collects exactly the right set of schedules
+/// with no duplicates and in strictly ascending ID order.
+#[test]
+fn test_schedule_page_full_traversal_no_duplicates_ascending() {
+    let h = SchedulePaginationHarness::new();
+    let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
+    for i in 1..=8u32 {
+        let id = h.create_schedule(&std::format!("T{i}"));
+        expected_ids.push(id);
+    }
+
+    // Traverse with small pages to force multiple page fetches
+    let mut collected: std::vec::Vec<u32> = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    let mut page_count = 0u32;
+    loop {
+        let page = h.client.get_bill_schedules_page(&h.owner, &cursor, &3u32);
+        for sched in page.items.iter() {
+            collected.push(sched.id);
+        }
+        page_count += 1;
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    // Exactly the expected IDs, no more no fewer
+    assert_eq!(collected.len(), expected_ids.len(), "count mismatch");
+    assert_eq!(collected, expected_ids, "IDs must match and be in order");
+    // Verify no duplicates (strictly ascending implies no duplicates)
+    for i in 1..collected.len() {
+        assert!(
+            collected[i - 1] < collected[i],
+            "non-ascending at position {i}"
+        );
+    }
+    // 8 items / 3 per page = 3 full pages + 1 final → 3 pages with 3 items and 1 with 2
+    assert!(page_count >= 2, "must have required multiple pages");
+}
+
+// ---------------------------------------------------------------------------
+// Owner isolation test
+// ---------------------------------------------------------------------------
+
+/// Schedules from one owner must not appear in another owner's pages.
+#[test]
+fn test_schedule_page_owner_isolation() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1_000_000);
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, bill_payments::BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    // Create schedules interleaved between owners
+    let make_schedule = |owner: &Address, name: &str| -> u32 {
+        client
+            .create_bill_schedule(
+                owner,
+                &String::from_str(&env, name),
+                &500i128,
+                &String::from_str(&env, "XLM"),
+                &2_000_000u64,
+                &86400u64,
+            )
+    };
+
+    let id_a1 = make_schedule(&owner_a, "A1");
+    let id_b1 = make_schedule(&owner_b, "B1");
+    let id_a2 = make_schedule(&owner_a, "A2");
+    let id_b2 = make_schedule(&owner_b, "B2");
+    let id_a3 = make_schedule(&owner_a, "A3");
+
+    let page_a = client.get_bill_schedules_page(&owner_a, &0u32, &50u32);
+    let page_b = client.get_bill_schedules_page(&owner_b, &0u32, &50u32);
+
+    // Counts match what was created per owner
+    assert_eq!(page_a.count, 3, "owner A must have exactly 3 schedules");
+    assert_eq!(page_b.count, 2, "owner B must have exactly 2 schedules");
+
+    let ids_a: std::vec::Vec<u32> = page_a.items.iter().map(|s| s.id).collect();
+    let ids_b: std::vec::Vec<u32> = page_b.items.iter().map(|s| s.id).collect();
+
+    // A's schedules must not appear in B's page and vice versa
+    for id in &ids_a {
+        assert!(!ids_b.contains(id), "A's ID {id} appeared in B's page");
+    }
+    for id in &ids_b {
+        assert!(!ids_a.contains(id), "B's ID {id} appeared in A's page");
+    }
+
+    // Confirm correct IDs
+    assert!(ids_a.contains(&id_a1));
+    assert!(ids_a.contains(&id_a2));
+    assert!(ids_a.contains(&id_a3));
+    assert!(ids_b.contains(&id_b1));
+    assert!(ids_b.contains(&id_b2));
+}
+
+// ---------------------------------------------------------------------------
+// Cancelled schedule exclusion test
+// ---------------------------------------------------------------------------
+
+/// Cancelled schedules are removed from the owner index and must not appear
+/// in paginated results.
+#[test]
+fn test_schedule_page_cancelled_schedule_excluded() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("Active1");
+    let id2 = h.create_schedule("ToCancel");
+    let id3 = h.create_schedule("Active2");
+
+    h.client.cancel_bill_schedule(&h.owner, &id2);
+
+    let collected = h.collect_all_ids();
+    assert_eq!(
+        collected.len(),
+        2,
+        "cancelled schedule must be excluded from pages"
+    );
+    assert!(collected.contains(&id1));
+    assert!(!collected.contains(&id2), "cancelled ID must not appear");
+    assert!(collected.contains(&id3));
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent-insert stability test
+// ---------------------------------------------------------------------------
+
+/// New schedules inserted between page fetches appear on subsequent pages
+/// (not skipped) when the cursor correctly marks the boundary.
+#[test]
+fn test_schedule_page_concurrent_insert_not_skipped() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("Before1");
+    let id2 = h.create_schedule("Before2");
+    let id3 = h.create_schedule("Before3");
+
+    // Fetch first page (2 items)
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &2u32);
+    assert_eq!(page1.count, 2);
+    let cursor_after_page1 = page1.next_cursor;
+
+    // Insert a new schedule AFTER fetching page1 (simulates concurrent insert)
+    let id_new = h.create_schedule("NewConcurrent");
+
+    // The new schedule has a higher ID, so it appears on the next page
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &cursor_after_page1, &10u32);
+    let ids2: std::vec::Vec<u32> = page2.items.iter().map(|s| s.id).collect();
+
+    // id3 must still appear (was there before)
+    assert!(ids2.contains(&id3), "id3 must appear on page2");
+    // New schedule also appears (higher ID, same owner)
+    assert!(
+        ids2.contains(&id_new),
+        "new concurrent schedule must appear on subsequent page"
+    );
+    // No items from page1 re-appear
+    let ids1: std::vec::Vec<u32> = page1.items.iter().map(|s| s.id).collect();
+    assert!(ids1.contains(&id1) || ids1.contains(&id2));
+    for id in &ids2 {
+        assert!(!ids1.contains(id), "re-delivered ID {id} from page1");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Schedule field integrity on paginated items
+// ---------------------------------------------------------------------------
+
+/// Items returned through pagination carry the correct fields (not truncated).
+#[test]
+fn test_schedule_page_items_have_correct_fields() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1_000_000);
+    env.mock_all_auths();
+    let cid = env.register_contract(None, bill_payments::BillPayments);
+    let client = BillPaymentsClient::new(&env, &cid);
+    let owner = Address::generate(&env);
+
+    let schedule_id = client
+        .create_bill_schedule(
+            &owner,
+            &String::from_str(&env, "Utilities"),
+            &9_999i128,
+            &String::from_str(&env, "USDC"),
+            &2_000_000u64,
+            &(7 * 86400u64), // weekly
+        );
+
+    let page = client.get_bill_schedules_page(&owner, &0u32, &10u32);
+    assert_eq!(page.count, 1);
+    let sched = page.items.get(0).unwrap();
+
+    assert_eq!(sched.id, schedule_id);
+    assert_eq!(sched.owner, owner);
+    assert_eq!(sched.amount, 9_999);
+    assert_eq!(sched.currency, String::from_str(&env, "USDC"));
+    assert_eq!(sched.next_due, 2_000_000u64);
+    assert_eq!(sched.interval, 7 * 86400u64);
+    assert!(sched.recurring);
+    assert!(sched.active);
+}
