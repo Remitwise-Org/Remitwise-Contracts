@@ -25,6 +25,14 @@ pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
 pub const CREATE_BILL_RATE_LIMIT: u32 = 100; // per address per 24h
 pub const PAY_BILL_RATE_LIMIT: u32 = 200; // per address per 24h
 pub const CANCEL_BILL_RATE_LIMIT: u32 = 50; // per address per 24h
+pub const CREATE_SCHEDULE_RATE_LIMIT: u32 = 50; // per address per 24h
+pub const MODIFY_SCHEDULE_RATE_LIMIT: u32 = 50; // per address per 24h
+pub const CANCEL_SCHEDULE_RATE_LIMIT: u32 = 50; // per address per 24h
+/// Maximum number of bills that `execute_due_bill_schedules` may create in a
+/// single call.  This bounds per-call work so an adversary cannot force the
+/// contract to iterate an unbounded number of due schedules in one
+/// transaction.
+pub const MAX_BILLS_PER_SCHEDULE_EXECUTION: u32 = 50;
 const MIN_EXTERNAL_REF_LEN: u32 = 1;
 const MAX_EXTERNAL_REF_LEN: u32 = 64;
 const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
@@ -175,6 +183,10 @@ pub enum BillPaymentsError {
     ScheduleNotFound = 24,
     /// Bill schedule is not active
     ScheduleNotActive = 25,
+    /// Rate limit exceeded for schedule operation
+    ScheduleRateLimitExceeded = 26,
+    /// Per-call bill creation limit for schedule execution exceeded
+    ScheduleExecutionCapReached = 27,
 }
 
 pub type Error = BillPaymentsError;
@@ -1254,6 +1266,14 @@ impl BillPayments {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
 
+        check_and_increment_rate_limit(
+            &env,
+            &owner,
+            pause_functions::CREATE_BILL_SCHEDULE,
+            CREATE_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(BillPaymentsError::InvalidDueDate);
@@ -1327,6 +1347,14 @@ impl BillPayments {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
 
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::MODIFY_BILL_SCHEDULE,
+            MODIFY_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         if amount <= 0 {
             return Err(BillPaymentsError::InvalidAmount);
         }
@@ -1388,6 +1416,14 @@ impl BillPayments {
     ) -> Result<bool, BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
+
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::CANCEL_BILL_SCHEDULE,
+            CANCEL_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
         Self::extend_instance_ttl(&env);
 
@@ -1468,6 +1504,10 @@ impl BillPayments {
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
 
+        // Per-call resource cap: at most MAX_BILLS_PER_SCHEDULE_EXECUTION bills
+        // may be created in a single invocation to bound work and prevent abuse.
+        let mut bills_created_this_call: u32 = 0;
+
         for schedule_id in 1..=next_schedule_id {
             let Some(mut schedule) = schedules.get(schedule_id) else {
                 continue;
@@ -1502,36 +1542,46 @@ impl BillPayments {
                     );
                 }
 
-                let freq_days = (schedule.interval / SECONDS_PER_DAY).max(1) as u32;
-                let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
+                // Only create a child bill if we haven't hit the per-call cap.
+                if bills_created_this_call < MAX_BILLS_PER_SCHEDULE_EXECUTION {
+                    let freq_days = (schedule.interval / SECONDS_PER_DAY).max(1) as u32;
+                    let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
 
-                if owner_bill_count < MAX_BILLS_PER_OWNER {
-                    next_id = next_id.saturating_add(1);
-                    let child = Bill {
-                        id: next_id,
-                        owner: schedule.owner.clone(),
-                        name: schedule.name.clone(),
-                        external_ref: None,
-                        amount: schedule.amount,
-                        due_date: schedule.next_due,
-                        recurring: true,
-                        frequency_days: freq_days,
-                        paid: false,
-                        created_at: current_time,
-                        paid_at: None,
-                        schedule_id: Some(schedule.id),
-                        tags: Vec::new(&env),
-                        currency: schedule.currency.clone(),
-                    };
-                    bills.set(next_id, child);
-                    Self::index_add_active(&env, &schedule.owner, next_id);
-                    Self::index_add_currency(&env, &schedule.owner, &schedule.currency, next_id);
-                    Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
+                    if owner_bill_count < MAX_BILLS_PER_OWNER {
+                        next_id = next_id.saturating_add(1);
+                        let child = Bill {
+                            id: next_id,
+                            owner: schedule.owner.clone(),
+                            name: schedule.name.clone(),
+                            external_ref: None,
+                            amount: schedule.amount,
+                            due_date: schedule.next_due,
+                            recurring: true,
+                            frequency_days: freq_days,
+                            paid: false,
+                            created_at: current_time,
+                            paid_at: None,
+                            schedule_id: Some(schedule.id),
+                            tags: Vec::new(&env),
+                            currency: schedule.currency.clone(),
+                        };
+                        bills.set(next_id, child);
+                        Self::index_add_active(&env, &schedule.owner, next_id);
+                        Self::index_add_currency(
+                            &env,
+                            &schedule.owner,
+                            &schedule.currency,
+                            next_id,
+                        );
+                        Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
 
-                    env.events().publish(
-                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                        (next_id, schedule_id, schedule.next_due),
-                    );
+                        env.events().publish(
+                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                            (next_id, schedule_id, schedule.next_due),
+                        );
+
+                        bills_created_this_call = bills_created_this_call.saturating_add(1);
+                    }
                 }
             } else {
                 schedule.active = false;
