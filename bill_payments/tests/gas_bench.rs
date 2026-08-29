@@ -1,5 +1,6 @@
 use bill_payments::{
     BillPayments, BillPaymentsClient, Error, CANCEL_BILL_RATE_LIMIT, CREATE_BILL_RATE_LIMIT,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
 };
 use remitwise_common::{MAX_BATCH_SIZE, RATE_LIMIT_WINDOW_SECONDS};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
@@ -329,9 +330,20 @@ fn create_many_unpaid(
     create_many_bills(client, env, owner, prefix, count, FAR_FUTURE_TS)
 }
 
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
+}
+
 fn pay_all(client: &BillPaymentsClient, ids: &Vec<u32>, owner: &Address) {
+    let orch = setup_orchestrator(client, owner);
     for id in ids.iter() {
-        client.pay_bill(owner, &id);
+        client.pay_bill(&orch, &0, owner, &id);
     }
 }
 
@@ -447,7 +459,8 @@ fn bench_restore_archived_bill_single_with_thresholds() {
     let attacker = <Address as AddressTrait>::generate(&env);
 
     let target_id = create_bill(&client, &env, &owner, "RestoreBench", 500);
-    client.pay_bill(&owner, &target_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &target_id);
     assert_eq!(client.archive_paid_bills(&owner, &FAR_FUTURE_TS), 1);
     assert!(client.get_archived_bill(&target_id).is_some());
 
@@ -529,9 +542,10 @@ fn bench_batch_pay_bills_mixed_50_with_thresholds() {
 
     let owner_ids = create_many_unpaid(&client, &env, &owner, "BatchOwner", 35);
     let owner_ids_len = owner_ids.len();
+    let orch = setup_orchestrator(&client, &owner);
     for idx in 30..owner_ids_len {
         let id = owner_ids.get(idx).unwrap();
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
     let other_ids = create_many_unpaid(&client, &env, &other, "BatchOther", 10);
 

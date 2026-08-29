@@ -4,7 +4,9 @@
 //!   - Unit tests: edge cases, cursor boundary, limit clamping, restore/cleanup index maintenance
 //!   - Property-based tests (proptest): all 9 correctness properties from the design document
 
-use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, BillPaymentsError, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env};
@@ -43,7 +45,18 @@ fn setup_client(env: &Env) -> (BillPaymentsClient<'_>, Address) {
 
 /// Create `n` bills for `owner`, pay them all, and archive them.
 /// Returns the list of archived bill IDs.
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
+}
+
 fn create_pay_archive(env: &Env, client: &BillPaymentsClient, owner: &Address, n: u32) -> Vec<u32> {
+    let orch = setup_orchestrator(client, owner);
     let mut ids = Vec::new();
     for i in 0..n {
         let name = soroban_sdk::String::from_str(env, &format!("Bill{}", i));
@@ -58,7 +71,7 @@ fn create_pay_archive(env: &Env, client: &BillPaymentsClient, owner: &Address, n
             &soroban_sdk::String::from_str(env, "XLM"),
             &None,
         );
-        client.pay_bill(owner, &id);
+        client.pay_bill(&orch, &0, owner, &id);
         ids.push(id);
     }
     client.archive_paid_bills(owner, &u64::MAX);

@@ -28,7 +28,10 @@
 
 #![cfg(test)]
 
-use bill_payments::{Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{Address, Env, IntoVal, String, TryFromVal, Val, Vec as SorobanVec};
 
@@ -42,6 +45,7 @@ struct RecurringHarness<'a> {
     env: Env,
     client: BillPaymentsClient<'a>,
     owner: Address,
+    orch: Address,
     contract_id: Address,
 }
 
@@ -53,10 +57,16 @@ impl RecurringHarness<'_> {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
+        // Configure the trusted orchestrator required by the cross-contract
+        // epoch guard on `pay_bill` (epoch 0 for a fresh contract).
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         Self {
             env,
             client,
             owner,
+            orch,
             contract_id,
         }
     }
@@ -114,7 +124,7 @@ impl RecurringHarness<'_> {
 
     fn pay_at(&self, bill_id: u32, timestamp: u64) {
         self.env.ledger().set_timestamp(timestamp);
-        self.client.pay_bill(&self.owner, &bill_id);
+        self.client.pay_bill(&self.orch, &0, &self.owner, &bill_id);
     }
 
     fn child_id(&self, parent_id: u32) -> u32 {

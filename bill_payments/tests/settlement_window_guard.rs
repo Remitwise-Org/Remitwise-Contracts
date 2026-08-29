@@ -17,7 +17,9 @@
 //!    - Delayed payment: Catch-up loop repeatedly advances until `child.due_date > current_time`.
 //!    - Exact boundary payment (`now == parent.due_date + period`): Catch-up loop advances child to `now + period`.
 
-use bill_payments::{BillPayments, BillPaymentsClient, Error};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, Error, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -52,6 +54,16 @@ fn set_time(env: &Env, timestamp: u64) {
 fn setup_contract(env: &Env) -> BillPaymentsClient<'_> {
     let id = env.register_contract(None, BillPayments);
     BillPaymentsClient::new(env, &id)
+}
+
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,8 +271,9 @@ fn advances_recurring_child_due_date_strictly_into_future_on_late_settlement() {
     let late_payment_time = initial_due + (10 * SECONDS_PER_DAY);
     set_time(&env, late_payment_time);
 
-    // Pay late bill
-    client.pay_bill(&owner, &bill_id);
+    // Pay late bill (10 days past due — inside the 30-day settlement window)
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     // Catch-up loop must advance child due date until child.due_date > late_payment_time
     let child_bill = client.get_bill(&2).unwrap();
@@ -298,7 +311,8 @@ fn advances_recurring_child_due_date_when_settled_at_exact_next_due_boundary() {
     let exact_next_due = initial_due + period;
     set_time(&env, exact_next_due);
 
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let child_bill = client.get_bill(&2).unwrap();
     // Catch-up loop `while next_due_date <= current_time` triggers and advances by another period

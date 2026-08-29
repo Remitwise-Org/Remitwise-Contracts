@@ -11,6 +11,17 @@ pub use tokens::{
     MAX_CURRENCY_LEN, STROOPS_PER_XLM, USDC_DECIMALS, XLM_DECIMALS,
 };
 
+/// Shared exact-integer amount rules ([`validate_amount`], [`MAX_AMOUNT`], and
+/// the checked arithmetic helpers). Every amount boundary in the workspace
+/// (bill/schedule creation, execution, payment) enforces the same sign and
+/// magnitude rules through this module so behaviour is deterministic and
+/// reviewable. Unit tests live in the module itself.
+pub mod amount;
+pub use amount::{
+    AmountOverflowError, AmountValidationError, MAX_AMOUNT, MIN_AMOUNT, checked_add_amount,
+    checked_sub_amount, validate_amount,
+};
+
 /// Shared period-key helpers: [`period::require_matching_period_key`] and
 /// [`period::verify_period_active`]. Tests live in the module itself so that
 /// CI picks them up with `cargo test -p remitwise-common`.

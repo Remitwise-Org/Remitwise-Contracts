@@ -1,6 +1,8 @@
 #![cfg(test)]
 
-use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, BillPaymentsError, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use proptest::prelude::*;
 use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 
@@ -51,6 +53,12 @@ proptest! {
         let caller = Address::generate(&env);
         env.mock_all_auths();
 
+        // Configure the trusted orchestrator so the guarded pay_bill branch
+        // reaches the paused check (the epoch guard runs first).
+        let orch = Address::generate(&env);
+        client.init_admin(&admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&admin, &orch);
+
         // Setup pause admin and trigger emergency pause
         client.set_pause_admin(&admin, &admin);
         client.emergency_pause_all(&admin);
@@ -92,7 +100,7 @@ proptest! {
                 ).map(|_| ()).map_err(|e| e.unwrap())
             }
             WritableEntrypoint::PayBill => {
-                client.try_pay_bill(&caller, &1)
+                client.try_pay_bill(&orch, &0, &caller, &1)
                     .map(|_| ()).map_err(|e| e.unwrap())
             }
             WritableEntrypoint::CancelBill => {
@@ -150,7 +158,7 @@ mod admin_grant_ttl_tests {
     ///
     /// **Attack scenario without the fix**:
     /// 1. Admin sets up pause admin with 30-day TTL
-    /// 2. Time advances beyond the 30-day TTL (admin grant expires)  
+    /// 2. Time advances beyond the 30-day TTL (admin grant expires)
     /// 3. Attacker calls `set_pause_admin` which lacks TTL validation
     /// 4. Attacker successfully changes admin despite expired grant
     /// 5. Attacker now controls pause functionality indefinitely
