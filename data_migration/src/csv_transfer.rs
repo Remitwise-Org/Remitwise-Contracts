@@ -166,4 +166,3 @@ struct CsvGoalRow {
     target_date: u64,
     locked: bool,
 }
-
