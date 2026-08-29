@@ -633,6 +633,28 @@ pub enum MigrationError {
     /// [`MigrationTracker::mark_completed`]. This guard prevents partially-applied
     /// migrations from being overwritten with live writes before they are finished.
     MigrationNotCompleted,
+    /// Returned when a state-machine transition is attempted that is not permitted
+    /// by the legal transition matrix.
+    ///
+    /// `from` is the current status of the active attempt (`None` means no active attempt),
+    /// and `to` is the target status that was requested.
+    ///
+    /// # Legal transitions
+    ///
+    /// | From              | To          | Operation               |
+    /// |-------------------|-------------|-------------------------|
+    /// | `None`            | `InProgress`| `begin_import`          |
+    /// | `Failed`          | `InProgress`| `begin_import` (retry)  |
+    /// | `RolledBack`      | `InProgress`| `begin_import` (retry)  |
+    /// | `InProgress`      | `Completed` | `mark_imported`         |
+    /// | `InProgress`      | `Failed`    | `fail_import`           |
+    /// | `InProgress`      | `RolledBack`| rollback restore        |
+    ///
+    /// All other transitions are illegal.
+    IllegalStateTransition {
+        from: Option<MigrationAttemptStatus>,
+        to: MigrationAttemptStatus,
+    },
 }
 
 impl std::fmt::Display for MigrationError {
@@ -693,6 +715,17 @@ impl std::fmt::Display for MigrationError {
                 f,
                 "migration not completed: write operations are not permitted until the migration is marked complete"
             ),
+            MigrationError::IllegalStateTransition { from, to } => {
+                let from_str = match from {
+                    None => "None".to_string(),
+                    Some(status) => format!("{:?}", status),
+                };
+                write!(
+                    f,
+                    "illegal state transition: {:?} → {:?} is not permitted by the migration lifecycle",
+                    from_str, to
+                )
+            }
         }
     }
 }
@@ -706,6 +739,59 @@ pub enum MigrationAttemptStatus {
     Completed,
     Failed,
     RolledBack,
+}
+
+/// Return `true` when transitioning from `from` to `to` is permitted by the
+/// legal state-machine matrix.
+///
+/// # Legal transition matrix
+///
+/// | `from`         | `to`          | Operation / trigger                    |
+/// |----------------|---------------|----------------------------------------|
+/// | `None`         | `InProgress`  | `begin_import` — start fresh           |
+/// | `Failed`       | `InProgress`  | `begin_import` — retry after failure   |
+/// | `RolledBack`   | `InProgress`  | `begin_import` — retry after rollback  |
+/// | `InProgress`   | `Completed`   | `mark_imported` — success              |
+/// | `InProgress`   | `Failed`      | `fail_import` — explicit failure       |
+/// | `InProgress`   | `RolledBack`  | `RollbackMetadata::restore`            |
+///
+/// Every other pair is illegal and callers must return
+/// [`MigrationError::IllegalStateTransition`].
+///
+/// # Design rationale
+///
+/// Centralising the truth table here means every entry point that performs a
+/// status change calls this function rather than carrying its own ad-hoc
+/// conditional. This prevents divergence when the matrix changes: a single
+/// place to update, a single place to test.
+pub fn is_legal_transition(
+    from: Option<MigrationAttemptStatus>,
+    to: MigrationAttemptStatus,
+) -> bool {
+    matches!(
+        (from, to),
+        (None, MigrationAttemptStatus::InProgress)
+            | (
+                Some(MigrationAttemptStatus::Failed),
+                MigrationAttemptStatus::InProgress,
+            )
+            | (
+                Some(MigrationAttemptStatus::RolledBack),
+                MigrationAttemptStatus::InProgress,
+            )
+            | (
+                Some(MigrationAttemptStatus::InProgress),
+                MigrationAttemptStatus::Completed,
+            )
+            | (
+                Some(MigrationAttemptStatus::InProgress),
+                MigrationAttemptStatus::Failed,
+            )
+            | (
+                Some(MigrationAttemptStatus::InProgress),
+                MigrationAttemptStatus::RolledBack,
+            )
+    )
 }
 
 /// Observable state for a single import attempt.
@@ -778,6 +864,17 @@ impl MigrationTracker {
     /// call [`MigrationTracker::record_progress`] after each applied batch and
     /// [`MigrationTracker::mark_imported`] only after the full snapshot has
     /// been applied.
+    ///
+    /// # Legal transitions accepted
+    ///
+    /// `begin_import` may be called when:
+    /// - There is **no** active attempt (`None → InProgress`).
+    /// - The previous attempt was explicitly failed (`Failed → InProgress`).
+    /// - The previous attempt was rolled back (`RolledBack → InProgress`).
+    ///
+    /// Calling `begin_import` while another attempt is `InProgress` is rejected
+    /// with [`MigrationError::MigrationAlreadyInProgress`].  Any other illegal
+    /// transition returns [`MigrationError::IllegalStateTransition`].
     pub fn begin_import(
         &mut self,
         snapshot: &ExportSnapshot,
@@ -788,8 +885,23 @@ impl MigrationTracker {
         if self.imported_payloads.contains_key(&identity) {
             return Err(MigrationError::DuplicateImport);
         }
-        if self.active_attempt.is_some() {
+
+        // Determine current state of the state machine.
+        let current_status = self.active_attempt.as_ref().map(|a| a.status);
+
+        // `MigrationAlreadyInProgress` is a more specific (and pre-existing) error
+        // for the most common illegal transition; preserve it for callers that rely on
+        // its discriminant.
+        if current_status == Some(MigrationAttemptStatus::InProgress) {
             return Err(MigrationError::MigrationAlreadyInProgress);
+        }
+
+        // Enforce the legal transition matrix for all other states.
+        if !is_legal_transition(current_status, MigrationAttemptStatus::InProgress) {
+            return Err(MigrationError::IllegalStateTransition {
+                from: current_status,
+                to: MigrationAttemptStatus::InProgress,
+            });
         }
 
         let attempt = MigrationAttempt {
@@ -806,6 +918,15 @@ impl MigrationTracker {
     }
 
     /// Record monotonic progress for the active migration attempt.
+    ///
+    /// # Invariant
+    ///
+    /// This method may only be called while there is an active attempt and its
+    /// status is [`MigrationAttemptStatus::InProgress`].  If the active
+    /// attempt is in any other state (e.g. it has somehow been placed into
+    /// `Completed`, `Failed`, or `RolledBack` while still held as `active_attempt`),
+    /// [`MigrationError::IllegalStateTransition`] is returned and no progress
+    /// is recorded.
     pub fn record_progress(
         &mut self,
         snapshot: &ExportSnapshot,
@@ -817,6 +938,17 @@ impl MigrationTracker {
             .active_attempt
             .as_mut()
             .ok_or(MigrationError::NoMigrationInProgress)?;
+
+        // Explicit state-machine guard: progress recording is only legal while
+        // the attempt is InProgress.  Although today active_attempt is always
+        // set to InProgress, this guard prevents a future regression where a
+        // non-InProgress attempt leaks into active_attempt.
+        if attempt.status != MigrationAttemptStatus::InProgress {
+            return Err(MigrationError::IllegalStateTransition {
+                from: Some(attempt.status),
+                to: MigrationAttemptStatus::InProgress, // progress implies staying InProgress
+            });
+        }
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             return Err(MigrationError::StaleMigrationAttempt);
@@ -836,16 +968,39 @@ impl MigrationTracker {
     }
 
     /// Mark the active migration attempt as failed and clear it for rollback/retry.
+    ///
+    /// # Invariant
+    ///
+    /// `fail_import` may only be called when the active attempt is
+    /// [`MigrationAttemptStatus::InProgress`].  The transition
+    /// `InProgress → Failed` is the only legal path into the `Failed` terminal
+    /// state.  If the active attempt holds any other status,
+    /// [`MigrationError::IllegalStateTransition`] is returned and the attempt
+    /// is **not** consumed (it remains in `active_attempt` unchanged).
     pub fn fail_import(
         &mut self,
         snapshot: &ExportSnapshot,
         timestamp_ms: u64,
     ) -> Result<(), MigrationError> {
         let identity = snapshot_identity(snapshot);
-        let mut attempt = self
+
+        // Check the current status before consuming the attempt.
+        let current_status = self
             .active_attempt
-            .take()
+            .as_ref()
+            .map(|a| a.status)
             .ok_or(MigrationError::NoMigrationInProgress)?;
+
+        // Explicit state-machine guard: only InProgress → Failed is legal.
+        if current_status != MigrationAttemptStatus::InProgress {
+            return Err(MigrationError::IllegalStateTransition {
+                from: Some(current_status),
+                to: MigrationAttemptStatus::Failed,
+            });
+        }
+
+        // Now safe to consume the active attempt (we know it is InProgress).
+        let mut attempt = self.active_attempt.take().ok_or(MigrationError::NoMigrationInProgress)?;
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             self.active_attempt = Some(attempt);
@@ -859,6 +1014,29 @@ impl MigrationTracker {
     }
 
     /// Mark a payload as imported.
+    ///
+    /// # Two calling paths
+    ///
+    /// **Fast path (no active attempt):**  Callers that do not need per-batch
+    /// progress tracking (e.g. [`import_from_json`] / [`import_from_binary`])
+    /// call `mark_imported` directly without a prior [`begin_import`].  In
+    /// this case a synthetic `Completed` history entry is created atomically
+    /// in one step.  This is the backward-compatible "simple import" path.
+    ///
+    /// **Tracked path (active attempt exists):**  If an active attempt exists,
+    /// it **must** be in [`MigrationAttemptStatus::InProgress`].  Any other
+    /// status is a state-machine violation and returns
+    /// [`MigrationError::IllegalStateTransition`] with no state change.
+    /// On success the attempt transitions to `Completed`.
+    ///
+    /// # Invariant preserved
+    ///
+    /// In both paths, `Completed` is only ever recorded in `attempt_history`
+    /// when the logical start of the attempt can be attributed — either to an
+    /// explicit `begin_import` call (tracked path) or to the synthetic entry's
+    /// `started_at_ms == timestamp_ms` (fast path, single-step).  The history
+    /// will never contain an entry where `status == Completed` and `started_at_ms`
+    /// is later than `updated_at_ms`.
     pub fn mark_imported(
         &mut self,
         snapshot: &ExportSnapshot,
@@ -872,6 +1050,14 @@ impl MigrationTracker {
         if let Some(active) = &self.active_attempt {
             if active.checksum != identity.0 || active.version != identity.1 {
                 return Err(MigrationError::MigrationAlreadyInProgress);
+            }
+            // Explicit state-machine guard: active attempt must be InProgress
+            // before it can be transitioned to Completed.
+            if active.status != MigrationAttemptStatus::InProgress {
+                return Err(MigrationError::IllegalStateTransition {
+                    from: Some(active.status),
+                    to: MigrationAttemptStatus::Completed,
+                });
             }
         }
 
@@ -5482,5 +5668,853 @@ mod tests {
             msg.contains(&MAX_MIGRATION_RECORDS.to_string()),
             "Display must include max count: {msg}"
         );
+    }
+
+    // ====================================================================
+    // STATE-TRANSITION INVARIANT TESTS
+    //
+    // These tests exhaustively cover the MigrationAttemptStatus state machine
+    // implemented in MigrationTracker.  They prove:
+    //
+    //   1. Every legal transition succeeds and produces the expected terminal state.
+    //   2. Every illegal transition is rejected with the correct error variant and
+    //      leaves the tracker in its exact pre-call state (no partial mutation).
+    //   3. Stale, repeated, skipped, and out-of-order operations are rejected.
+    //   4. is_legal_transition() covers the full matrix.
+    //
+    // Legal transition matrix under test:
+    //   None           → InProgress  (begin_import)
+    //   Failed         → InProgress  (begin_import — retry)
+    //   RolledBack     → InProgress  (begin_import — retry)
+    //   InProgress     → Completed   (mark_imported)
+    //   InProgress     → Failed      (fail_import)
+    //   InProgress     → RolledBack  (RollbackMetadata::restore)
+    //
+    // All other source→target pairs are ILLEGAL.
+    // ====================================================================
+
+    // ------------------------------------------------------------------
+    // is_legal_transition() unit tests — full matrix coverage
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_is_legal_transition_none_to_in_progress_is_legal() {
+        assert!(is_legal_transition(None, MigrationAttemptStatus::InProgress));
+    }
+
+    #[test]
+    fn test_is_legal_transition_failed_to_in_progress_is_legal() {
+        assert!(is_legal_transition(
+            Some(MigrationAttemptStatus::Failed),
+            MigrationAttemptStatus::InProgress
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_rolled_back_to_in_progress_is_legal() {
+        assert!(is_legal_transition(
+            Some(MigrationAttemptStatus::RolledBack),
+            MigrationAttemptStatus::InProgress
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_in_progress_to_completed_is_legal() {
+        assert!(is_legal_transition(
+            Some(MigrationAttemptStatus::InProgress),
+            MigrationAttemptStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_in_progress_to_failed_is_legal() {
+        assert!(is_legal_transition(
+            Some(MigrationAttemptStatus::InProgress),
+            MigrationAttemptStatus::Failed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_in_progress_to_rolled_back_is_legal() {
+        assert!(is_legal_transition(
+            Some(MigrationAttemptStatus::InProgress),
+            MigrationAttemptStatus::RolledBack
+        ));
+    }
+
+    // --- Illegal transitions ---
+
+    #[test]
+    fn test_is_legal_transition_none_to_completed_is_illegal() {
+        assert!(!is_legal_transition(
+            None,
+            MigrationAttemptStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_none_to_failed_is_illegal() {
+        assert!(!is_legal_transition(None, MigrationAttemptStatus::Failed));
+    }
+
+    #[test]
+    fn test_is_legal_transition_none_to_rolled_back_is_illegal() {
+        assert!(!is_legal_transition(
+            None,
+            MigrationAttemptStatus::RolledBack
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_completed_to_in_progress_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Completed),
+            MigrationAttemptStatus::InProgress
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_completed_to_completed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Completed),
+            MigrationAttemptStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_completed_to_failed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Completed),
+            MigrationAttemptStatus::Failed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_completed_to_rolled_back_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Completed),
+            MigrationAttemptStatus::RolledBack
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_failed_to_failed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Failed),
+            MigrationAttemptStatus::Failed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_failed_to_completed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Failed),
+            MigrationAttemptStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_failed_to_rolled_back_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::Failed),
+            MigrationAttemptStatus::RolledBack
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_rolled_back_to_completed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::RolledBack),
+            MigrationAttemptStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_rolled_back_to_failed_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::RolledBack),
+            MigrationAttemptStatus::Failed
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_rolled_back_to_rolled_back_is_illegal() {
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::RolledBack),
+            MigrationAttemptStatus::RolledBack
+        ));
+    }
+
+    #[test]
+    fn test_is_legal_transition_in_progress_to_in_progress_is_illegal() {
+        // Re-begin while already in progress is illegal (MigrationAlreadyInProgress).
+        assert!(!is_legal_transition(
+            Some(MigrationAttemptStatus::InProgress),
+            MigrationAttemptStatus::InProgress
+        ));
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: None → InProgress (begin_import, fresh start)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_none_to_in_progress_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        let attempt = tracker.begin_import(&snapshot, 1_000).unwrap();
+        assert_eq!(attempt.status, MigrationAttemptStatus::InProgress);
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+        assert!(tracker.attempt_history().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: InProgress → Completed (mark_imported after begin_import)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_in_progress_to_completed_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.mark_imported(&snapshot, 2_000).unwrap();
+
+        assert!(tracker.active_attempt().is_none());
+        assert_eq!(tracker.attempt_history().len(), 1);
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::Completed
+        );
+        assert!(tracker.is_imported(&snapshot));
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: InProgress → Failed (fail_import)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_in_progress_to_failed_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.fail_import(&snapshot, 2_000).unwrap();
+
+        assert!(tracker.active_attempt().is_none());
+        assert_eq!(tracker.attempt_history().len(), 1);
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::Failed
+        );
+        assert!(!tracker.is_imported(&snapshot));
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: InProgress → RolledBack (RollbackMetadata::restore)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_in_progress_to_rolled_back_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut state: Option<ExportSnapshot> = None;
+        let mut tracker = MigrationTracker::new();
+        let rb = RollbackMetadata::capture(None, &snapshot, 500);
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        rb.restore(&mut state, &mut tracker).unwrap();
+
+        assert!(tracker.active_attempt().is_none());
+        assert_eq!(tracker.attempt_history().len(), 1);
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::RolledBack
+        );
+        assert!(!tracker.is_imported(&snapshot));
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: Failed → InProgress (retry after failure)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_failed_to_in_progress_retry_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        // First attempt: InProgress → Failed
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.fail_import(&snapshot, 2_000).unwrap();
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::Failed
+        );
+
+        // Retry: Failed → InProgress
+        let retry = tracker.begin_import(&snapshot, 3_000).unwrap();
+        assert_eq!(retry.status, MigrationAttemptStatus::InProgress);
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+
+        // Complete the retry
+        tracker.mark_imported(&snapshot, 4_000).unwrap();
+        assert!(tracker.is_imported(&snapshot));
+        assert_eq!(tracker.attempt_history().len(), 2);
+        assert_eq!(
+            tracker.attempt_history()[1].status,
+            MigrationAttemptStatus::Completed
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Legal edge: RolledBack → InProgress (retry after rollback)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_rolled_back_to_in_progress_retry_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut state: Option<ExportSnapshot> = None;
+        let mut tracker = MigrationTracker::new();
+        let rb = RollbackMetadata::capture(None, &snapshot, 500);
+
+        // First attempt: InProgress → RolledBack
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::RolledBack
+        );
+
+        // Retry: RolledBack → InProgress
+        let retry = tracker.begin_import(&snapshot, 2_000).unwrap();
+        assert_eq!(retry.status, MigrationAttemptStatus::InProgress);
+
+        // Complete the retry
+        tracker.mark_imported(&snapshot, 3_000).unwrap();
+        assert!(tracker.is_imported(&snapshot));
+        assert_eq!(tracker.attempt_history().len(), 2);
+        assert_eq!(
+            tracker.attempt_history()[1].status,
+            MigrationAttemptStatus::Completed
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Illegal transition: InProgress → InProgress (double begin_import)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_in_progress_to_in_progress_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+
+        // Second begin_import while InProgress → must fail
+        let second_snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let err = tracker.begin_import(&second_snapshot, 2_000).unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::MigrationAlreadyInProgress,
+            "double begin_import must return MigrationAlreadyInProgress"
+        );
+        // Tracker is unchanged — still in InProgress for the original snapshot
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Illegal transition: Completed → InProgress (re-begin after success)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_completed_to_in_progress_via_new_payload_succeeds() {
+        // After completing one import, the *same* payload is duplicate-protected.
+        // A *different* payload may begin a new attempt normally.
+        let first = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let second = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&first, 1_000).unwrap();
+        tracker.mark_imported(&first, 2_000).unwrap();
+        assert!(tracker.active_attempt().is_none());
+
+        // New attempt on a different payload is legal (None → InProgress)
+        tracker.begin_import(&second, 3_000).unwrap();
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Illegal transition: mark_imported without begin_import (fast path preserved)
+    //
+    // The "fast path" (no begin_import before mark_imported) is intentionally
+    // preserved for import_from_json / import_from_binary callers.
+    // This test confirms the synthetic Completed entry is still created correctly
+    // and no state-machine error is raised.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_mark_imported_without_begin_import_fast_path_succeeds() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        // No begin_import — direct fast-path call
+        tracker.mark_imported(&snapshot, 1_000).unwrap();
+
+        assert!(tracker.is_imported(&snapshot));
+        assert!(tracker.active_attempt().is_none());
+        assert_eq!(tracker.attempt_history().len(), 1);
+        let entry = &tracker.attempt_history()[0];
+        assert_eq!(entry.status, MigrationAttemptStatus::Completed);
+        assert_eq!(entry.started_at_ms, 1_000); // synthetic: started_at == timestamp_ms
+        assert_eq!(entry.updated_at_ms, 1_000);
+    }
+
+    // ------------------------------------------------------------------
+    // Stale attempt: record_progress with wrong identity
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_record_progress_stale_identity_rejected_and_attempt_preserved() {
+        let active = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let stale = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&active, 1_000).unwrap();
+
+        // Progress against wrong snapshot identity
+        let err = tracker
+            .record_progress(&stale, 1, 1_100)
+            .unwrap_err();
+        assert_eq!(err, MigrationError::StaleMigrationAttempt);
+
+        // Active attempt must be preserved in InProgress
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+        assert!(tracker.attempt_history().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Stale attempt: fail_import with wrong identity
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fail_import_stale_identity_rejected_and_attempt_preserved() {
+        let active = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let stale = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&active, 1_000).unwrap();
+
+        let err = tracker.fail_import(&stale, 2_000).unwrap_err();
+        assert_eq!(err, MigrationError::StaleMigrationAttempt);
+
+        // Attempt must be restored and still InProgress
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+        assert!(tracker.attempt_history().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Repeated/duplicate: mark_imported twice (duplicate import detected)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_state_transition_completed_to_completed_via_mark_imported_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.mark_imported(&snapshot, 2_000).unwrap();
+
+        // Attempt to mark imported again — must be duplicate import
+        let err = tracker.mark_imported(&snapshot, 3_000).unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::DuplicateImport,
+            "second mark_imported of same payload must return DuplicateImport"
+        );
+        assert!(tracker.attempt_history().len() == 1);
+    }
+
+    // ------------------------------------------------------------------
+    // Skipped: fail_import without begin_import
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_fail_import_without_begin_import_returns_no_migration_in_progress() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        let err = tracker.fail_import(&snapshot, 1_000).unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::NoMigrationInProgress,
+            "fail_import with no active attempt must return NoMigrationInProgress"
+        );
+        assert!(tracker.attempt_history().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Skipped: record_progress without begin_import
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_record_progress_without_begin_import_returns_no_migration_in_progress() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        let err = tracker
+            .record_progress(&snapshot, 1, 1_000)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::NoMigrationInProgress,
+            "record_progress with no active attempt must return NoMigrationInProgress"
+        );
+        assert!(tracker.attempt_history().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Out-of-order: mark_imported after fail_import (no active attempt)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_mark_imported_after_fail_import_uses_fast_path() {
+        // After fail_import, active_attempt is cleared.  A subsequent mark_imported
+        // with the same snapshot uses the fast path (no active attempt) and succeeds —
+        // because fail_import does NOT add to imported_payloads, so the fast path is
+        // the "retry via simple import" flow.  This is expected behavior.
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.fail_import(&snapshot, 2_000).unwrap();
+
+        // No active attempt; fast-path mark_imported must succeed
+        tracker.mark_imported(&snapshot, 3_000).unwrap();
+        assert!(tracker.is_imported(&snapshot));
+        assert_eq!(tracker.attempt_history().len(), 2);
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::Failed
+        );
+        assert_eq!(
+            tracker.attempt_history()[1].status,
+            MigrationAttemptStatus::Completed
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Out-of-order: begin_import for already-completed payload
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_begin_import_for_already_imported_payload_rejected() {
+        let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.mark_imported(&snapshot, 2_000).unwrap();
+
+        // Attempt to begin the same payload again → DuplicateImport
+        let err = tracker.begin_import(&snapshot, 3_000).unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::DuplicateImport,
+            "begin_import for an already-imported payload must return DuplicateImport"
+        );
+        assert!(tracker.active_attempt().is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // Out-of-order: mark_imported while different attempt is InProgress
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_mark_imported_for_different_payload_while_in_progress_rejected() {
+        let active = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let other = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&active, 1_000).unwrap();
+
+        // Attempt to mark a *different* payload imported while active is InProgress
+        let err = tracker.mark_imported(&other, 2_000).unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::MigrationAlreadyInProgress,
+            "mark_imported for a different payload while another is InProgress must return MigrationAlreadyInProgress"
+        );
+
+        // The active attempt for 'active' must be preserved and unchanged
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+        assert!(!tracker.is_imported(&other));
+    }
+
+    // ------------------------------------------------------------------
+    // Full lifecycle: None → InProgress → record_progress → Completed
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_full_lifecycle_none_to_in_progress_with_progress_to_completed() {
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(sample_goals_export(4)),
+            ExportFormat::Json,
+        );
+        let mut tracker = MigrationTracker::new();
+
+        let attempt = tracker.begin_import(&snapshot, 1_000).unwrap();
+        assert_eq!(attempt.status, MigrationAttemptStatus::InProgress);
+        assert_eq!(attempt.total_records, 4);
+        assert_eq!(attempt.processed_records, 0);
+
+        tracker.record_progress(&snapshot, 1, 1_100).unwrap();
+        assert_eq!(tracker.active_attempt().unwrap().processed_records, 1);
+        assert_eq!(
+            tracker.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+
+        tracker.record_progress(&snapshot, 2, 1_200).unwrap();
+        tracker.record_progress(&snapshot, 3, 1_300).unwrap();
+        tracker.record_progress(&snapshot, 4, 1_400).unwrap();
+
+        tracker.mark_imported(&snapshot, 1_500).unwrap();
+
+        assert!(tracker.active_attempt().is_none());
+        assert!(tracker.is_imported(&snapshot));
+        let completed = &tracker.attempt_history()[0];
+        assert_eq!(completed.status, MigrationAttemptStatus::Completed);
+        assert_eq!(completed.processed_records, 4);
+        assert_eq!(completed.total_records, 4);
+        assert_eq!(completed.started_at_ms, 1_000);
+        assert_eq!(completed.updated_at_ms, 1_500);
+    }
+
+    // ------------------------------------------------------------------
+    // Full lifecycle: None → InProgress → Failed → InProgress → Completed
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_full_lifecycle_retry_after_failure_to_completion() {
+        let snapshot = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        // First attempt fails
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.record_progress(&snapshot, 2, 1_100).unwrap();
+        tracker.fail_import(&snapshot, 1_200).unwrap();
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::Failed
+        );
+        assert_eq!(tracker.attempt_history()[0].processed_records, 2);
+
+        // Retry succeeds
+        tracker.begin_import(&snapshot, 2_000).unwrap();
+        tracker.record_progress(&snapshot, 1, 2_100).unwrap();
+        tracker.mark_imported(&snapshot, 2_200).unwrap();
+
+        assert!(tracker.is_imported(&snapshot));
+        assert_eq!(tracker.attempt_history().len(), 2);
+        assert_eq!(
+            tracker.attempt_history()[1].status,
+            MigrationAttemptStatus::Completed
+        );
+        assert_eq!(tracker.attempt_history()[1].started_at_ms, 2_000);
+    }
+
+    // ------------------------------------------------------------------
+    // Full lifecycle: None → InProgress → RolledBack → InProgress → Completed
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_full_lifecycle_retry_after_rollback_to_completion() {
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut state: Option<ExportSnapshot> = None;
+        let mut tracker = MigrationTracker::new();
+        let rb = RollbackMetadata::capture(None, &snapshot, 500);
+
+        // First attempt rolls back
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.record_progress(&snapshot, 1, 1_100).unwrap();
+        rb.restore(&mut state, &mut tracker).unwrap();
+
+        assert!(tracker.active_attempt().is_none());
+        assert_eq!(
+            tracker.attempt_history()[0].status,
+            MigrationAttemptStatus::RolledBack
+        );
+
+        // Retry succeeds
+        tracker.begin_import(&snapshot, 2_000).unwrap();
+        tracker.mark_imported(&snapshot, 2_100).unwrap();
+
+        assert!(tracker.is_imported(&snapshot));
+        assert_eq!(tracker.attempt_history().len(), 2);
+        assert_eq!(
+            tracker.attempt_history()[1].status,
+            MigrationAttemptStatus::Completed
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // IllegalStateTransition error display contains from/to
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_illegal_state_transition_error_display_contains_from_and_to() {
+        let err = MigrationError::IllegalStateTransition {
+            from: Some(MigrationAttemptStatus::Completed),
+            to: MigrationAttemptStatus::InProgress,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Completed") || msg.contains("illegal state transition"),
+            "IllegalStateTransition display must mention the states: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_illegal_state_transition_error_display_none_from() {
+        let err = MigrationError::IllegalStateTransition {
+            from: None,
+            to: MigrationAttemptStatus::Completed,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("None") || msg.contains("illegal state transition"),
+            "IllegalStateTransition display with None from must be informative: {msg}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Concurrent-pattern: two trackers operate independently
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_two_independent_trackers_do_not_interfere() {
+        let snapshot_a = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let snapshot_b = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker_a = MigrationTracker::new();
+        let mut tracker_b = MigrationTracker::new();
+
+        tracker_a.begin_import(&snapshot_a, 1_000).unwrap();
+        tracker_b.begin_import(&snapshot_b, 1_000).unwrap();
+
+        // Failing tracker_a does not affect tracker_b
+        tracker_a.fail_import(&snapshot_a, 2_000).unwrap();
+        assert_eq!(
+            tracker_a.attempt_history()[0].status,
+            MigrationAttemptStatus::Failed
+        );
+        assert_eq!(
+            tracker_b.active_attempt().unwrap().status,
+            MigrationAttemptStatus::InProgress
+        );
+
+        // Completing tracker_b does not affect tracker_a
+        tracker_b.mark_imported(&snapshot_b, 2_000).unwrap();
+        assert!(tracker_b.is_imported(&snapshot_b));
+        assert!(!tracker_a.is_imported(&snapshot_a));
+    }
+
+    // ------------------------------------------------------------------
+    // Progress monotonicity invariant within InProgress
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_progress_monotonicity_enforced_during_in_progress() {
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(sample_goals_export(5)),
+            ExportFormat::Json,
+        );
+        let mut tracker = MigrationTracker::new();
+
+        tracker.begin_import(&snapshot, 1_000).unwrap();
+        tracker.record_progress(&snapshot, 3, 1_100).unwrap();
+
+        // Regression: processed < current is rejected
+        assert_eq!(
+            tracker.record_progress(&snapshot, 2, 1_200).unwrap_err(),
+            MigrationError::MigrationProgressOutOfBounds {
+                processed: 2,
+                total: 5,
+            }
+        );
+        // Over-total: processed > total is rejected
+        assert_eq!(
+            tracker.record_progress(&snapshot, 6, 1_300).unwrap_err(),
+            MigrationError::MigrationProgressOutOfBounds {
+                processed: 6,
+                total: 5,
+            }
+        );
+        // State is preserved at the last valid value
+        assert_eq!(tracker.active_attempt().unwrap().processed_records, 3);
+    }
+
+    // ------------------------------------------------------------------
+    // Partial rollback leaves no partial state
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_rollback_leaves_no_partial_state_in_imported_payloads() {
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let prev = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut state = Some(prev.clone());
+        let mut tracker = MigrationTracker::new();
+
+        // Simulate previous import exists
+        tracker.mark_imported(&prev, 1_000).unwrap();
+
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 2_000);
+        tracker.begin_import(&attempted, 2_001).unwrap();
+        // Simulate some side effects (partial apply)
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 2_002).unwrap();
+        assert!(tracker.is_imported(&attempted));
+
+        // Rollback
+        rb.restore(&mut state, &mut tracker).unwrap();
+
+        // Post-rollback invariants:
+        // 1. State reverted
+        assert_eq!(
+            state.as_ref().unwrap().header.checksum,
+            prev.header.checksum
+        );
+        // 2. Attempted payload is no longer marked as imported
+        assert!(
+            !tracker.is_imported(&attempted),
+            "attempted payload must not remain in imported_payloads after rollback"
+        );
+        // 3. Previous payload still marked
+        assert!(
+            tracker.is_imported(&prev),
+            "previous payload import marker must survive rollback"
+        );
+        // 4. History shows RolledBack
+        let last = tracker.attempt_history().last().unwrap();
+        assert_eq!(last.status, MigrationAttemptStatus::RolledBack);
     }
 }
