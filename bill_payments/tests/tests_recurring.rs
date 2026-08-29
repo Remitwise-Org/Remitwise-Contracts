@@ -30,7 +30,9 @@
 
 use bill_payments::{Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{Address, Env, IntoVal, String, TryFromVal, Val, Vec as SorobanVec};
+use soroban_sdk::{
+    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+};
 
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -195,7 +197,9 @@ fn bill_event_emitted(env: &Env, contract_id: &Address, expected: BillEvent) -> 
         if topics.len() < 2 {
             continue;
         }
-        if bill_event_matches(env, &topics.get(1).unwrap(), &expected) {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && bill_event_matches(env, &topics.get(1).unwrap(), &expected)
+        {
             return true;
         }
     }
@@ -208,7 +212,9 @@ fn count_contract_bill_events(env: &Env, contract_id: &Address) -> u32 {
         if cid != *contract_id || topics.len() < 2 {
             continue;
         }
-        if BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok() {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok()
+        {
             count += 1;
         }
     }
