@@ -1,0 +1,60 @@
+name: Publish WASM Artifacts on Tag
+
+'on':
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Build and Publish WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      # Only emergency_killswitch is built here, matching ci.yml: it is the
+      # one crate CI currently trusts to build cleanly on wasm32-unknown-unknown
+      # (see ci.yml's "Build emergency_killswitch (WASM)" step). Extend this
+      # list as other crates rejoin the WASM build.
+      - name: Build emergency_killswitch (WASM release)
+        run: |
+          cargo build --release --target wasm32-unknown-unknown -p emergency_killswitch --verbose
+
+      - name: Verify WASM file exists
+        run: |
+          wasm_file="target/wasm32-unknown-unknown/release/emergency_killswitch.wasm"
+          if [ ! -f "$wasm_file" ]; then
+            echo "Error: WASM file not found: $wasm_file"
+            exit 1
+          fi
+          echo "✓ Found: $wasm_file ($(du -h "$wasm_file" | cut -f1))"
+
+      - name: Publish WASM to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/wasm32-unknown-unknown/release/*.wasm
+          fail_on_unmatched_files: true
+          generate_release_notes: true

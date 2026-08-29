@@ -1,15 +1,17 @@
 /target
 **/*.rs.bk
-Cargo.lock
 *.wasm
 .env
+.envrc
 *.log
+
+# Generated client bindings (regenerate with `make bindings`)
+/bindings/
 
 # Local testing scripts
 ci-test.ps1
 test-ci-local.ps1
 test-ci-local.sh
-Makefile
 
 # Proptest snapshot files
 **/test_snapshots/

@@ -9,8 +9,10 @@
 //!   - Archived bills are excluded from unpaid pages
 //!   - Restored bills re-appear in unpaid pages at the correct cursor position
 //!   - Multi-page traversal collects exactly the expected set of bills
+//!   - Boundary: at-the-limit, one-before, one-after pagination with gaps (#1135)
 
 use bill_payments::{BillPayments, BillPaymentsClient};
+use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
 
@@ -378,5 +380,312 @@ fn test_owner_isolation_across_sparse_ids() {
             "owner isolation violated for ID {}",
             id
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Boundary tests: at-the-limit, one-before, one-after with gaps (#1135)
+// ---------------------------------------------------------------------------
+
+/// Helper: create `n` bills for `owner`, then cancel specific `cancel_ids`
+/// to create gaps. Returns the IDs of remaining unpaid bills.
+fn create_with_gaps(
+    env: &Env,
+    client: &BillPaymentsClient,
+    owner: &Address,
+    n: u32,
+    cancel_ids: &[u32],
+) -> std::vec::Vec<u32> {
+    let mut all_ids = std::vec::Vec::new();
+    for _ in 0..n {
+        let id = create_bill(env, client, owner);
+        all_ids.push(id);
+    }
+    for &cid in cancel_ids {
+        if cid <= all_ids.len() as u32 && all_ids.contains(&cid) {
+            client.cancel_bill(owner, &cid);
+        }
+    }
+    all_ids
+        .into_iter()
+        .filter(|id| !cancel_ids.contains(id))
+        .collect()
+}
+
+/// Collect all unpaid bill IDs via full cursor traversal with a given page size.
+fn collect_all_with_limit(
+    client: &BillPaymentsClient,
+    owner: &Address,
+    limit: u32,
+) -> std::vec::Vec<u32> {
+    let mut ids = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    loop {
+        let page = client.get_unpaid_bills(owner, &cursor, &limit);
+        for bill in page.items.iter() {
+            ids.push(bill.id);
+        }
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    ids
+}
+
+/// After cancellation gaps, exactly `limit` eligible bills remain.
+/// Pagination must return all of them in a single page with next_cursor == 0.
+#[test]
+fn test_gap_boundary_exact_limit_after_gaps() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 6 bills, cancel 1 to leave exactly 5 (limit=5).
+    // Cancelling bill 2 creates a gap.
+    let remaining = create_with_gaps(&env, &client, &owner, 6, &[2u32]);
+    assert_eq!(remaining.len(), 5, "precondition: 5 bills must remain");
+
+    // Request with limit = 5 (exact match = at the limit)
+    let page = client.get_unpaid_bills(&owner, &0, &5);
+    assert_eq!(
+        page.count, 5,
+        "all 5 remaining bills must be returned in one page"
+    );
+    assert_eq!(
+        page.next_cursor, 0,
+        "next_cursor must be 0 when all items fit in one page"
+    );
+    let ids: std::vec::Vec<u32> = page.items.iter().map(|b| b.id).collect();
+    assert_eq!(ids, remaining, "returned IDs must match the remaining set");
+}
+
+/// After cancellation gaps, exactly `limit - 1` eligible bills remain
+/// (one before the limit). Pagination must return all in a single page.
+#[test]
+fn test_gap_boundary_limit_minus_one_after_gaps() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 5 bills, cancel 1 to leave 4 (limit-1 when limit=5).
+    let remaining = create_with_gaps(&env, &client, &owner, 5, &[3u32]);
+    assert_eq!(remaining.len(), 4, "precondition: 4 bills must remain");
+
+    // Request with limit = 5 (one before the limit)
+    let page = client.get_unpaid_bills(&owner, &0, &5);
+    assert_eq!(
+        page.count, 4,
+        "all 4 remaining bills must be returned in one page"
+    );
+    assert_eq!(
+        page.next_cursor, 0,
+        "next_cursor must be 0 when fewer items than limit remain"
+    );
+}
+
+/// After cancellation gaps, exactly `limit + 1` eligible bills remain
+/// (one after the limit). First page returns `limit` items with a valid
+/// next_cursor; second page returns the last item.
+#[test]
+fn test_gap_boundary_limit_plus_one_after_gaps() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 7 bills, cancel 1 to leave 6 (limit+1 when limit=5).
+    let remaining = create_with_gaps(&env, &client, &owner, 7, &[4u32]);
+    assert_eq!(remaining.len(), 6, "precondition: 6 bills must remain");
+
+    // Page 1: should return exactly 5 items with a valid next_cursor
+    let page1 = client.get_unpaid_bills(&owner, &0, &5);
+    assert_eq!(page1.count, 5, "first page must return exactly 5 items");
+    assert!(
+        page1.next_cursor > 0,
+        "must have a non-zero next_cursor when more items exist"
+    );
+    let page1_ids: std::vec::Vec<u32> = page1.items.iter().map(|b| b.id).collect();
+
+    // Page 2: should return the remaining 1 item
+    let page2 = client.get_unpaid_bills(&owner, &page1.next_cursor, &5);
+    assert_eq!(page2.count, 1, "second page must return exactly 1 item");
+    assert_eq!(page2.next_cursor, 0, "next_cursor must be 0 on last page");
+
+    // Combined result must equal the full remaining set
+    let mut combined = page1_ids;
+    for bill in page2.items.iter() {
+        combined.push(bill.id);
+    }
+    assert_eq!(
+        combined, remaining,
+        "combined pages must cover all remaining bills in order"
+    );
+}
+
+/// Cursor positioned at a gap ID (cancelled bill) must skip to the next
+/// valid item and not re-deliver the gap itself.
+#[test]
+fn test_gap_boundary_cursor_at_gap_id_skips_to_next_valid() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 5 bills, cancel bill 3.
+    create_with_gaps(&env, &client, &owner, 5, &[3u32]);
+
+    // Cursor at the gap ID 3 — must skip it and return IDs > 3
+    let page = client.get_unpaid_bills(&owner, &3, &10);
+    assert_eq!(page.count, 2, "must return items 4 and 5 after gap");
+    let ids: std::vec::Vec<u32> = page.items.iter().map(|b| b.id).collect();
+    assert_eq!(
+        ids,
+        vec![4u32, 5],
+        "must skip the gap and return following items"
+    );
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// Cursor at a gap ID where no further items exist returns empty page.
+#[test]
+fn test_gap_boundary_cursor_at_gap_id_no_remaining_returns_empty() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 3 bills, cancel bills 2 and 3.
+    create_with_gaps(&env, &client, &owner, 3, &[2u32, 3u32]);
+
+    // Only bill 1 remains. Cursor at 2 (gap) — no items after.
+    let page = client.get_unpaid_bills(&owner, &2, &10);
+    assert_eq!(page.count, 0, "no items remain after gap at cursor=2");
+    assert_eq!(page.next_cursor, 0);
+}
+
+/// Multi-gap scenario with boundary pagination: create N items, cancel every
+/// other to create sparse IDs, then traverse with various page sizes.
+/// Covers the "at the limit, one before, one after" invariant for all page
+/// sizes in the pagination loop.
+#[test]
+fn test_gap_boundary_multi_page_traversal_various_limits() {
+    let env = make_env();
+    let (client, owner) = setup(&env);
+
+    // Create 10 bills, cancel 3 of them (IDs 2, 5, 8).
+    let remaining = create_with_gaps(&env, &client, &owner, 10, &[2u32, 5u32, 8u32]);
+    assert_eq!(remaining.len(), 7, "precondition: 7 bills must remain");
+
+    for &page_limit in &[1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10, 50] {
+        let collected = collect_all_with_limit(&client, &owner, page_limit);
+        assert_eq!(
+            collected, remaining,
+            "collected set must match remaining set at limit={}",
+            page_limit
+        );
+
+        // Strictly ascending — no duplicates
+        for i in 1..collected.len() {
+            assert!(
+                collected[i - 1] < collected[i],
+                "items must be strictly ascending at limit={}; {} >= {}",
+                page_limit,
+                collected[i - 1],
+                collected[i]
+            );
+        }
+
+        // Verify no item outside the remaining set was returned
+        for &id in &collected {
+            assert!(
+                remaining.contains(&id),
+                "unexpected ID {} returned at limit={}",
+                id,
+                page_limit
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Property test: gap pagination invariants (#1135)
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    /// For any combination of bills and cancelled bills (creating ID gaps),
+    /// pagination with any page size must:
+    ///   - Collect exactly the set of remaining unpaid bills
+    ///   - Never return duplicates
+    ///   - Always return items in strictly ascending ID order
+    ///   - Correctly terminate with next_cursor == 0
+    #[test]
+    fn proptest_gap_pagination_invariants(
+        n_total in 1u32..=30u32,
+        n_cancel in 0u32..=10u32,
+        page_size in 1u32..=15u32,
+    ) {
+        let env = make_env();
+        let (client, owner) = setup(&env);
+
+        // Create n_total bills
+        let mut all_ids: std::vec::Vec<u32> = std::vec::Vec::new();
+        for _ in 0..n_total {
+            let id = create_bill(&env, &client, &owner);
+            all_ids.push(id);
+        }
+
+        // Cancel up to n_cancel distinct bills (non-deterministic which ones)
+        let cancel_count = n_cancel.min(n_total.saturating_sub(1));
+        let mut cancel_ids: std::vec::Vec<u32> = std::vec::Vec::new();
+        for i in 0..cancel_count {
+            let idx = (i as usize) * 2 + 1; // cancel every other to create gaps
+            if idx < all_ids.len() {
+                let cid = all_ids[idx];
+                client.cancel_bill(&owner, &cid);
+                cancel_ids.push(cid);
+            }
+        }
+
+        let expected_ids: std::vec::Vec<u32> = all_ids
+            .iter()
+            .copied()
+            .filter(|id| !cancel_ids.contains(id))
+            .collect();
+
+        // Full pagination traversal
+        let collected = collect_all_with_limit(&client, &owner, page_size);
+
+        // Invariant 1: correct count
+        prop_assert_eq!(
+            collected.len(),
+            expected_ids.len(),
+            "collected {} items, expected {}",
+            collected.len(),
+            expected_ids.len()
+        );
+
+        // Invariant 2: no duplicates (strictly ascending implies no duplicates)
+        for i in 1..collected.len() {
+            prop_assert!(
+                collected[i - 1] < collected[i],
+                "non-ascending order at position {}: {} >= {}",
+                i,
+                collected[i - 1],
+                collected[i]
+            );
+        }
+
+        // Invariant 3: every collected ID is in the expected set
+        for id in &collected {
+            prop_assert!(
+                expected_ids.contains(id),
+                "collected ID {} not in expected set",
+                id
+            );
+        }
+
+        // Invariant 4: every expected ID was collected
+        for id in &expected_ids {
+            prop_assert!(
+                collected.contains(id),
+                "expected ID {} was never collected",
+                id
+            );
+        }
     }
 }
