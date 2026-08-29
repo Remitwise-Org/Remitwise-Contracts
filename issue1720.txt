@@ -1,0 +1,50 @@
+[Quality][High] Enforce cross-contract epoch consistency
+ #1720
+
+Objective
+Propagate and validate epoch context across privileged cross-contract calls.
+
+Why this matters
+Independent contract epochs can allow an old signer or operator decision to be accepted by a newer contract state.
+
+This is a substantive production-quality improvement. It must change runtime behavior, security guarantees, correctness, reliability, or meaningful user functionality. It is not a documentation-only, formatting-only, or trivial dependency task.
+
+Scope
+Area: cross-contract authorization
+
+Starting points: orchestrator/src/lib.rs, orchestrator/tests/cross_contract_epoch_guard.rs, docs/OPERATOR_EPOCHS.md
+
+The contributor should verify the current implementation before changing it and keep the PR limited to this issue. Do not introduce unrelated refactors or weaken existing CI/security gates.
+
+Acceptance criteria
+
+Every privileged call carries the expected epoch and contract identity.
+
+Stale and mismatched epochs fail before local mutation.
+
+Epoch changes are atomic across the orchestrated operation or fail safely.
+
+Events expose the epoch used for reconciliation.
+Required validation
+
+Test stale, future, mismatched-contract, and replayed epochs.
+
+
+Test cross-contract failure rollback.
+
+
+Add an integration sequence spanning all affected contracts.
+
+
+The PR explains the failure mode, the chosen design, backward-compatibility impact, and rollback or migration considerations.
+
+
+The PR includes CI evidence and does not contain secrets, generated noise, unrelated cleanup, or disabled checks.
+
+Contributor deliverables
+Open a focused feature branch and do not begin implementation until assigned.
+Reference this issue with Closes #<issue-number> or Fixes #<issue-number>.
+Check off every acceptance criterion in the PR with links to the relevant code and tests.
+Include a security/correctness note explaining why adversarial inputs cannot bypass the new guarantee.
+Maintainer quality bar
+The PR must be independently reviewable, preserve existing behavior outside this scope, exercise failure paths, and pass the repository's complete required CI/CD checks. Reward eligibility is not guaranteed by this issue or by merging.

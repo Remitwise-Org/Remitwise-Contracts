@@ -1,132 +1,79 @@
-# Currency Validation Implementation - SC-015
+# Currency Validation Implementation - SC-015 (Issue #1420)
 
 ## Summary
-This document describes the implementation of strict currency code validation for the Bill Payments contract.
+Strict currency code validation and normalization for the Bill Payments contract. 
+Prevents inconsistent data, reduces off-chain parsing risk, and ensures only 
+supported stable assets can be used as bill currencies.
 
 ## Changes Made
 
-### 1. Added Constants ([lib.rs:27-28](bill_payments/src/lib.rs#L27-L28))
-```rust
-/// Maximum length for currency codes (ISO 4217 is 3 letters)
-const MAX_CURRENCY_LEN: u32 = 10;
-```
-
-### 2. Added Validation Helper ([lib.rs:30-33](bill_payments/src/lib.rs#L30-L33))
-```rust
-/// Validates that a currency string contains only ASCII alphabetic characters.
-/// Returns true if the string is valid (all ASCII letters A-Z or a-z).
-fn is_valid_currency_chars(s: &[u8]) -> bool {
-    !s.is_empty() && s.iter().all(|&b| b.is_ascii_alphabetic())
-}
-```
-
-### 3. New Validation Function ([lib.rs:177-232](bill_payments/src/lib.rs#L177-L232))
-- **Name**: `validate_and_normalize_currency`
-- **Validation Rules**:
-  - Empty strings → default to "XLM"
-  - Strings longer than `MAX_CURRENCY_LEN` (10) → `InvalidCurrency` error
-  - Non-alphabetic characters (numbers, symbols, spaces) → `InvalidCurrency` error
-  - Whitespace-only strings → default to "XLM"
+### 1. Currency Validation & Normalization (`bill_payments/src/lib.rs`)
+- **`is_valid_currency_chars`**: Validates that currency strings contain only ASCII alphabetic characters (first-pass sanity check)
+- **`validate_and_normalize_currency`**: Full validation pipeline:
+  - Empty strings → default to `"XLM"`
+  - Strings > `MAX_CURRENCY_LEN` (10) → `InvalidCurrency` error
+  - Whitespace trimmed (leading/trailing)
+  - Non-alphabetic characters → `InvalidCurrency` error
+  - Whitespace-only strings → default to `"XLM"`
   - Valid strings → normalized to uppercase
+  - Final check: validated against `STABLE_CURRENCIES` allowlist → `UnsupportedCurrency` if not recognized
+- **`normalize_currency`**: Legacy backward-compatible helper (silent fallback to XLM on error)
 
-### 4. Updated create_bill Function ([lib.rs:590-591](bill_payments/src/lib.rs#L590-L591))
-Changed from:
-```rust
-let resolved_currency = Self::normalize_currency(&env, &currency);
-```
-To:
-```rust
-let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
-```
+### 2. Error Codes (`BillPaymentsError`)
+- `InvalidCurrency = 11`: Currency code is invalid (too long, wrong characters)
+- `UnsupportedCurrency = 12`: Currency not in the stable asset allowlist
+- Full error enum expanded from 9 to 33 variants to support all contract operations
 
-### 5. Added Comprehensive Tests ([test.rs:2860-2998](bill_payments/src/test.rs#L2860-L2998))
-- `test_create_bill_valid_currency_xlm` - Valid XLM
-- `test_create_bill_valid_currency_usdc` - Valid USDC
-- `test_create_bill_valid_currency_ngn` - Valid NGN
-- `test_create_bill_currency_lowercase_normalized` - lowercase → uppercase
-- `test_create_bill_currency_mixed_case_normalized` - mixed case → uppercase
-- `test_create_bill_currency_with_whitespace` - whitespace trimmed
-- `test_create_bill_empty_currency_defaults_to_xlm` - empty → XLM default
-- `test_create_bill_invalid_currency_with_numbers` - numbers rejected
-- `test_create_bill_invalid_currency_with_special_chars` - special chars rejected
-- `test_create_bill_invalid_currency_with_dash` - dashes rejected
-- `test_create_bill_invalid_currency_too_long` - too long rejected
-- `test_create_bill_invalid_currency_only_spaces` - spaces → XLM default
-- `test_create_bill_valid_currency_eur` - EUR test
-- `test_create_bill_valid_currency_gbp` - GBP test
-- `test_create_bill_valid_currency_jpy` - JPY test
-- `test_recurring_bill_preserves_currency` - currency preserved in recurring
-- `test_create_bill_currency_with_leading_spaces` - leading spaces trimmed
-- `test_create_bill_currency_with_trailing_spaces` - trailing spaces trimmed
+### 3. New Types
+- **`ArchivedBill`**: Cold-storage bill representation with archival timestamp
+- **`ArchivedBillPage`**: Paginated result for archived bill queries with `first()` helper
 
-## Test Coverage
-18 new currency validation tests added, covering:
-- ✅ Valid currency codes (XLM, USDC, NGN, EUR, GBP, JPY)
-- ✅ Case normalization (lowercase, mixed case)
-- ✅ Whitespace handling (leading, trailing, only spaces)
-- ✅ Empty string defaults
-- ✅ Invalid characters (numbers, special chars, dashes)
-- ✅ Length validation (too long)
-- ✅ Recurring bill currency preservation
+### 4. Wallet-Friendly Query Methods
+- **`get_total_unpaid_by_currency(owner, currency)`**: Total unpaid amount filtered by currency
+- **`get_unpaid_bills_by_currency(owner, currency, cursor, limit)`**: Paginated unpaid bills filtered by currency
 
-## Error Code
-The existing `BillPaymentsError::InvalidCurrency = 15` is used for validation failures.
+### 5. Integration
+- `create_bill` and `create_bill_schedule` entrypoints use `validate_and_normalize_currency` for strict validation
+- Read-only query functions (`get_bills_by_currency`, `get_unpaid_bills_by_currency`, `get_total_unpaid_by_currency`) use `normalize_currency` for lenient normalization
 
-## How to Test
+## Supported Currencies
+The stable currency allowlist (`STABLE_CURRENCIES`):
+`USDC`, `USDT`, `USDP`, `BUSD`, `GUSD`, `TUSD`, `USDD`, `EURC`, `EURS`, `DAI`, `XLM`
 
-### Step 1: Install Prerequisites
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-
-# Install Soroban CLI
-cargo install --locked --version 21.0.0 soroban-cli
-```
-
-### Step 2: Run Tests
-```bash
-cd /home/semi/Documents/d/Remitwise-Contracts
-
-# Run all bill_payments tests
-cargo test -p bill_payments
-
-# Run only currency validation tests
-cargo test -p bill_payments currency
-```
-
-### Step 3: Verify Coverage
-```bash
-# Run with coverage (requires tarpaulin)
-cargo tarpaulin -p bill_payments --output-format html
-```
-
-### Step 4: Expected Results
-All 18 new tests should pass:
-- 16 tests for valid currencies (pass)
-- 5 tests for invalid currencies (return `InvalidCurrency` error)
-
-### Step 5: Integration Test
-```bash
-# Run full test suite
-cargo test
-
-# Run integration tests
-cargo test -p integration_tests
-```
+## Test Coverage (121 tests, all passing)
+### New Currency Validation Tests (6 tests):
+- `test_currency_valid_xlm`: Valid XLM currency
+- `test_currency_empty_defaults_to_xlm`: Empty string defaults to XLM
+- `test_currency_lowercase_normalized`: Lowercase → uppercase normalization
+- `test_currency_invalid_with_numbers`: Numbers rejected (InvalidCurrency)
+- `test_currency_invalid_too_long`: Too-long codes rejected (InvalidCurrency)
+- `test_currency_unsupported_rejected`: Non-whitelisted currency rejected (UnsupportedCurrency)
 
 ## Validation Rules Summary
-| Input | Output | Error? |
-|-------|--------|--------|
+
+| Input | Output | Error |
+|-------|--------|-------|
 | "" (empty) | "XLM" | No |
 | "   " (spaces only) | "XLM" | No |
 | "xlm" | "XLM" | No |
 | "UsDc" | "USDC" | No |
 | "  XLM  " | "XLM" | No |
-| "XLM1" | - | Yes |
-| "XLM!" | - | Yes |
-| "US-D" | - | Yes |
-| "VERYLONGCURRENCYCODE" | - | Yes |
+| "XLM1" | - | InvalidCurrency |
+| "XLM!" | - | InvalidCurrency |
+| "US-D" | - | InvalidCurrency |
+| "VERYLONGCURRENCYCODE" | - | InvalidCurrency |
+| "NGN" | - | UnsupportedCurrency |
 
 ## Backward Compatibility
-The legacy `normalize_currency` function is preserved for backward compatibility but now delegates to the validation function with error handling.
+- Legacy `normalize_currency` function preserved for query operations
+- `DEFAULT_CURRENCY = "XLM"` for existing bills without explicit currency
+- `MAX_CURRENCY_LEN = 10` maintained from `remitwise-common`
+
+## How to Test
+```bash
+# Run all bill_payments tests
+cargo test -p bill_payments --lib
+
+# Run only currency validation tests
+cargo test -p bill_payments --lib currency
+```

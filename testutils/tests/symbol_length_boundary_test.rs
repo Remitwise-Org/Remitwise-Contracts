@@ -30,6 +30,7 @@
 /// All inputs are deterministic `&str` literals. No `Date.now()` /
 /// `Math.random()` equivalents. Test names are assertive (state the
 /// expected outcome).
+use proptest::prelude::*;
 use soroban_sdk::{symbol_short, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// 9 ASCII bytes: the exact upper limit accepted by `symbol_short!`.
@@ -167,4 +168,31 @@ fn boundary_literals_hold_expected_byte_lengths() {
 fn symbol_over_32_bytes_is_rejected_on_new() {
     let env = Env::default();
     let _ = Symbol::new(&env, OVER_LONG_NAME);
+}
+
+proptest! {
+    /// Happy path: Symbol supports alphanumeric characters and underscores up to 32 bytes.
+    #[test]
+    fn valid_symbol_characters_are_supported(
+        s in "[a-zA-Z0-9_]{1,32}"
+    ) {
+        let env = Env::default();
+        let _ = Symbol::new(&env, &s);
+    }
+}
+
+/// Explicit sad path: Symbol rejects unsupported characters such as spaces.
+#[test]
+#[should_panic]
+fn symbol_with_space_is_unsupported() {
+    let env = Env::default();
+    let _ = Symbol::new(&env, "hello world");
+}
+
+/// Explicit sad path: Symbol rejects unsupported characters such as hyphens.
+#[test]
+#[should_panic]
+fn symbol_with_hyphen_is_unsupported() {
+    let env = Env::default();
+    let _ = Symbol::new(&env, "hello-world");
 }

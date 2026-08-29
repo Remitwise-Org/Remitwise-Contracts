@@ -6,6 +6,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, Symbol,
 };
+use testutils::same_address;
 
 fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
     let contract_id = env.register_contract(None, EmergencyKillswitch);
@@ -14,8 +15,17 @@ fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
 }
 
 #[test]
+fn version_returns_contract_version_without_init() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+    // Observable on-chain with no auth and before initialize().
+    assert_eq!(client.version(), emergency_killswitch::CONTRACT_VERSION);
+}
+
+#[test]
 fn initialize_rejects_self_address() {
     let env = Env::default();
+    env.mock_all_auths();
     let (contract_id, client) = setup(&env);
     assert_eq!(
         client.try_initialize(&contract_id),
@@ -26,14 +36,31 @@ fn initialize_rejects_self_address() {
 #[test]
 fn initialize_succeeds_with_valid_address() {
     let env = Env::default();
+    env.mock_all_auths();
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     assert_eq!(client.try_initialize(&admin), Ok(Ok(())));
 }
 
+/// `initialize` must require `admin`'s signature. Without this, anyone could
+/// front-run deployment and call `initialize` with themselves (or any
+/// address they control) as `admin` before the intended admin does,
+/// permanently seizing control of the kill switch. No auth is mocked here —
+/// on `main` (before this fix) this call succeeds with zero authorization;
+/// after the fix it must panic on the missing signature.
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn initialize_requires_admin_signature() {
+    let env = Env::default();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+}
+
 #[test]
 fn assert_no_double_init() {
     let env = Env::default();
+    env.mock_all_auths();
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     // First initialization should succeed
@@ -46,7 +73,7 @@ fn assert_no_double_init() {
     // Non-initialized functions should fail with NotInitialized before init
     let env2 = Env::default();
     let (_, client2) = setup(&env2);
-    let admin2 = Address::generate(&env2);
+    let _admin2 = Address::generate(&env2);
     assert_eq!(client2.try_pause(), Err(Ok(Error::NotInitialized)));
 }
 
@@ -58,7 +85,7 @@ fn transfer_admin_rejects_self_address() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
     assert_eq!(
-        client.try_transfer_admin(&contract_id),
+        client.try_transfer_admin(&contract_id, &0),
         Err(Ok(Error::InvalidAdmin))
     );
 }
@@ -70,8 +97,11 @@ fn transfer_admin_rejects_same_admin() {
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
+    // Confirm we are genuinely passing the same address, not two coincidentally
+    // equal values — using the shared helper keeps this intent grep-able.
+    assert!(same_address(&admin, &admin));
     assert_eq!(
-        client.try_transfer_admin(&admin),
+        client.try_transfer_admin(&admin, &0),
         Err(Ok(Error::InvalidAdmin))
     );
 }
@@ -84,7 +114,10 @@ fn transfer_admin_succeeds_with_different_address() {
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
     client.initialize(&admin);
-    assert_eq!(client.try_transfer_admin(&new_admin), Ok(Ok(())));
+    // Confirm the two addresses are genuinely distinct before testing the
+    // happy path — makes the boundary explicit and avoids false positives.
+    assert!(!same_address(&admin, &new_admin));
+    assert_eq!(client.try_transfer_admin(&new_admin, &0u64), Ok(Ok(())));
 }
 
 #[test]
@@ -215,6 +248,60 @@ fn test_clear_emergency_state_is_idempotent_when_active() {
     assert!(!client.is_paused());
     client.clear_emergency_state();
     assert!(!client.is_paused());
+}
+
+#[test]
+fn clear_emergency_state_no_op_preserves_all_state_when_no_emergency() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let module_a = symbol_short!("bill");
+    let module_b = symbol_short!("savings");
+    let func_a = symbol_short!("pay");
+    let func_b = symbol_short!("refund");
+
+    // Establish some non-global state that must survive a no-op clear.
+    client.pause_module(&module_a);
+    client.pause_function(&module_a, &func_a);
+    client.pause_function(&module_a, &func_b);
+    client.pause_function(&module_b, &func_a);
+
+    // Confirm the global is not paused and there is no schedule.
+    assert!(!client.is_paused());
+    assert_eq!(client.get_unpause_schedule(), None);
+
+    // Snapshot expected state.
+    assert!(client.is_module_paused(&module_a));
+    assert!(!client.is_module_paused(&module_b));
+    assert!(client.is_function_paused(&module_a, &func_a));
+    assert!(client.is_function_paused(&module_a, &func_b));
+    assert!(client.is_function_paused(&module_b, &func_a));
+
+    // ── Act: call clear_emergency_state when no emergency is active ──────
+    client.clear_emergency_state();
+
+    // ── Assert: every piece of state is exactly as before ────────────────
+    assert!(!client.is_paused());
+    assert_eq!(client.get_unpause_schedule(), None);
+
+    // Module-level pauses must survive.
+    assert!(client.is_module_paused(&module_a));
+    assert!(!client.is_module_paused(&module_b));
+
+    // Function-level pauses must survive.
+    assert!(client.is_function_paused(&module_a, &func_a));
+    assert!(client.is_function_paused(&module_a, &func_b));
+    assert!(client.is_function_paused(&module_b, &func_a));
+
+    // Paused-function list integrity must hold.
+    let list_a = client.list_paused_functions(&module_a);
+    assert_eq!(list_a.len(), 2);
+    assert!(list_a.contains(func_a));
+    assert!(list_a.contains(func_b));
 }
 
 #[test]
@@ -539,4 +626,60 @@ fn is_module_paused_does_not_affect_function_list() {
     client.pause_module(&module);
     // Module being paused doesn't populate PausedFunctions
     assert!(client.list_paused_functions(&module).is_empty());
+}
+
+#[test]
+fn pause_reason_none_before_any_pause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    assert_eq!(client.pause_reason(), None);
+}
+
+#[test]
+fn pause_reason_none_when_paused_without_reason() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    client.pause();
+    assert!(client.is_paused());
+    assert_eq!(client.pause_reason(), None);
+}
+
+#[test]
+fn pause_reason_set_by_pause_with_reason_and_cleared_on_unpause() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let reason = symbol_short!("exploit");
+    client.pause_with_reason(&reason);
+    assert!(client.is_paused());
+    assert_eq!(client.pause_reason(), Some(reason));
+
+    env.ledger().with_mut(|l| l.timestamp += 1);
+    client.schedule_unpause(&env.ledger().timestamp());
+    env.ledger().with_mut(|l| l.timestamp += 1);
+    client.unpause();
+    assert_eq!(client.pause_reason(), None);
+}
+
+#[test]
+fn pause_reason_cleared_by_clear_emergency_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.pause_with_reason(&symbol_short!("exploit"));
+    client.clear_emergency_state();
+    assert!(!client.is_paused());
+    assert_eq!(client.pause_reason(), None);
 }

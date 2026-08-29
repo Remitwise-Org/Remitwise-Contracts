@@ -612,3 +612,387 @@ proptest! {
         prop_assert!(result.is_err()); // Should fail because nonce is used
     }
 }
+
+// ---------------------------------------------------------------------------
+// Additional bounded fuzz tests for schedule create/modify/cancel validations
+// (Issue #1407)
+// ---------------------------------------------------------------------------
+
+/// Verify that `bounded_schedule_cases` produces identical error sequences
+/// when called twice with the same seed and count. This ensures our PRNG
+/// helper is purely deterministic and that test outcomes are reproducible
+/// across CI runs and developer machines.
+#[test]
+fn fuzz_schedule_multi_seed_determinism() {
+    let current_time = 1_000_000u64;
+    let seeds: &[u64] = &[0x1234_5678, 0xDEAD_BEEF, 0xCAFE_F00D, 0x0000_0001, u64::MAX];
+
+    for &seed in seeds {
+        let run_a = bounded_schedule_cases(seed, 32, current_time);
+        let run_b = bounded_schedule_cases(seed, 32, current_time);
+        assert_eq!(
+            run_a, run_b,
+            "bounded_schedule_cases is not deterministic for seed {:#x}",
+            seed
+        );
+    }
+
+    // Different seeds must produce at least one differing element.
+    let cases_a = bounded_schedule_cases(0xAAAA_AAAA, 32, current_time);
+    let cases_b = bounded_schedule_cases(0x5555_5555, 32, current_time);
+    assert_ne!(
+        cases_a, cases_b,
+        "Different seeds produced identical case sequences — PRNG may be broken"
+    );
+}
+
+/// Exhaustively probe the boundary between `ScheduleIntervalTooShort` and a
+/// valid recurring interval. Specifically:
+///
+/// - `interval == 0`                        → valid (one-off schedule)
+/// - `0 < interval < MIN_SCHEDULE_INTERVAL` → `ScheduleIntervalTooShort`
+/// - `interval == MIN_SCHEDULE_INTERVAL`    → valid (minimum recurring)
+/// - `interval >  MIN_SCHEDULE_INTERVAL`    → valid (longer recurring)
+#[test]
+fn fuzz_schedule_interval_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2; // safely in the future
+    let amount = 1_000i128;
+
+    // Values strictly inside the forbidden range must be rejected.
+    for bad_interval in [1u64, 2, 100, MIN_SCHEDULE_INTERVAL - 1] {
+        let result =
+            client.try_create_remittance_schedule(&owner, &amount, &next_due, &bad_interval);
+        assert_eq!(
+            result,
+            Err(Ok(RemittanceSplitError::ScheduleIntervalTooShort)),
+            "interval {} should be ScheduleIntervalTooShort",
+            bad_interval
+        );
+    }
+
+    // Exactly at the minimum boundary → should succeed.
+    let id_min =
+        client.create_remittance_schedule(&owner, &amount, &next_due, &MIN_SCHEDULE_INTERVAL);
+    assert!(id_min > 0, "MIN_SCHEDULE_INTERVAL should be accepted");
+
+    // One above minimum → should succeed.
+    let id_above =
+        client.create_remittance_schedule(&owner, &amount, &next_due, &(MIN_SCHEDULE_INTERVAL + 1));
+    assert!(id_above > id_min);
+
+    // interval == 0 (one-off) → should succeed.
+    let id_oneoff = client.create_remittance_schedule(&owner, &amount, &next_due, &0);
+    assert!(id_oneoff > id_above);
+}
+
+/// After a schedule is successfully cancelled, a second cancel attempt on the
+/// same ID must return `InactiveSchedule`, not silently succeed or corrupt state.
+/// Multiple seeds of fuzz-generated IDs are exercised to rule out ID-specific bugs.
+#[test]
+fn fuzz_schedule_cancel_idempotency() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
+
+    // Create several schedules and cancel each one, then verify double-cancel.
+    let ids: std::vec::Vec<u32> = (0..5)
+        .map(|_| {
+            client.create_remittance_schedule(&owner, &1_000, &next_due, &MIN_SCHEDULE_INTERVAL)
+        })
+        .collect();
+
+    for id in &ids {
+        // First cancel: must succeed.
+        let first = client.try_cancel_remittance_schedule(&owner, id);
+        assert_eq!(
+            first,
+            Ok(Ok(true)),
+            "first cancel of id {} should succeed",
+            id
+        );
+
+        // The schedule must now be inactive.
+        let sched = client
+            .get_remittance_schedule(id)
+            .expect("schedule should still exist after cancel");
+        assert!(
+            !sched.active,
+            "schedule {} should be inactive after cancel",
+            id
+        );
+
+        // Second cancel: must return InactiveSchedule, not Ok.
+        let second = client.try_cancel_remittance_schedule(&owner, id);
+        assert_eq!(
+            second,
+            Err(Ok(RemittanceSplitError::InactiveSchedule)),
+            "second cancel of id {} should return InactiveSchedule",
+            id
+        );
+
+        // State must not have changed between the two cancel calls.
+        let sched_after = client.get_remittance_schedule(id).unwrap();
+        assert!(
+            !sched_after.active,
+            "schedule {} must remain inactive after double-cancel",
+            id
+        );
+    }
+}
+
+/// Fill an owner's schedule list to exactly `MAX_SCHEDULES_PER_OWNER` and verify
+/// that the next creation attempt returns `ScheduleCapExceeded`. Also verifies
+/// that no partial write occurs: the schedule count does not change on failure.
+#[test]
+fn fuzz_schedule_cap_exceeded() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
+
+    // Fill up to the cap.
+    for i in 0..remittance_split::MAX_SCHEDULES_PER_OWNER {
+        let result = client.try_create_remittance_schedule(
+            &owner,
+            &1_000,
+            &next_due,
+            &MIN_SCHEDULE_INTERVAL,
+        );
+        assert!(
+            result.is_ok(),
+            "schedule {} of {} should succeed, got {:?}",
+            i + 1,
+            remittance_split::MAX_SCHEDULES_PER_OWNER,
+            result
+        );
+    }
+
+    let count_at_cap = client.get_remittance_schedules(&owner).len();
+    assert_eq!(count_at_cap, remittance_split::MAX_SCHEDULES_PER_OWNER);
+
+    // One more must fail.
+    let over_cap =
+        client.try_create_remittance_schedule(&owner, &1_000, &next_due, &MIN_SCHEDULE_INTERVAL);
+    assert_eq!(
+        over_cap,
+        Err(Ok(RemittanceSplitError::ScheduleCapExceeded)),
+        "creation beyond cap should return ScheduleCapExceeded"
+    );
+
+    // Count must not have increased.
+    assert_schedule_list_unchanged(&client, &owner, count_at_cap);
+
+    // Repeat with a second seed to rule out off-by-one in cap check.
+    let over_cap_again =
+        client.try_create_remittance_schedule(&owner, &500, &next_due, &MIN_SCHEDULE_INTERVAL);
+    assert_eq!(
+        over_cap_again,
+        Err(Ok(RemittanceSplitError::ScheduleCapExceeded))
+    );
+    assert_schedule_list_unchanged(&client, &owner, count_at_cap);
+}
+
+/// A one-off schedule (`interval == 0`) must be created without error and must
+/// be stored with `recurring = false`. Attempting to create it with every
+/// forbidden non-zero interval less than `MIN_SCHEDULE_INTERVAL` must still
+/// fail with `ScheduleIntervalTooShort`, confirming that the one-off exemption
+/// applies only to `interval == 0` and not to any other sub-minimum value.
+#[test]
+fn fuzz_schedule_one_off_created_and_marked_non_recurring() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let next_due = current_time + MIN_SCHEDULE_INTERVAL;
+
+    // interval == 0 must be accepted.
+    let id = client.create_remittance_schedule(&owner, &5_000, &next_due, &0);
+    let sched = client
+        .get_remittance_schedule(&id)
+        .expect("one-off schedule must be retrievable");
+
+    assert_eq!(sched.interval, 0, "one-off interval must be stored as 0");
+    assert!(
+        !sched.recurring,
+        "one-off schedule must have recurring=false"
+    );
+    assert!(
+        sched.active,
+        "newly created one-off schedule must be active"
+    );
+    assert_eq!(sched.amount, 5_000);
+    assert_eq!(sched.next_due, next_due);
+
+    // Confirm that intervals 1..MIN_SCHEDULE_INTERVAL-1 remain forbidden.
+    let mut state = 0xFEED_CAFE_u64;
+    for _ in 0..16 {
+        state = xorshift64(state);
+        let bad_interval = 1 + (state % (MIN_SCHEDULE_INTERVAL - 1));
+        let result =
+            client.try_create_remittance_schedule(&owner, &1_000, &next_due, &bad_interval);
+        assert_eq!(
+            result,
+            Err(Ok(RemittanceSplitError::ScheduleIntervalTooShort)),
+            "interval {} must still be ScheduleIntervalTooShort (not one-off exemption)",
+            bad_interval
+        );
+    }
+}
+
+/// Verify that every validation failure path in `create_remittance_schedule`
+/// and `modify_remittance_schedule` leaves persistent storage unmodified.
+///
+/// We check two proxies for "nothing was written":
+/// 1. The owner's schedule count does not increase.
+/// 2. For modify, the existing schedule's fields are identical before and after.
+///
+/// This test uses deterministic fuzz seeds to cover all four error classes
+/// (InvalidAmount, InvalidDueDate, ScheduleIntervalTooShort, ScheduleLeadTimeTooLong)
+/// across multiple PRNG-generated inputs.
+#[test]
+fn fuzz_schedule_no_storage_write_on_validation_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let initial_count = client.get_remittance_schedules(&owner).len();
+
+    // Run fuzz cases for create — none should write to storage.
+    for seed in [0xABCD_1234_u64, 0x9999_8888, 0x1111_2222, 0xFFFF_0000] {
+        for (amount, next_due, interval, _expected) in
+            bounded_schedule_cases(seed, 20, current_time)
+        {
+            let _ = client.try_create_remittance_schedule(&owner, &amount, &next_due, &interval);
+            assert_schedule_list_unchanged(&client, &owner, initial_count);
+        }
+    }
+
+    // Create one valid schedule, then run fuzz cases for modify.
+    let valid_next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
+    let schedule_id =
+        client.create_remittance_schedule(&owner, &2_000, &valid_next_due, &MIN_SCHEDULE_INTERVAL);
+    let schedule_before = client.get_remittance_schedule(&schedule_id).unwrap();
+
+    for seed in [0x5A5A_5A5A_u64, 0xA5A5_A5A5, 0x1357_2468, 0x8642_9753] {
+        for (amount, next_due, interval, _expected) in
+            bounded_schedule_cases(seed, 20, current_time)
+        {
+            let _ = client.try_modify_remittance_schedule(
+                &owner,
+                &schedule_id,
+                &amount,
+                &next_due,
+                &interval,
+            );
+            let schedule_after = client.get_remittance_schedule(&schedule_id).unwrap();
+            assert_schedule_unchanged(&schedule_before, &schedule_after);
+        }
+    }
+}
+
+/// `modify_remittance_schedule` must return the correct error when the target
+/// schedule does not exist or has been cancelled, and must not write any data.
+///
+/// Covers:
+/// - `ScheduleNotFound` for IDs that were never created (fuzz-generated).
+/// - `InactiveSchedule` for IDs that exist but have been cancelled.
+/// - Storage is unchanged in both cases (schedule count and individual fields).
+#[test]
+fn fuzz_schedule_modify_on_inactive_or_nonexistent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RemittanceSplit);
+    let client = RemittanceSplitClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    init(&client, &env, &owner, 50, 30, 15, 5);
+
+    let current_time = env.ledger().timestamp();
+    let next_due = current_time + MIN_SCHEDULE_INTERVAL * 2;
+    let valid_amount = 1_000i128;
+    let valid_interval = MIN_SCHEDULE_INTERVAL;
+
+    // --- Part A: nonexistent IDs ---
+    // Use a PRNG to generate IDs that were never allocated.
+    let mut state = 0xDEAD_C0DE_u64;
+    let initial_count = client.get_remittance_schedules(&owner).len();
+
+    for _ in 0..16 {
+        state = xorshift64(state);
+        // IDs in the high range are guaranteed not to exist yet.
+        let nonexistent_id = 10_000u32 + (state as u32 % 50_000);
+        let result = client.try_modify_remittance_schedule(
+            &owner,
+            &nonexistent_id,
+            &valid_amount,
+            &next_due,
+            &valid_interval,
+        );
+        assert_eq!(
+            result,
+            Err(Ok(RemittanceSplitError::ScheduleNotFound)),
+            "modify on nonexistent id {} must return ScheduleNotFound",
+            nonexistent_id
+        );
+        assert_schedule_list_unchanged(&client, &owner, initial_count);
+    }
+
+    // --- Part B: inactive (cancelled) schedule ---
+    let id = client.create_remittance_schedule(&owner, &valid_amount, &next_due, &valid_interval);
+    client.cancel_remittance_schedule(&owner, &id);
+
+    let cancelled_schedule = client.get_remittance_schedule(&id).unwrap();
+    assert!(!cancelled_schedule.active);
+
+    // Every combination of valid parameters must be rejected with InactiveSchedule.
+    for (_, _, _, _) in bounded_schedule_cases(0xC0DE_BABE, 8, current_time) {
+        // Use only valid parameters; we want the inactive guard to fire, not validation.
+        let result = client.try_modify_remittance_schedule(
+            &owner,
+            &id,
+            &valid_amount,
+            &next_due,
+            &valid_interval,
+        );
+        assert_eq!(
+            result,
+            Err(Ok(RemittanceSplitError::InactiveSchedule)),
+            "modify on cancelled schedule must return InactiveSchedule"
+        );
+        // Schedule must remain unchanged.
+        let sched_after = client.get_remittance_schedule(&id).unwrap();
+        assert_schedule_unchanged(&cancelled_schedule, &sched_after);
+    }
+}

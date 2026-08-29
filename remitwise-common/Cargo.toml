@@ -5,11 +5,13 @@ edition = "2021"
 publish = false
 
 [dependencies]
-# No std for WASM contracts
-soroban-sdk = { version = "=21.7.7", default-features = false }
+soroban-sdk = "=21.7.7"
+ed25519-dalek = "2"
 
 [dev-dependencies]
 proptest = "1"
+rand = "0.8"
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 
 [lib]
 crate-type = ["rlib"]

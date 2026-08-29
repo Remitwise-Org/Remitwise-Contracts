@@ -35,10 +35,10 @@ The typical flow for authorizing a USDC distribution:
    └─ Signature proves intent to authorize this exact request
 
 4. Integrator submits transaction:
-   - distribute_usdc_with_hash_and_deadline(request, hash)
+   - distribute_usdc_hashed(request, hash)
    
 5. Contract verifies:
-   ├─ compute_request_hash(request) == provided_hash ✓
+   ├─ get_request_hash(request) == provided_hash ✓
    ├─ current_time <= request.deadline ✓
    ├─ request.nonce == expected_nonce ✓
    └─ Then executes USDC transfers
@@ -142,7 +142,7 @@ let hash = client.get_request_hash(&request);
 // signer_key.sign(hash) → signature
 
 // Step 4: Submit distribution with verified hash
-let result = client.distribute_usdc_with_hash_and_deadline(&request, &hash)?;
+let result = client.distribute_usdc_hashed(&request, &hash)?;
 assert!(result);
 ```
 
@@ -171,7 +171,7 @@ VALID: deadline = 4600 (1000 + 3600 = exactly MAX_DEADLINE_WINDOW_SECS)
 
 ### Request Hash Verification
 
-The contract verifies: `compute_request_hash(request) == provided_hash`
+The contract verifies: `get_request_hash(request) == provided_hash`
 
 If hashes don't match, the transaction fails with `RequestHashMismatch` error.
 
@@ -214,7 +214,7 @@ pub enum RemittanceSplitError {
 ### Error Recovery
 
 ```rust
-match client.try_distribute_usdc_with_hash_and_deadline(&request, &hash) {
+match client.try_distribute_usdc_hashed(&request, &hash) {
     Ok(true) => println!("Distribution succeeded"),
     Err(Ok(RemittanceSplitError::DeadlineExpired)) => {
         println!("Request deadline has passed - create new request");
@@ -241,13 +241,14 @@ The request hash is guaranteed to be deterministic across:
 - Off-chain computation and on-chain verification
 
 ```rust
-// These always produce identical hashes
+// These always produce identical hashes (deterministic SHA-256)
 let hash1 = client.get_request_hash(&request);
 let hash2 = client.get_request_hash(&request);
-let hash3 = client.compute_request_hash(&env, &request);
+let hash3 = client.get_request_hash(&request);
 
 assert_eq!(hash1, hash2);
 assert_eq!(hash2, hash3);
+assert_eq!(hash1.len(), 32); // SHA-256 output is 32 bytes
 ```
 
 ## Test Vectors
@@ -295,7 +296,7 @@ This ensures old signatures cannot be used with new contracts.
 
 ### Q: How do I verify the hash off-chain?
 
-**A:** Implement the same XDR serialization + SHA-256 computation. See the contract's `compute_request_hash()` implementation.
+**A:** Implement the same SHA-256 preimage layout. See the contract's `get_request_hash()` implementation in lib.rs for the exact field encoding and ordering.
 
 ### Q: What happens if amounts don't split evenly?
 

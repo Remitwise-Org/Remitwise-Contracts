@@ -34,6 +34,7 @@ requires the expected caller authorization and that the intent matches the code.
 | `update_split` | `caller.require_auth()` | `config.owner == caller` | yes |
 | `get_split` | read-only | — | no |
 | `get_config` | read-only | — | no |
+| `min_deposit` | read-only | — | no |
 | `calculate_split` | read-only | — | no |
 | `distribute_usdc` | `from.require_auth()` | `config.owner == from` + token contract pin | yes |
 | `distribute_usdc_hashed` | `request.from.require_auth()` | hash-verified request integrity | no |
@@ -138,6 +139,13 @@ requires the expected caller authorization and that the intent matches the code.
 
 ## family_wallet
 
+Role matrix: `Owner` and `Admin` are governance roles; `Member` is the
+spending/operator role; `Viewer` is read-only. Role checks are explicit at
+each boundary: governance entrypoints accept only Owner/Admin, transaction
+proposal and signing accept only active Owner/Admin/Member, and token
+transfers recheck the proposer's active spending role immediately before the
+transfer. A role change cannot target its proposer or assign Owner.
+
 | Entrypoint | Required auth | Optional / secondary check | Paused? |
 |---|---|---|---|
 | `init` | `owner.require_auth()` | — | no |
@@ -148,9 +156,9 @@ requires the expected caller authorization and that the intent matches the code.
 | `update_spending_limit` | `caller.require_auth()` | `is_owner_or_admin` | yes |
 | `set_precision_spending_limit` | `caller.require_auth()` | `is_owner_or_admin` | yes |
 | `configure_multisig` | `caller.require_auth()` | `is_owner_or_admin` | yes |
-| `propose_transaction` | `proposer.require_auth()` | `require_role_at_least(Member)` + family member check | yes |
-| `sign_transaction` | `signer.require_auth()` | `is_family_member` + `require_role_at_least(Member)` | yes |
-| `withdraw` | via `propose_transaction` | — | yes |
+| `propose_transaction` | `proposer.require_auth()` | active Owner/Admin/Member only; Viewer rejected | yes |
+| `sign_transaction` | `signer.require_auth()` | active Owner/Admin/Member only; configured signer required; Viewer rejected | yes |
+| `withdraw` | via `propose_transaction` | active spending role rechecked before token transfer | yes |
 | `configure_emergency` | `caller.require_auth()` | `is_owner_or_admin` | yes |
 | `set_emergency_mode` | `caller.require_auth()` | `is_owner_or_admin` | yes |
 | `archive_old_transactions` | `caller.require_auth()` | `is_owner_or_admin` | yes |

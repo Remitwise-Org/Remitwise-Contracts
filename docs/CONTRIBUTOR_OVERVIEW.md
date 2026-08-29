@@ -118,8 +118,13 @@ Before opening a pull request, run the following verification steps locally:
 
 ## Related Documentation
 
+* [Panic Taxonomy](PANIC_TAXONOMY.md) — Every panic path documented with recovery guidance.
 * [Architecture Overview](../ARCHITECTURE.md)
 * [Storage Layout Reference](../STORAGE_LAYOUT.md)
+* [Period Invariants Specifications](PERIOD_INVARIANTS.md)
+* [Period Keys Specification](PERIOD_KEYS.md)
+* [Amount Invariants Specifications](AMOUNT_INVARIANTS.md)
 * [Authorization Matrix](AUTHORIZATION_MATRIX.md)
+* [Invoice Settlement Windows](SETTLEMENT_WINDOWS.md)
 * [Threat Model](../THREAT_MODEL.md)
 

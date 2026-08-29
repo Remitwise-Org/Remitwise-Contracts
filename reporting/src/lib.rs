@@ -7,7 +7,7 @@ use soroban_sdk::{
 mod utils;
 use utils::u64_to_u32;
 
-pub use remitwise_common::{Category, CoverageType, DEFAULT_PAGE_LIMIT, ToI128Checked};
+pub use remitwise_common::{Category, CoverageType, ToI128Checked, DEFAULT_PAGE_LIMIT, MAX_TOP_N};
 
 // Storage TTL constants
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -36,7 +36,11 @@ pub const MAX_DEP_PAGES: u32 = 20;
 pub const DEP_PAGE_LIMIT: u32 = 50;
 
 /// Maximum number of items included in top-N reports.
-pub const MAX_ITEMS_PER_REPORT: u32 = 10;
+///
+/// Alias for [`remitwise_common::MAX_TOP_N`] so the invariance is
+/// compile-time enforced.  Validated at the top of every top-N endpoint
+/// via [`remitwise_common::require_bounded_top_n`] as defence-in-depth.
+pub const MAX_ITEMS_PER_REPORT: u32 = remitwise_common::MAX_TOP_N;
 
 /// Financial health score (0-100), composed of three weighted components.
 ///
@@ -259,6 +263,42 @@ pub enum ReportingError {
     InvalidPercentageSplit = 8,
     /// u64 to u32 overflow guard
     Overflow = 9,
+    /// Proposed new admin is the same as the current admin.
+    SameAdmin = 10,
+    /// The requested top-N size exceeds the global cap.
+    TopNTooLarge = 11,
+    /// Proposed new admin is this contract's own address — accepting it would
+    /// brick admin control, since the contract cannot sign `require_auth()`
+    /// for itself as an external caller. Mirrors `emergency_killswitch`'s
+    /// `InvalidAdmin` guard on `transfer_admin`.
+    InvalidAdmin = 12,
+    /// A grant expiry is in the past or is not strictly after the current ledger time.
+    InvalidGrantExpiry = 13,
+    /// A viewer grant does not exist or is no longer active.
+    ViewerNotGranted = 14,
+    /// A viewer cannot be granted access to the owner identity itself.
+    InvalidViewer = 15,
+}
+
+/// Explicit report data scopes that can be delegated independently.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportScope {
+    /// Stored full financial-health reports.
+    Stored = 0,
+    /// Archived health-score summaries.
+    Archived = 1,
+}
+
+/// The subject and viewer identity recorded in an ACL event.
+#[contracttype]
+#[derive(Clone)]
+pub struct ViewerGrant {
+    pub owner: Address,
+    pub viewer: Address,
+    pub scope: ReportScope,
+    /// Zero means no expiry; otherwise access is valid while now < expires_at.
+    pub expires_at: u64,
 }
 
 #[contracttype]
@@ -269,6 +309,8 @@ pub enum ReportEvent {
     AddressesConfigured,
     ReportsArchived,
     ArchivesCleaned,
+    ViewerGranted,
+    ViewerRevoked,
 }
 
 /// Archived report - compressed summary
@@ -674,6 +716,143 @@ impl ReportingContract {
         Ok(())
     }
 
+    // ---------------------------------------------------------------------
+    // Delegated report access
+    // ---------------------------------------------------------------------
+
+    /// Return the storage map used for explicit subject-to-viewer grants.
+    ///
+    /// The owner is part of the key, so a viewer grant for one subject can
+    /// never authorize access to another subject's records.
+    fn viewer_grants(env: &Env) -> Map<(Address, Address, ReportScope), u64> {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("VIEW_ACL"))
+            .unwrap_or_else(|| Map::new(env))
+    }
+
+    fn viewer_is_authorized(
+        env: &Env,
+        caller: &Address,
+        owner: &Address,
+        scope: ReportScope,
+    ) -> bool {
+        if caller == owner {
+            return true;
+        }
+        let grants = Self::viewer_grants(env);
+        match grants.get((owner.clone(), caller.clone(), scope)) {
+            Some(expires_at) => expires_at == 0 || env.ledger().timestamp() < expires_at,
+            None => false,
+        }
+    }
+
+    fn require_viewer(
+        env: &Env,
+        caller: &Address,
+        owner: &Address,
+        scope: ReportScope,
+    ) -> Result<(), ReportingError> {
+        caller.require_auth();
+        if Self::viewer_is_authorized(env, caller, owner, scope) {
+            Ok(())
+        } else {
+            // Every denied subject/scope pair returns the same error. This
+            // prevents callers from probing whether a report exists.
+            Err(ReportingError::Unauthorized)
+        }
+    }
+
+    /// Grant a viewer access to one explicit report scope.
+    ///
+    /// `expires_at == 0` creates a non-expiring grant. Any non-zero expiry
+    /// must be in the future. Only the subject can grant or revoke access;
+    /// viewers cannot delegate the subject's authority onward.
+    pub fn grant_viewer(
+        env: Env,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+        expires_at: u64,
+    ) -> Result<(), ReportingError> {
+        owner.require_auth();
+        let admin: Option<Address> = env.storage().instance().get(&symbol_short!("ADMIN"));
+        if admin.is_none() {
+            return Err(ReportingError::NotInitialized);
+        }
+        if viewer == owner || viewer == env.current_contract_address() {
+            return Err(ReportingError::InvalidViewer);
+        }
+        if expires_at != 0 && expires_at <= env.ledger().timestamp() {
+            return Err(ReportingError::InvalidGrantExpiry);
+        }
+
+        let mut grants = Self::viewer_grants(&env);
+        grants.set((owner.clone(), viewer.clone(), scope), expires_at);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VIEW_ACL"), &grants);
+        Self::extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("report"), ReportEvent::ViewerGranted),
+            ViewerGrant {
+                owner,
+                viewer,
+                scope,
+                expires_at,
+            },
+        );
+        Ok(())
+    }
+
+    /// Revoke a viewer's access immediately for future queries.
+    pub fn revoke_viewer(
+        env: Env,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+    ) -> Result<(), ReportingError> {
+        owner.require_auth();
+        let _: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(ReportingError::NotInitialized)?;
+        let mut grants = Self::viewer_grants(&env);
+        grants.remove((owner.clone(), viewer.clone(), scope));
+        env.storage()
+            .instance()
+            .set(&symbol_short!("VIEW_ACL"), &grants);
+        Self::extend_instance_ttl(&env);
+        env.events().publish(
+            (symbol_short!("report"), ReportEvent::ViewerRevoked),
+            ViewerGrant {
+                owner,
+                viewer,
+                scope,
+                expires_at: 0,
+            },
+        );
+        Ok(())
+    }
+
+    /// Read the effective grant without exposing report existence.
+    pub fn get_viewer_grant(
+        env: Env,
+        caller: Address,
+        owner: Address,
+        viewer: Address,
+        scope: ReportScope,
+    ) -> Result<Option<u64>, ReportingError> {
+        caller.require_auth();
+        if caller != owner && caller != viewer {
+            return Err(ReportingError::Unauthorized);
+        }
+        Ok(Self::viewer_grants(&env)
+            .get((owner, viewer, scope))
+            .filter(|expiry| *expiry == 0 || env.ledger().timestamp() < *expiry))
+    }
+
     /// Propose a new administrator for the contract.
     ///
     /// This is the first step of a two-step admin rotation process. The proposed
@@ -686,6 +865,8 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the current admin
+    /// * `InvalidAdmin` - If `new_admin` is this contract's own address
+    /// * `SameAdmin` - If `new_admin` is the same as the current admin
     pub fn propose_new_admin(
         env: Env,
         caller: Address,
@@ -701,6 +882,18 @@ impl ReportingContract {
 
         if caller != admin {
             return Err(ReportingError::Unauthorized);
+        }
+
+        // Rejecting the contract's own address prevents an unrecoverable brick:
+        // this contract can never produce a `require_auth()` signature for
+        // itself as an external caller, so `accept_admin_rotation` could never
+        // be completed and admin control would be permanently lost.
+        if new_admin == env.current_contract_address() {
+            return Err(ReportingError::InvalidAdmin);
+        }
+
+        if new_admin == admin {
+            return Err(ReportingError::SameAdmin);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1093,7 +1286,8 @@ impl ReportingContract {
         }
 
         let completion_percentage = safe_percent(total_saved, total_target, 100).min(100);
-            let completion_percentage = u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
+        let completion_percentage =
+            u64_to_u32(completion_percentage as u64).map_err(|_| ReportingError::Overflow)?;
 
         Ok(SavingsReport {
             total_goals,
@@ -1171,11 +1365,8 @@ impl ReportingContract {
         let compliance_percentage = if total_bills == 0 {
             100u32
         } else {
-            let val: i128 = safe_percent(
-                paid_bills as i128,
-                total_bills as i128,
-                100,
-            ).clamp(0, 100);
+            let val: i128 =
+                safe_percent(paid_bills as i128, total_bills as i128, 100).clamp(0, 100);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -1244,7 +1435,8 @@ impl ReportingContract {
 
         let annual_premium = monthly_premium.saturating_mul(12);
         let coverage_to_premium_ratio = {
-            let val: i128 = safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
+            let val: i128 =
+                safe_percent(total_coverage, annual_premium, 100).clamp(0, u32::MAX as i128);
             u64_to_u32(val as u64).map_err(|_| ReportingError::Overflow)?
         };
 
@@ -1658,26 +1850,29 @@ impl ReportingContract {
     ) -> Result<TopNBillsReport, ReportingError> {
         remitwise_common::validate_period(period_start, period_end)
             .map_err(|_| ReportingError::InvalidPeriod)?;
+        // Defence-in-depth: the hardcoded MAX_ITEMS_PER_REPORT must not
+        // exceed the shared MAX_TOP_N cap.  If a future code change
+        // raises MAX_ITEMS_PER_REPORT above MAX_TOP_N, this guard fails
+        // closed rather than letting an oversized N reach the sort loop.
+        remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
+            .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
-        Ok(Self::get_top_bills_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        ))
+        Self::get_top_bills_report_internal(&env, user, period_start, period_end)
     }
 
+    /// ✅ FIXED: Now returns Result and uses proper error handling
     fn get_top_bills_report_internal(
         env: &Env,
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> TopNBillsReport {
+    ) -> Result<TopNBillsReport, ReportingError> {
+        // ✅ REPLACED panic with proper error handling
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .unwrap_or_else(|| panic!("Contract addresses not configured"));
+            .ok_or(ReportingError::AddressesNotConfigured)?;
 
         let bill_client = BillPaymentsClient::new(env, &addresses.bill_payments);
 
@@ -1699,49 +1894,34 @@ impl ReportingContract {
             total_count += 1;
 
             // Sorted insertion for Top-N (bounded)
-            //
-            // Ordering contract (deterministic):
-            // 1) Primary: amount descending
-            // 2) Tie-break: bill id ascending
-            let mut inserted = false;
-            for i in 0..top_bills.len() {
-                if let Some(existing) = top_bills.get(i) {
-                    let should_insert = if bill.amount > existing.amount {
-                        true
-                    } else if bill.amount < existing.amount {
-                        false
-                    } else {
-                        // Equal amounts → deterministic tie-break by id ascending
-                        bill.id < existing.id
-                    };
-
-                    if should_insert {
-                        top_bills.insert(i, bill.clone());
-                        inserted = true;
-                        break;
+            remitwise_common::insert_top_n(
+                env,
+                &mut top_bills,
+                MAX_ITEMS_PER_REPORT,
+                bill,
+                |a, b| match a.amount.cmp(&b.amount) {
+                    core::cmp::Ordering::Equal => {
+                        // Deterministic tie-break by id ascending
+                        // Smaller ID should be Greater (appear earlier)
+                        b.id.cmp(&a.id)
                     }
-                } else {
-                    // defensive: if index is out of bounds, skip
-                    continue;
-                }
-            }
-
-            if !inserted && top_bills.len() < MAX_ITEMS_PER_REPORT {
-                top_bills.push_back(bill);
-            } else if top_bills.len() > MAX_ITEMS_PER_REPORT {
-                top_bills.remove(MAX_ITEMS_PER_REPORT);
-                availability = DataAvailability::Partial;
-            }
+                    other => other,
+                },
+            );
         }
 
-        TopNBillsReport {
+        if total_count > MAX_ITEMS_PER_REPORT {
+            availability = DataAvailability::Partial;
+        }
+
+        Ok(TopNBillsReport {
             items: top_bills,
             total_amount,
             total_count,
             period_start,
             period_end,
             data_availability: availability,
-        }
+        })
     }
 
     /// Top-N savings goals sorted by target amount (descending).
@@ -1753,26 +1933,26 @@ impl ReportingContract {
     ) -> Result<TopNSavingsReport, ReportingError> {
         remitwise_common::validate_period(period_start, period_end)
             .map_err(|_| ReportingError::InvalidPeriod)?;
+        // Defence-in-depth: see [`get_top_bills_report`] for rationale.
+        remitwise_common::require_bounded_top_n(MAX_ITEMS_PER_REPORT, MAX_TOP_N)
+            .map_err(|_| ReportingError::TopNTooLarge)?;
         user.require_auth();
-        Ok(Self::get_top_savings_report_internal(
-            &env,
-            user,
-            period_start,
-            period_end,
-        ))
+        Self::get_top_savings_report_internal(&env, user, period_start, period_end)
     }
 
+    /// ✅ FIXED: Now returns Result and uses proper error handling
     fn get_top_savings_report_internal(
         env: &Env,
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> TopNSavingsReport {
+    ) -> Result<TopNSavingsReport, ReportingError> {
+        // ✅ REPLACED panic with proper error handling
         let addresses: ContractAddresses = env
             .storage()
             .instance()
             .get(&symbol_short!("ADDRS"))
-            .unwrap_or_else(|| panic!("Contract addresses not configured"));
+            .ok_or(ReportingError::AddressesNotConfigured)?;
 
         let savings_client = SavingsGoalsClient::new(env, &addresses.savings_goals);
 
@@ -1795,41 +1975,27 @@ impl ReportingContract {
             total_count += 1;
 
             // Sorted insertion for Top-N (bounded)
-            //
-            // Ordering contract (deterministic):
-            // 1) Primary: target amount descending
-            // 2) Tie-break: savings goal id ascending
-            let mut inserted = false;
-            for i in 0..top_goals.len() {
-                if let Some(existing) = top_goals.get(i) {
-                    let should_insert = if goal.target_amount > existing.target_amount {
-                        true
-                    } else if goal.target_amount < existing.target_amount {
-                        false
-                    } else {
-                        // Equal targets → deterministic tie-break by id ascending
-                        goal.id < existing.id
-                    };
-
-                    if should_insert {
-                        top_goals.insert(i, goal.clone());
-                        inserted = true;
-                        break;
+            remitwise_common::insert_top_n(
+                env,
+                &mut top_goals,
+                MAX_ITEMS_PER_REPORT,
+                goal,
+                |a, b| match a.target_amount.cmp(&b.target_amount) {
+                    core::cmp::Ordering::Equal => {
+                        // Deterministic tie-break by id ascending
+                        // Smaller ID should be Greater (appear earlier)
+                        b.id.cmp(&a.id)
                     }
-                } else {
-                    // defensive: if index is out of bounds, skip
-                    continue;
-                }
-            }
-            if !inserted && top_goals.len() < MAX_ITEMS_PER_REPORT {
-                top_goals.push_back(goal);
-            } else if top_goals.len() > MAX_ITEMS_PER_REPORT {
-                top_goals.remove(MAX_ITEMS_PER_REPORT);
-                availability = DataAvailability::Partial;
-            }
+                    other => other,
+                },
+            );
         }
 
-        TopNSavingsReport {
+        if total_count > MAX_ITEMS_PER_REPORT {
+            availability = DataAvailability::Partial;
+        }
+
+        Ok(TopNSavingsReport {
             items: top_goals,
             total_target,
             total_saved,
@@ -1837,7 +2003,7 @@ impl ReportingContract {
             period_start,
             period_end,
             data_availability: availability,
-        }
+        })
     }
 
     /// Generate trend analysis comparing two data points.
@@ -1949,6 +2115,25 @@ impl ReportingContract {
             .unwrap_or_else(|| Map::new(&env));
 
         reports.get((user, period_key))
+    }
+
+    /// Delegated equivalent of [`get_stored_report`]. The viewer must hold an
+    /// active `Stored` grant for this exact owner; the owner may always read
+    /// their own report. Unauthorized calls fail before the storage map is
+    /// inspected, so report existence is not distinguishable.
+    pub fn get_stored_report_for(
+        env: Env,
+        viewer: Address,
+        owner: Address,
+        period_key: u64,
+    ) -> Result<Option<FinancialHealthReport>, ReportingError> {
+        Self::require_viewer(&env, &viewer, &owner, ReportScope::Stored)?;
+        let reports: Map<(Address, u64), FinancialHealthReport> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("REPORTS"))
+            .unwrap_or_else(|| Map::new(&env));
+        Ok(reports.get((owner, period_key)))
     }
 
     /// Get configured contract addresses.
@@ -2108,6 +2293,9 @@ impl ReportingContract {
 
     /// Get a paginated list of archived reports for a user.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// This is the supported entrypoint for reading the archive — see the
     /// deprecation note on [`ReportingContract::get_archived_reports`].
     ///
@@ -2198,6 +2386,55 @@ impl ReportingContract {
         }
     }
 
+    /// Delegated, paginated archive read with the same cursor semantics as the
+    /// owner-only endpoint. The scope is `Archived`, not `Stored`, so granting
+    /// archive access never exposes full stored reports.
+    pub fn get_archived_reports_page_for(
+        env: Env,
+        viewer: Address,
+        owner: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<ArchivedPage, ReportingError> {
+        Self::require_viewer(&env, &viewer, &owner, ReportScope::Archived)?;
+        let arch_idx: Map<Address, Vec<u64>> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_IDX"))
+            .unwrap_or_else(|| Map::new(&env));
+        let user_idx = arch_idx
+            .get(owner.clone())
+            .unwrap_or_else(|| Vec::new(&env));
+        let total_count = user_idx.len();
+        let archived: Map<(Address, u64), ArchivedReport> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ARCH_RPT"))
+            .unwrap_or_else(|| Map::new(&env));
+        let mut items = Vec::new(&env);
+        if cursor >= total_count {
+            return Ok(ArchivedPage {
+                items,
+                next_cursor: 0,
+                count: total_count,
+            });
+        }
+        let normalized_limit = remitwise_common::clamp_limit(limit);
+        let end = cursor.saturating_add(normalized_limit).min(total_count);
+        for i in cursor..end {
+            if let Some(period_key) = user_idx.get(i) {
+                if let Some(report) = archived.get((owner.clone(), period_key)) {
+                    items.push_back(report);
+                }
+            }
+        }
+        Ok(ArchivedPage {
+            items,
+            next_cursor: if end < total_count { end } else { 0 },
+            count: total_count,
+        })
+    }
+
     /// Permanently delete old archives before specified timestamp (admin only).
     ///
     /// # Arguments
@@ -2252,8 +2489,9 @@ impl ReportingContract {
                 // Update index
                 if let Some(mut user_idx) = arch_idx.get(user.clone()) {
                     if let Some(idx) = user_idx.iter().position(|k| k == period_key) {
-                        let idx_u32 = u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
-            user_idx.remove(idx_u32);
+                        let idx_u32 =
+                            u64_to_u32(idx as u64).map_err(|_| ReportingError::Overflow)?;
+                        user_idx.remove(idx_u32);
                         if user_idx.is_empty() {
                             arch_idx.remove(user);
                         } else {
@@ -2334,15 +2572,12 @@ impl ReportingContract {
             .get(&symbol_short!("ARCH_RPT"))
             .unwrap_or_else(|| Map::new(env));
 
-        let mut active_count = 0u32;
-        for _ in reports.iter() {
-            active_count += 1;
-        }
-
-        let mut archived_count = 0u32;
-        for _ in archived.iter() {
-            archived_count += 1;
-        }
+        // `Map::iter()` deserializes every key/value pair off the host; doing
+        // that just to count entries is wasted work on every write path that
+        // calls this function. `Map::len()` reports the entry count directly
+        // without touching the values at all.
+        let active_count = reports.len();
+        let archived_count = archived.len();
 
         let stats = StorageStats {
             active_reports: active_count,
@@ -2376,3 +2611,6 @@ mod tests_archived_pagination_bound;
 
 #[cfg(test)]
 mod tests_safe_math;
+
+#[cfg(test)]
+mod tests_viewer_acl;

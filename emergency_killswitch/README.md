@@ -2,6 +2,8 @@
 
 A Soroban smart contract for centralized emergency pause controls across multiple modules/contracts with global, module, and per-function pause granularity.
 
+> **Scope note:** "modules" here means logical groupings *within this contract's own storage* (module/function symbols you define yourself), not the other deployable contracts in this workspace (`bill_payments`, `insurance`, etc.). This contract is not currently cross-called by any of them — pausing it has no effect on their write paths. See [docs/EMERGENCY_SHUTDOWN.md](../docs/EMERGENCY_SHUTDOWN.md) for the repo-wide picture and what actually stops a given contract from accepting writes today.
+
 ## Features
 
 - Global pause (all modules/functions)
