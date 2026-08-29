@@ -148,3 +148,127 @@ fn signer_epoch_rotation_invalidates_active_recovery() {
         Err(Ok(Error::EpochMismatch))
     );
 }
+
+/// Independent oracle: exact seconds, literal 3600, not [`RECOVERY_DELAY`].
+fn oracle_ready_at(now: u64) -> Option<u64> {
+    now.checked_add(3600)
+}
+
+#[test]
+fn recovery_delay_is_exact_integer_seconds() {
+    assert_eq!(RECOVERY_DELAY, 3600);
+    assert_eq!(oracle_ready_at(0), Some(3600));
+    assert_eq!(crate::recovery_ready_at(0), Ok(3600));
+    assert_eq!(crate::recovery_ready_at(1), Ok(3601));
+}
+
+#[test]
+fn recovery_deadline_matches_independent_oracle_at_contract_boundary() {
+    let (env, client, admin, first, second) = setup();
+    env.ledger().set_timestamp(0);
+    let epoch = configure_two(&env, &client, &admin, &first, &second);
+    let approvals = vec![&env, first, second];
+    client.activate(&epoch, &approvals, &PauseScope::Global);
+    let stored = client.get_recovery_ready_at();
+    assert_eq!(stored, oracle_ready_at(0));
+    assert_eq!(stored, Some(3600));
+}
+
+#[test]
+fn recover_at_ready_at_minus_one_is_too_early_exact_boundary_succeeds() {
+    let (env, client, admin, first, second) = setup();
+    env.ledger().set_timestamp(1);
+    let epoch = configure_two(&env, &client, &admin, &first, &second);
+    let approvals = vec![&env, first, second];
+    client.activate(&epoch, &approvals, &PauseScope::Global);
+    let ready = client.get_recovery_ready_at().unwrap();
+    env.ledger().set_timestamp(ready - 1);
+    assert_eq!(
+        client.try_recover(&epoch, &approvals),
+        Err(Ok(Error::RecoveryTooEarly))
+    );
+    assert!(client.is_paused());
+    env.ledger().set_timestamp(ready);
+    client.recover(&epoch, &approvals);
+    assert!(!client.is_paused());
+    assert_eq!(client.get_recovery_ready_at(), None);
+}
+
+#[test]
+fn activate_overflows_near_u64_max_without_writing_markers() {
+    let (env, client, admin, first, second) = setup();
+    let epoch = configure_two(&env, &client, &admin, &first, &second);
+    let approvals = vec![&env, first, second];
+
+    env.ledger().set_timestamp(u64::MAX - 3600);
+    client.activate(&epoch, &approvals, &PauseScope::Global);
+    assert_eq!(
+        client.get_recovery_ready_at(),
+        oracle_ready_at(u64::MAX - 3600)
+    );
+    env.ledger().set_timestamp(u64::MAX);
+    client.recover(&epoch, &approvals);
+    assert_eq!(client.get_recovery_ready_at(), None);
+
+    env.ledger().set_timestamp(u64::MAX - 3599);
+    assert_eq!(
+        client.try_activate(&epoch, &approvals, &PauseScope::Global),
+        Err(Ok(Error::Overflow))
+    );
+    assert_eq!(client.get_recovery_ready_at(), None);
+    assert!(!client.is_paused());
+
+    env.ledger().set_timestamp(u64::MAX);
+    assert_eq!(
+        client.try_activate(&epoch, &approvals, &PauseScope::Global),
+        Err(Ok(Error::Overflow))
+    );
+    assert_eq!(client.get_recovery_ready_at(), None);
+}
+
+#[test]
+fn activate_function_over_cap_leaves_no_activation_state() {
+    let (env, client, admin, first, second) = setup();
+    let epoch = configure_two(&env, &client, &admin, &first, &second);
+    let approvals = vec![&env, first, second];
+    let module = soroban_sdk::symbol_short!("mod");
+    let funcs = [
+        soroban_sdk::symbol_short!("f0"),
+        soroban_sdk::symbol_short!("f1"),
+        soroban_sdk::symbol_short!("f2"),
+        soroban_sdk::symbol_short!("f3"),
+        soroban_sdk::symbol_short!("f4"),
+        soroban_sdk::symbol_short!("f5"),
+        soroban_sdk::symbol_short!("f6"),
+        soroban_sdk::symbol_short!("f7"),
+        soroban_sdk::symbol_short!("f8"),
+        soroban_sdk::symbol_short!("f9"),
+    ];
+    for func in funcs {
+        client.pause_function(&module, &func);
+    }
+    assert_eq!(client.list_paused_functions(&module).len(), 10);
+    let extra = soroban_sdk::symbol_short!("f10");
+    assert_eq!(
+        client.try_activate(
+            &epoch,
+            &approvals,
+            &PauseScope::Function(module.clone(), extra.clone())
+        ),
+        Err(Ok(Error::LimitExceeded))
+    );
+    assert_eq!(client.get_recovery_ready_at(), None);
+    assert_eq!(client.list_paused_functions(&module).len(), 10);
+    assert!(!client.list_paused_functions(&module).contains(extra));
+}
+
+#[test]
+fn zero_threshold_is_rejected_before_signer_epoch_write() {
+    let (env, client, admin, first, _second) = setup();
+    let one = vec![&env, first];
+    assert_eq!(
+        client.try_configure_signers(&admin, &one, &0),
+        Err(Ok(Error::InvalidSignerThreshold))
+    );
+    assert_eq!(client.get_signer_epoch(), 0);
+}

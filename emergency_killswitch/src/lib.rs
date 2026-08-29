@@ -30,6 +30,9 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// Checked integer arithmetic overflowed (epoch bump, recovery delay,
+    /// snapshot age, or bounded counters). No storage is written on this path.
+    Overflow = 20,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -89,6 +92,30 @@ pub const STORAGE_VERSION: u32 = 1;
 /// How many seconds a pre-upgrade snapshot remains valid.  After this
 /// window the snapshot is considered stale and must be refreshed.
 pub const SNAPSHOT_TTL: u64 = 86_400; // 24 hours
+
+/// Checked `u64` addition. Overflow is a typed contract error, never wrap
+/// or saturate.
+pub fn checked_add_u64(a: u64, b: u64) -> Result<u64, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Checked `u32` addition for bounded counters (approval counts, migration
+/// steps).
+pub fn checked_add_u32(a: u32, b: u32) -> Result<u32, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Recovery deadline: ledger timestamp plus [`RECOVERY_DELAY`] seconds.
+/// Exact integer seconds — no conversion, truncation, or saturation.
+pub fn recovery_ready_at(now: u64) -> Result<u64, Error> {
+    checked_add_u64(now, RECOVERY_DELAY)
+}
+
+/// Age of a pre-upgrade snapshot in seconds. An inverted clock
+/// (`now < snapshot_ts`) is treated as overflow and rejected before restore.
+pub fn snapshot_age(now: u64, snapshot_ts: u64) -> Result<u64, Error> {
+    now.checked_sub(snapshot_ts).ok_or(Error::Overflow)
+}
 
 /// Emitted when the killswitch admin is successfully transferred.
 #[contracttype]
@@ -191,14 +218,14 @@ impl EmergencyKillswitch {
                 let mut prior = 0u32;
                 for seen in approvals.iter() {
                     if seen == approval.clone() {
-                        prior += 1;
+                        prior = checked_add_u32(prior, 1)?;
                     }
                     if seen == approval && prior > 1 {
                         return Err(Error::DuplicateApproval);
                     }
                 }
             }
-            accepted += 1;
+            accepted = checked_add_u32(accepted, 1)?;
         }
         if accepted < threshold {
             return Err(Error::InvalidSignerThreshold);
@@ -239,7 +266,7 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::SignerEpoch)
             .unwrap_or(0);
-        let epoch = old_epoch.checked_add(1).ok_or(Error::EpochMismatch)?;
+        let epoch = checked_add_u64(old_epoch, 1)?;
         env.storage().instance().set(&DataKey::Signers, &signers);
         env.storage()
             .instance()
@@ -284,14 +311,25 @@ impl EmergencyKillswitch {
             return Err(Error::ActivationAlreadyActive);
         }
         Self::validate_approvals(&env, &approvals)?;
+        let ready_at = recovery_ready_at(env.ledger().timestamp())?;
+        // Cap and delay must fail before any activation marker is written.
+        if let PauseScope::Function(ref module, ref function) = scope {
+            let paused: Vec<Symbol> = env
+                .storage()
+                .instance()
+                .get(&DataKey::PausedFunctions(module.clone()))
+                .unwrap_or(Vec::new(&env));
+            if !paused.contains(function.clone()) && paused.len() >= MAX_PAUSED_FUNCTIONS {
+                return Err(Error::LimitExceeded);
+            }
+        }
         env.storage()
             .instance()
             .set(&DataKey::ActivationEpoch, &epoch);
         env.storage().instance().set(&DataKey::ActiveScope, &scope);
-        env.storage().instance().set(
-            &DataKey::RecoveryReadyAt,
-            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
-        );
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryReadyAt, &ready_at);
         let scope_was_paused = match scope.clone() {
             PauseScope::Global => env
                 .storage()
@@ -326,9 +364,6 @@ impl EmergencyKillswitch {
                     .get(&DataKey::PausedFunctions(module.clone()))
                     .unwrap_or(Vec::new(&env));
                 if !paused.contains(function.clone()) {
-                    if paused.len() >= MAX_PAUSED_FUNCTIONS {
-                        return Err(Error::LimitExceeded);
-                    }
                     paused.push_back(function);
                     env.storage()
                         .instance()
@@ -451,7 +486,7 @@ impl EmergencyKillswitch {
     /// # Errors
     /// - [`Error::NotInitialized`] if the contract has no admin.
     /// - [`Error::Unauthorized`] if `caller` is not the admin.
-    /// - [`Error::Overflow`] if the epoch counter wraps (practically unreachable).
+    /// - [`Error::Overflow`] if the epoch counter would wrap past `u64::MAX`.
     pub fn bump_kill_switch_epoch(env: Env, caller: Address) -> Result<u64, Error> {
         let admin: Address = env
             .storage()
@@ -467,7 +502,7 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::KillSwitchEpoch)
             .unwrap_or(0);
-        let new_epoch = old_epoch.checked_add(1).ok_or(Error::InvalidAdmin)?; // Overflow guard — saturate on wrap
+        let new_epoch = checked_add_u64(old_epoch, 1)?;
         env.storage()
             .instance()
             .set(&DataKey::KillSwitchEpoch, &new_epoch);
@@ -700,6 +735,14 @@ impl EmergencyKillswitch {
     /// No authentication required — the schedule is observable on-chain.
     pub fn get_unpause_schedule(env: Env) -> Option<u64> {
         env.storage().instance().get(&DataKey::UnpauseSchedule)
+    }
+
+    /// Returns the recovery deadline written by a successful [`activate`], or
+    /// `None` if no threshold activation is in progress.
+    ///
+    /// No authentication required — the deadline is observable on-chain.
+    pub fn get_recovery_ready_at(env: Env) -> Option<u64> {
+        env.storage().instance().get(&DataKey::RecoveryReadyAt)
     }
 
     /// Returns the list of paused function names for `module_id`, or an empty vec if none.
@@ -936,11 +979,13 @@ impl EmergencyKillswitch {
                 from_version: current,
                 to_version: STORAGE_VERSION,
                 completed_step: 0,
-                total_steps: STORAGE_VERSION.saturating_sub(current),
+                total_steps: STORAGE_VERSION
+                    .checked_sub(current)
+                    .ok_or(Error::Overflow)?,
                 last_run_at: 0,
             });
 
-        let next_step = progress.completed_step + 1;
+        let next_step = checked_add_u32(progress.completed_step, 1)?;
         let total = progress.total_steps;
         let target_version = progress.to_version;
         let from_version = progress.from_version;
@@ -1071,6 +1116,8 @@ impl EmergencyKillswitch {
     /// - [`Error::SnapshotNotFound`] if no snapshot has been taken.
     /// - [`Error::SnapshotExpired`] if the snapshot is older than
     ///   [`SNAPSHOT_TTL`] seconds.
+    /// - [`Error::Overflow`] if the ledger clock is before the snapshot
+    ///   timestamp (inverted clock).
     ///
     /// # Events
     /// Emits `("emergency", "snap_rst")` on success.
@@ -1096,7 +1143,7 @@ impl EmergencyKillswitch {
             .get(&DataKey::SnapshotTimestamp)
             .unwrap_or(0);
         let now = env.ledger().timestamp();
-        if now.saturating_sub(snapshot_ts) > SNAPSHOT_TTL {
+        if snapshot_age(now, snapshot_ts)? > SNAPSHOT_TTL {
             return Err(Error::SnapshotExpired);
         }
 
@@ -1663,12 +1710,12 @@ mod kill_switch_epoch_guard_comprehensive_tests {
     // ── Epoch at boundary: u64::MAX - 1 ──────────────────────────────────
 
     /// The overflow guard in `bump_kill_switch_epoch` uses `checked_add`, which
-    /// returns an error (mapped to `Error::InvalidAdmin`) when the epoch would
-    /// wrap past u64::MAX.  This test bumps to u64::MAX - 1 via storage
-    /// manipulation to verify the overflow guard fires on the next bump.
+    /// returns [`Error::Overflow`] when the epoch would wrap past `u64::MAX`.
+    /// This test bumps to `u64::MAX` via storage manipulation to verify the
+    /// overflow guard fires on the next bump.
     ///
     /// We write the epoch directly to instance storage to avoid the prohibitive
-    /// cost of calling `bump_kill_switch_epoch` u64::MAX - 1 times.
+    /// cost of calling `bump_kill_switch_epoch` `u64::MAX` times.
     #[test]
     fn overflow_guard_fires_at_u64_max() {
         let env = Env::default();
@@ -1688,10 +1735,11 @@ mod kill_switch_epoch_guard_comprehensive_tests {
 
         assert_eq!(client.get_kill_switch_epoch(), u64::MAX);
 
-        // The next bump would overflow u64 — must return an error.
+        // The next bump would overflow u64 — must return Overflow.
         let res = client.try_bump_kill_switch_epoch(&admin);
-        // bump_kill_switch_epoch maps checked_add None to Error::InvalidAdmin
-        assert_eq!(res, Err(Ok(Error::InvalidAdmin)));
+        assert_eq!(res, Err(Ok(Error::Overflow)));
+        // Failed bump must not change stored epoch.
+        assert_eq!(client.get_kill_switch_epoch(), u64::MAX);
     }
 
     // ── Error discriminant stability ──────────────────────────────────────
@@ -1704,6 +1752,11 @@ mod kill_switch_epoch_guard_comprehensive_tests {
             Error::EpochMismatch as u32,
             7u32,
             "Error::EpochMismatch discriminant must be 7 (ABI contract)"
+        );
+        assert_eq!(
+            Error::Overflow as u32,
+            20u32,
+            "Error::Overflow discriminant must be 20 (ABI contract)"
         );
     }
 
@@ -2234,6 +2287,7 @@ mod storage_migration_tests {
         assert_eq!(Error::SnapshotExpired as u32, 17);
         assert_eq!(Error::AlreadyMigrated as u32, 18);
         assert_eq!(Error::MigrationIncomplete as u32, 19);
+        assert_eq!(Error::Overflow as u32, 20);
     }
 
     // ── Concurrent operations safety ───────────────────────────────────────
@@ -2345,5 +2399,114 @@ mod snapshot_function_pause_restore_tests {
         client.restore_from_snapshot(&admin);
 
         assert!(client.is_module_paused(&mod_sym));
+    }
+}
+
+#[cfg(test)]
+mod numeric_precision_overflow_tests {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
+
+    /// Independent oracle uses a literal, not [`RECOVERY_DELAY`].
+    fn oracle_ready_at(now: u64) -> Option<u64> {
+        now.checked_add(3600)
+    }
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin)
+    }
+
+    #[test]
+    fn helper_table_matches_independent_oracle() {
+        let cases = [0u64, 1, u64::MAX - 3600, u64::MAX - 3599, u64::MAX];
+        for now in cases {
+            assert_eq!(
+                recovery_ready_at(now).ok(),
+                oracle_ready_at(now),
+                "ready_at mismatch at now={now}"
+            );
+        }
+        assert_eq!(recovery_ready_at(0), Ok(3600));
+        assert_eq!(checked_add_u64(u64::MAX, 1), Err(Error::Overflow));
+        assert_eq!(checked_add_u32(u32::MAX, 1), Err(Error::Overflow));
+        assert_eq!(snapshot_age(86_400, 0), Ok(86_400));
+        assert_eq!(snapshot_age(0, 1), Err(Error::Overflow));
+    }
+
+    #[test]
+    fn schedule_unpause_inclusive_now_rejects_past() {
+        let (env, client, _admin) = setup();
+        client.pause();
+        let now = 1_000u64;
+        env.ledger().with_mut(|li| li.timestamp = now);
+        assert_eq!(
+            client.try_schedule_unpause(&(now - 1)),
+            Err(Ok(Error::InvalidSchedule))
+        );
+        assert_eq!(client.try_schedule_unpause(&now), Ok(Ok(())));
+        env.ledger().with_mut(|li| li.timestamp = now - 1);
+        assert_eq!(client.try_unpause(), Err(Ok(Error::Unauthorized)));
+        env.ledger().with_mut(|li| li.timestamp = now);
+        client.unpause();
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn restore_at_exact_ttl_succeeds_past_ttl_expires() {
+        let (env, client, admin) = setup();
+        env.ledger().with_mut(|li| li.timestamp = 10_000);
+        client.pause();
+        client.pre_upgrade(&admin);
+        env.ledger()
+            .with_mut(|li| li.timestamp = 10_000 + SNAPSHOT_TTL);
+        assert_eq!(client.try_restore_from_snapshot(&admin), Ok(Ok(())));
+        assert!(client.is_paused());
+
+        client.pre_upgrade(&admin);
+        env.ledger()
+            .with_mut(|li| li.timestamp = 10_000 + SNAPSHOT_TTL + SNAPSHOT_TTL + 1);
+        assert_eq!(
+            client.try_restore_from_snapshot(&admin),
+            Err(Ok(Error::SnapshotExpired))
+        );
+    }
+
+    #[test]
+    fn restore_inverted_clock_overflows_before_state_change() {
+        let (env, client, admin) = setup();
+        env.ledger().with_mut(|li| li.timestamp = 5_000);
+        client.pause();
+        assert!(client.is_paused());
+        client.pre_upgrade(&admin);
+        env.ledger().with_mut(|li| li.timestamp = 4_999);
+        assert_eq!(
+            client.try_restore_from_snapshot(&admin),
+            Err(Ok(Error::Overflow))
+        );
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn configure_signers_overflows_at_u64_max_epoch() {
+        let (env, client, admin) = setup();
+        let contract_id = client.address.clone();
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::SignerEpoch, &u64::MAX);
+        });
+        let signer = Address::generate(&env);
+        let signers = soroban_sdk::vec![&env, signer];
+        assert_eq!(
+            client.try_configure_signers(&admin, &signers, &1),
+            Err(Ok(Error::Overflow))
+        );
+        assert_eq!(client.get_signer_epoch(), u64::MAX);
     }
 }

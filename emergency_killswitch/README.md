@@ -70,6 +70,10 @@ Unpauses after scheduled time is reached.
 
 Returns true if globally paused.
 
+#### `get_recovery_ready_at(env)`
+
+Returns the quorum-activation recovery deadline, or `None` if no activation is in progress.
+
 ### Module Controls
 
 #### `pause_module(env, module_id)`
