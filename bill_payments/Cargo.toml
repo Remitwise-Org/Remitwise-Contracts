@@ -46,3 +46,7 @@ path = "tests/unpaid_by_currency_pagination.rs"
 [[test]]
 name = "gas_bench"
 path = "tests/gas_bench.rs"
+
+[[test]]
+name = "test_state_transition_invariants"
+path = "tests/test_state_transition_invariants.rs"

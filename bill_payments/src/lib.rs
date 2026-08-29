@@ -3134,6 +3134,12 @@ impl BillPayments {
             return Err(BillPaymentsError::BillAlreadyPaid);
         }
 
+        // State transition validation: only Active → Cancelled (deletion) is legal.
+        // Paid → Cancelled is blocked above; Archived → Cancelled is impossible
+        // (archived bills live in ARCH_BILL, not BILLS).
+        use crate::state::BillState;
+        BillState::validate_transition(&bill, false, BillState::Paid, "cancel_bill")?;
+
         // Release external_ref if it exists
         if let Some(ref r) = bill.external_ref {
             Self::release_external_ref(&env, &caller, r);
@@ -3211,6 +3217,13 @@ impl BillPayments {
         for (id, bill) in bills.iter() {
             if let Some(paid_at) = bill.paid_at {
                 if bill.paid && paid_at < before_timestamp {
+                    // State transition validation: only Paid → Archived is legal.
+                    // Active → Archived is blocked (must be paid first).
+                    // The scan filter guarantees `bill.paid && bill.paid_at.is_some()`,
+                    // so BillState::from_bill returns Paid and the transition is valid.
+                    use crate::state::BillState;
+                    BillState::validate_transition(&bill, false, BillState::Archived, "archive_paid_bills")?;
+
                     let archived_bill = ArchivedBill {
                         id: bill.id,
                         owner: bill.owner.clone(),
@@ -3325,6 +3338,32 @@ impl BillPayments {
         if archived_bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
         }
+
+        // State transition validation: Archived → Active is the only legal
+        // path for restore. A bill in ARCH_BILL is always in the Archived
+        // state by construction.
+        use crate::state::BillState;
+        BillState::validate_transition(
+            &Bill {
+                id: archived_bill.id,
+                owner: archived_bill.owner.clone(),
+                name: archived_bill.name.clone(),
+                external_ref: None,
+                amount: archived_bill.amount,
+                due_date: 0,
+                recurring: false,
+                frequency_days: 0,
+                paid: false,
+                created_at: 0,
+                paid_at: archived_bill.paid_at,
+                schedule_id: None,
+                tags: Vec::new(&env),
+                currency: archived_bill.currency.clone(),
+            },
+            true, // is_archived = true (bill lives in ARCH_BILL)
+            BillState::Active,
+            "restore_bill",
+        )?;
 
         if let Some(ref r) = archived_bill.external_ref {
             Self::claim_external_ref(&env, &caller, r, bill_id)?;
@@ -3461,13 +3500,12 @@ impl BillPayments {
         }
 
         Self::extend_instance_ttl(&env);
-        let bills: Map<u32, Bill> = env
+        let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut unpaid_delta = 0i128;
         let current_time = env.ledger().timestamp();
         let current_next_id = env
             .storage()
@@ -3475,20 +3513,8 @@ impl BillPayments {
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
 
-        // -----------------------------------------------------------------
-        // Phase 1: Validate and compute ALL side-effects in staging buffers.
-        // No storage is modified during this phase. If any bill's recurring
-        // computation overflows, the entire batch reverts with no partial
-        // state — the caller receives the error and can retry safely.
-        // -----------------------------------------------------------------
-        // staging_child: next_bill_id -> next Bill (recurring children)
-        let mut staging_child: Map<u32, Bill> = Map::new(&env);
-        // staging_paid: bill_id -> paid Bill
-        let mut staging_paid: Map<u32, Bill> = Map::new(&env);
-        // parent_to_child: parent_bill_id -> child_bill_id
-        let mut parent_to_child: Map<u32, u32> = Map::new(&env);
         let mut running_next_id = current_next_id;
-        let mut total_unpaid_delta: i128 = 0;
+        let mut unpaid_delta = 0i128;
 
         for bill_id in bill_ids.iter() {
             let mut bill = match bills.get(bill_id) {
@@ -3529,7 +3555,7 @@ impl BillPayments {
                         .ok_or(Error::InvalidDueDate)?;
                 }
 
-                next_id = next_id.checked_add(1).ok_or(Error::InvalidDueDate)?;
+                running_next_id = running_next_id.checked_add(1).ok_or(Error::InvalidDueDate)?;
 
                 let next_bill = Bill {
                     id: running_next_id,
@@ -3547,12 +3573,12 @@ impl BillPayments {
                     tags: bill.tags.clone(),
                     currency: bill.currency.clone(),
                 };
-                bills.set(next_id, next_bill);
-                Self::index_add_active(&env, &caller, next_id);
-                Self::index_add_currency(&env, &caller, &bill.currency, next_id);
+                bills.set(running_next_id, next_bill);
+                Self::index_add_active(&env, &caller, running_next_id);
+                Self::index_add_currency(&env, &caller, &bill.currency, running_next_id);
                 env.events().publish(
                     (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                    (next_id, bill_id, next_due_date),
+                    (running_next_id, bill_id, next_due_date),
                 );
             } else {
                 unpaid_delta = unpaid_delta.saturating_sub(bill.amount);
@@ -3581,8 +3607,8 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
-        if total_unpaid_delta != 0 {
-            Self::adjust_unpaid_total(&env, &caller, total_unpaid_delta);
+        if unpaid_delta != 0 {
+            Self::adjust_unpaid_total(&env, &caller, unpaid_delta);
         }
 
         Self::update_storage_stats(&env);
