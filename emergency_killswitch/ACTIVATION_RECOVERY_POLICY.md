@@ -6,6 +6,9 @@ pause scope. It does not silently change the older admin-only pause methods;
 integrators adopting quorum authorization must call `configure_signers`,
 `activate`, and `recover` and must pass the returned signer epoch.
 
+Integer overflow, recovery-delay arithmetic, and fail-before-write cap
+checks are specified in [docs/killswitch-amount-precision-overflow.md](../docs/killswitch-amount-precision-overflow.md).
+
 ## State and epochs
 
 The configured signer list, threshold, and signer epoch are stored together.
@@ -55,13 +58,19 @@ Activation succeeds only when:
 2. a signer set exists and the approval list reaches the threshold;
 3. every approval is configured and distinct;
 4. no prior activation remains active;
-5. the requested function scope is within the bounded paused-function limit;
-6. the scope and recovery deadline are written before the event is emitted.
+5. `now + RECOVERY_DELAY` fits in `u64` (otherwise `Overflow`);
+6. the requested function scope is within the bounded paused-function limit;
+7. the scope and recovery deadline are written before the event is emitted.
 
-Failure occurs before activation state is committed. A partial function-scope
-write that would exceed the limit returns an error and the transaction rolls
-back the activation marker as well. A second activation is rejected until the
-first scope has been recovered.
+Function-cap and recovery-delay overflow are checked **before** any activation
+storage key is written. A function-scope request that would exceed
+`MAX_PAUSED_FUNCTIONS` returns `LimitExceeded` with no `ActivationEpoch`,
+`RecoveryReadyAt`, or pause-list mutation. Recovery delay uses checked
+addition of exactly 3600 seconds; saturating addition is never used, so a
+ledger timestamp near `u64::MAX` cannot collapse the delay into an immediate
+recovery window.
+
+A second activation is rejected until the first scope has been recovered.
 
 ## Recovery invariants
 
@@ -85,6 +94,8 @@ must collect a new quorum and create a new activation marker.
 | unknown approval | rejected | unchanged |
 | below threshold | rejected | unchanged |
 | second activation | rejected | existing scope retained |
+| recovery delay overflow (`now + 3600`) | `Overflow` | unchanged |
+| function scope over cap | `LimitExceeded` | unchanged (no activation marker) |
 | recovery before delay | rejected | pause retained |
 | recovery with stale epoch | rejected | pause retained |
 | valid recovery | accepted once | scope cleared |
