@@ -49,6 +49,7 @@ struct InvariantHarness {
     env: Env,
     client: BillPaymentsClient<'static>,
     owner: Address,
+    orchestrator: Address,
 }
 
 impl InvariantHarness {
@@ -59,10 +60,16 @@ impl InvariantHarness {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
+        // The cross-contract epoch guard on `pay_bill` requires a trusted
+        // orchestrator (epoch 0 is the default for a fresh contract).
+        let orchestrator = Address::generate(&env);
+        client.init_admin(&owner, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orchestrator);
         Self {
             env,
             client,
             owner,
+            orchestrator,
         }
     }
 
@@ -90,12 +97,14 @@ impl InvariantHarness {
 
     fn pay_at(&self, bill_id: u32, timestamp: u64) {
         self.env.ledger().set_timestamp(timestamp);
-        self.client.pay_bill(&self.owner, &bill_id);
+        self.client
+            .pay_bill(&self.orchestrator, &0, &self.owner, &bill_id);
     }
 
     fn try_pay_at(&self, bill_id: u32, timestamp: u64) -> Result<(), BillPaymentsError> {
         self.env.ledger().set_timestamp(timestamp);
-        self.client.try_pay_bill(&self.owner, &bill_id)
+        self.client
+            .try_pay_bill(&self.orchestrator, &0, &self.owner, &bill_id)
     }
 
     fn cancel(&self, bill_id: u32) {
@@ -317,8 +326,9 @@ fn test_recurring_child_never_born_overdue() {
 
     let bill_id = h.create_bill("Daily", 100, due_date, true, freq, "USDC");
 
-    // Pay 30 days late
-    let paid_at = due_date + 30 * SECONDS_PER_DAY + 1;
+    // Pay exactly 30 days late — the maximum allowed by the settlement window
+    // (strict `>` comparison permits `due_date + 30d` at the boundary).
+    let paid_at = due_date + 30 * SECONDS_PER_DAY;
     h.pay_at(bill_id, paid_at);
 
     let child_id = bill_id + 1;
@@ -456,6 +466,9 @@ fn test_cross_owner_pay_rejected() {
 
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
+    let orchestrator = Address::generate(&env);
+    client.init_admin(&alice, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(&alice, &orchestrator);
 
     let bill_id = client.create_bill(
         &alice,
@@ -469,7 +482,7 @@ fn test_cross_owner_pay_rejected() {
         &None,
     );
 
-    let result = client.try_pay_bill(&bob, &bill_id);
+    let result = client.try_pay_bill(&orchestrator, &0, &bob, &bill_id);
     assert_eq!(result, Err(Ok(BillPaymentsError::Unauthorized)));
 }
 
@@ -636,6 +649,9 @@ fn test_unpaid_total_owner_isolation() {
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     let due_date = 2_000_000u64;
+    let orchestrator = Address::generate(&env);
+    client.init_admin(&alice, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(&alice, &orchestrator);
 
     client.create_bill(
         &alice,
@@ -664,7 +680,7 @@ fn test_unpaid_total_owner_isolation() {
     assert_eq!(client.get_total_unpaid(&bob), 2000);
 
     // Pay Alice's bill — Bob's total unaffected
-    client.pay_bill(&alice, &1);
+    client.pay_bill(&orchestrator, &0, &alice, &1);
     assert_eq!(client.get_total_unpaid(&alice), 0);
     assert_eq!(client.get_total_unpaid(&bob), 2000);
 }

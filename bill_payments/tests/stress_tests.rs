@@ -20,6 +20,7 @@
 
 use bill_payments::{
     BillPayments, BillPaymentsClient, CREATE_BILL_RATE_LIMIT, MAX_BILLS_PER_OWNER,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
 };
 use remitwise_common::RATE_LIMIT_WINDOW_SECONDS;
 use soroban_sdk::testutils::storage::Instance as _;
@@ -49,6 +50,16 @@ fn stress_env() -> Env {
     });
     env.budget().reset_unlimited();
     env
+}
+
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
 }
 
 /// Reset the budget tracker and measure CPU instructions + memory bytes for `f`.
@@ -383,7 +394,8 @@ fn stress_ttl_re_bumped_by_pay_bill_after_ledger_advancement() {
     });
 
     // pay_bill must re-bump TTL
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
@@ -428,8 +440,9 @@ fn stress_archive_100_paid_bills() {
     }
 
     // Pay all 100 bills (non-recurring, so no new bills created)
+    let orch = setup_orchestrator(&client, &owner);
     for id in 1u32..=100 {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
 
     // Sanity: no unpaid amount remains
@@ -522,8 +535,9 @@ fn stress_archive_across_5_users() {
     }
 
     // Pay all bills
+    let orch = setup_orchestrator(&client, &users[0]);
     for id in 1u32..next_id {
-        client.pay_bill(&users[((id - 1) / BILLS_PER_USER) as usize], &id);
+        client.pay_bill(&orch, &0, &users[((id - 1) / BILLS_PER_USER) as usize], &id);
     }
 
     // Archive using first user as caller (any authenticated address may archive)
@@ -630,8 +644,9 @@ fn bench_archive_paid_bills_100() {
             &None,
         );
     }
+    let orch = setup_orchestrator(&client, &owner);
     for id in 1u32..=100 {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
 
     let (cpu, mem, result) = measure(&env, || {
@@ -928,8 +943,9 @@ fn stress_owner_bill_count_consistency() {
     assert_eq!(client.get_owner_bill_count(&owner), 25);
 
     // Pay 5 more (non-recurring, so no new bill spawned)
+    let orch = setup_orchestrator(&client, &owner);
     for id in ids.iter().skip(5).take(5) {
-        client.pay_bill(&owner, id);
+        client.pay_bill(&orch, &0, &owner, id);
     }
     // Paid bills remain in the active index until archived
     assert_eq!(client.get_owner_bill_count(&owner), 25);
@@ -1091,8 +1107,9 @@ fn stress_recurring_pay_spawns_next_bill() {
     assert_eq!(total_before, 10 * 300, "Initial total must be 3000");
 
     // Pay all 10 recurring bills — each spawns a new bill
+    let orch = setup_orchestrator(&client, &owner);
     for id in &ids {
-        client.pay_bill(&owner, id);
+        client.pay_bill(&orch, &0, &owner, id);
     }
 
     // Recurring pay does NOT reduce the unpaid total (new bill replaces old)
@@ -1136,8 +1153,9 @@ fn stress_bulk_cleanup_after_archive() {
             &None,
         );
     }
+    let orch = setup_orchestrator(&client, &owner);
     for id in 1u32..=60 {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
 
     // Archive all 60
@@ -1195,8 +1213,9 @@ fn stress_restore_bill_updates_stats() {
             &None,
         );
     }
+    let orch = setup_orchestrator(&client, &owner);
     for id in 1u32..=10 {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
 
     // Archive all 10

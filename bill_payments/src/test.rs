@@ -372,6 +372,9 @@ mod testsuit {
         set_ledger_time(&env, 1, creation_time);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Water"),
@@ -388,7 +391,7 @@ mod testsuit {
         set_ledger_time(&env, 2, creation_time + 3_000_000);
 
         env.mock_all_auths();
-        let result = client.try_pay_bill(&owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
         assert_eq!(result, Err(Ok(Error::SettlementWindowExpired)));
     }
 
@@ -400,6 +403,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Water"),
@@ -413,7 +419,7 @@ mod testsuit {
         );
 
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         let bill = client.get_bill(&bill_id).unwrap();
         assert!(bill.paid);
@@ -428,6 +434,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Rent"),
@@ -441,7 +450,7 @@ mod testsuit {
         );
 
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Check original bill is paid
         let bill = client.get_bill(&bill_id).unwrap();
@@ -462,6 +471,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         client.create_bill(
             &owner,
             &String::from_str(&env, "Bill1"),
@@ -498,7 +510,7 @@ mod testsuit {
             &None,
         );
         env.mock_all_auths();
-        client.pay_bill(&owner, &1);
+        client.pay_bill(&orch, &0, &owner, &1);
 
         let unpaid = client.get_unpaid_bills(&owner, &0, &100);
         assert_eq!(unpaid.items.len(), 2);
@@ -511,6 +523,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         client.create_bill(
             &owner,
             &String::from_str(&env, "Bill1"),
@@ -547,7 +562,7 @@ mod testsuit {
             &None,
         );
         env.mock_all_auths();
-        client.pay_bill(&owner, &1);
+        client.pay_bill(&orch, &0, &owner, &1);
 
         let total = client.get_total_unpaid(&owner);
         assert_eq!(total, 500); // 200 + 300
@@ -561,7 +576,10 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
-        let result = client.try_pay_bill(&owner, &999);
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+        let result = client.try_pay_bill(&orch, &0, &owner, &999);
         assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
@@ -572,6 +590,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Test"),
@@ -584,8 +605,8 @@ mod testsuit {
             &None,
         );
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
-        let result = client.try_pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
         assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
     }
 
@@ -705,6 +726,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Test"),
@@ -716,7 +740,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         let result = client.try_cancel_bill(&owner, &bill_id);
         assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
@@ -972,6 +996,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         // Create recurring bill
         let bill_id = client.create_bill(
             &owner,
@@ -986,13 +1013,13 @@ mod testsuit {
         );
         env.mock_all_auths();
         // Pay first bill - creates second
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
         let bill2 = client.get_bill(&2).unwrap();
         assert!(!bill2.paid);
         assert_eq!(bill2.due_date, 1000000 + (30 * 86400));
         env.mock_all_auths();
         // Pay second bill - creates third
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
         let bill3 = client.get_bill(&3).unwrap();
         assert!(!bill3.paid);
         assert_eq!(bill3.due_date, 1000000 + (60 * 86400));
@@ -1008,6 +1035,9 @@ mod testsuit {
         let admin = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         // Set up pause admin
         client.set_pause_admin(&admin, &admin);
@@ -1045,7 +1075,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        client.pay_bill(&owner, &1);
+        client.pay_bill(&orch, &0, &owner, &1);
 
         // Admin can see all 3 bills
         let all = client.get_all_bills_page(&admin, &0, &100);
@@ -1060,6 +1090,9 @@ mod testsuit {
         let other = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Water"),
@@ -1072,7 +1105,7 @@ mod testsuit {
             &None,
         );
 
-        let result = client.try_pay_bill(&other, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &other, &bill_id);
         assert_eq!(result, Err(Ok(Error::Unauthorized)));
     }
 
@@ -1084,6 +1117,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Rent"),
@@ -1104,7 +1140,7 @@ mod testsuit {
         assert!(bill.is_none());
 
         // Verify paying it fails
-        let result = client.try_pay_bill(&owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
         assert_eq!(result, Err(Ok(Error::BillNotFound)));
     }
 
@@ -1117,6 +1153,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Late"),
@@ -1134,7 +1173,7 @@ mod testsuit {
         assert_eq!(overdue.count, 1);
 
         // Pay it
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Verify it's no longer overdue (because it's paid)
         let overdue_after = client.get_overdue_bills(&0, &100);
@@ -1149,6 +1188,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Daily"),
@@ -1161,7 +1203,7 @@ mod testsuit {
             &None,
         );
 
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         let next_bill = client.get_bill(&2).unwrap();
         assert_eq!(next_bill.due_date, 1000000 + 86400); // Exactly 1 day later
@@ -1228,8 +1270,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         // create recurring bill due shortly after now
         let bill_id = client.create_bill(
             &owner,
@@ -1246,7 +1290,7 @@ mod testsuit {
         // advance far into the future so next_due_date would otherwise be in the past
         set_ledger_time(&env, 2, 2_000_000);
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // The next generated recurring bill (id 2) must have due_date > current time
         let next_bill = client.get_bill(&2).unwrap();
@@ -1383,8 +1427,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Paid Bill"),
@@ -1396,7 +1442,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         let bills = client.get_all_bills_for_owner(&owner, &0, &100);
         assert_eq!(bills.items.len(), 1);
@@ -1881,6 +1927,9 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         // Phase 1: Create first bill at seq 100
         // TTL goes from 100 → 518,400. live_until = 518,500
@@ -1935,7 +1984,7 @@ mod testsuit {
         });
 
         // Pay second bill to refresh TTL once more
-        client.pay_bill(&owner, &id2);
+        client.pay_bill(&orch, &0, &owner, &id2);
 
         // Both bills should still be accessible
         let bill1 = client.get_bill(&id1);
@@ -1976,6 +2025,9 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let bill_id = client.create_bill(
             &owner,
@@ -1988,7 +2040,7 @@ mod testsuit {
             &String::from_str(&env, "XLM"),
             &None,
         );
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         env.ledger().set(LedgerInfo {
             protocol_version: 20,
@@ -2121,6 +2173,15 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         let _other = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
+        // Configure the trusted orchestrator under blanket auth first; the
+        // selective mock_auths below deliberately leaves pay_bill's
+        // orchestrator auth unmocked so the guarded call fails with
+        // HostError(Error(Auth, InvalidAction)), matching the expectation.
+        env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
+
         client.mock_auths(&[soroban_sdk::testutils::MockAuth {
             address: &owner,
             invoke: &soroban_sdk::testutils::MockAuthInvoke {
@@ -2152,7 +2213,7 @@ mod testsuit {
         );
 
         // other tries to pay the bill for owner
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
     }
 
     #[test]
@@ -2220,6 +2281,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
@@ -2235,7 +2299,7 @@ mod testsuit {
 
         // Pay the bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Verify next bill's due_date = base_due_date + (1 * 86400)
         let next_bill = client.get_bill(&2).unwrap();
@@ -2255,8 +2319,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
@@ -2272,7 +2338,7 @@ mod testsuit {
 
         // Pay the bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Verify next bill's due_date = base_due_date + (30 * 86400)
         let next_bill = client.get_bill(&2).unwrap();
@@ -2295,8 +2361,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
@@ -2312,7 +2380,7 @@ mod testsuit {
 
         // Pay the bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Verify next bill's due_date = base_due_date + (365 * 86400)
         let next_bill = client.get_bill(&2).unwrap();
@@ -2367,12 +2435,16 @@ mod testsuit {
         // Bill 1: due_date=1000000, frequency=30
         // Bill 2: due_date=1000000 + (30*86400)
         // Bill 3: due_date=1000000 + (60*86400)
+
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
@@ -2388,15 +2460,15 @@ mod testsuit {
 
         // Pay first bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Pay second bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
 
         // Pay third bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &3);
+        client.pay_bill(&orch, &0, &owner, &3);
 
         // Verify third bill is now paid
         let bill3_paid = client.get_bill(&3).unwrap();
@@ -2422,8 +2494,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due_date = 1_000_000u64;
         let bill_id = client.create_bill(
             &owner,
@@ -2439,7 +2513,7 @@ mod testsuit {
 
         // Pay the bill early (at time 500_000)
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Verify original bill has paid_at set to early time
         let paid_bill = client.get_bill(&bill_id).unwrap();
@@ -2463,8 +2537,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let frequency = 7u32; // Weekly
         let bill_id = client.create_bill(
             &owner,
@@ -2480,11 +2556,11 @@ mod testsuit {
 
         // Pay first bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Pay second bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
 
         // Verify all bills have the same frequency_days
         let bill1 = client.get_bill(&1).unwrap();
@@ -2503,8 +2579,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let amount = 999i128;
         let bill_id = client.create_bill(
             &owner,
@@ -2520,11 +2598,11 @@ mod testsuit {
 
         // Pay first bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Pay second bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
 
         // Verify all bills have the same amount
         let bill1 = client.get_bill(&1).unwrap();
@@ -2543,8 +2621,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let name = String::from_str(&env, "Rent Payment");
         let bill_id = client.create_bill(
             &owner,
@@ -2560,11 +2640,11 @@ mod testsuit {
 
         // Pay first bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Pay second bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
 
         // Verify all bills have the same name
         let bill1 = client.get_bill(&1).unwrap();
@@ -2583,8 +2663,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let bill_id = client.create_bill(
             &owner,
             &String::from_str(&env, "Owner Test"),
@@ -2599,11 +2681,11 @@ mod testsuit {
 
         // Pay first bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Pay second bill
         env.mock_all_auths();
-        client.pay_bill(&owner, &2);
+        client.pay_bill(&orch, &0, &owner, &2);
 
         // Verify all bills have the same owner
         let bill1 = client.get_bill(&1).unwrap();
@@ -2625,8 +2707,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         let base_due = 1_000_000u64;
         let freq = 14u32;
         let bill_id = client.create_bill(
@@ -2642,7 +2726,7 @@ mod testsuit {
         );
 
         env.mock_all_auths();
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         let next_bill = client.get_bill(&2).unwrap();
         let expected = 1_000_000u64 + (14u64 * 86400);
@@ -2943,6 +3027,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let id1 = client.create_bill(
             &owner,
@@ -2967,8 +3054,8 @@ mod testsuit {
             &None,
         );
 
-        client.pay_bill(&owner, &id1);
-        client.pay_bill(&owner, &id2);
+        client.pay_bill(&orch, &0, &owner, &id1);
+        client.pay_bill(&orch, &0, &owner, &id2);
 
         let total = client.get_total_unpaid(&owner);
         assert_eq!(
@@ -3073,6 +3160,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         client.create_bill(
             &owner,
@@ -3112,7 +3202,7 @@ mod testsuit {
         assert_eq!(client.get_total_unpaid(&owner), 600);
 
         // Pay the 200-unit bill
-        client.pay_bill(&owner, &id_b);
+        client.pay_bill(&orch, &0, &owner, &id_b);
 
         let total = client.get_total_unpaid(&owner);
         assert_eq!(
@@ -3132,6 +3222,9 @@ mod testsuit {
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let id1 = client.create_bill(
             &owner,
@@ -3169,21 +3262,21 @@ mod testsuit {
 
         assert_eq!(client.get_total_unpaid(&owner), 600);
 
-        client.pay_bill(&owner, &id1);
+        client.pay_bill(&orch, &0, &owner, &id1);
         assert_eq!(
             client.get_total_unpaid(&owner),
             500,
             "after paying 100-bill: 500 remaining"
         );
 
-        client.pay_bill(&owner, &id2);
+        client.pay_bill(&orch, &0, &owner, &id2);
         assert_eq!(
             client.get_total_unpaid(&owner),
             300,
             "after paying 200-bill: 300 remaining"
         );
 
-        client.pay_bill(&owner, &id3);
+        client.pay_bill(&orch, &0, &owner, &id3);
         assert_eq!(
             client.get_total_unpaid(&owner),
             0,
@@ -3267,6 +3360,9 @@ mod testsuit {
         let owner_b = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner_a, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner_a, &orch);
 
         client.create_bill(
             &owner_a,
@@ -3292,7 +3388,7 @@ mod testsuit {
         );
 
         // Pay owner_b's bill
-        client.pay_bill(&owner_b, &id_b);
+        client.pay_bill(&orch, &0, &owner_b, &id_b);
 
         // owner_a's total must be unchanged
         let total_a = client.get_total_unpaid(&owner_a);
@@ -3390,9 +3486,10 @@ mod testsuit {
 
     #[test]
     fn test_get_total_unpaid_large_amounts_no_overflow() {
-        // Use amounts near i128::MAX / 2 to verify the summation does not panic
-        // or wrap. The contract uses plain addition, so this confirms the runtime
-        // handles large i128 values correctly.
+        // Issue #1737 caps every stored amount at MAX_AMOUNT (1e30) before any
+        // state change, so the unpaid-total summation can never overflow i128.
+        // This test exercises the largest legal amounts: the sum of two
+        // MAX_AMOUNT bills must be exact (2e30, no panic, no wrap).
         let env = Env::default();
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
@@ -3400,7 +3497,7 @@ mod testsuit {
 
         env.mock_all_auths();
 
-        let big: i128 = i128::MAX / 4; // safely summable twice without overflow
+        let big: i128 = remitwise_common::MAX_AMOUNT;
 
         client.create_bill(
             &owner,
@@ -3429,7 +3526,7 @@ mod testsuit {
         assert_eq!(
             total,
             big * 2,
-            "sum of two large amounts must equal big * 2"
+            "sum of two MAX_AMOUNT bills must equal exactly big * 2"
         );
     }
 
@@ -3443,8 +3540,10 @@ mod testsuit {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let bill_id = client.create_bill(
             &owner,
@@ -3462,7 +3561,7 @@ mod testsuit {
         assert_eq!(client.get_total_unpaid(&owner), 500);
 
         // Pay it: original becomes paid, a new unpaid bill of 500 is created
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Total must still be 500 (the new recurring bill, not the paid one)
         let total = client.get_total_unpaid(&owner);
@@ -3481,6 +3580,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &cid);
         let owner = Address::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         // 1. Create 3 bills
         let name = String::from_str(&env, "B");
@@ -3519,7 +3621,7 @@ mod testsuit {
         );
 
         // 2. Pre-pay ID1 so it is "already paid" when batch starts
-        client.pay_bill(&owner, &id1);
+        client.pay_bill(&orch, &0, &owner, &id1);
 
         // 3. Batch contains: ID1 (already paid), ID2 (valid), 999 (non-existent), ID3 (valid)
         let mut ids = Vec::new(&env);
@@ -3528,10 +3630,10 @@ mod testsuit {
         ids.push_back(999);
         ids.push_back(id3);
 
-        let success_count = client.batch_pay_bills(&owner, &ids);
+        let result = client.batch_pay_bills(&owner, &ids);
 
         // Expected: only ID2 and ID3 were paid. ID1 was skipped (already paid), 999 was skipped (not found).
-        assert_eq!(success_count, ());
+        assert!(result.is_ok(), "batch must succeed with skipped entries");
 
         // Verify states
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -3589,10 +3691,10 @@ mod testsuit {
         ids.push_back(a2);
 
         // Alice tries to pay the batch
-        let success_count = client.batch_pay_bills(&alice, &ids);
+        let result = client.batch_pay_bills(&alice, &ids);
 
         // Expected: only A1 and A2 paid. B1 skipped.
-        assert_eq!(success_count, ());
+        assert!(result.is_ok(), "batch must succeed with skipped entries");
         assert!(client.get_bill(&a1).unwrap().paid);
         assert!(!client.get_bill(&b1).unwrap().paid);
         assert!(client.get_bill(&a2).unwrap().paid);
@@ -3622,8 +3724,8 @@ mod testsuit {
         let mut ids = Vec::new(&env);
         ids.push_back(id1);
 
-        let success_count = client.batch_pay_bills(&owner, &ids);
-        assert_eq!(success_count, ());
+        let result = client.batch_pay_bills(&owner, &ids);
+        assert!(result.is_ok(), "batch must succeed");
 
         // Verify next bill was created atomically
         let next_bill = client.get_bill(&2).unwrap();
@@ -3781,115 +3883,6 @@ mod testsuit {
         assert!(!client.is_paused());
     }
 
-    // ===================================================================
-    // ATOMIC ROLLBACK TESTS
-    // ===================================================================
-
-    /// Verify that pay_bill_atomic returns a correct receipt for
-    /// non-recurring bills.
-    #[test]
-    fn test_pay_bill_atomic_non_recurring_receipt() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Rent"),
-            &500,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let receipt = client.pay_bill_atomic(&owner, &bill_id).unwrap();
-        assert_eq!(receipt.bill_id, bill_id);
-        assert_eq!(receipt.paid_amount, 500);
-        assert!(receipt.child_bill_id.is_none());
-        assert!(receipt.child_due_date.is_none());
-
-        // Bill is actually paid
-        let bill = client.get_bill(&bill_id).unwrap();
-        assert!(bill.paid);
-    }
-
-    /// Verify that pay_bill_atomic returns correct receipt for
-    /// recurring bills (with child bill info).
-    #[test]
-    fn test_pay_bill_atomic_recurring_receipt() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Internet"),
-            &1000,
-            &1_000_000,
-            &true,
-            &30,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        let receipt = client.pay_bill_atomic(&owner, &bill_id).unwrap();
-        assert_eq!(receipt.bill_id, bill_id);
-        assert_eq!(receipt.paid_amount, 1000);
-        assert!(receipt.child_bill_id.is_some());
-        assert!(receipt.child_due_date.is_some());
-
-        let child_id = receipt.child_bill_id.unwrap();
-        let child_due = receipt.child_due_date.unwrap();
-        assert_eq!(child_due, 1_000_000 + 30 * 86400);
-
-        // Child bill exists and is unpaid
-        let child = client.get_bill(&child_id).unwrap();
-        assert!(!child.paid);
-        assert!(child.recurring);
-    }
-
-    /// Verify that pay_bill_atomic fails cleanly (no partial state)
-    /// when bill is already paid.
-    #[test]
-    fn test_pay_bill_atomic_already_paid_no_partial_state() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-
-        let bill_id = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Bill"),
-            &100,
-            &1_000_000,
-            &false,
-            &0,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
-
-        // Pay it once
-        client.pay_bill(&owner, &bill_id);
-
-        // Try paying again — should fail with BillAlreadyPaid
-        let result = client.try_pay_bill_atomic(&owner, &bill_id);
-        assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
-
-        // Verify no child bill was created (no partial state)
-        let bill = client.get_bill(&2);
-        assert!(bill.is_none(), "no child bill should exist after failed atomic pay");
-    }
-
     /// Verify batch_pay_bills with a mix of valid and invalid bill IDs.
     /// Invalid IDs are skipped; valid ones are processed. No partial
     /// state is left from invalid entries.
@@ -3926,8 +3919,8 @@ mod testsuit {
 
         // Include invalid IDs (non-existent, already paid, wrong owner)
         let bill_ids = soroban_sdk::vec![&env, id1, 999, id2, 888];
-        let count = client.batch_pay_bills(&owner, &bill_ids);
-        assert_eq!(count, 2);
+        let result = client.batch_pay_bills(&owner, &bill_ids);
+        assert!(result.is_ok(), "batch must succeed, skipping invalid IDs");
 
         // Both valid bills are paid
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -3974,8 +3967,8 @@ mod testsuit {
 
         // Both should succeed in batch (no overflow)
         let bill_ids = soroban_sdk::vec![&env, id1, id2];
-        let count = client.batch_pay_bills(&owner, &bill_ids);
-        assert_eq!(count, 2);
+        let result = client.batch_pay_bills(&owner, &bill_ids);
+        assert!(result.is_ok(), "batch must succeed without overflow");
 
         // Verify child bills were created
         assert!(client.get_bill(&id1).unwrap().paid);
@@ -4023,6 +4016,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let id1 = client.create_bill(
             &owner,
@@ -4048,8 +4044,8 @@ mod testsuit {
         );
 
         // Pay both bills
-        client.pay_bill(&owner, &id1);
-        client.pay_bill(&owner, &id2);
+        client.pay_bill(&orch, &0, &owner, &id1);
+        client.pay_bill(&orch, &0, &owner, &id2);
 
         // Archive with before_timestamp far in the future — both qualify
         let count = client.archive_paid_bills(&owner, &10_000_000);
@@ -4072,6 +4068,9 @@ mod testsuit {
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
         env.mock_all_auths();
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
 
         let bill_id = client.create_bill(
             &owner,
@@ -4086,10 +4085,10 @@ mod testsuit {
         );
 
         // Pay it
-        client.pay_bill(&owner, &bill_id);
+        client.pay_bill(&orch, &0, &owner, &bill_id);
 
         // Try paying again — must fail cleanly
-        let result = client.try_pay_bill(&owner, &bill_id);
+        let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
         assert_eq!(result, Err(Ok(Error::BillAlreadyPaid)));
 
         // Verify bill state is exactly as expected
@@ -4097,56 +4096,5 @@ mod testsuit {
         assert!(bill.paid);
         assert!(bill.paid_at.is_some());
         assert_eq!(bill.amount, 500);
-    }
-
-    /// Verify that pay_bill and pay_bill_atomic produce identical results.
-    #[test]
-    fn test_pay_bill_atomic_matches_pay_bill() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, BillPayments);
-        let client = BillPaymentsClient::new(&env, &contract_id);
-        let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-        env.mock_all_auths();
-
-        // Create identical recurring bills
-        let id1 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Sub1"),
-            &999,
-            &1_000_000,
-            &true,
-            &7,
-            &None,
-            &String::from_str(&env, "USDC"),
-            &None,
-        );
-        let id2 = client.create_bill(
-            &owner,
-            &String::from_str(&env, "Sub2"),
-            &999,
-            &1_000_000,
-            &true,
-            &7,
-            &None,
-            &String::from_str(&env, "USDC"),
-            &None,
-        );
-
-        // Pay first with regular pay_bill
-        client.pay_bill(&owner, &id1);
-        let bill1_after = client.get_bill(&id1).unwrap();
-        let child1 = client.get_bill(&2).unwrap();
-
-        // Pay second with atomic
-        let receipt = client.pay_bill_atomic(&owner, &id2).unwrap();
-        let bill2_after = client.get_bill(&id2).unwrap();
-
-        // Both should have identical state
-        assert_eq!(bill1_after.paid, bill2_after.paid);
-        assert_eq!(bill1_after.amount, bill2_after.amount);
-        assert_eq!(bill1_after.currency, bill2_after.currency);
-
-        // Child bills should have identical due dates
-        assert_eq!(child1.due_date, receipt.child_due_date.unwrap());
     }
 }

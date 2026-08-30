@@ -1,6 +1,8 @@
 #![cfg(test)]
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{symbol_short, testutils::Events, Address, Env, Symbol, TryFromVal};
 
@@ -17,6 +19,12 @@ fn test_notification_flow() {
 
     // Mock authorization so 'require_auth' passes
     e.mock_all_auths();
+
+    // Configure the trusted orchestrator required by the cross-contract
+    // epoch guard on `pay_bill` (epoch 0 for a fresh contract).
+    let orch = Address::generate(&e);
+    client.init_admin(&user, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(&user, &orch);
 
     // Create Bill
     let bill_id = client.create_bill(
@@ -50,7 +58,7 @@ fn test_notification_flow() {
     std::println!("✅ Creation Event Verified");
 
     // CALL: Pay Bill
-    client.pay_bill(&user, &bill_id);
+    client.pay_bill(&orch, &0, &user, &bill_id);
 
     // VERIFY: Check for Payment Event
     let new_events = e.events().all();

@@ -12,7 +12,7 @@
 //!   - `BillPage` cursor, count, and ID ordering are stable across pages with sparse IDs.
 //!   - Owner isolation: bills carry the correct owner; no cross-contamination.
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
 
@@ -49,6 +49,16 @@ fn set_time(env: &Env, timestamp: u64) {
 fn setup_contract(env: &Env) -> BillPaymentsClient<'_> {
     let id = env.register_contract(None, BillPayments);
     BillPaymentsClient::new(env, &id)
+}
+
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
 }
 
 fn create_bill(env: &Env, client: &BillPaymentsClient, owner: &Address, due_date: u64) -> u32 {
@@ -168,8 +178,9 @@ fn test_overdue_excludes_paid_bills() {
 
     let bill_id = create_bill(&env, &client, &owner, due_date);
 
+    let orch = setup_orchestrator(&client, &owner);
     set_time(&env, BASE_TIME);
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let page = client.get_overdue_bills(&0, &100);
     assert_eq!(page.count, 0, "paid bill must not appear in overdue list");
@@ -205,7 +216,8 @@ fn test_overdue_excludes_archived_bills() {
     let bill_id = create_bill(&env, &client, &owner, BASE_TIME);
 
     // Pay the bill so it qualifies for archival.
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     // Archive all bills with paid_at < BASE_TIME + 10.
     set_time(&env, BASE_TIME + 10);
@@ -230,9 +242,10 @@ fn test_overdue_empty_when_all_bills_paid() {
     let id1 = create_bill(&env, &client, &owner, due_date);
     let id2 = create_bill(&env, &client, &owner, due_date);
 
+    let orch = setup_orchestrator(&client, &owner);
     set_time(&env, BASE_TIME);
-    client.pay_bill(&owner, &id1);
-    client.pay_bill(&owner, &id2);
+    client.pay_bill(&orch, &0, &owner, &id1);
+    client.pay_bill(&orch, &0, &owner, &id2);
 
     let page = client.get_overdue_bills(&0, &100);
     assert_eq!(page.count, 0, "all bills paid: overdue list must be empty");
@@ -418,10 +431,11 @@ fn test_overdue_owner_isolation_payment_does_not_affect_other_owner() {
     let a_bill = create_bill(&env, &client, &owner_a, due_date);
     create_bill(&env, &client, &owner_b, due_date);
 
+    let orch = setup_orchestrator(&client, &owner_a);
     set_time(&env, BASE_TIME);
 
     // Owner A pays their bill.
-    client.pay_bill(&owner_a, &a_bill);
+    client.pay_bill(&orch, &0, &owner_a, &a_bill);
 
     let page = client.get_overdue_bills(&0, &100);
     assert_eq!(
@@ -545,8 +559,9 @@ fn test_overdue_for_owner_excludes_paid_and_handles_gaps() {
     client.cancel_bill(&owner, &2u32);
     client.cancel_bill(&owner, &4u32);
 
+    let orch = setup_orchestrator(&client, &owner);
     set_time(&env, BASE_TIME);
-    client.pay_bill(&owner, &5u32);
+    client.pay_bill(&orch, &0, &owner, &5u32);
 
     let page = client.get_overdue_bills_for_owner(&owner, &0, &100);
     let mut ids: std::vec::Vec<u32> = std::vec::Vec::new();

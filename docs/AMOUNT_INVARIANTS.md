@@ -12,9 +12,13 @@ or — worse — a transaction that submits successfully but moves no funds
 because the amount was normalized away.
 
 All amounts in this codebase are `i128` stroops (1 XLM = `10_000_000` stroops).
-There is no separate "amount type" shared across crates — each contract
-validates its own `i128` parameters independently, so the rules below are
-per-entrypoint, not global.
+Since Issue #1737, the bill-payments boundaries enforce the shared exact-integer
+rules from `remitwise-common::amount`: `MIN_AMOUNT (1) <= amount <= MAX_AMOUNT
+(10³⁰)`, checked before any state change. Other contracts still validate their
+own `i128` parameters independently, so the rules below remain per-entrypoint
+except where noted. See
+[Bill Scheduling & Execution: Amount Precision and Overflow](issue-1737-bill-amount-precision.md)
+for the full design.
 
 ## The Three Behaviors
 
@@ -35,7 +39,7 @@ rejected.
 |---|---|---|---|
 | `remittance_split` | `execute_remittance_flow`, `calculate_split`, `submit_remittance_request` | `total_amount <= 0` | `RemittanceSplitError::InvalidAmount` |
 | `orchestrator` | `execute_remittance_flow`, `execute_remittance_flow_signed`, `execute_flow_fanout` | `amount <= 0` / `params.total_amount <= 0` | `OrchestratorError::InvalidAmount` |
-| `bill_payments` | `create_bill`, `pay_bill` | `amount <= 0` | `BillPaymentsError::InvalidAmount` |
+| `bill_payments` | `create_bill`, `create_bill_schedule`, `modify_bill_schedule`, `pay_bill` | `amount <= 0` (and `amount > MAX_AMOUNT` for the first three) | `BillPaymentsError::InvalidAmount` / `AmountExceedsMax` |
 | `insurance` | `create_policy` (`monthly_premium`, `coverage_amount`), `create_premium_schedule`, `modify_premium_schedule` | `<= 0` | `InsuranceError::InvalidPremium` |
 | `family_wallet` | `validate_precision_spending` | `amount <= 0` | `Error::InvalidAmount` |
 | `savings_goals` | `create_goal` (`target_amount`), `batch_contribute` (each item's `amount`) | `<= 0` | `SavingsGoalError::InvalidAmount` / `TargetAmountMustBePositive` |

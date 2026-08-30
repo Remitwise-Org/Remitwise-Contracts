@@ -11,7 +11,7 @@
 //!   - Multi-page traversal collects exactly the expected set of bills
 //!   - Boundary: at-the-limit, one-before, one-after pagination with gaps (#1135)
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS};
 use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
 use soroban_sdk::{Address, Env, String};
@@ -45,6 +45,16 @@ fn setup(env: &Env) -> (BillPaymentsClient<'_>, Address) {
     let client = BillPaymentsClient::new(env, &id);
     let owner = Address::generate(env);
     (client, owner)
+}
+
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
 }
 
 fn create_bill(env: &Env, client: &BillPaymentsClient, owner: &Address) -> u32 {
@@ -88,6 +98,7 @@ fn collect_all_ids(client: &BillPaymentsClient, owner: &Address) -> std::vec::Ve
 fn test_no_duplicates_or_skips_after_archive_gaps() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     // Create 10 bills (IDs 1..=10)
     for _ in 0..10 {
@@ -96,7 +107,7 @@ fn test_no_duplicates_or_skips_after_archive_gaps() {
 
     // Pay bills 2, 4, 6, 8 so they can be archived
     for id in [2u32, 4, 6, 8] {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
 
     // Archive all paid bills — creates gaps at IDs 2, 4, 6, 8
@@ -123,6 +134,7 @@ fn test_no_duplicates_or_skips_after_archive_gaps() {
 fn test_cursor_stable_across_archive_operations() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     // Create 12 bills (IDs 1..=12)
     for _ in 0..12 {
@@ -139,8 +151,8 @@ fn test_cursor_stable_across_archive_operations() {
     let seen_ids: std::vec::Vec<u32> = page1.items.iter().map(|b| b.id).collect();
 
     // Pay and archive some bills that are BEFORE the saved cursor
-    client.pay_bill(&owner, &2u32);
-    client.pay_bill(&owner, &4u32);
+    client.pay_bill(&orch, &0, &owner, &2u32);
+    client.pay_bill(&orch, &0, &owner, &4u32);
     client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // Resume from saved cursor — must not re-deliver IDs already seen
@@ -159,6 +171,7 @@ fn test_cursor_stable_across_archive_operations() {
 fn test_archived_bills_excluded_from_unpaid_pages() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     for _ in 0..6 {
         create_bill(&env, &client, &owner);
@@ -166,7 +179,7 @@ fn test_archived_bills_excluded_from_unpaid_pages() {
 
     // Pay and archive bills 1, 3, 5
     for id in [1u32, 3, 5] {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
     client.archive_paid_bills(&owner, &2_000_000_001u64);
 
@@ -188,6 +201,7 @@ fn test_archived_bills_excluded_from_unpaid_pages() {
 fn test_restored_bill_reappears_in_correct_cursor_position() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     // Bills 1..=5
     for _ in 0..5 {
@@ -195,7 +209,7 @@ fn test_restored_bill_reappears_in_correct_cursor_position() {
     }
 
     // Pay and archive bill 3
-    client.pay_bill(&owner, &3u32);
+    client.pay_bill(&orch, &0, &owner, &3u32);
     client.archive_paid_bills(&owner, &2_000_000_001u64);
 
     // Restore bill 3 — it goes back into BILLS map but remains paid.
@@ -251,6 +265,7 @@ fn test_restored_bill_reappears_in_correct_cursor_position() {
 fn test_multi_page_traversal_sparse_ids_no_duplicates() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     // Create 20 bills
     for _ in 0..20 {
@@ -259,7 +274,7 @@ fn test_multi_page_traversal_sparse_ids_no_duplicates() {
 
     // Pay every other bill (even IDs) and archive them
     for id in (2u32..=20).step_by(2) {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
     client.archive_paid_bills(&owner, &2_000_000_001u64);
 
@@ -310,6 +325,7 @@ fn test_multi_page_traversal_sparse_ids_no_duplicates() {
 fn test_archived_page_excludes_restored_bills() {
     let env = make_env();
     let (client, owner) = setup(&env);
+    let orch = setup_orchestrator(&client, &owner);
 
     for _ in 0..6 {
         create_bill(&env, &client, &owner);
@@ -317,7 +333,7 @@ fn test_archived_page_excludes_restored_bills() {
 
     // Pay and archive all 6
     for id in 1u32..=6 {
-        client.pay_bill(&owner, &id);
+        client.pay_bill(&orch, &0, &owner, &id);
     }
     client.archive_paid_bills(&owner, &2_000_000_001u64);
 
