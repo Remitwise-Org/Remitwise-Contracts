@@ -138,6 +138,18 @@ pub const MAX_MIGRATION_SNAPSHOT_BYTES: usize = MAX_MIGRATION_PAYLOAD_BYTES + (3
 pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
     ENCRYPTED_PAYLOAD_PREFIX_V1.len() + MAX_MIGRATION_PAYLOAD_BYTES.div_ceil(3) * 4;
 
+/// Maximum number of terminal (`Completed`/`Failed`/`RolledBack`) entries
+/// retained in [`MigrationTracker::attempt_history`].
+///
+/// Without this bound, a caller can repeat `begin_import` → `fail_import` (or
+/// repeated one-shot `mark_imported` calls) indefinitely using the same valid
+/// snapshot: each cycle appends one entry to `attempt_history` at no cost
+/// beyond the call itself, growing the tracker's storage footprint without
+/// limit. Once this cap is reached, new attempts are rejected with
+/// [`MigrationError::AttemptHistoryLimitExceeded`] until an operator prunes
+/// or archives the history out of band.
+pub const MAX_MIGRATION_ATTEMPT_HISTORY: usize = 256;
+
 /// Algorithm used to compute the snapshot checksum.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -175,7 +187,7 @@ pub enum ExportFormat {
 }
 
 /// Snapshot header with version, checksum, and hash algorithm for integrity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotHeader {
     pub version: u32,
     pub checksum: String,
@@ -186,7 +198,7 @@ pub struct SnapshotHeader {
 }
 
 /// Full export snapshot for remittance split or other contract data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportSnapshot {
     pub header: SnapshotHeader,
     pub payload: SnapshotPayload,
@@ -695,6 +707,14 @@ pub enum MigrationError {
         from: Option<MigrationAttemptStatus>,
         to: MigrationAttemptStatus,
     },
+    /// Returned when [`MigrationTracker::attempt_history`] has already reached
+    /// [`MAX_MIGRATION_ATTEMPT_HISTORY`] entries and a new attempt (via
+    /// `begin_import` or a one-shot `mark_imported`) would grow it further.
+    /// No state is mutated when this error is returned.
+    AttemptHistoryLimitExceeded {
+        count: usize,
+        max: usize,
+    },
 }
 
 impl std::fmt::Display for MigrationError {
@@ -766,6 +786,11 @@ impl std::fmt::Display for MigrationError {
                     from_str, to
                 )
             }
+            MigrationError::AttemptHistoryLimitExceeded { count, max } => write!(
+                f,
+                "migration attempt history limit reached: {} entries (max {}); archive or prune history before retrying",
+                count, max
+            ),
         }
     }
 }
@@ -912,6 +937,26 @@ impl MigrationTracker {
         &self.attempt_history
     }
 
+    /// Reject new work if `attempt_history` is already at
+    /// [`MAX_MIGRATION_ATTEMPT_HISTORY`].
+    ///
+    /// This is only a gate on **starting** new attempts (`begin_import`, or
+    /// the fast-path branch of `mark_imported`) -- an attempt that was
+    /// already admitted while under the cap is always allowed to reach a
+    /// terminal state (`fail_import`, tracked-path `mark_imported`, or
+    /// rollback), even if doing so brings the count to exactly the max. This
+    /// keeps the bound simple (never exceeded by more than the one in-flight
+    /// attempt) without forcing in-progress work to be abandoned.
+    fn check_attempt_history_capacity(&self) -> Result<(), MigrationError> {
+        if self.attempt_history.len() >= MAX_MIGRATION_ATTEMPT_HISTORY {
+            return Err(MigrationError::AttemptHistoryLimitExceeded {
+                count: self.attempt_history.len(),
+                max: MAX_MIGRATION_ATTEMPT_HISTORY,
+            });
+        }
+        Ok(())
+    }
+
     /// Begin an observable migration attempt without applying state.
     ///
     /// This lets operators persist a checkpoint before any state mutation, then
@@ -934,6 +979,7 @@ impl MigrationTracker {
         snapshot: &ExportSnapshot,
         timestamp_ms: u64,
     ) -> Result<MigrationAttempt, MigrationError> {
+        self.check_attempt_history_capacity()?;
         snapshot.validate_for_import()?;
         let identity = snapshot_identity(snapshot);
         if self.imported_payloads.contains_key(&identity) {
@@ -1101,6 +1147,16 @@ impl MigrationTracker {
             return Err(MigrationError::DuplicateImport);
         }
 
+        // Fast path (no active attempt): this call will append directly to
+        // attempt_history without having gone through begin_import's gate,
+        // so the capacity check must be repeated here. Tracked-path calls
+        // (active_attempt is Some) were already gated when the attempt was
+        // started and are allowed to complete regardless of the current
+        // count -- see check_attempt_history_capacity's doc comment.
+        if self.active_attempt.is_none() {
+            self.check_attempt_history_capacity()?;
+        }
+
         if let Some(active) = &self.active_attempt {
             if active.checksum != identity.0 || active.version != identity.1 {
                 return Err(MigrationError::MigrationAlreadyInProgress);
@@ -1192,19 +1248,34 @@ impl MigrationTracker {
     }
 
     fn mark_rolled_back_by_identity(&mut self, checksum: &str, version: u32, timestamp_ms: u64) {
-        let Some(active) = self.active_attempt.take() else {
-            return;
-        };
-
-        if active.checksum != checksum || active.version != version {
+        if let Some(active) = self.active_attempt.take() {
+            if active.checksum == checksum && active.version == version {
+                let mut rolled_back = active;
+                rolled_back.updated_at_ms = timestamp_ms;
+                rolled_back.status = MigrationAttemptStatus::RolledBack;
+                self.attempt_history.push(rolled_back);
+                return;
+            }
             self.active_attempt = Some(active);
             return;
         }
 
-        let mut rolled_back = active;
-        rolled_back.updated_at_ms = timestamp_ms;
-        rolled_back.status = MigrationAttemptStatus::RolledBack;
-        self.attempt_history.push(rolled_back);
+        // No matching in-progress attempt: the import may already have
+        // reached `Completed` (e.g. via the fast `mark_imported` path, or
+        // because `mark_imported` consumed the active attempt before the
+        // caller decided to roll back). Flip that terminal entry to
+        // `RolledBack` in place rather than appending a new one, so a
+        // caller's post-completion rollback is reflected in the history and
+        // repeated `restore()` calls stay idempotent instead of growing
+        // `attempt_history` on every retry.
+        if let Some(entry) = self.attempt_history.iter_mut().rev().find(|a| {
+            a.checksum == checksum
+                && a.version == version
+                && a.status == MigrationAttemptStatus::Completed
+        }) {
+            entry.status = MigrationAttemptStatus::RolledBack;
+            entry.updated_at_ms = timestamp_ms;
+        }
     }
 }
 
@@ -7188,5 +7259,149 @@ mod tests {
         // 4. History shows RolledBack
         let last = tracker.attempt_history().last().unwrap();
         assert_eq!(last.status, MigrationAttemptStatus::RolledBack);
+    }
+
+    #[test]
+    fn test_rollback_after_completion_flips_history_entry_in_place_idempotently() {
+        // Regression test: `restore()` must reflect a post-completion rollback
+        // in `attempt_history` (see `mark_rolled_back_by_identity`'s fallback
+        // path) and must do so idempotently -- repeated `restore()` calls must
+        // not keep appending history entries.
+        let attempted = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
+        let prev = ExportSnapshot::new(sample_generic_payload(), ExportFormat::Json);
+        let mut state = Some(prev.clone());
+        let mut tracker = MigrationTracker::new();
+        tracker.mark_imported(&prev, 1_000).unwrap();
+
+        let rb = RollbackMetadata::capture(state.as_ref(), &attempted, 2_000);
+        tracker.begin_import(&attempted, 2_001).unwrap();
+        state = Some(attempted.clone());
+        tracker.mark_imported(&attempted, 2_002).unwrap();
+
+        let history_len_before = tracker.attempt_history().len();
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert_eq!(
+            tracker.attempt_history().len(),
+            history_len_before,
+            "rollback of an already-completed attempt must not append a new history entry"
+        );
+        assert_eq!(
+            tracker.attempt_history().last().unwrap().status,
+            MigrationAttemptStatus::RolledBack
+        );
+
+        // Idempotent: calling restore() again must not change history further.
+        rb.restore(&mut state, &mut tracker).unwrap();
+        assert_eq!(tracker.attempt_history().len(), history_len_before);
+        assert_eq!(
+            tracker.attempt_history().last().unwrap().status,
+            MigrationAttemptStatus::RolledBack
+        );
+    }
+
+    #[test]
+    fn test_attempt_history_capacity_rejects_new_work_once_full() {
+        // Regression test for the unbounded-growth guard: repeating
+        // begin_import -> fail_import with the *same* valid snapshot must
+        // eventually be rejected instead of growing attempt_history forever.
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        for i in 0..MAX_MIGRATION_ATTEMPT_HISTORY {
+            tracker.begin_import(&snapshot, i as u64).unwrap();
+            tracker.fail_import(&snapshot, i as u64).unwrap();
+        }
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY
+        );
+
+        let err = tracker
+            .begin_import(&snapshot, MAX_MIGRATION_ATTEMPT_HISTORY as u64)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::AttemptHistoryLimitExceeded {
+                count: MAX_MIGRATION_ATTEMPT_HISTORY,
+                max: MAX_MIGRATION_ATTEMPT_HISTORY,
+            }
+        );
+
+        // No partial state: the rejected call left history and active_attempt untouched.
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY
+        );
+        assert!(tracker.active_attempt().is_none());
+    }
+
+    #[test]
+    fn test_attempt_admitted_under_cap_may_still_complete_at_cap() {
+        // An attempt started while attempt_history was under the cap must be
+        // allowed to reach a terminal state even if doing so brings the
+        // count to exactly MAX_MIGRATION_ATTEMPT_HISTORY.
+        let snapshot = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let mut tracker = MigrationTracker::new();
+
+        for i in 0..MAX_MIGRATION_ATTEMPT_HISTORY - 1 {
+            tracker.begin_import(&snapshot, i as u64).unwrap();
+            tracker.fail_import(&snapshot, i as u64).unwrap();
+        }
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY - 1
+        );
+
+        tracker
+            .begin_import(&snapshot, MAX_MIGRATION_ATTEMPT_HISTORY as u64)
+            .unwrap();
+        tracker
+            .fail_import(&snapshot, MAX_MIGRATION_ATTEMPT_HISTORY as u64)
+            .unwrap();
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY
+        );
+    }
+
+    #[test]
+    fn test_attempt_history_capacity_blocks_fast_path_mark_imported_and_leaves_no_partial_state() {
+        // The fast path (mark_imported with no prior begin_import, used by
+        // import_from_json/import_from_binary) appends to attempt_history
+        // directly and must be gated the same way begin_import is.
+        let mut tracker = MigrationTracker::new();
+        for i in 0..MAX_MIGRATION_ATTEMPT_HISTORY {
+            let mut entries = BTreeMap::new();
+            entries.insert(format!("key{i}"), serde_json::json!(i).into());
+            let snapshot =
+                ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+            tracker.mark_imported(&snapshot, i as u64).unwrap();
+        }
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY
+        );
+
+        let mut entries = BTreeMap::new();
+        entries.insert("overflow".to_string(), serde_json::json!("x").into());
+        let overflow_snapshot =
+            ExportSnapshot::new(SnapshotPayload::Generic(entries), ExportFormat::Json);
+        let err = tracker
+            .mark_imported(&overflow_snapshot, 9_999)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            MigrationError::AttemptHistoryLimitExceeded {
+                count: MAX_MIGRATION_ATTEMPT_HISTORY,
+                max: MAX_MIGRATION_ATTEMPT_HISTORY,
+            }
+        );
+
+        // No partial state: the rejected snapshot must not be recorded as imported.
+        assert!(!tracker.is_imported(&overflow_snapshot));
+        assert_eq!(
+            tracker.attempt_history().len(),
+            MAX_MIGRATION_ATTEMPT_HISTORY
+        );
     }
 }
