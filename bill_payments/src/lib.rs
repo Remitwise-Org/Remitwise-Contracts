@@ -260,74 +260,16 @@ pub enum BillPaymentsError {
     InvalidTagContent = 32,
     /// Batch operation exceeds the maximum batch size.
     BatchTooLarge = 33,
-    /// The entire contract is paused
-    ContractPaused = 6,
-    /// Caller is not authorized to pause/unpause
-    UnauthorizedPause = 7,
-    /// This specific function is paused
-    FunctionPaused = 8,
-    /// Batch exceeds maximum allowed size
-    BatchTooLarge = 9,
-    /// One or more bills in the batch failed validation
-    BatchValidationFailed = 10,
-    /// Pagination limit is out of allowed range
-    InvalidLimit = 11,
-    /// Due date is in the past or otherwise invalid (error code 12).
-    ///
-    /// Triggered when `due_date == 0` OR `due_date < env.ledger().timestamp()`.
-    /// Boundary: `due_date == now` is **accepted** (strict less-than comparison).
-    InvalidDueDate = 12,
-    /// Tag string is invalid (empty or too long)
-    InvalidTag = 13,
-    /// Tags list is empty
-    EmptyTags = 14,
-    /// Currency code is invalid (empty, too long, or contains non-alphanumeric)
-    InvalidCurrency = 15,
-    /// External reference is invalid (empty, too long, or contains disallowed chars)
-    InvalidExternalRef = 16,
-    /// External reference already used by another active bill for this owner
-    DuplicateExternalRef = 17,
-    /// Owner has reached the maximum number of allowed active bills.
-    OwnerBillCapExceeded = 18,
-    /// Tag content contains invalid characters (must be [a-z0-9-_])
-    InvalidTagContent = 19,
-    /// Rate limit exceeded for this operation
-    RateLimitExceeded = 20,
-    /// Schedule interval is below the minimum allowed duration
-    ScheduleIntervalTooShort = 21,
-    /// Schedule lead time exceeds the maximum allowed duration
-    ScheduleLeadTimeTooLong = 22,
-    /// Owner has reached the maximum number of bill schedules
-    ScheduleCapExceeded = 23,
-    /// Bill schedule with the given ID does not exist
-    ScheduleNotFound = 24,
-    /// Bill schedule is not active
-    ScheduleNotActive = 25,
-    /// The currency is not a recognized stable asset.
-    /// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM) are intentionally rejected.
-    UnsupportedCurrency = 31,
-    /// No pre-upgrade snapshot was persisted for restore.
-    SnapshotNotFound = 26,
-    /// The pre-upgrade snapshot is older than the freshness window.
-    SnapshotTooOld = 27,
-    /// The admin grant has expired and must be refreshed.
-    AdminGrantExpired = 28,
-    /// The page is empty so there is no first item to return.
-    EmptyPage = 29,
-    /// Bill or schedule name is invalid (empty or exceeds max length)
-    InvalidName = 30,
-    /// Settlement occurred outside the allowed settlement window
-    SettlementWindowExpired = 32,
     /// `set_upgrade_admin` was called with `new_admin` equal to the current
     /// upgrade admin — rejected so a mistyped no-op rotation is caught at the
     /// call site instead of silently doing nothing.
-    SameAdmin = 33,
+    SameAdmin = 34,
     /// `init_admin` was called with a `rotation_timelock_seconds` below
     /// `MIN_SCHEDULE_INTERVAL` — too short to serve its purpose of giving the
     /// legitimate admin a window to notice and react to a rotation proposal.
-    RotationTimelockTooShort = 34,
+    RotationTimelockTooShort = 35,
     /// State transition is not allowed.
-    InvalidStateTransition = 35,
+    InvalidStateTransition = 36,
     /// Invariant violation detected - bill data is inconsistent.
     InvariantViolation = 36,
     /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
@@ -1599,6 +1541,8 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
 
@@ -1694,6 +1638,8 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<bool, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
 
@@ -1761,6 +1707,8 @@ impl BillPayments {
         caller: Address,
         schedule_id: u32,
     ) -> Result<bool, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
 
@@ -2190,6 +2138,8 @@ impl BillPayments {
         currency: String,
         _schedule_id: Option<u32>,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
 
@@ -2996,6 +2946,8 @@ impl BillPayments {
         bill_id: u32,
         external_ref: Option<String>,
     ) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::SET_EXT_REF)?;
 
@@ -3324,6 +3276,8 @@ impl BillPayments {
         caller: Address,
         before_timestamp: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -3560,6 +3514,8 @@ impl BillPayments {
         caller: Address,
         before_timestamp: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -4274,6 +4230,8 @@ impl BillPaymentsReversible for BillPayments {
         bill_id: u32,
         _amount: i128,
     ) -> Result<bool, ReversibleOpError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         guard_cross_contract_write(&env, &orchestrator, epoch)
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
