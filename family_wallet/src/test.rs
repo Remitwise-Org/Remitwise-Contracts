@@ -8634,7 +8634,10 @@ fn test_concurrent_role_demotion_strips_signature_and_blocks_signing() {
 
     // (b) Demoted member cannot sign — Viewer < Member.
     let sign_result = client.try_sign_transaction(&admin_a, &tx_id);
-    assert!(sign_result.is_err(), "demoted member must be rejected at sign gate");
+    assert!(
+        sign_result.is_err(),
+        "demoted member must be rejected at sign gate"
+    );
 }
 
 // --- Test 3: Unauthorized failure before any token/storage mutation ------------------
@@ -8679,11 +8682,17 @@ fn test_unauthorized_viewer_fails_before_mutation() {
 
     // (b) Viewer attempts to sign — must fail at role gate.
     let sign_result = client.try_sign_transaction(&viewer, &1);
-    assert!(sign_result.is_err(), "Viewer must be rejected when attempting to sign");
+    assert!(
+        sign_result.is_err(),
+        "Viewer must be rejected when attempting to sign"
+    );
 
     // (c) Viewer attempts to add a member — must fail at role gate.
     let add_result = client.try_add_family_member(&viewer, &target, &FamilyRole::Member);
-    assert!(add_result.is_err(), "Viewer must be rejected when attempting to add member");
+    assert!(
+        add_result.is_err(),
+        "Viewer must be rejected when attempting to add member"
+    );
 
     // (d) Verify no state was mutated:
     //     - No new pending transactions.

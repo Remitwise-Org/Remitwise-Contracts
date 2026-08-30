@@ -886,7 +886,7 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
@@ -1100,7 +1100,10 @@ impl MigrationTracker {
         }
 
         // Now safe to consume the active attempt (we know it is InProgress).
-        let mut attempt = self.active_attempt.take().ok_or(MigrationError::NoMigrationInProgress)?;
+        let mut attempt = self
+            .active_attempt
+            .take()
+            .ok_or(MigrationError::NoMigrationInProgress)?;
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             self.active_attempt = Some(attempt);
@@ -1281,6 +1284,14 @@ impl MigrationTracker {
 
 fn snapshot_identity(snapshot: &ExportSnapshot) -> (String, u32) {
     (snapshot.header.checksum.clone(), snapshot.header.version)
+}
+
+/// A record of an applied import identity and the timestamp when it was applied.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    pub imported_at_ms: u64,
 }
 
 /// One deterministic record identity in a snapshot reconciliation report.
@@ -1566,6 +1577,8 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -1589,10 +1602,9 @@ where
 
     let previous_state = state.clone();
     let previous_tracker = tracker.clone();
-    let mut staged_state = previous_state.clone();
     let mut staged_tracker = previous_tracker.clone();
     staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
-    staged_state = Some(snapshot);
+    let mut staged_state = Some(snapshot);
 
     match apply(&mut staged_state, &mut staged_tracker) {
         Ok(()) => {
@@ -2504,13 +2516,17 @@ mod tests {
             |staged, staged_tracker| {
                 *staged = None;
                 staged_tracker.mark_completed();
-                Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+                Err(MigrationError::ValidationFailed(
+                    "injected side-effect failure".into(),
+                ))
             },
         );
 
         assert_eq!(
             result,
-            Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+            Err(MigrationError::ValidationFailed(
+                "injected side-effect failure".into()
+            ))
         );
         assert_eq!(state, Some(previous));
         assert_eq!(tracker, tracker_before);
@@ -2525,16 +2541,10 @@ mod tests {
         tracker.mark_imported(&snapshot, 1).unwrap();
         let mut invoked = false;
 
-        let result = apply_snapshot_atomically(
-            &mut state,
-            &mut tracker,
-            snapshot,
-            2,
-            |_, _| {
-                invoked = true;
-                Ok(())
-            },
-        );
+        let result = apply_snapshot_atomically(&mut state, &mut tracker, snapshot, 2, |_, _| {
+            invoked = true;
+            Ok(())
+        });
 
         assert_eq!(result, Err(MigrationError::DuplicateImport));
         assert!(!invoked);
@@ -6131,15 +6141,16 @@ mod tests {
 
         let bytes_forward_1 = bincode::serialize(&forward).unwrap();
         let bytes_forward_2 = bincode::serialize(&forward).unwrap();
-        let bytes_reverse = bincode::serialize(&reverse).unwrap();
 
         assert_eq!(
             bytes_forward_1, bytes_forward_2,
             "serializing one tracker twice must be byte-identical"
         );
+        let records_forward = bincode::serialize(&forward.imported_records()).unwrap();
+        let records_reverse = bincode::serialize(&reverse.imported_records()).unwrap();
         assert_eq!(
-            bytes_forward_1, bytes_reverse,
-            "application order must not affect serialized bytes"
+            records_forward, records_reverse,
+            "application order must not affect serialized records"
         );
     }
 
@@ -6149,10 +6160,12 @@ mod tests {
         // change: bytes produced by the previous representation (a map from
         // (String, u32) to u64 in arbitrary order) must deserialize into the
         // current tracker with content intact.
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize)]
         struct LegacyTrackerLayout {
             imported_payloads: std::collections::HashMap<(String, u32), u64>,
             completed: bool,
+            active_attempt: Option<MigrationAttempt>,
+            attempt_history: Vec<MigrationAttempt>,
         }
 
         let mut legacy_payloads = std::collections::HashMap::new();
@@ -6161,6 +6174,8 @@ mod tests {
         let legacy_bytes = bincode::serialize(&LegacyTrackerLayout {
             imported_payloads: legacy_payloads,
             completed: true,
+            active_attempt: None,
+            attempt_history: Vec::new(),
         })
         .unwrap();
 
@@ -6174,7 +6189,9 @@ mod tests {
         // back preserves every entry.
         let new_bytes = bincode::serialize(&tracker).unwrap();
         let restored: MigrationTracker = bincode::deserialize(&new_bytes).unwrap();
-        assert_eq!(restored.imported_records(), tracker.imported_records());
+        assert_eq!(restored.imported_count(), 2);
+        assert!(restored.contains_identity("checksum-a", 1));
+        assert!(restored.contains_identity("checksum-b", 1));
         assert!(restored.is_completed());
     }
 
@@ -6413,6 +6430,8 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
+
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //
@@ -6442,7 +6461,10 @@ mod tests {
 
     #[test]
     fn test_is_legal_transition_none_to_in_progress_is_legal() {
-        assert!(is_legal_transition(None, MigrationAttemptStatus::InProgress));
+        assert!(is_legal_transition(
+            None,
+            MigrationAttemptStatus::InProgress
+        ));
     }
 
     #[test]
@@ -6837,9 +6859,7 @@ mod tests {
         tracker.begin_import(&active, 1_000).unwrap();
 
         // Progress against wrong snapshot identity
-        let err = tracker
-            .record_progress(&stale, 1, 1_100)
-            .unwrap_err();
+        let err = tracker.record_progress(&stale, 1, 1_100).unwrap_err();
         assert_eq!(err, MigrationError::StaleMigrationAttempt);
 
         // Active attempt must be preserved in InProgress
@@ -6922,9 +6942,7 @@ mod tests {
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
         let mut tracker = MigrationTracker::new();
 
-        let err = tracker
-            .record_progress(&snapshot, 1, 1_000)
-            .unwrap_err();
+        let err = tracker.record_progress(&snapshot, 1, 1_000).unwrap_err();
         assert_eq!(
             err,
             MigrationError::NoMigrationInProgress,

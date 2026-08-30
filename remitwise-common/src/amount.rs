@@ -121,10 +121,7 @@ mod tests {
     #[test]
     fn rejects_zero_and_negative() {
         assert_eq!(validate_amount(0), Err(AmountValidationError::NonPositive));
-        assert_eq!(
-            validate_amount(-1),
-            Err(AmountValidationError::NonPositive)
-        );
+        assert_eq!(validate_amount(-1), Err(AmountValidationError::NonPositive));
         assert_eq!(
             validate_amount(i128::MIN),
             Err(AmountValidationError::NonPositive)
@@ -156,11 +153,11 @@ mod tests {
 
     #[test]
     fn checked_add_is_exact() {
-        assert_eq!(checked_add_amount(MAX_AMOUNT, MAX_AMOUNT), Ok(2 * MAX_AMOUNT));
         assert_eq!(
-            checked_add_amount(i128::MAX, 1),
-            Err(AmountOverflowError)
+            checked_add_amount(MAX_AMOUNT, MAX_AMOUNT),
+            Ok(2 * MAX_AMOUNT)
         );
+        assert_eq!(checked_add_amount(i128::MAX, 1), Err(AmountOverflowError));
     }
 
     #[test]
