@@ -90,6 +90,17 @@ fn positive_total() -> impl Strategy<Value = i128> {
     1i128..=MAX_SAFE_TOTAL
 }
 
+/// Generates positive totals that span the full `i128` range, including values
+/// that previously overflowed the contract's checked arithmetic path.
+fn full_range_total() -> impl Strategy<Value = i128> {
+    prop_oneof![
+        1i128..=100i128,
+        Just(i128::MAX / 2),
+        Just(i128::MAX - 1),
+        Just(i128::MAX),
+    ]
+}
+
 /// Generates non-positive amounts (adversarial: should always be rejected).
 fn non_positive_total() -> impl Strategy<Value = i128> {
     prop_oneof![
@@ -159,7 +170,41 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// P4 – Invalid-amount rejection
+// P4 – Full-range conservation regression
+// ---------------------------------------------------------------------------
+
+proptest! {
+    /// Regression: even at the upper edge of `i128`, the split must conserve the
+    /// entire amount and return the expected remainder via the insurance bucket.
+    #[test]
+    fn prop_split_conserves_total_across_full_i128_range(
+        (sp, sg, sb, si) in valid_percentages(),
+        total in full_range_total(),
+    ) {
+        let (env, client, owner) = setup();
+        init_split(&client, &env, &owner, sp, sg, sb, si);
+
+        let result = client.try_calculate_split(&total);
+        prop_assert!(result.is_ok(), "expected successful split for total {}", total);
+
+        let amounts = result.unwrap().unwrap();
+        let sum: i128 = amounts.iter().sum();
+
+        prop_assert_eq!(
+            sum, total,
+            "split conservation failed for total {} with config {}%/{}%/{}%/{}%",
+            total, sp, sg, sb, si
+        );
+
+        for bucket in amounts.iter() {
+            prop_assert!(bucket >= 0, "negative bucket for total {}", total);
+            prop_assert!(bucket <= total, "bucket exceeds total {}", total);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P5 – Invalid-amount rejection
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -181,7 +226,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// P5 – Invalid-percentage rejection
+// P6 – Invalid-percentage rejection
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -205,7 +250,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// P6 – Determinism
+// P7 – Determinism
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -238,7 +283,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// P7 – Adversarial edge cases (all boundary inputs still respect P1–P3)
+// P8 – Adversarial edge cases (all boundary inputs still respect P1–P3)
 // ---------------------------------------------------------------------------
 
 proptest! {

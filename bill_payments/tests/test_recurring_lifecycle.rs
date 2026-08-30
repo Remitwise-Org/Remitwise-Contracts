@@ -32,9 +32,21 @@
 
 #![cfg(test)]
 
-use bill_payments::{BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, BillPaymentsError, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String};
+
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
+}
 
 // ---------------------------------------------------------------------------
 // Security helper
@@ -91,7 +103,8 @@ fn test_recurring_bill_lifecycle() {
     assert_eq!(bill.frequency_days, frequency_days);
     assert_eq!(bill.schedule_id, None);
 
-    client.pay_bill(&user, &bill_id);
+    let orch = setup_orchestrator(&client, &user);
+    client.pay_bill(&orch, &0, &user, &bill_id);
 
     let paid_bill = client.get_bill(&bill_id).unwrap();
     assert!(paid_bill.paid);
@@ -109,7 +122,7 @@ fn test_recurring_bill_lifecycle() {
     assert_child_not_overdue(next_bill.due_date, paid_at, "test_recurring_bill_lifecycle");
 
     // Double-pay must fail
-    let result = client.try_pay_bill(&user, &bill_id);
+    let result = client.try_pay_bill(&orch, &0, &user, &bill_id);
     assert_eq!(result, Err(Ok(BillPaymentsError::BillAlreadyPaid)));
 
     assert!(client.get_bill(&(next_bill_id + 1)).is_none());
@@ -391,7 +404,8 @@ fn test_recurring_child_due_date_formula_on_time_payment() {
 
     // Pay before due date
     env.ledger().set_timestamp(due_date - 1);
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();
@@ -432,7 +446,8 @@ fn test_recurring_child_due_date_independent_of_paid_at() {
     // Pay very late — 500 seconds after due_date
     let paid_at_time = due_date + 500;
     env.ledger().set_timestamp(paid_at_time);
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();
@@ -475,7 +490,8 @@ fn test_recurring_child_catchup_when_paid_extremely_late() {
     // Pay 10 days after due_date — so due_date + 1*86400 would still be in the past
     let paid_at_time = due_date + 10 * 86400 + 1;
     env.ledger().set_timestamp(paid_at_time);
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();
@@ -515,21 +531,22 @@ fn test_recurring_multi_cycle_due_dates_chain_correctly() {
         &None,
     );
 
-    client.pay_bill(&owner, &id1);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &id1);
     let id2 = id1 + 1;
     let bill2 = client.get_bill(&id2).unwrap();
     let paid_at1 = client.get_bill(&id1).unwrap().paid_at.unwrap();
     assert_eq!(bill2.due_date, due_date + freq as u64 * 86400);
     assert_child_not_overdue(bill2.due_date, paid_at1, "cycle_1_to_2");
 
-    client.pay_bill(&owner, &id2);
+    client.pay_bill(&orch, &0, &owner, &id2);
     let id3 = id2 + 1;
     let bill3 = client.get_bill(&id3).unwrap();
     let paid_at2 = client.get_bill(&id2).unwrap().paid_at.unwrap();
     assert_eq!(bill3.due_date, due_date + 2 * freq as u64 * 86400);
     assert_child_not_overdue(bill3.due_date, paid_at2, "cycle_2_to_3");
 
-    client.pay_bill(&owner, &id3);
+    client.pay_bill(&orch, &0, &owner, &id3);
     let id4 = id3 + 1;
     let bill4 = client.get_bill(&id4).unwrap();
     let paid_at3 = client.get_bill(&id3).unwrap().paid_at.unwrap();
@@ -563,7 +580,8 @@ fn test_recurring_early_payment_does_not_shift_child_due_date() {
         &None,
     );
 
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();
@@ -596,10 +614,9 @@ fn test_recurring_frequency_one_day_child_due_date() {
         &1u32,
         &None,
         &String::from_str(&env, "XLM"),
-        &None,
-    );
-
-    client.pay_bill(&owner, &bill_id);
+        &None,    );
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();
@@ -631,7 +648,8 @@ fn test_recurring_frequency_max_child_due_date() {
         &None,
     );
 
-    client.pay_bill(&owner, &bill_id);
+    let orch = setup_orchestrator(&client, &owner);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let paid_at = client.get_bill(&bill_id).unwrap().paid_at.unwrap();
     let child = client.get_bill(&(bill_id + 1)).unwrap();

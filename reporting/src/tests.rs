@@ -1,10 +1,11 @@
+#![allow(deprecated, clippy::all)]
 use soroban_sdk::testutils::storage::Instance as StorageInstance;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger, LedgerInfo},
     Address, Env,
 };
-use testutils::set_ledger_time;
+use testutils::{same_address, set_ledger_time};
 
 use crate::{
     Category, ContractAddresses, DataAvailability, ReportingContract, ReportingContractClient,
@@ -14,7 +15,7 @@ use crate::{
 /// Minimal env with mock_all_auths — replaces the removed create_test_env helper.
 fn create_test_env() -> Env {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env
 }
 
@@ -29,19 +30,19 @@ mod remittance_split {
     impl RemittanceSplit {
         pub fn get_split(env: &Env) -> Vec<u32> {
             let mut split = Vec::new(env);
-            split.push_back(50);
-            split.push_back(30);
-            split.push_back(15);
-            split.push_back(5);
+            split.push_back(5000);
+            split.push_back(3000);
+            split.push_back(1500);
+            split.push_back(500);
             split
         }
 
         pub fn calculate_split(env: Env, total_amount: i128) -> Vec<i128> {
             let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 50 / 100);
-            amounts.push_back(total_amount * 30 / 100);
-            amounts.push_back(total_amount * 15 / 100);
-            amounts.push_back(total_amount * 5 / 100);
+            amounts.push_back(total_amount * 5000 / 10000);
+            amounts.push_back(total_amount * 3000 / 10000);
+            amounts.push_back(total_amount * 1500 / 10000);
+            amounts.push_back(total_amount * 500 / 10000);
             amounts
         }
     }
@@ -284,6 +285,7 @@ mod family_wallet {
     pub const MODE_MISSING: u32 = 2;
     pub const MODE_EMPTY: u32 = 3;
     pub const MODE_OVERFLOW: u32 = 4;
+    pub const MODE_DUPLICATE_PAGES: u32 = 5;
 
     mod scenario {
         use super::*;
@@ -362,6 +364,17 @@ mod family_wallet {
                             next_cursor: 0,
                         }
                     }
+                    MODE_DUPLICATE_PAGES => {
+                        let mut items = Vec::new(&env);
+                        if let Some(member) = members.get(0) {
+                            items.push_back(member);
+                        }
+                        MemberAddressPage {
+                            count: items.len(),
+                            items,
+                            next_cursor: if cursor == 0 { 1 } else { 0 },
+                        }
+                    }
                     _ => MemberAddressPage {
                         count: members.len(),
                         items: members,
@@ -410,6 +423,7 @@ mod family_wallet {
                             Some(tracker(1))
                         }
                     }
+                    MODE_DUPLICATE_PAGES => Some(tracker(100)),
                     _ => None,
                 }
             }
@@ -417,6 +431,71 @@ mod family_wallet {
     }
 
     pub use scenario::{FamilyWalletScenario, FamilyWalletScenarioClient};
+}
+
+mod family_wallet_infinite {
+    use crate::{FamilyWalletTrait, MemberAddressPage, SpendingPeriod, SpendingTracker};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
+
+    fn tracker(current_spent: i128) -> SpendingTracker {
+        SpendingTracker {
+            current_spent,
+            last_tx_timestamp: 1_704_067_200,
+            tx_count: 1,
+            period: SpendingPeriod {
+                period_type: 2,
+                period_start: 1_704_067_200,
+                period_duration: 2_592_000,
+            },
+        }
+    }
+
+    #[contract]
+    pub struct FamilyWalletInfinite;
+
+    #[contractimpl]
+    impl FamilyWalletInfinite {
+        pub fn seed(env: Env) {
+            let mut addrs = Vec::new(&env);
+            for _ in 0..25 {
+                addrs.push_back(Address::generate(&env));
+            }
+            env.storage().instance().set(&symbol_short!("ADDR"), &addrs);
+        }
+    }
+
+    #[contractimpl]
+    impl FamilyWalletTrait for FamilyWalletInfinite {
+        fn get_owner(env: &Env) -> Address {
+            Address::generate(env)
+        }
+
+        fn get_member_addresses_page(env: Env, cursor: u32, _limit: u32) -> MemberAddressPage {
+            let addrs: Vec<Address> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("ADDR"))
+                .unwrap_or_else(|| Vec::new(&env));
+            let mut items = Vec::new(&env);
+            if let Some(member) = addrs.get(cursor) {
+                items.push_back(member);
+            }
+            MemberAddressPage {
+                count: items.len(),
+                items,
+                next_cursor: if cursor + 1 < addrs.len() {
+                    cursor + 1
+                } else {
+                    0
+                },
+            }
+        }
+
+        fn get_spending_tracker(_env: Env, _member: Address) -> Option<SpendingTracker> {
+            Some(tracker(10))
+        }
+    }
 }
 
 #[test]
@@ -474,8 +553,8 @@ fn test_configure_addresses_succeeds() {
     let addresses = client.get_addresses();
     assert!(addresses.is_some());
     let addrs = addresses.unwrap();
-    assert_eq!(addrs.remittance_split, remittance_split);
-    assert_eq!(addrs.savings_goals, savings_goals);
+    assert!(same_address(&addrs.remittance_split, &remittance_split));
+    assert!(same_address(&addrs.savings_goals, &savings_goals));
 }
 
 #[test]
@@ -575,11 +654,11 @@ fn test_configure_invalid_does_not_overwrite_existing_addresses() {
     ));
 
     let stored = client.get_addresses().expect("prior config must remain");
-    assert_eq!(stored.remittance_split, a);
-    assert_eq!(stored.savings_goals, b);
-    assert_eq!(stored.bill_payments, c);
-    assert_eq!(stored.insurance, d);
-    assert_eq!(stored.family_wallet, e);
+    assert!(same_address(&stored.remittance_split, &a));
+    assert!(same_address(&stored.savings_goals, &b));
+    assert!(same_address(&stored.bill_payments, &c));
+    assert!(same_address(&stored.insurance, &d));
+    assert!(same_address(&stored.family_wallet, &e));
 }
 
 #[test]
@@ -734,6 +813,189 @@ fn test_verify_dependency_address_set_deterministic_error() {
     ));
 }
 
+// ---------------------------------------------------------------------------
+// Additional negative tests for verify_dependency_address_set
+// Each of the 5 slots that could reference self
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_verify_dependency_address_set_rejects_self_reference_in_each_slot() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let other = || -> Address { Address::generate(&env) };
+
+    // Test self-reference in savings_goals slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: contract_id.clone(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in bill_payments slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: contract_id.clone(),
+        insurance: other(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in insurance slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: contract_id.clone(),
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Test self-reference in family_wallet slot
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: contract_id,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_non_adjacent_duplicates() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.init(&admin);
+
+    let other = || -> Address { Address::generate(&env) };
+
+    // Duplicate: remittance_split == insurance (non-adjacent)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: x,
+        family_wallet: other(),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Duplicate: savings_goals == family_wallet (non-adjacent)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: other(),
+        savings_goals: x.clone(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: x,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+
+    // Duplicate: remittance_split == family_wallet (non-adjacent, first and last)
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: other(),
+        bill_payments: other(),
+        insurance: other(),
+        family_wallet: x,
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_works_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // verify_dependency_address_set is documented as a preflight that
+    // does NOT require authorization — confirm it works even without init.
+    let addrs = ContractAddresses {
+        remittance_split: Address::generate(&env),
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Ok(Ok(()))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_self_reference_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // Even without init, self-reference must be rejected
+    let addrs = ContractAddresses {
+        remittance_split: contract_id,
+        savings_goals: Address::generate(&env),
+        bill_payments: Address::generate(&env),
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
+#[test]
+fn test_verify_dependency_address_set_rejects_duplicates_without_init() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+
+    // Even without init, duplicates must be rejected
+    let x = Address::generate(&env);
+    let addrs = ContractAddresses {
+        remittance_split: x.clone(),
+        savings_goals: Address::generate(&env),
+        bill_payments: x,
+        insurance: Address::generate(&env),
+        family_wallet: Address::generate(&env),
+    };
+    assert!(matches!(
+        client.try_verify_dependency_address_set(&addrs),
+        Err(Ok(ReportingError::InvalidDependencyAddressConfiguration))
+    ));
+}
+
 #[test]
 fn test_get_remittance_summary() {
     let env = Env::default();
@@ -781,7 +1043,7 @@ fn test_get_remittance_summary() {
     let spending = summary.category_breakdown.get(0).unwrap();
     assert_eq!(spending.category, Category::Spending);
     assert_eq!(spending.amount, 5000);
-    assert_eq!(spending.percentage, 50);
+    assert_eq!(spending.percentage, 5000);
 }
 
 #[test]
@@ -1255,8 +1517,120 @@ fn test_get_family_spending_report_requires_user_auth() {
     let _ = client.get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(found, "family spending report must require user auth");
+}
+
+#[test]
+fn test_get_family_spending_report_rejects_invalid_period() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_family_spending_report(&user, &user, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
+}
+
+#[test]
+fn test_get_family_spending_report_addresses_not_configured() {
+    let env = create_test_env();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.init(&admin);
+
+    let result =
+        client.try_get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
+    assert!(matches!(
+        result,
+        Err(Ok(ReportingError::AddressesNotConfigured))
+    ));
+}
+
+#[test]
+fn test_get_family_spending_report_partial_when_member_pages_exceed_cap() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet_id =
+        env.register_contract(None, family_wallet_infinite::FamilyWalletInfinite);
+    family_wallet_infinite::FamilyWalletInfiniteClient::new(&env, &family_wallet_id).seed();
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet_id,
+    );
+
+    let report =
+        client.get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
+
+    assert_eq!(
+        report.data_availability,
+        DataAvailability::Partial,
+        "unbounded member paging must yield Partial after MAX_DEP_PAGES"
+    );
+    assert_eq!(
+        report.total_members, MAX_DEP_PAGES,
+        "exactly MAX_DEP_PAGES members must be collected before the cap fires"
+    );
+    assert_eq!(report.total_spending, (MAX_DEP_PAGES as i128) * 10);
+}
+
+#[test]
+fn test_get_family_spending_report_deduplicates_members() {
+    let env = create_test_env();
+    set_ledger_time(&env, 1, 1704067200);
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.init(&admin);
+
+    let remittance_split_id = env.register_contract(None, remittance_split::RemittanceSplit);
+    let savings_goals_id = env.register_contract(None, savings_goals::SavingsGoalsContract);
+    let bill_payments_id = env.register_contract(None, bill_payments::BillPayments);
+    let insurance_id = env.register_contract(None, insurance::Insurance);
+    let family_wallet_id = env.register_contract(None, family_wallet::FamilyWalletScenario);
+    let member = Address::generate(&env);
+    let mut members = soroban_sdk::Vec::new(&env);
+    members.push_back(member.clone());
+    let family_client = family_wallet::FamilyWalletScenarioClient::new(&env, &family_wallet_id);
+    family_client.seed(&family_wallet::MODE_DUPLICATE_PAGES, &members);
+
+    client.configure_addresses(
+        &admin,
+        &remittance_split_id,
+        &savings_goals_id,
+        &bill_payments_id,
+        &insurance_id,
+        &family_wallet_id,
+    );
+
+    let report =
+        client.get_family_spending_report(&user, &user, &1_704_067_200u64, &1_706_745_600u64);
+
+    assert_eq!(report.total_members, 1);
+    assert_eq!(report.total_spending, 100);
+    assert_eq!(report.average_per_member, 100);
+    assert_eq!(report.data_availability, DataAvailability::Complete);
 }
 
 #[test]
@@ -2101,7 +2475,7 @@ fn test_store_report_requires_auth() {
 
     // Verify that store_report recorded a require_auth for the report owner.
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == user);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &user));
     assert!(
         found,
         "store_report must record a require_auth for the report owner"
@@ -2351,7 +2725,7 @@ fn test_archive_old_reports_records_admin_auth() {
     client.archive_old_reports(&admin, &2_000_000_000u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
     assert!(
         found,
         "archive_old_reports must record require_auth for the admin"
@@ -2415,7 +2789,7 @@ fn test_cleanup_old_reports_records_admin_auth() {
     client.cleanup_old_reports(&admin, &2_000_000_000u64);
 
     let auths = env.auths();
-    let found = auths.iter().any(|(addr, _)| *addr == admin);
+    let found = auths.iter().any(|(addr, _)| same_address(addr, &admin));
     assert!(
         found,
         "cleanup_old_reports must record require_auth for the admin"
@@ -2425,6 +2799,7 @@ fn test_cleanup_old_reports_records_admin_auth() {
 // ── get_archived_reports user isolation ──────────────────────────────────────
 
 /// get_archived_reports only returns reports belonging to the queried user.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_user_isolation() {
     let env = create_test_env();
@@ -2473,6 +2848,7 @@ fn test_get_archived_reports_user_isolation() {
 }
 
 /// A user with no archived reports gets an empty list.
+#[allow(deprecated)]
 #[test]
 fn test_get_archived_reports_empty_for_unknown_user() {
     let env = create_test_env();
@@ -2495,6 +2871,7 @@ fn test_get_archived_reports_empty_for_unknown_user() {
 }
 
 /// Cleanup removes only the target user's archives, not other users'.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_does_not_remove_other_users_archives() {
     let env = create_test_env();
@@ -2523,6 +2900,7 @@ fn test_cleanup_does_not_remove_other_users_archives() {
 }
 
 /// Cleanup with a past timestamp removes nothing.
+#[allow(deprecated)]
 #[test]
 fn test_cleanup_past_timestamp_removes_nothing() {
     let env = create_test_env();
@@ -2548,6 +2926,7 @@ fn test_cleanup_past_timestamp_removes_nothing() {
 // ── multi-user storage isolation end-to-end ──────────────────────────────────
 
 /// Full lifecycle: store → archive → cleanup for multiple users with no leakage.
+#[allow(deprecated)]
 #[test]
 fn test_multi_user_full_lifecycle_no_data_leakage() {
     let env = create_test_env();
@@ -3361,10 +3740,7 @@ fn test_top_n_reports_tie_break_is_deterministic_bills() {
     // Deterministic across repeated calls.
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     // All amounts equal => order by id ascending => [1,2,3,4,5] capped to MAX.
@@ -3410,10 +3786,7 @@ fn test_top_n_reports_tie_break_is_deterministic_savings() {
 
     assert_eq!(r1.items.len(), r2.items.len());
     for i in 0..r1.items.len() {
-        assert_eq!(
-            r1.items.get(i as u32).unwrap().id,
-            r2.items.get(i as u32).unwrap().id
-        );
+        assert_eq!(r1.items.get(i).unwrap().id, r2.items.get(i).unwrap().id);
     }
 
     let expected_ids = [1u32, 2, 3, 4, 5];

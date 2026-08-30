@@ -16,7 +16,7 @@ fn main() {
 
     // 3. Generate mock addresses for dependencies and admin
     let admin = Address::generate(&env);
-    let user = Address::generate(&env);
+    let _user = Address::generate(&env);
 
     // Dependencies
     let split_addr = Address::generate(&env);

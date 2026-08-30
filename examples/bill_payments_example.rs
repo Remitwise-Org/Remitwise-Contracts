@@ -1,4 +1,4 @@
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{BillPayments, BillPaymentsClient, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS};
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn main() {
@@ -12,6 +12,12 @@ fn main() {
 
     // 3. Generate a mock owner address
     let owner = Address::generate(&env);
+
+    // Configure the trusted orchestrator required by the cross-contract
+    // epoch guard on `pay_bill` (epoch 0 for a fresh contract).
+    let orch = Address::generate(&env);
+    client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(&owner, &orch);
 
     println!("--- Remitwise: Bill Payments Example ---");
 
@@ -42,7 +48,7 @@ fn main() {
 
     // 6. [Write] Pay the bill
     println!("\nPaying bill with ID: {}...", bill_id);
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
     println!("Bill paid successfully!");
 
     // 7. [Read] Verify bill is no longer in unpaid list

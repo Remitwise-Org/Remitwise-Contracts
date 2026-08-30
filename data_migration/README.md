@@ -103,11 +103,12 @@ let b64 = data_migration::export_to_encrypted_payload(&ciphertext_bytes);
 All import functions validate version compatibility, SHA-256 checksum, **and payload-type semantic invariants** before returning. An `Err` is returned if any check fails — the caller must not use the snapshot data if validation fails.
 
 ```rust
-// JSON
-let snapshot = data_migration::import_from_json(&json_bytes)?;
+// JSON (tracked — provides cross-call duplicate/replay protection)
+let mut tracker = MigrationTracker::new();
+let snapshot = data_migration::import_from_json(&json_bytes, &mut tracker, timestamp_ms)?;
 
-// Binary
-let snapshot = data_migration::import_from_binary(&bin_bytes)?;
+// Binary (tracked — provides cross-call duplicate/replay protection)
+let snapshot = data_migration::import_from_binary(&bin_bytes, &mut tracker, timestamp_ms)?;
 
 // CSV (goals only; no header checksum)
 let goals = data_migration::import_goals_from_csv(&csv_bytes)?;
@@ -115,6 +116,17 @@ let goals = data_migration::import_goals_from_csv(&csv_bytes)?;
 // Encrypted passthrough (caller decrypts after)
 let plain_bytes = data_migration::import_from_encrypted_payload(&b64)?;
 ```
+
+> **⚠️ Untracked variants do NOT provide cross-call duplicate/replay protection.**
+>
+> [`import_from_json_untracked`] and [`import_from_binary_untracked`] construct a
+> throwaway [`MigrationTracker`] on each call. Importing the same payload twice via
+> these helpers **succeeds both times** — no error is raised on the second call.
+>
+> Use these functions only for true one-shot scenarios (e.g. migration scripts
+> guaranteed to run exactly once). Prefer the tracked variants in all other contexts.
+> See the [Tracked vs Untracked duplicate protection](#tracked-vs-untracked-duplicate-protection)
+> section below for the full behavioural matrix.
 
 ### Manual validation
 
@@ -124,7 +136,29 @@ data_migration::check_version_compatibility(snapshot.header.version)?;
 
 // Full validation (version + payload bounds + checksum + semantic invariants)
 snapshot.validate_for_import()?;
+
+// Atomic state/tracker update around compensatable side effects
+let mut state = None;
+data_migration::apply_snapshot_atomically(
+    &mut state,
+    &mut tracker,
+    snapshot,
+    timestamp_ms,
+    |staged_state, staged_tracker| {
+        // Update database/contract/queue representations using staged values.
+        // Return Err on any failure; state and replay metadata are restored.
+        let _ = (staged_state, staged_tracker);
+        Ok(())
+    },
+)?;
 ```
+
+`apply_snapshot_atomically` validates before staging, records the replay identity
+in a cloned tracker, and commits both state and tracker only after the callback
+succeeds. Callback errors restore both to their exact pre-operation values,
+including when the callback partially edits either staged value. Irreversible
+external effects must be delayed until successful return or be compensatable by
+the caller.
 
 ### Semantic invariants enforced at import
 
@@ -138,6 +172,81 @@ snapshot.validate_for_import()?;
 | `Generic` | *(none beyond size/count bounds)* | — |
 
 **Why this matters:** migration is where contract invariants are most easily bypassed, because data arrives pre-formed rather than through guarded entry-points. A split config that sums to 73% or 140%, or a savings snapshot with a wound-back `next_id`, would produce corrupt on-chain state that the contract would subsequently refuse to touch — a silent data-integrity bug introduced at the import boundary.
+
+Reconciliation identity is also enforced at this boundary. Savings-goal
+snapshots with duplicate `(owner, id)` logical records are rejected because
+pagination and settlement reconciliation cannot prove that each record was
+processed exactly once when two records share the same stable key.
+
+## Tracked vs Untracked duplicate protection
+
+[`MigrationTracker`] is how this crate prevents the same snapshot from being applied
+to on-chain state more than once. The tracker records every successfully imported
+snapshot by its `(checksum, version)` identity. Passing the **same long-lived tracker**
+to every `import_from_json` / `import_from_binary` call means a second attempt with
+the same payload is always rejected with `MigrationError::DuplicateImport`.
+
+The `_untracked` variants are **convenience wrappers that construct and immediately
+discard a throwaway tracker**. There is no persistent state between calls. Because
+of this:
+
+| Scenario | `import_from_json` / `import_from_binary` | `import_from_json_untracked` / `import_from_binary_untracked` |
+|---|:---:|:---:|
+| First import | ✅ `Ok` | ✅ `Ok` |
+| Second import, same payload, same call session | ❌ `Err(DuplicateImport)` | ✅ `Ok` (footgun!) |
+| Structural validation (size, version, checksum, semantics) | ✅ enforced | ✅ enforced |
+
+### When `_untracked` is safe
+
+- The import runs exactly once and there is no possibility of a retry or replay
+  (e.g. a CI migration script that runs as a one-shot job).
+- You manage duplicate detection outside this crate (e.g. idempotency keys at the
+  transport layer).
+
+### When `_untracked` is NOT safe
+
+Any scenario where the same snapshot bytes could arrive twice — network retries,
+operator restarts, replay attacks — requires a long-lived `MigrationTracker`. Use
+[`import_from_json`] / [`import_from_binary`] and persist the tracker.
+
+> **Deprecation note:** The `_untracked` variants are retained for legacy one-shot
+> call sites. New code should use the tracked variants and pass an explicit
+> `MigrationTracker`. A future breaking release may remove the untracked helpers
+> entirely.
+
+## Concurrency, conflict, and retry contract
+
+For parallel migration runners and indexers, [`SharedMigrationTracker`] shares one
+tracker across worker threads with a deterministic conflict contract: each import
+holds an internal lock across validation **and** the replay commit as one atomic
+section, so for any `(checksum, version)` identity exactly one concurrent caller
+sees `Ok` and every conflicting caller deterministically receives
+`Err(MigrationError::DuplicateImport)` with zero state mutation.
+
+```rust
+use data_migration::SharedMigrationTracker;
+
+let tracker = SharedMigrationTracker::new();
+// Safe to share across threads: tracker is Send + Sync.
+let snapshot = tracker.import_from_json(&json_bytes, timestamp_ms)?;
+```
+
+**Client retry contract:**
+
+| Outcome | Meaning | Retry? |
+|---|---|---|
+| `Ok` | Validated and applied exactly once | No |
+| `Err(DuplicateImport)` | Identity already applied — treat as idempotent success | No (deterministic re-rejection) |
+| `Err(_)` validation/size/version | Permanent rejection, tracker untouched | No — fix the payload first |
+| After `restore_rollback` | Failed identity un-marked | Yes — the only retryable path |
+
+**Deterministic, gap-free reconciliation:** `imported_records()` enumerates every
+applied identity exactly once, sorted by `(checksum, version)`, regardless of
+application order or thread scheduling; a record exists iff a fully validated
+import committed. Tracker serialization (bincode) is byte-deterministic
+(`BTreeMap` storage), so persisted reconciliation artifacts are diffable across
+runs and upgrades. See [`docs/DATA_MIGRATION_CONCURRENCY.md`](../docs/DATA_MIGRATION_CONCURRENCY.md)
+for the full design, invariant list, failure behavior, and compatibility notes.
 
 ## Data structures
 
@@ -158,6 +267,22 @@ snapshot.validate_for_import()?;
 | `RemittanceSplit` | `RemittanceSplitExport` | Remittance allocation config |
 | `SavingsGoals` | `SavingsGoalsExport` | Goals list + next ID |
 | `Generic` | `HashMap<String, Value>` | Arbitrary JSON map for future use |
+
+## Atomicity and rollback invariants
+
+Migration application follows a stage/commit protocol:
+
+1. Validate the complete snapshot before any mutation.
+2. Clone the current state and replay tracker.
+3. Apply the snapshot and caller-owned compensatable side effects to the staged copies.
+4. Commit both copies together only after success.
+5. On any error, discard staged copies and preserve the original state and tracker.
+
+This guarantees rejected, duplicate, and injected failure paths cannot leave a
+partial snapshot or replay marker. It does not make arbitrary external systems
+transactional: callers must either use compensating operations inside the
+callback or publish irreversible events only after successful return. The API
+is backwards-compatible; existing import and rollback helpers remain available.
 
 ## Error types
 

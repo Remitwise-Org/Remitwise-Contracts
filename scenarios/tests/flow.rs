@@ -144,6 +144,7 @@ fn test_end_to_end_flow() {
 /// 6. Bill payment and recurring cycle verification
 /// 7. Financial health report verification
 #[test]
+#[allow(unused_comparisons, clippy::absurd_extreme_comparisons)]
 fn test_recurring_obligations_flow() {
     // ── Phase 1: Environment and contract initialization ──────────────────────
     //
@@ -185,6 +186,12 @@ fn test_recurring_obligations_flow() {
 
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
+
+    // The cross-contract epoch guard on `pay_bill` requires a trusted
+    // orchestrator (epoch 0 is the default for a fresh contract).
+    let orchestrator = Address::generate(&env);
+    bill_payments.init_admin(&admin, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    bill_payments.set_trusted_orchestrator(&admin, &orchestrator);
 
     // Initialize Reporting with the designated admin address (Requirement 1.2).
     // Guaranteed to succeed: the contract is freshly registered and has no prior
@@ -538,10 +545,10 @@ fn test_recurring_obligations_flow() {
     // Pay bill 1 (Electricity). Guaranteed to succeed: bill exists, owner matches user,
     // bill is unpaid, and mock_all_auths() bypasses require_auth. The Soroban client
     // panics on Err, satisfying Requirement 8.1.
-    bill_payments.pay_bill(&user, &bill_id_1); // guaranteed Ok: bill exists, unpaid, owner matches
+    bill_payments.pay_bill(&orchestrator, &0, &user, &bill_id_1); // guaranteed Ok
 
     // Pay bill 2 (Internet). Same guarantee as bill 1.
-    bill_payments.pay_bill(&user, &bill_id_2); // guaranteed Ok: bill exists, unpaid, owner matches
+    bill_payments.pay_bill(&orchestrator, &0, &user, &bill_id_2); // guaranteed Ok
 
     // Assert original bill 1 has paid = true and paid_at == Some(new_timestamp)
     // (Requirements 6.2, 8.2).

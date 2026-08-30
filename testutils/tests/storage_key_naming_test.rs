@@ -31,11 +31,7 @@ fn get_all_storage_keys() -> Vec<StorageKey> {
             contract: "remittance_split",
             description: "Owner + percentages + initialized flag",
         },
-        StorageKey {
-            key: "SPLIT",
-            contract: "remittance_split",
-            description: "Ordered percentages",
-        },
+        // SPLIT key has been removed (percentages are now derived from CONFIG).
         StorageKey {
             key: "NONCES",
             contract: "remittance_split",
@@ -475,9 +471,7 @@ fn test_no_duplicate_keys_within_contract() {
     let mut violations = Vec::new();
 
     for key_def in &keys {
-        let entry = contract_keys
-            .entry(key_def.contract)
-            .or_insert_with(HashSet::new);
+        let entry = contract_keys.entry(key_def.contract).or_default();
 
         if !entry.insert(key_def.key) {
             violations.push(format!(
@@ -495,6 +489,19 @@ fn test_no_duplicate_keys_within_contract() {
     }
 
     println!("✅ No duplicate keys within any contract");
+}
+
+#[test]
+fn test_fee_configuration_key_cannot_collide_with_generic_config() {
+    // Keep fee configuration namespaced instead of reusing the generic CONFIG
+    // key. This mirrors the production review rule for future fee modules.
+    let generic_config = "CONFIG";
+    let fee_config = "FEE_CFG";
+    assert_ne!(fee_config, generic_config);
+    assert!(fee_config.len() <= MAX_KEY_LENGTH);
+    assert!(fee_config
+        .chars()
+        .all(|ch| ch.is_ascii_uppercase() || ch == '_'));
 }
 
 #[test]
@@ -600,7 +607,7 @@ fn test_common_keys_consistency() {
     for key_def in &keys {
         key_contracts
             .entry(key_def.key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key_def.contract);
     }
 

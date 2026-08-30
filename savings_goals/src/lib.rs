@@ -1,86 +1,46 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{
+    bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
+    guard_cross_contract_write, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    CrossContractEpochError, TrustedOrchestratorError,
+    reversible_op::{ReversibleOpError, SavingsGoalsReversible},
+    EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,
+};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Map, String, Symbol, Vec,
 };
 
-// Event topics
-const GOAL_CREATED: Symbol = symbol_short!("created");
-const GOAL_COMPLETED: Symbol = symbol_short!("completed");
-const FUNDS_ADDED: Symbol = symbol_short!("funds_add");
-const FUNDS_WITHDRAWN: Symbol = symbol_short!("funds_rem");
-
-#[derive(Clone)]
-#[contracttype]
-pub struct GoalCreatedEvent {
-    pub goal_id: u32,
-    pub owner: Address,
-    pub amount: i128,    // Initial amount (0)
-    pub new_total: i128, // Initial total (0)
-    pub name: String,
-    pub target_amount: i128,
-    pub target_date: u64,
-    pub locked: bool,
-    pub timestamp: u64,
+/// Mirrors `bill_payments::Error`'s naming convention (`*NotFound`,
+/// `InvalidAmount`, `Unauthorized`) so the two neighbouring contracts
+/// report failures the same way instead of one panicking with a string
+/// and the other returning a typed error.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    GoalNotFound = 1,
+    GoalLocked = 2,
+    InvalidAmount = 3,
+    InsufficientBalance = 4,
+    Unauthorized = 5,
 }
 
-#[derive(Clone)]
-#[contracttype]
-pub struct FundsAddedEvent {
-    pub goal_id: u32,
-    pub owner: Address,
-    pub amount: i128,
-    pub new_total: i128,
-    pub timestamp: u64,
-}
+// Storage TTL constants
+const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
+const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
-#[derive(Clone)]
-#[contracttype]
-pub struct FundsWithdrawnEvent {
-    pub goal_id: u32,
-    pub owner: Address,
-    pub amount: i128,
-    pub new_total: i128,
-    pub timestamp: u64,
-}
+/// Furthest into the future (from the current ledger time) a goal's
+/// `target_date` may be pushed in a single `extend_goal_deadline` call.
+/// This is the "ledger cap": it bounds the extension relative to
+/// `env.ledger().timestamp()` at call time, not to the goal's existing
+/// `target_date`, so repeated extensions can't be chained to sidestep it.
+const MAX_EXTENSION_SECONDS: u64 = 5 * 365 * 86400; // ~5 years
 
-#[derive(Clone)]
-#[contracttype]
-pub struct GoalCompletedEvent {
-    pub goal_id: u32,
-    pub owner: Address,
-    pub amount: i128,    // Final contribution amount
-    pub new_total: i128, // Total amount reached
-    pub name: String,
-    pub timestamp: u64,
-}
-
-const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280;
-const INSTANCE_BUMP_AMOUNT: u32 = 518400;
-
-/// Pagination constants
-pub const DEFAULT_PAGE_LIMIT: u32 = 20;
-pub const MAX_PAGE_LIMIT: u32 = 50;
-
-/// Maximum safe goal balance allowed by the contract.
-///
-/// Keeping `current_amount <= i128::MAX/2` ensures callers can add funds without
-/// risking edge-case overflow behavior as balances approach `i128::MAX`.
-const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
-
-/// Maximum byte length for goal names to prevent storage bloat and DoS attacks.
-///
-/// Enforces a 32-byte limit on goal names to bound storage costs while allowing
-/// reasonable names (e.g., "FIRE Goal", "House Down Payment"). Names are validated
-/// byte-by-byte, not by character count, so multi-byte UTF-8 characters count
-/// toward the limit proportionally. Printable ASCII characters (bytes 32-126) only.
-const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
-
-/// Maximum number of goals (active + archived) allowed per owner.
-/// Prevents storage-bloat DoS attacks.
-const MAX_GOALS_PER_OWNER: u32 = 2000;
+/// Savings goal data structure with owner tracking for access control
+#[contract]
+pub struct SavingsGoalContract;
 
 #[contracttype]
 #[derive(Clone)]
@@ -146,6 +106,7 @@ pub enum DataKey {
     TagIndex(Address, String),   // Persistent: Vec<u32> (goal ids by owner & canonicalized tag)
     PauseAdmin,                  // Instance: Address
     Paused,                      // Instance: bool
+    PausedSince,                 // Instance: u64
     PausedFunctions,             // Instance: Map<Symbol, bool>
     UnpauseAt,                   // Instance: u64
     UpgradeAdmin,                // Instance: Address
@@ -207,6 +168,29 @@ pub struct GoalsExportSnapshot {
     pub goals: Vec<SavingsGoal>,
 }
 
+/// Pre-upgrade snapshot for upgrade rollback protection.
+///
+/// Captures critical instance storage (IDs, version, admin, pause state)
+/// before a contract upgrade so state can be restored if the upgrade fails.
+#[contracttype]
+#[derive(Clone)]
+pub struct PreUpgradeSnapshot {
+    /// Snapshot schema version (`SNAPSHOT_VERSION`).
+    pub schema_version: u32,
+    /// Next goal ID counter.
+    pub next_id: u32,
+    /// Next schedule ID counter.
+    pub next_schedule_id: u32,
+    /// Contract version at snapshot time.
+    pub version: u32,
+    /// Upgrade admin address, if set.
+    pub upgrade_admin: Option<Address>,
+    /// Pause state.
+    pub paused: bool,
+    /// Pause admin address, if set.
+    pub pause_admin: Option<Address>,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct AuditEntry {
@@ -233,6 +217,7 @@ pub mod pause_functions {
     pub const UNLOCK: Symbol = symbol_short!("unlock");
     pub const ARCHIVE: Symbol = symbol_short!("archive");
     pub const RESTORE: Symbol = symbol_short!("restore");
+    pub const REMOVE_FROM: Symbol = symbol_short!("rem_goal");
 }
 
 #[contracttype]
@@ -264,6 +249,8 @@ pub enum SavingsGoalError {
     /// Time-locks are monotonic while active: they may be extended forward,
     /// but never shortened backward.
     TimeLockShortening = 15,
+    SnapshotNotFound = 16,
+    SnapshotTooOld = 17,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -383,6 +370,8 @@ impl SavingsGoalContract {
     /// overwrite existing goals or reset NEXT_ID, to avoid ID collisions and
     /// data loss.
     pub fn init(env: Env) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         Self::extend_instance_ttl(&env);
         let storage = env.storage().instance();
         if !storage.has(&DataKey::NextId) {
@@ -394,11 +383,17 @@ impl SavingsGoalContract {
     }
 
     pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
-            None if caller != new_admin => panic!("Unauthorized"),
-            Some(admin) if admin != caller => panic!("Unauthorized"),
+            None => {
+                if caller != new_admin {
+                    panic!("Unauthorized");
+                }
+            }
+            Some(ref admin) if admin != &caller => panic!("Unauthorized"),
             _ => {}
         }
         env.storage()
@@ -407,17 +402,32 @@ impl SavingsGoalContract {
     }
 
     pub fn pause(env: Env, caller: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
             panic!("Unauthorized");
         }
         env.storage().instance().set(&DataKey::Paused, &true);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("paused")), ());
+        env.storage()
+            .instance()
+            .set(&DataKey::PausedSince, &env.ledger().timestamp());
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_PAUSED_V2),
+            ),
+            remitwise_common::events::PauseEvent {
+                paused_at: env.ledger().timestamp(),
+                paused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn unpause(env: Env, caller: Address) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -431,11 +441,22 @@ impl SavingsGoalContract {
             env.storage().instance().remove(&DataKey::UnpauseAt);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
-        env.events()
-            .publish((symbol_short!("savings"), symbol_short!("unpaused")), ());
+        env.storage().instance().remove(&DataKey::PausedSince);
+        env.events().publish(
+            (
+                symbol_short!("savings"),
+                soroban_sdk::Symbol::new(&env, remitwise_common::events::ACTION_UNPAUSED_V2),
+            ),
+            remitwise_common::events::UnpauseEvent {
+                unpaused_at: env.ledger().timestamp(),
+                unpaused_by: caller.clone(),
+            },
+        );
     }
 
     pub fn pause_function(env: Env, caller: Address, func: Symbol) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -451,6 +472,8 @@ impl SavingsGoalContract {
     }
 
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let admin = Self::get_pause_admin(&env).unwrap_or_else(|| panic!("No pause admin set"));
         if admin != caller {
@@ -467,6 +490,21 @@ impl SavingsGoalContract {
 
     pub fn is_paused(env: Env) -> bool {
         Self::get_global_paused(&env)
+    }
+
+    pub fn get_paused_since(env: Env) -> Option<u64> {
+        if Self::is_paused(env.clone()) {
+            env.storage().instance().get(&DataKey::PausedSince)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_pause_state(env: Env) -> remitwise_common::PauseState {
+        remitwise_common::PauseState {
+            paused: Self::is_paused(env.clone()),
+            paused_since: Self::get_paused_since(env),
+        }
     }
 
     pub fn get_version(env: Env) -> u32 {
@@ -559,6 +597,147 @@ impl SavingsGoalContract {
         );
     }
 
+    /// Capture a pre-upgrade snapshot of critical instance storage.
+    ///
+    /// Call this before performing a contract upgrade. The snapshot is stored
+    /// under `SNAPSHOT_KEY` in persistent storage and can be restored via
+    /// `restore_from_snapshot` if the upgrade needs to be rolled back.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may take a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no upgrade admin is set
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("savings"), symbol_short!("snap_pre"))`.
+    pub fn pre_upgrade(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
+        caller.require_auth();
+        Self::extend_instance_ttl(&env);
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot = PreUpgradeSnapshot {
+            schema_version: SNAPSHOT_VERSION,
+            next_id: env.storage().instance().get(&DataKey::NextId).unwrap_or(0),
+            next_schedule_id: env
+                .storage()
+                .instance()
+                .get(&DataKey::NextScheduleId)
+                .unwrap_or(0),
+            version: Self::get_version(env.clone()),
+            upgrade_admin: Self::get_upgrade_admin(&env),
+            paused: Self::get_global_paused(&env),
+            pause_admin: Self::get_pause_admin(&env),
+        };
+        env.storage().persistent().set(&SNAPSHOT_KEY, &snapshot);
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("snap_pre")),
+            SNAPSHOT_VERSION,
+        );
+    }
+
+    /// Restore critical instance storage from a pre-upgrade snapshot.
+    ///
+    /// Reads the snapshot stored by `pre_upgrade` and writes the captured
+    /// ID counters, version, upgrade admin, and pause state back to instance
+    /// storage. The snapshot is consumed after a successful restore.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may restore from a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no snapshot exists or version is unsupported
+    /// - If no upgrade admin is set
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("savings"), symbol_short!("snap_rst"))`.
+    pub fn restore_from_snapshot(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        let snapshot: PreUpgradeSnapshot = env
+            .storage()
+            .persistent()
+            .get(&SNAPSHOT_KEY)
+            .unwrap_or_else(|| panic_with_error!(&env, SavingsGoalError::SnapshotNotFound));
+        if snapshot.schema_version != SNAPSHOT_VERSION {
+            panic_with_error!(&env, SavingsGoalError::UnsupportedVersion);
+        }
+        let snapshot_taken_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&symbol_short!("SNAP_TS"))
+            .unwrap_or(0);
+        if remitwise_common::require_recent_snapshot(&env, snapshot_taken_at).is_err() {
+            panic_with_error!(&env, SavingsGoalError::SnapshotTooOld);
+        }
+        Self::extend_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextId, &snapshot.next_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextScheduleId, &snapshot.next_schedule_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::Version, &snapshot.version);
+        match &snapshot.upgrade_admin {
+            Some(addr) => env.storage().instance().set(&DataKey::UpgradeAdmin, addr),
+            None => env.storage().instance().remove(&DataKey::UpgradeAdmin),
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &snapshot.paused);
+        match &snapshot.pause_admin {
+            Some(addr) => env.storage().instance().set(&DataKey::PauseAdmin, addr),
+            None => env.storage().instance().remove(&DataKey::PauseAdmin),
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events().publish(
+            (symbol_short!("savings"), symbol_short!("snap_rst")),
+            snapshot.version,
+        );
+    }
+
+    /// Discard a pre-upgrade snapshot without restoring it.
+    ///
+    /// Use after a successful upgrade to free persistent storage.
+    ///
+    /// # Authorization
+    /// Only the upgrade admin may discard a snapshot.
+    ///
+    /// # Panics
+    /// - If `caller` is not the upgrade admin
+    /// - If no upgrade admin is set
+    pub fn discard_snapshot(env: Env, caller: Address) {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            panic!("cannot write: kill switch is active");
+        }
+        caller.require_auth();
+        let admin = Self::get_upgrade_admin(&env).unwrap_or_else(|| panic!("No upgrade admin set"));
+        if admin != caller {
+            panic!("Unauthorized");
+        }
+        env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.events()
+            .publish((symbol_short!("savings"), symbol_short!("snap_dsc")), ());
+    }
+
     // -----------------------------------------------------------------------
     // Tag management
     // -----------------------------------------------------------------------
@@ -610,8 +789,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &ids);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -636,8 +815,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -653,6 +832,8 @@ impl SavingsGoalContract {
     /// - Maintains canonicalized tag index; each (owner, tag) maps to goal IDs.
     /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
     pub fn add_tags_to_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -685,8 +866,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         RemitwiseEvents::emit(
@@ -715,6 +896,8 @@ impl SavingsGoalContract {
     /// - Removes goal ID from tag index for each removed tag.
     /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
     pub fn remove_tags_from_goal(env: Env, caller: Address, goal_id: u32, tags: Vec<String>) {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let normalized_tags = Self::validate_and_normalize_tags(&env, &tags);
         Self::extend_instance_ttl(&env);
@@ -758,8 +941,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         RemitwiseEvents::emit(
@@ -842,8 +1025,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(new_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(new_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
         env.storage().instance().set(&DataKey::NextId, &new_id);
         Self::append_owner_goal_id(&env, &owner, new_id);
@@ -904,10 +1087,14 @@ impl SavingsGoalContract {
     /// * If `caller` does not authorize the transaction
     pub fn add_to_goal(
         env: Env,
+        orchestrator: Address,
+        epoch: u64,
         caller: Address,
         goal_id: u32,
         amount: i128,
     ) -> Result<i128, SavingsGoalError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
@@ -958,8 +1145,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         // Emit events
@@ -1083,8 +1270,8 @@ impl SavingsGoalContract {
                 .set(&DataKey::Goal(item.goal_id), &goal);
             env.storage().persistent().extend_ttl(
                 &DataKey::Goal(item.goal_id),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
 
             // Emit standardized event for indexers
@@ -1162,53 +1349,26 @@ impl SavingsGoalContract {
     /// * `amount` - Amount to withdraw in stroops (must be > 0)
     ///
     /// # Returns
-    /// `Ok(remaining_amount)` - The remaining amount in the goal after withdrawal
+    /// Ok(updated current amount)
     ///
     /// # Errors
-    /// * `InvalidAmount` - If amount ≤ 0
-    /// * `GoalNotFound` - If goal_id does not exist
+    /// * `InvalidAmount` - If amount is not positive
+    /// * `GoalNotFound` - If goal with given ID doesn't exist
     /// * `Unauthorized` - If caller is not the goal owner
-    /// * `GoalLocked` - If goal is locked or time-locked
-    /// * `InsufficientBalance` - If amount > current_amount
-    /// * `Overflow` - If subtraction would underflow i128
-    ///
-    /// # Panics
-    /// * If `caller` does not authorize the transaction
-    /// Withdraws funds from an existing savings goal.
-    ///
-    /// # Arguments
-    /// * `caller` - Address of the goal owner (must authorize)
-    /// * `goal_id` - ID of the goal to withdraw from
-    /// * `amount` - Amount to withdraw in stroops (must be > 0)
-    ///
-    /// # Returns
-    /// `Ok(remaining_amount)` - The remaining amount in the goal after withdrawal
-    ///
-    /// # Errors
-    /// * `InvalidAmount` - If amount ≤ 0
-    /// * `GoalNotFound` - If goal_id does not exist
-    /// * `Unauthorized` - If caller is not the goal owner
-    /// * `InsufficientBalance` - If amount > current_amount
-    /// * `GoalLocked` - If the goal is locked or time-lock has not expired
-    ///
-    /// # Time-lock Behavior
-    /// - If `unlock_date` is set, withdrawal will fail if `env.ledger().timestamp() < unlock_date`.
-    /// - Boundary condition: Success if `timestamp == unlock_date`.
-    ///
-    /// # Events
-    /// - Emits `SavingsEvent::FundsWithdrawn`.
+    /// * `GoalLocked` - If the goal is locked
+    /// * `InsufficientBalance` - If amount exceeds the current balance
     pub fn withdraw_from_goal(
         env: Env,
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, SavingsGoalError> {
+    ) -> Result<i128, Error> {
+        // Access control: require caller authorization
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
-            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::InvalidAmount);
+            return Err(Error::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1225,27 +1385,19 @@ impl SavingsGoalContract {
             }
         };
 
+        let mut goal = goals.get(goal_id).ok_or(Error::GoalNotFound)?;
+
+        // Access control: verify caller is the owner
         if goal.owner != caller {
-            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::Unauthorized);
+            return Err(Error::Unauthorized);
         }
 
         if goal.locked {
-            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::GoalLocked);
-        }
-
-        if let Some(unlock_date) = goal.unlock_date {
-            let current_time = env.ledger().timestamp();
-            if current_time < unlock_date {
-                Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-                return Err(SavingsGoalError::GoalLocked);
-            }
+            return Err(Error::GoalLocked);
         }
 
         if amount > goal.current_amount {
-            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
-            return Err(SavingsGoalError::InsufficientBalance);
+            return Err(Error::InsufficientBalance);
         }
 
         goal.current_amount = goal
@@ -1259,8 +1411,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         let withdraw_event = FundsWithdrawnEvent {
@@ -1299,6 +1451,9 @@ impl SavingsGoalContract {
     /// # Events
     /// - Emits `SavingsEvent::GoalLocked`.
     pub fn lock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::LOCK);
         Self::extend_instance_ttl(&env);
@@ -1330,14 +1485,19 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("lock"), &caller, true);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::GoalLocked),
-            (goal_id, caller),
+            GoalLockEvent {
+                goal_id,
+                owner: caller,
+                locked: true,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
@@ -1352,6 +1512,9 @@ impl SavingsGoalContract {
     /// # Events
     /// - Emits `SavingsEvent::GoalUnlocked`.
     pub fn unlock_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::UNLOCK);
         Self::extend_instance_ttl(&env);
@@ -1383,19 +1546,90 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("unlock"), &caller, true);
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::GoalUnlocked),
-            (goal_id, caller),
+            GoalLockEvent {
+                goal_id,
+                owner: caller,
+                locked: false,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
     }
 
+    /// Push a savings goal's target date further into the future.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the caller (must be the goal owner)
+    /// * `goal_id` - ID of the goal
+    /// * `new_target_date` - The new target date as a Unix timestamp
+    ///
+    /// # Returns
+    /// The goal's updated target date
+    ///
+    /// # Panics
+    /// - If caller is not the goal owner
+    /// - If goal is not found
+    /// - If `new_target_date` is not later than the current target date
+    /// - If `new_target_date` is further than `MAX_EXTENSION_SECONDS` past
+    ///   the current ledger time (the "ledger cap")
+    pub fn extend_goal_deadline(
+        env: Env,
+        caller: Address,
+        goal_id: u32,
+        new_target_date: u64,
+    ) -> u64 {
+        // Access control: require caller authorization
+        caller.require_auth();
+
+        // Extend storage TTL
+        Self::extend_instance_ttl(&env);
+
+        let mut goals: Map<u32, SavingsGoal> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("GOALS"))
+            .unwrap_or_else(|| Map::new(&env));
+
+        let mut goal = goals.get(goal_id).expect("Goal not found");
+
+        // Access control: verify caller is the owner
+        if goal.owner != caller {
+            panic!("Only the goal owner can extend this goal's deadline");
+        }
+
+        if new_target_date <= goal.target_date {
+            panic!("New target date must be later than the current target date");
+        }
+
+        let max_target_date = env.ledger().timestamp() + MAX_EXTENSION_SECONDS;
+        if new_target_date > max_target_date {
+            panic!("New target date exceeds the maximum extension allowed from the current ledger time");
+        }
+
+        goal.target_date = new_target_date;
+        goals.set(goal_id, goal);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("GOALS"), &goals);
+
+        new_target_date
+    }
+
+    /// Get a savings goal by ID
+    ///
+    /// # Arguments
+    /// * `goal_id` - ID of the goal
+    ///
+    /// # Returns
+    /// SavingsGoal struct or None if not found
     pub fn get_goal(env: Env, goal_id: u32) -> Option<SavingsGoal> {
         env.storage().persistent().get(&DataKey::Goal(goal_id))
     }
@@ -1405,6 +1639,9 @@ impl SavingsGoalContract {
     // -----------------------------------------------------------------------
 
     /// Returns a deterministic page of goals for one owner using cursor-based pagination.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// # Pagination Contract (Cursor-Based)
     /// - **Deterministic order**: Goals are ordered by ID ascending (creation order)
@@ -1498,6 +1735,9 @@ impl SavingsGoalContract {
 
     /// Returns a deterministic page of active goals matching a given tag for an owner.
     ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
+    ///
     /// # Arguments
     /// * `owner`  - whose goals to filter by tag
     /// * `tag`    - canonicalized tag to query (will be normalized)
@@ -1520,13 +1760,17 @@ impl SavingsGoalContract {
     ) -> GoalPage {
         let limit = Self::clamp_limit(limit);
 
-        // Canonicalize the tag for lookup
-        let mut tags_vec = Vec::new(&env);
-        tags_vec.push_back(tag.clone());
-        let normalized = Self::validate_and_normalize_tags(&env, &tags_vec);
-        let canonical_tag = normalized
-            .get(0)
-            .unwrap_or_else(|| panic!("Tag normalization failed"));
+        // Canonicalize the single lookup tag directly -- no need to wrap it
+        // in a one-element Vec just to call the batch normalizer.
+        let canonical_tag = match remitwise_common::canonicalize_tag_checked(&env, &tag) {
+            Ok(t) => t,
+            Err(remitwise_common::TagError::Empty) | Err(remitwise_common::TagError::TooLong) => {
+                panic!("Tag must be between 1 and 32 characters")
+            }
+            Err(remitwise_common::TagError::InvalidChar { .. }) => {
+                soroban_sdk::panic_with_error!(&env, SavingsGoalError::InvalidTagContent)
+            }
+        };
 
         let ids: Vec<u32> = env
             .storage()
@@ -1599,6 +1843,9 @@ impl SavingsGoalContract {
     /// - Archived pagination order is deterministic: ascending goal ID for that owner.
     /// - Removes goal ID from all tag indexes it was associated with.
     pub fn archive_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE);
         Self::extend_instance_ttl(&env);
@@ -1645,8 +1892,8 @@ impl SavingsGoalContract {
         );
         env.storage().persistent().extend_ttl(
             &DataKey::ArchivedGoal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::remove_owner_goal_id(&env, &caller, goal_id);
@@ -1662,6 +1909,9 @@ impl SavingsGoalContract {
     /// - `caller` must authorize the invocation.
     /// - Only the archived goal owner can restore.
     pub fn restore_goal(env: Env, caller: Address, goal_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE);
         Self::extend_instance_ttl(&env);
@@ -1703,8 +1953,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &restored_goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::remove_owner_archived_goal_id(&env, &caller, goal_id);
@@ -1715,6 +1965,9 @@ impl SavingsGoalContract {
     }
 
     /// Returns a deterministic page of archived goals for one owner.
+    ///
+    /// See [`docs/PAGINATION_HANDBOOK.md`](../../docs/PAGINATION_HANDBOOK.md) for the invariants
+    /// all paginated reads must satisfy, cursor semantics, and the reviewer checklist.
     ///
     /// @dev Paging order is anchored to the archived owner-goal ID index (ascending goal ID),
     ///      not map iteration order.
@@ -1838,6 +2091,8 @@ impl SavingsGoalContract {
     // -----------------------------------------------------------------------
 
     pub fn export_snapshot(env: Env, caller: Address) -> GoalsExportSnapshot {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         let next_id = env
             .storage()
@@ -1991,8 +2246,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&DataKey::Goal(g.id), &g);
             env.storage().persistent().extend_ttl(
                 &DataKey::Goal(g.id),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
             let mut ids = owner_indices
                 .get(g.owner.clone())
@@ -2008,8 +2263,8 @@ impl SavingsGoalContract {
                 .set(&DataKey::OwnerGoals(owner.clone()), &ids);
             env.storage().persistent().extend_ttl(
                 &DataKey::OwnerGoals(owner.clone()),
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
 
@@ -2103,8 +2358,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &ids);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2135,8 +2390,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &out);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2169,8 +2424,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -2202,8 +2457,8 @@ impl SavingsGoalContract {
         env.storage().persistent().set(&key, &out);
         env.storage().persistent().extend_ttl(
             &key,
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
     }
 
@@ -2236,8 +2491,8 @@ impl SavingsGoalContract {
             env.storage().persistent().set(&key, &out);
             env.storage().persistent().extend_ttl(
                 &key,
-                INSTANCE_LIFETIME_THRESHOLD,
-                INSTANCE_BUMP_AMOUNT,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
             );
         }
     }
@@ -2246,7 +2501,7 @@ impl SavingsGoalContract {
     fn extend_instance_ttl(env: &Env) {
         env.storage()
             .instance()
-            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+            .extend_ttl(PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
     }
 
     /// Set or extend the time-lock on a goal.
@@ -2272,6 +2527,9 @@ impl SavingsGoalContract {
     /// # Panics
     /// - If caller is not the owner or goal not found.
     pub fn set_time_lock(env: Env, caller: Address, goal_id: u32, unlock_date: u64) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
         Self::extend_instance_ttl(&env);
 
@@ -2319,8 +2577,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Goal(goal_id), &goal);
         env.storage().persistent().extend_ttl(
             &DataKey::Goal(goal_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         Self::append_audit(&env, symbol_short!("timelock"), &caller, true);
@@ -2370,6 +2628,10 @@ impl SavingsGoalContract {
             panic!("Next due date must be in the future");
         }
 
+        if interval > 0 && next_due.checked_add(interval).is_none() {
+            panic!("Interval too large causing overflow");
+        }
+
         Self::extend_instance_ttl(&env);
 
         let next_schedule_id = env
@@ -2398,8 +2660,8 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(next_schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(next_schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
         env.storage()
             .instance()
@@ -2408,7 +2670,15 @@ impl SavingsGoalContract {
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCreated),
-            (next_schedule_id, owner),
+            ScheduleCreatedEvent {
+                schedule_id: next_schedule_id,
+                goal_id,
+                owner,
+                amount,
+                next_due,
+                interval,
+                timestamp: current_time,
+            },
         );
 
         next_schedule_id
@@ -2431,6 +2701,10 @@ impl SavingsGoalContract {
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             panic!("Next due date must be in the future");
+        }
+
+        if interval > 0 && next_due.checked_add(interval).is_none() {
+            panic!("Interval too large causing overflow");
         }
 
         Self::extend_instance_ttl(&env);
@@ -2458,19 +2732,30 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleModified),
-            (schedule_id, caller),
+            ScheduleModifiedEvent {
+                schedule_id,
+                goal_id: schedule.goal_id,
+                owner: caller,
+                amount,
+                next_due,
+                interval,
+                timestamp: current_time,
+            },
         );
 
         true
     }
 
     pub fn cancel_savings_schedule(env: Env, caller: Address, schedule_id: u32) -> bool {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return false;
+        }
         caller.require_auth();
 
         Self::extend_instance_ttl(&env);
@@ -2495,13 +2780,18 @@ impl SavingsGoalContract {
             .set(&DataKey::Schedule(schedule_id), &schedule);
         env.storage().persistent().extend_ttl(
             &DataKey::Schedule(schedule_id),
-            INSTANCE_LIFETIME_THRESHOLD,
-            INSTANCE_BUMP_AMOUNT,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
         );
 
         env.events().publish(
             (symbol_short!("savings"), SavingsEvent::ScheduleCancelled),
-            (schedule_id, caller),
+            ScheduleCancelledEvent {
+                schedule_id,
+                goal_id: schedule.goal_id,
+                owner: caller,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         true
@@ -2545,6 +2835,17 @@ impl SavingsGoalContract {
     ///   supplied by the owner.  A new `next_due > last_executed` correctly
     ///   re-enables execution for the updated due date.
     pub fn execute_due_savings_schedules(env: Env) -> Vec<u32> {
+        if remitwise_common::require_no_active_kill_switch(&env).is_err() {
+            return Vec::new(&env);
+        }
+        // This entrypoint is permissionless (anyone may call it to advance due
+        // schedules), so it must independently respect the contract's own
+        // pause flag rather than relying only on the separate global kill
+        // switch checked above -- otherwise `pause()` would have no effect on
+        // scheduled fund movement while every other write path stays blocked.
+        if Self::get_global_paused(&env) {
+            return Vec::new(&env);
+        }
         Self::extend_instance_ttl(&env);
 
         let current_time = env.ledger().timestamp();
@@ -2586,6 +2887,7 @@ impl SavingsGoalContract {
                 None => continue,
             };
 
+            let previously_completed = goal.current_amount >= goal.target_amount;
             let new_total = match goal.current_amount.checked_add(schedule.amount) {
                 Some(v) => v,
                 None => continue, // Skip overflow
@@ -2595,39 +2897,85 @@ impl SavingsGoalContract {
             }
             goal.current_amount = new_total;
 
-            let is_completed = goal.current_amount >= goal.target_amount;
+            let is_completed = new_total >= goal.target_amount;
             env.storage()
                 .persistent()
                 .set(&DataKey::Goal(schedule.goal_id), &goal);
 
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::Medium,
+                FUNDS_ADDED,
+                FundsAddedEvent {
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner.clone(),
+                    amount: schedule.amount,
+                    new_total,
+                    timestamp: current_time,
+                },
+            );
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::FundsAdded),
                 (schedule.goal_id, goal.owner.clone(), schedule.amount),
             );
 
-            if is_completed {
+            if is_completed && !previously_completed {
+                let completed_event = GoalCompletedEvent {
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner.clone(),
+                    amount: schedule.amount,
+                    new_total,
+                    name: goal.name.clone(),
+                    timestamp: current_time,
+                };
+
+                RemitwiseEvents::emit(
+                    &env,
+                    EventCategory::State,
+                    EventPriority::Medium,
+                    GOAL_COMPLETED,
+                    completed_event.clone(),
+                );
+                env.events().publish((GOAL_COMPLETED,), completed_event);
                 env.events().publish(
                     (symbol_short!("savings"), SavingsEvent::GoalCompleted),
-                    (schedule.goal_id, goal.owner),
+                    (schedule.goal_id, goal.owner.clone()),
                 );
             }
 
             schedule.last_executed = Some(current_time);
 
             if schedule.recurring && schedule.interval > 0 {
-                let mut missed = 0u32;
-                let mut next = schedule.next_due + schedule.interval;
-                while next <= current_time {
-                    missed = missed.saturating_add(1);
-                    next = next.saturating_add(schedule.interval);
+                let elapsed = current_time.saturating_sub(schedule.next_due);
+                let periods = elapsed / schedule.interval;
+                let missed = periods as u32;
+                let periods_to_add = periods.saturating_add(1) as u64;
+
+                let next = periods_to_add
+                    .checked_mul(schedule.interval)
+                    .and_then(|advance| schedule.next_due.checked_add(advance));
+
+                match next {
+                    Some(n) => {
+                        schedule.missed_count = schedule.missed_count.saturating_add(missed);
+                        schedule.next_due = n;
+                    }
+                    None => {
+                        schedule.active = false;
+                    }
                 }
-                schedule.missed_count = schedule.missed_count.saturating_add(missed);
-                schedule.next_due = next;
 
                 if missed > 0 {
                     env.events().publish(
                         (symbol_short!("savings"), SavingsEvent::ScheduleMissed),
-                        (schedule_id, missed),
+                        ScheduleMissedEvent {
+                            schedule_id,
+                            goal_id: schedule.goal_id,
+                            owner: goal.owner.clone(),
+                            missed_count: missed,
+                            timestamp: current_time,
+                        },
                     );
                 }
             } else {
@@ -2641,7 +2989,13 @@ impl SavingsGoalContract {
 
             env.events().publish(
                 (symbol_short!("savings"), SavingsEvent::ScheduleExecuted),
-                schedule_id,
+                ScheduleExecutedEvent {
+                    schedule_id,
+                    goal_id: schedule.goal_id,
+                    owner: goal.owner,
+                    amount: schedule.amount,
+                    timestamp: current_time,
+                },
             );
         }
 
@@ -2684,6 +3038,130 @@ impl SavingsGoalContract {
         ids.push_back(schedule_id);
         env.storage().persistent().set(&key, &ids);
     }
+
+    /// Configure the trusted orchestrator address used by the cross-contract
+    /// epoch guard.
+    ///
+    /// Unlike the other orchestrated contracts, `savings_goals` has no global
+    /// admin, so bootstrapping is performed by the orchestrator itself: the
+    /// first call must be made by the `orchestrator` address being configured
+    /// (i.e. the orchestrator registers itself). After that, only the already
+    /// configured orchestrator may rotate the trusted address. This prevents a
+    /// third party from claiming the trust slot before the orchestrator does.
+    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
+        caller.require_auth();
+        match get_trusted_orchestrator(&env) {
+            None => {
+                if caller != orchestrator {
+                    panic_with_error!(&env, Error::Unauthorized);
+                }
+            }
+            Some(existing) => {
+                if caller != existing {
+                    panic_with_error!(&env, Error::Unauthorized);
+                }
+            }
+        }
+        set_trusted_orchestrator(&env, &orchestrator);
+        env.events()
+            .publish((symbol_short!("sg"), symbol_short!("orch_set")), orchestrator.clone());
+    }
+
+    /// Bump the cross-contract epoch by 1. Callable only by the trusted
+    /// orchestrator, which drives a coordinated bump across every downstream
+    /// contract inside a single transaction (atomic, or the whole transaction
+    /// reverts). Returns the new epoch.
+    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
+        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
+            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
+        let new_epoch = bump_cross_contract_epoch(&env);
+        env.events()
+            .publish((symbol_short!("sg"), symbol_short!("epch_bump")), new_epoch);
+        new_epoch
+    }
+
+    /// View the current cross-contract epoch for off-chain reconciliation.
+    pub fn get_cross_contract_epoch(env: Env) -> u64 {
+        get_cross_contract_epoch(&env)
+    }
+}
+
+// -----------------------------------------------------------------------
+// ReversibleOp (compensation) trait implementation
+// -----------------------------------------------------------------------
+#[contractimpl]
+impl SavingsGoalsReversible for SavingsGoalContract {
+    /// Remove `amount` from the specified goal (compensation for `add_to_goal`).
+    ///
+    /// Skips lock/time-lock checks so that compensation can proceed even when
+    /// a goal is locked. Returns `Ok(false)` when the goal's current_amount is
+    /// already zero (idempotent no-op).
+    fn remove_from_goal(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        user: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<bool, ReversibleOpError> {
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        Self::require_not_paused(&env, pause_functions::REMOVE_FROM);
+        Self::extend_instance_ttl(&env);
+
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
+            Some(g) => g,
+            None => return Err(ReversibleOpError::NotFound),
+        };
+
+        if goal.owner != user {
+            return Err(ReversibleOpError::Unauthorized);
+        }
+
+        if goal.current_amount == 0 {
+            return Ok(false);
+        }
+
+        let effective = if amount > goal.current_amount {
+            goal.current_amount
+        } else {
+            amount
+        };
+
+        goal.current_amount = goal
+            .current_amount
+            .checked_sub(effective)
+            .ok_or(ReversibleOpError::InvalidState)?;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            symbol_short!("funds_rem"),
+            FundsWithdrawnEvent {
+                goal_id,
+                owner: user.clone(),
+                amount: effective,
+                new_total: goal.current_amount,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+
+        Ok(true)
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -2694,6 +3172,11 @@ mod event_test;
 #[cfg(test)]
 mod events_schema_test;
 #[cfg(test)]
+mod schedule_lifecycle_event_test;
+#[cfg(test)]
 mod test;
 #[cfg(test)]
+mod tests_safe_math;
+#[cfg(test)]
 mod tests_schedule_exec;
+mod ttl_bucket_test;

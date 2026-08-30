@@ -98,6 +98,7 @@ The following keys are used consistently across multiple contracts:
 |-----|---------|---------|
 | `PAUSE_ADM` | Pause admin address | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `PAUSED` | Global pause flag | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
+| `PAUSED_AT` | Global pause timestamp | remittance_split, bill_payments, emergency_killswitch, savings_goals |
 | `UPG_ADM` | Upgrade admin address | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `VERSION` | Contract version | remittance_split, savings_goals, bill_payments, insurance, family_wallet |
 | `NEXT_ID` | Next entity ID counter | savings_goals, bill_payments, insurance |
@@ -162,21 +163,59 @@ The following keys are used consistently across multiple contracts:
 
 ## Automated Validation
 
-Storage key naming conventions are automatically validated in CI through the `storage_key_naming_test` test suite located in `testutils/tests/storage_key_naming_test.rs`.
+Storage key naming conventions are automatically validated in CI through two complementary test suites:
+
+1. **`testutils/tests/storage_key_naming_test.rs`** - Validates a hand-maintained
+   catalogue of documented storage keys (see [Common Storage Keys](#common-storage-keys)
+   and [Contract-Specific Keys](#contract-specific-keys) above) against the
+   conventions in this document.
+2. **`testutils/tests/storage_key_source_scan_test.rs`** - Parses each
+   contract crate's `src/lib.rs` directly and extracts every storage-key
+   literal actually passed to a Soroban storage accessor (`.get()`, `.set()`,
+   `.has()`, `.remove()`), then validates those against the same
+   length/format constraints.
+3. **`testutils/tests/reserved_storage_keys_test.rs`** - Parses the
+   [Reserved Storage Keys](RESERVED_STORAGE_KEYS.md) table and cross-checks
+   it against the same live source scan, failing CI if any contract stores
+   data under a key reserved for a future roadmap feature.
+
+The hand-maintained catalogue is easy to read but nothing forces it to stay
+in sync with the code: a key can be renamed or added in source without the
+catalogue (or its checks) ever noticing. The source scan closes that gap by
+validating what the code actually does, independent of whether anyone
+remembered to update the catalogue. Running both together means drift
+between "documented convention" and "real on-chain key" fails CI regardless
+of which side changed. The reserved-key check closes a related but distinct
+gap: a key can be perfectly well-formed and still collide with a namespace
+set aside for an unshipped feature.
+
+Note: `savings_goals` and `insurance` primarily use a composite `DataKey`
+enum (`DataKey::Goal(u32)`, `DataKey::Policy(u32)`, ...) for most of their
+storage rather than inline `symbol_short!` literals - see the "Scalable
+DataKey Pattern" note in [STORAGE_LAYOUT.md](../STORAGE_LAYOUT.md). Enum
+variants don't carry a naming-convention string literal at the call site, so
+the source scan only covers their remaining literal-keyed entries (e.g.
+`VERSION`, `SNAP_TS`). This is expected, not a scanner gap.
 
 ### Running Tests Locally
 
 ```bash
-# Run all storage key validation tests
-cargo test --package testutils storage_key_naming_test -- --nocapture
+# Run all storage key validation tests (catalogue + source scan)
+cargo test --package testutils storage_key -- --nocapture
 
 # Run specific test
 cargo test --package testutils test_all_keys_within_max_length -- --nocapture
+
+# Run only the live-source drift scan
+cargo test --package testutils --test storage_key_source_scan_test -- --nocapture
+
+# Run only the reserved-key enforcement check
+cargo test --package testutils --test reserved_storage_keys_test -- --nocapture
 ```
 
 ### Test Coverage
 
-The automated tests validate:
+The catalogue-based tests (`storage_key_naming_test.rs`) validate:
 
 1. **Length Constraint** - All keys are ≤ 9 characters
 2. **Format Validation** - All keys use UPPERCASE_WITH_UNDERSCORES
@@ -188,11 +227,25 @@ The automated tests validate:
 8. **Documentation Coverage** - All keys have descriptions
 9. **Consistency Check** - Common keys are used consistently
 
+The source-scan tests (`storage_key_source_scan_test.rs`) validate, directly
+against `src/lib.rs` in every contract crate:
+
+1. **Length Constraint** - Every scanned key literal is ≤ 9 characters
+2. **Format Validation** - Every scanned key literal is UPPERCASE_WITH_UNDERSCORES
+3. **Underscore Placement** - No leading/trailing/consecutive underscores
+4. **Scanner Coverage** - A fixed set of well-known keys must still be found,
+   guarding against the parsing heuristic silently regressing
+
 ### CI Integration
 
-The storage key validation runs automatically on every pull request and push to main through the GitHub Actions workflow defined in `.github/workflows/ci.yml`.
+All three test suites run automatically on every pull request and push to
+main through the GitHub Actions workflow defined in `.github/workflows/ci.yml`.
 
-The `storage-key-validation` job will fail if any naming convention violations are detected, preventing non-compliant keys from being merged.
+The `storage-key-validation` job will fail if any naming convention
+violations are detected — by the catalogue check, the source scan, or
+both — or if the reserved-key check (`reserved_storage_keys_test.rs`) finds
+a reserved key in use, preventing non-compliant or namespace-colliding keys
+from being merged.
 
 ## Adding New Storage Keys
 
@@ -221,6 +274,7 @@ const KEY_rate_lim: Symbol = symbol_short!("rate_lim");  // lowercase - wrong fo
 ## References
 
 - [STORAGE_LAYOUT.md](../STORAGE_LAYOUT.md) - Complete storage layout documentation
+- [RESERVED_STORAGE_KEYS.md](RESERVED_STORAGE_KEYS.md) - Keys reserved for future roadmap features
 - [Soroban Storage Documentation](https://developers.stellar.org/docs/build/smart-contracts/example-contracts/storage)
 - [Soroban Symbol Documentation](https://docs.rs/soroban-sdk/latest/soroban_sdk/struct.Symbol.html)
 

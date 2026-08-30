@@ -28,9 +28,14 @@
 
 #![cfg(test)]
 
-use bill_payments::{Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{Address, Env, IntoVal, String, TryFromVal, Val, Vec as SorobanVec};
+use soroban_sdk::{
+    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+};
 
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -42,6 +47,7 @@ struct RecurringHarness<'a> {
     env: Env,
     client: BillPaymentsClient<'a>,
     owner: Address,
+    orch: Address,
     contract_id: Address,
 }
 
@@ -53,12 +59,34 @@ impl RecurringHarness<'_> {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
+        // Configure the trusted orchestrator required by the cross-contract
+        // epoch guard on `pay_bill` (epoch 0 for a fresh contract).
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         Self {
             env,
             client,
             owner,
+            orch,
             contract_id,
         }
+    }
+
+    fn sum_unpaid_bills(&self) -> i128 {
+        let mut cursor = 0u32;
+        let mut sum = 0i128;
+        loop {
+            let page = self.client.get_unpaid_bills(&self.owner, &cursor, &50);
+            for bill in page.items.iter() {
+                sum += bill.amount;
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        sum
     }
 
     fn create_recurring(
@@ -98,7 +126,7 @@ impl RecurringHarness<'_> {
 
     fn pay_at(&self, bill_id: u32, timestamp: u64) {
         self.env.ledger().set_timestamp(timestamp);
-        self.client.pay_bill(&self.owner, &bill_id);
+        self.client.pay_bill(&self.orch, &0, &self.owner, &bill_id);
     }
 
     fn child_id(&self, parent_id: u32) -> u32 {
@@ -179,7 +207,9 @@ fn bill_event_emitted(env: &Env, contract_id: &Address, expected: BillEvent) -> 
         if topics.len() < 2 {
             continue;
         }
-        if bill_event_matches(env, &topics.get(1).unwrap(), &expected) {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && bill_event_matches(env, &topics.get(1).unwrap(), &expected)
+        {
             return true;
         }
     }
@@ -192,7 +222,9 @@ fn count_contract_bill_events(env: &Env, contract_id: &Address) -> u32 {
         if cid != *contract_id || topics.len() < 2 {
             continue;
         }
-        if BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok() {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok()
+        {
             count += 1;
         }
     }
@@ -202,6 +234,38 @@ fn count_contract_bill_events(env: &Env, contract_id: &Address) -> u32 {
 fn child_in_overdue_list(client: &BillPaymentsClient, child_id: u32) -> bool {
     let page = client.get_overdue_bills(&0, &100);
     page.items.iter().any(|bill| bill.id == child_id)
+}
+
+fn request_key(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_recurring_keyed(
+    h: &RecurringHarness,
+    owner: &Address,
+    key: &BytesN<32>,
+    amount: i128,
+) -> u32 {
+    h.client.create_bill_keyed(
+        owner,
+        key,
+        &String::from_str(&h.env, "Keyed recurring"),
+        &amount,
+        &2_000_000u64,
+        &true,
+        &30u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    )
+}
+
+fn configure_pay_guard(h: &RecurringHarness, orchestrator: &Address, epoch: u64) {
+    h.env.as_contract(&h.contract_id, || {
+        set_trusted_orchestrator(&h.env, orchestrator);
+        set_cross_contract_epoch(&h.env, epoch);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -222,8 +286,17 @@ fn test_recurring_pay_spawns_one_child_with_all_cloned_fields() {
         &tags(&h.env, &["monthly", "essential"]),
     );
 
+    let total_before = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(total_before, amount, "total before should be parent amount");
+
     let parent = h.client.get_bill(&parent_id).unwrap();
     h.pay_at(parent_id, due_date - 1);
+
+    let total_after = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(
+        total_after, amount,
+        "total after should still be amount (subtract parent, add child)"
+    );
 
     let child_id = h.child_id(parent_id);
     let child = h.client.get_bill(&child_id).unwrap();
@@ -276,11 +349,11 @@ fn test_non_recurring_pay_spawns_no_child() {
 fn test_recurring_long_overdue_child_due_date_not_in_past() {
     let h = RecurringHarness::new(0);
     let due_date = 1_000_000u64;
-    let frequency_days = 30u32;
+    let frequency_days = 5u32;
     let parent_id = h.create_recurring("Mortgage", 250_000, due_date, frequency_days, "XLM");
 
-    // Parent is ~4 months overdue at payment time.
-    let pay_at = due_date + 120 * SECONDS_PER_DAY;
+    // Parent is 25 days overdue at payment time (within 30-day settlement window).
+    let pay_at = due_date + 25 * SECONDS_PER_DAY;
     h.pay_at(parent_id, pay_at);
 
     let child_id = h.child_id(parent_id);
@@ -309,7 +382,7 @@ fn test_recurring_long_overdue_child_due_date_not_in_past() {
 fn test_recurring_frequency_one_day_tags_preserved() {
     let h = RecurringHarness::new(0);
     let due_date = 2_000_000u64;
-    let parent_id = h.create_recurring("Daily sub", 99, due_date, 1, "NGN");
+    let parent_id = h.create_recurring("Daily sub", 99, due_date, 1, "USDC");
     h.client
         .add_tags_to_bill(&h.owner, &parent_id, &tags(&h.env, &["daily", "streaming"]));
 
@@ -418,4 +491,736 @@ fn test_create_bill_invalid_due_date_boundaries() {
         &None,
     );
     assert_eq!(zero, Err(Ok(BillPaymentsError::InvalidDueDate)));
+}
+
+#[test]
+fn test_sum_unpaid_bills_equals_get_total_unpaid() {
+    let h = RecurringHarness::new(1_000_000);
+    let due_date = 2_000_000u64;
+
+    // Create multiple bills
+    h.create_one_time("One-time 1", 100, due_date);
+    h.create_recurring("Recurring 1", 200, due_date, 30, "XLM");
+    h.create_one_time("One-time 2", 300, due_date);
+
+    let sum = h.sum_unpaid_bills();
+    let get_total = h.client.get_total_unpaid(&h.owner);
+
+    assert_eq!(sum, 600, "sum of bills should equal get_total_unpaid");
+    assert_eq!(sum, get_total, "sum_unpaid_bills == get_total_unpaid");
+
+    // Pay the first one-time bill
+    h.pay_at(1, due_date);
+    let sum_after_pay_one_time = h.sum_unpaid_bills();
+    let get_total_after_pay_one_time = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(
+        sum_after_pay_one_time, 500,
+        "after paying one-time, sum is 200 + 300"
+    );
+    assert_eq!(sum_after_pay_one_time, get_total_after_pay_one_time);
+
+    // Pay the recurring bill, which should spawn a new one
+    h.pay_at(2, due_date);
+    let sum_after_pay_recurring = h.sum_unpaid_bills();
+    let get_total_after_pay_recurring = h.client.get_total_unpaid(&h.owner);
+    assert_eq!(
+        sum_after_pay_recurring, 500,
+        "after paying recurring, sum remains 200 + 300 (new child)"
+    );
+    assert_eq!(sum_after_pay_recurring, get_total_after_pay_recurring);
+}
+
+// ---------------------------------------------------------------------------
+// Keyed request idempotency
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_keyed_recurring_create_duplicate_conflict_and_failure_retry() {
+    let h = RecurringHarness::new(1_000_000);
+    let key = request_key(&h.env, 1);
+    let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+
+    let first_id = create_recurring_keyed(&h, &h.owner, &key, 1_250);
+    let duplicate_id = create_recurring_keyed(&h, &h.owner, &key, 1_250);
+    assert_eq!(duplicate_id, first_id);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_250);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before + 1
+    );
+
+    let conflict = h.client.try_create_bill_keyed(
+        &h.owner,
+        &key,
+        &String::from_str(&h.env, "Keyed recurring"),
+        &1_251i128,
+        &2_000_000u64,
+        &true,
+        &30u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_250);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before + 1
+    );
+
+    let retry_key = request_key(&h.env, 2);
+    let invalid = h.client.try_create_bill_keyed(
+        &h.owner,
+        &retry_key,
+        &String::from_str(&h.env, "Correctable"),
+        &0i128,
+        &2_000_000u64,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(invalid, Err(Ok(BillPaymentsError::InvalidAmount)));
+
+    let corrected = h.client.create_bill_keyed(
+        &h.owner,
+        &retry_key,
+        &String::from_str(&h.env, "Correctable"),
+        &500i128,
+        &2_000_000u64,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(corrected, first_id + 1);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 2);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_750);
+}
+
+#[test]
+fn test_keyed_create_is_actor_scoped_and_serialized_duplicates_commit_once() {
+    let h = RecurringHarness::new(1_000_000);
+    let owner_b = Address::generate(&h.env);
+    let shared_key = request_key(&h.env, 3);
+
+    let a_first = create_recurring_keyed(&h, &h.owner, &shared_key, 700);
+    let a_concurrent_retry = create_recurring_keyed(&h, &h.owner, &shared_key, 700);
+    let b_independent = create_recurring_keyed(&h, &owner_b, &shared_key, 700);
+
+    assert_eq!(a_concurrent_retry, a_first);
+    assert_ne!(b_independent, a_first);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_owner_bill_count(&owner_b), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 700);
+    assert_eq!(h.client.get_total_unpaid(&owner_b), 700);
+}
+
+#[test]
+fn test_keyed_pay_timeout_retry_is_stable_and_actor_receipts_do_not_leak() {
+    let h = RecurringHarness::new(1_000_000);
+    let orchestrator = Address::generate(&h.env);
+    let intruder = Address::generate(&h.env);
+    let epoch = 9u64;
+    configure_pay_guard(&h, &orchestrator, epoch);
+
+    let parent_id = h.create_recurring("Keyed pay", 900, 1_500_000, 7, "XLM");
+    let other_id = h.create_one_time("Other", 400, 1_500_000);
+    let key = request_key(&h.env, 4);
+    let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+
+    let first = h
+        .client
+        .pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &parent_id);
+    let count_after_first = h.client.get_owner_bill_count(&h.owner);
+    let total_after_first = h.client.get_total_unpaid(&h.owner);
+    let events_after_first = count_contract_bill_events(&h.env, &h.contract_id);
+
+    h.env.ledger().set_timestamp(1_100_000);
+    let retry = h
+        .client
+        .pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &parent_id);
+    assert_eq!(retry.bill_id, first.bill_id);
+    assert_eq!(retry.paid_amount, first.paid_amount);
+    assert_eq!(retry.child_bill_id, first.child_bill_id);
+    assert_eq!(retry.child_due_date, first.child_due_date);
+    assert_eq!(count_after_first, 3);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), count_after_first);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), total_after_first);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_after_first
+    );
+    assert_eq!(events_after_first, events_before + 2);
+
+    let conflict = h
+        .client
+        .try_pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &other_id);
+    assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+    assert!(!h.client.get_bill(&other_id).unwrap().paid);
+
+    let unauthorized = h
+        .client
+        .try_pay_bill_keyed(&orchestrator, &epoch, &intruder, &key, &other_id);
+    assert_eq!(unauthorized, Err(Ok(BillPaymentsError::Unauthorized)));
+    assert!(!h.client.get_bill(&other_id).unwrap().paid);
+}
+
+#[test]
+fn test_keyed_cancel_and_restore_replays_emit_once() {
+    let h = RecurringHarness::new(1_000_000);
+    let cancel_id = h.create_one_time("Cancel me", 300, 1_500_000);
+    let cancel_key = request_key(&h.env, 5);
+    let events_before_cancel = count_contract_bill_events(&h.env, &h.contract_id);
+    h.client
+        .cancel_bill_keyed(&h.owner, &cancel_key, &cancel_id);
+    h.client
+        .cancel_bill_keyed(&h.owner, &cancel_key, &cancel_id);
+    assert!(h.client.get_bill(&cancel_id).is_none());
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 0);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 0);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before_cancel + 1
+    );
+
+    let orchestrator = Address::generate(&h.env);
+    configure_pay_guard(&h, &orchestrator, 12);
+    let restore_id = h.create_one_time("Restore me", 800, 1_500_000);
+    h.client.pay_bill_keyed(
+        &orchestrator,
+        &12u64,
+        &h.owner,
+        &request_key(&h.env, 6),
+        &restore_id,
+    );
+    h.env.ledger().set_timestamp(1_100_000);
+    assert_eq!(h.client.archive_paid_bills(&h.owner, &1_050_000u64), 1);
+
+    let restore_key = request_key(&h.env, 7);
+    let events_before_restore = count_contract_bill_events(&h.env, &h.contract_id);
+    h.client
+        .restore_bill_keyed(&h.owner, &restore_key, &restore_id);
+    let restored = h.client.get_bill(&restore_id).unwrap();
+    h.client
+        .restore_bill_keyed(&h.owner, &restore_key, &restore_id);
+    assert!(restored.paid);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 0);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before_restore + 1
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(12))]
+
+    #[test]
+    fn prop_keyed_create_replay_has_one_effect_and_semantic_conflict(
+        amount in 1i128..10_000i128,
+        retries in 2u8..6u8,
+    ) {
+        let h = RecurringHarness::new(1_000_000);
+        let key = request_key(&h.env, 8);
+        let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+        let first_id = create_recurring_keyed(&h, &h.owner, &key, amount);
+
+        for _ in 1..retries {
+            prop_assert_eq!(
+                create_recurring_keyed(&h, &h.owner, &key, amount),
+                first_id
+            );
+        }
+        prop_assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+        prop_assert_eq!(h.client.get_total_unpaid(&h.owner), amount);
+        prop_assert_eq!(
+            count_contract_bill_events(&h.env, &h.contract_id),
+            events_before + 1
+        );
+
+        let conflict = h.client.try_create_bill_keyed(
+            &h.owner,
+            &key,
+            &String::from_str(&h.env, "Keyed recurring"),
+            &(amount + 1),
+            &2_000_000u64,
+            &true,
+            &30u32,
+            &None,
+            &String::from_str(&h.env, "XLM"),
+            &None,
+        );
+        prop_assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+        prop_assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+        prop_assert_eq!(h.client.get_total_unpaid(&h.owner), amount);
+    }
+}
+
+// ===========================================================================
+// Bill Schedule Pagination Tests — Issue #1751
+//
+// Verifies `get_bill_schedules_page` cursor semantics, ordering guarantees,
+// limit enforcement, owner isolation, and end-of-stream behavior.
+//
+// Cursor semantics (EXCLUSIVE):
+//   - cursor = 0  → start from first schedule
+//   - cursor = N  → return only schedules with ID strictly > N
+//   - next_cursor = last returned ID when more pages exist
+//   - next_cursor = 0 on final (or only) page
+//
+// All invariants match the Pagination Handbook
+// (docs/PAGINATION_HANDBOOK.md).
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Schedule pagination harness
+// ---------------------------------------------------------------------------
+
+struct SchedulePaginationHarness<'a> {
+    env: Env,
+    client: BillPaymentsClient<'a>,
+    owner: Address,
+}
+
+impl SchedulePaginationHarness<'_> {
+    fn new() -> Self {
+        let env = Env::default();
+        env.ledger().set_timestamp(1_000_000);
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, bill_payments::BillPayments);
+        let client = BillPaymentsClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        Self { env, client, owner }
+    }
+
+    /// Create a recurring schedule and return its ID.
+    fn create_schedule(&self, name: &str) -> u32 {
+        self.client
+            .create_bill_schedule(
+                &self.owner,
+                &String::from_str(&self.env, name),
+                &1000i128,
+                &String::from_str(&self.env, "XLM"),
+                &2_000_000u64, // next_due far in future
+                &86400u64,     // 1-day interval
+            )
+    }
+
+    /// Collect all schedule IDs via full page traversal.
+    fn collect_all_ids(&self) -> std::vec::Vec<u32> {
+        let mut ids = std::vec::Vec::new();
+        let mut cursor = 0u32;
+        loop {
+            let page = self.client.get_bill_schedules_page(&self.owner, &cursor, &50u32);
+            for sched in page.items.iter() {
+                ids.push(sched.id);
+            }
+            if page.next_cursor == 0 {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        ids
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Basic / first-page tests
+// ---------------------------------------------------------------------------
+
+/// Empty owner → empty page, next_cursor == 0.
+#[test]
+fn test_schedule_page_empty_owner_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+/// Single schedule → returned on first page, next_cursor == 0.
+#[test]
+fn test_schedule_page_single_schedule_fits_first_page() {
+    let h = SchedulePaginationHarness::new();
+    let id = h.create_schedule("One");
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.next_cursor, 0, "next_cursor must be 0 on final page");
+    assert_eq!(page.items.get(0).unwrap().id, id);
+}
+
+/// First page with limit < total → returns `limit` items, non-zero next_cursor.
+#[test]
+fn test_schedule_page_first_page_has_correct_items_and_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("Sched{i}"));
+    }
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &3u32);
+    assert_eq!(page.count, 3);
+    assert!(page.next_cursor > 0, "must have next_cursor when more items exist");
+    // Items must be in ascending ID order
+    let ids: std::vec::Vec<u32> = page.items.iter().map(|s| s.id).collect();
+    for i in 1..ids.len() {
+        assert!(ids[i - 1] < ids[i], "items must be strictly ascending");
+    }
+}
+
+/// Second page resumes correctly after first page.
+#[test]
+fn test_schedule_page_second_page_continues_from_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=6u32 {
+        h.create_schedule(&std::format!("S{i}"));
+    }
+
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &3u32);
+    assert_eq!(page1.count, 3);
+    assert!(page1.next_cursor > 0);
+
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &page1.next_cursor, &3u32);
+    assert_eq!(page2.count, 3);
+    assert_eq!(page2.next_cursor, 0, "final page must have next_cursor == 0");
+
+    // No overlap between pages
+    let ids1: std::vec::Vec<u32> = page1.items.iter().map(|s| s.id).collect();
+    let ids2: std::vec::Vec<u32> = page2.items.iter().map(|s| s.id).collect();
+    for id in &ids2 {
+        assert!(!ids1.contains(id), "ID {id} appeared on both pages");
+    }
+    // All IDs on page2 must be strictly greater than all on page1
+    let max1 = ids1.iter().max().copied().unwrap_or(0);
+    let min2 = ids2.iter().min().copied().unwrap_or(u32::MAX);
+    assert!(min2 > max1, "page2 IDs must all be greater than page1 IDs");
+}
+
+// ---------------------------------------------------------------------------
+// End-of-stream and cursor boundary tests
+// ---------------------------------------------------------------------------
+
+/// Exact-fit: items == limit → next_cursor == 0 (no more pages).
+#[test]
+fn test_schedule_page_exact_fit_no_next_cursor() {
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=4u32 {
+        h.create_schedule(&std::format!("E{i}"));
+    }
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &4u32);
+    assert_eq!(page.count, 4);
+    assert_eq!(
+        page.next_cursor, 0,
+        "exact-fit must return next_cursor == 0"
+    );
+}
+
+/// Out-of-range cursor (beyond all IDs) → empty page, next_cursor == 0.
+#[test]
+fn test_schedule_page_out_of_range_cursor_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    h.create_schedule("A");
+    h.create_schedule("B");
+
+    let page = h.client.get_bill_schedules_page(&h.owner, &999_999u32, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+    assert_eq!(page.items.len(), 0);
+}
+
+/// Cursor at the ID of the last schedule → empty page.
+#[test]
+fn test_schedule_page_cursor_at_last_id_returns_empty() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("First");
+    let _id2 = h.create_schedule("Second");
+    let id3 = h.create_schedule("Third");
+
+    // cursor = id3 → no items with ID > id3
+    let page = h.client.get_bill_schedules_page(&h.owner, &id3, &10u32);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.next_cursor, 0);
+
+    // Sanity: cursor at id1 should return items id2 and id3
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &id1, &10u32);
+    assert_eq!(page2.count, 2);
+    assert_eq!(page2.next_cursor, 0);
+}
+
+/// Calling with next_cursor == 0 on the final page is idempotent.
+#[test]
+fn test_schedule_page_idempotent_repeat_final_page() {
+    let h = SchedulePaginationHarness::new();
+    h.create_schedule("X");
+    h.create_schedule("Y");
+
+    // First traversal
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page1.next_cursor, 0);
+
+    // Repeating with cursor=0 must return the same page
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &0u32, &10u32);
+    assert_eq!(page1.count, page2.count);
+    for i in 0..page1.items.len() {
+        assert_eq!(
+            page1.items.get(i).unwrap().id,
+            page2.items.get(i).unwrap().id
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Limit enforcement tests
+// ---------------------------------------------------------------------------
+
+/// limit == 0 is normalised to DEFAULT_PAGE_LIMIT (20).
+#[test]
+fn test_schedule_page_limit_zero_normalised_to_default() {
+    // DEFAULT_PAGE_LIMIT = 20
+    let h = SchedulePaginationHarness::new();
+    // Create more than DEFAULT_PAGE_LIMIT schedules to see clamping.
+    // MAX_BILL_SCHEDULES_PER_OWNER limits how many we can create; use 5 for simplicity.
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("N{i}"));
+    }
+
+    let page_default = h.client.get_bill_schedules_page(&h.owner, &0u32, &0u32);
+    let page_explicit = h.client.get_bill_schedules_page(&h.owner, &0u32, &20u32);
+    // Both should return the same set because 5 < DEFAULT_PAGE_LIMIT (20)
+    assert_eq!(page_default.count, page_explicit.count);
+    assert_eq!(page_default.next_cursor, page_explicit.next_cursor);
+}
+
+/// limit > MAX_PAGE_LIMIT is clamped to MAX_PAGE_LIMIT.
+#[test]
+fn test_schedule_page_large_limit_clamped() {
+    // MAX_PAGE_LIMIT = 50
+    let h = SchedulePaginationHarness::new();
+    for i in 1..=5u32 {
+        h.create_schedule(&std::format!("L{i}"));
+    }
+
+    // Request well above MAX_PAGE_LIMIT (50)
+    let page = h.client.get_bill_schedules_page(&h.owner, &0u32, &100_000u32);
+    assert!(
+        page.count <= 50,
+        "count {} must be <= MAX_PAGE_LIMIT 50",
+        page.count,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-page traversal / no-duplicates test
+// ---------------------------------------------------------------------------
+
+/// Full multi-page traversal collects exactly the right set of schedules
+/// with no duplicates and in strictly ascending ID order.
+#[test]
+fn test_schedule_page_full_traversal_no_duplicates_ascending() {
+    let h = SchedulePaginationHarness::new();
+    let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
+    for i in 1..=8u32 {
+        let id = h.create_schedule(&std::format!("T{i}"));
+        expected_ids.push(id);
+    }
+
+    // Traverse with small pages to force multiple page fetches
+    let mut collected: std::vec::Vec<u32> = std::vec::Vec::new();
+    let mut cursor = 0u32;
+    let mut page_count = 0u32;
+    loop {
+        let page = h.client.get_bill_schedules_page(&h.owner, &cursor, &3u32);
+        for sched in page.items.iter() {
+            collected.push(sched.id);
+        }
+        page_count += 1;
+        if page.next_cursor == 0 {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+
+    // Exactly the expected IDs, no more no fewer
+    assert_eq!(collected.len(), expected_ids.len(), "count mismatch");
+    assert_eq!(collected, expected_ids, "IDs must match and be in order");
+    // Verify no duplicates (strictly ascending implies no duplicates)
+    for i in 1..collected.len() {
+        assert!(
+            collected[i - 1] < collected[i],
+            "non-ascending at position {i}"
+        );
+    }
+    // 8 items / 3 per page = 3 full pages + 1 final → 3 pages with 3 items and 1 with 2
+    assert!(page_count >= 2, "must have required multiple pages");
+}
+
+// ---------------------------------------------------------------------------
+// Owner isolation test
+// ---------------------------------------------------------------------------
+
+/// Schedules from one owner must not appear in another owner's pages.
+#[test]
+fn test_schedule_page_owner_isolation() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1_000_000);
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, bill_payments::BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    // Create schedules interleaved between owners
+    let make_schedule = |owner: &Address, name: &str| -> u32 {
+        client
+            .create_bill_schedule(
+                owner,
+                &String::from_str(&env, name),
+                &500i128,
+                &String::from_str(&env, "XLM"),
+                &2_000_000u64,
+                &86400u64,
+            )
+    };
+
+    let id_a1 = make_schedule(&owner_a, "A1");
+    let id_b1 = make_schedule(&owner_b, "B1");
+    let id_a2 = make_schedule(&owner_a, "A2");
+    let id_b2 = make_schedule(&owner_b, "B2");
+    let id_a3 = make_schedule(&owner_a, "A3");
+
+    let page_a = client.get_bill_schedules_page(&owner_a, &0u32, &50u32);
+    let page_b = client.get_bill_schedules_page(&owner_b, &0u32, &50u32);
+
+    // Counts match what was created per owner
+    assert_eq!(page_a.count, 3, "owner A must have exactly 3 schedules");
+    assert_eq!(page_b.count, 2, "owner B must have exactly 2 schedules");
+
+    let ids_a: std::vec::Vec<u32> = page_a.items.iter().map(|s| s.id).collect();
+    let ids_b: std::vec::Vec<u32> = page_b.items.iter().map(|s| s.id).collect();
+
+    // A's schedules must not appear in B's page and vice versa
+    for id in &ids_a {
+        assert!(!ids_b.contains(id), "A's ID {id} appeared in B's page");
+    }
+    for id in &ids_b {
+        assert!(!ids_a.contains(id), "B's ID {id} appeared in A's page");
+    }
+
+    // Confirm correct IDs
+    assert!(ids_a.contains(&id_a1));
+    assert!(ids_a.contains(&id_a2));
+    assert!(ids_a.contains(&id_a3));
+    assert!(ids_b.contains(&id_b1));
+    assert!(ids_b.contains(&id_b2));
+}
+
+// ---------------------------------------------------------------------------
+// Cancelled schedule exclusion test
+// ---------------------------------------------------------------------------
+
+/// Cancelled schedules are removed from the owner index and must not appear
+/// in paginated results.
+#[test]
+fn test_schedule_page_cancelled_schedule_excluded() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("Active1");
+    let id2 = h.create_schedule("ToCancel");
+    let id3 = h.create_schedule("Active2");
+
+    h.client.cancel_bill_schedule(&h.owner, &id2);
+
+    let collected = h.collect_all_ids();
+    assert_eq!(
+        collected.len(),
+        2,
+        "cancelled schedule must be excluded from pages"
+    );
+    assert!(collected.contains(&id1));
+    assert!(!collected.contains(&id2), "cancelled ID must not appear");
+    assert!(collected.contains(&id3));
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent-insert stability test
+// ---------------------------------------------------------------------------
+
+/// New schedules inserted between page fetches appear on subsequent pages
+/// (not skipped) when the cursor correctly marks the boundary.
+#[test]
+fn test_schedule_page_concurrent_insert_not_skipped() {
+    let h = SchedulePaginationHarness::new();
+    let id1 = h.create_schedule("Before1");
+    let id2 = h.create_schedule("Before2");
+    let id3 = h.create_schedule("Before3");
+
+    // Fetch first page (2 items)
+    let page1 = h.client.get_bill_schedules_page(&h.owner, &0u32, &2u32);
+    assert_eq!(page1.count, 2);
+    let cursor_after_page1 = page1.next_cursor;
+
+    // Insert a new schedule AFTER fetching page1 (simulates concurrent insert)
+    let id_new = h.create_schedule("NewConcurrent");
+
+    // The new schedule has a higher ID, so it appears on the next page
+    let page2 = h.client.get_bill_schedules_page(&h.owner, &cursor_after_page1, &10u32);
+    let ids2: std::vec::Vec<u32> = page2.items.iter().map(|s| s.id).collect();
+
+    // id3 must still appear (was there before)
+    assert!(ids2.contains(&id3), "id3 must appear on page2");
+    // New schedule also appears (higher ID, same owner)
+    assert!(
+        ids2.contains(&id_new),
+        "new concurrent schedule must appear on subsequent page"
+    );
+    // No items from page1 re-appear
+    let ids1: std::vec::Vec<u32> = page1.items.iter().map(|s| s.id).collect();
+    assert!(ids1.contains(&id1) || ids1.contains(&id2));
+    for id in &ids2 {
+        assert!(!ids1.contains(id), "re-delivered ID {id} from page1");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Schedule field integrity on paginated items
+// ---------------------------------------------------------------------------
+
+/// Items returned through pagination carry the correct fields (not truncated).
+#[test]
+fn test_schedule_page_items_have_correct_fields() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1_000_000);
+    env.mock_all_auths();
+    let cid = env.register_contract(None, bill_payments::BillPayments);
+    let client = BillPaymentsClient::new(&env, &cid);
+    let owner = Address::generate(&env);
+
+    let schedule_id = client
+        .create_bill_schedule(
+            &owner,
+            &String::from_str(&env, "Utilities"),
+            &9_999i128,
+            &String::from_str(&env, "USDC"),
+            &2_000_000u64,
+            &(7 * 86400u64), // weekly
+        );
+
+    let page = client.get_bill_schedules_page(&owner, &0u32, &10u32);
+    assert_eq!(page.count, 1);
+    let sched = page.items.get(0).unwrap();
+
+    assert_eq!(sched.id, schedule_id);
+    assert_eq!(sched.owner, owner);
+    assert_eq!(sched.amount, 9_999);
+    assert_eq!(sched.currency, String::from_str(&env, "USDC"));
+    assert_eq!(sched.next_due, 2_000_000u64);
+    assert_eq!(sched.interval, 7 * 86400u64);
+    assert!(sched.recurring);
+    assert!(sched.active);
 }

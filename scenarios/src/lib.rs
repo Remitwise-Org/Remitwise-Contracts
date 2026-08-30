@@ -1,3 +1,5 @@
+#![no_std]
+#[cfg(test)]
 pub mod tests {
     use soroban_sdk::{
         testutils::{Ledger, LedgerInfo},

@@ -213,6 +213,52 @@ Instance Storage:
 - **Consumes:** Data from all other contracts via cross-contract calls
 - **Integrates:** With remittance_split, savings_goals, bill_payments, insurance, family_wallet
 
+### 6. Orchestrator Contract
+
+**Purpose:** Cross-contract remittance coordinator with signed (meta-transaction) and unsigned entrypoints
+
+**Key Features:**
+
+- Atomic multi-contract fan-out (spending check → split → savings/bills/insurance)
+- Signed flow with nonce replay protection, deadline window, and request-hash binding
+- `EXEC_LOCK` reentrancy guard held across the entire fan-out
+- Best-effort compensation on partial failure in the signed path
+
+**Signed payload and request hash:**
+
+The signed entrypoint `execute_remittance_flow_signed(executor, amount, nonce, deadline, request_hash)` binds these fields into `compute_request_hash`:
+
+| Field | Source |
+|-------|--------|
+| `operation` | Fixed symbol `flow` |
+| `nonce` | Caller-supplied sequential counter |
+| `amount` | Caller-supplied remittance total |
+| `deadline` | Caller-supplied ledger timestamp upper bound |
+| `goal_id` | Instance storage `GOAL_ID` (default `1` at init) |
+| `bill_id` | Instance storage `BILL_ID` (default `1` at init) |
+| `policy_id` | Instance storage `POL_ID` (default `1` at init) |
+
+Relayers must read the current execution parameter IDs from contract storage before signing. If an owner updates these IDs, previously signed authorizations become invalid (`InvalidNonce`) unless re-signed with the new IDs.
+
+**Storage Structure:**
+
+```
+Instance Storage:
+├── OWNER: Address
+├── FW_ADDR / RS_ADDR / SG_ADDR / BP_ADDR / INS_ADDR: dependency addresses
+├── GOAL_ID / BILL_ID / POL_ID: execution parameter defaults for signed flow
+├── EXEC_LOCK: bool
+├── NONCES: Map<Address, u64>
+├── USED_N: Map<Address, Vec<u64>>
+├── STATS: ExecutionStats
+└── AUDIT: Vec<AuditEntry>
+```
+
+**Relationships:**
+
+- **Provides:** Unified remittance execution for automation/relayers
+- **Consumes:** family_wallet, remittance_split, savings_goals, bill_payments, insurance
+
 ## Integration Patterns
 
 ### Automated Remittance Processing

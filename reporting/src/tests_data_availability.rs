@@ -119,10 +119,10 @@ mod availability_split {
             }
 
             let mut split = Vec::new(env);
-            split.push_back(50);
-            split.push_back(30);
-            split.push_back(15);
-            split.push_back(5);
+            split.push_back(5000);
+            split.push_back(3000);
+            split.push_back(1500);
+            split.push_back(500);
             split
         }
 
@@ -137,10 +137,10 @@ mod availability_split {
             }
 
             let mut amounts = Vec::new(&env);
-            amounts.push_back(total_amount * 50 / 100);
-            amounts.push_back(total_amount * 30 / 100);
-            amounts.push_back(total_amount * 15 / 100);
-            amounts.push_back(total_amount * 5 / 100);
+            amounts.push_back(total_amount * 5000 / 10_000);
+            amounts.push_back(total_amount * 3000 / 10_000);
+            amounts.push_back(total_amount * 1500 / 10_000);
+            amounts.push_back(total_amount * 500 / 10_000);
             amounts
         }
     }

@@ -1,19 +1,27 @@
 #![cfg(test)]
 
-//! Stress tests for arithmetic operations with very large i128 values
+//! Stress tests for arithmetic operations with large i128 values
 //!
-//! These tests verify that the bill_payments contract handles extreme values correctly:
-//! - Values near i128::MAX/2 to avoid overflow in additions
-//! - Proper error handling for overflow conditions
-//! - No unexpected panics or wrap-around behavior
+//! Since Issue #1737, every stored amount is bounded by
+//! `remitwise_common::MAX_AMOUNT` (10³⁰) and all aggregation arithmetic is
+//! **checked**, never saturating:
+//! - Amounts up to `MAX_AMOUNT` are accepted and round-trip exactly.
+//! - Amounts above `MAX_AMOUNT` are rejected at the boundary with
+//!   `BillPaymentsError::AmountExceedsMax` **before any state change**.
+//! - Per-owner totals are exact; overflow is unreachable because each amount
+//!   is validated and the owner cap bounds the sum.
 //!
 //! ## Documented Limitations
-//! - Maximum safe bill amount: i128::MAX/2 (to allow for safe addition operations)
-//! - get_total_unpaid and unpaid-total cache updates use saturating arithmetic
+//! - Maximum accepted bill amount: `MAX_AMOUNT` (10³⁰ smallest units).
+//! - `get_total_unpaid` / `get_total_unpaid_by_currency` use checked
+//!   aggregation; the old saturating behavior is removed.
 
-use bill_payments::{BillPayments, BillPaymentsClient};
+use bill_payments::{
+    BillPayments, BillPaymentsClient, BillPaymentsError, DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
+use remitwise_common::MAX_AMOUNT;
 use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
-use soroban_sdk::{Env, String};
+use soroban_sdk::{Address, Env, String};
 
 fn set_time(env: &Env, timestamp: u64) {
     let proto = env.ledger().protocol_version();
@@ -29,8 +37,18 @@ fn set_time(env: &Env, timestamp: u64) {
     });
 }
 
+/// Configure the trusted orchestrator required by the cross-contract epoch
+/// guard on `pay_bill`. Returns the orchestrator address to pass to
+/// `pay_bill(&orch, &0, ...)` (epoch 0 is the default for a fresh contract).
+fn setup_orchestrator(client: &BillPaymentsClient, admin: &Address) -> Address {
+    let orch = Address::generate(&client.env);
+    client.init_admin(admin, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(admin, &orch);
+    orch
+}
+
 #[test]
-fn test_create_bill_near_max_i128() {
+fn test_create_bill_at_max_amount() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -38,8 +56,8 @@ fn test_create_bill_near_max_i128() {
 
     env.mock_all_auths();
 
-    // Test with i128::MAX / 2 - a very large but safe value
-    let large_amount = i128::MAX / 2;
+    // MAX_AMOUNT is the largest legal amount; it must round-trip exactly.
+    let large_amount = MAX_AMOUNT;
 
     let bill_id = client.create_bill(
         &owner,
@@ -59,7 +77,7 @@ fn test_create_bill_near_max_i128() {
 }
 
 #[test]
-fn test_pay_bill_with_large_amount() {
+fn test_create_bill_rejects_amount_above_max() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -67,7 +85,36 @@ fn test_pay_bill_with_large_amount() {
 
     env.mock_all_auths();
 
-    let large_amount = i128::MAX / 2;
+    // One stroop above the cap must be rejected before any state change.
+    let result = client.try_create_bill(
+        &owner,
+        &String::from_str(&env, "Too Big"),
+        &(MAX_AMOUNT + 1),
+        &1000000,
+        &false,
+        &0,
+        &None,
+        &String::from_str(&env, "XLM"),
+        &None,
+    );
+    assert_eq!(result, Err(Ok(BillPaymentsError::AmountExceedsMax)));
+
+    // No partial state: no bill was created and no id was consumed.
+    assert!(client.get_bill(&1).is_none());
+    assert_eq!(client.get_total_unpaid(&owner), 0);
+}
+
+#[test]
+fn test_pay_bill_with_large_amount() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+
+    env.mock_all_auths();
+    let orch = setup_orchestrator(&client, &owner);
+
+    let large_amount = MAX_AMOUNT;
 
     let bill_id = client.create_bill(
         &owner,
@@ -82,11 +129,12 @@ fn test_pay_bill_with_large_amount() {
     );
 
     env.mock_all_auths();
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let bill = client.get_bill(&bill_id).unwrap();
     assert!(bill.paid);
     assert_eq!(bill.amount, large_amount);
+    assert_eq!(client.get_total_unpaid(&owner), 0);
 }
 
 #[test]
@@ -97,8 +145,9 @@ fn test_recurring_bill_with_large_amount() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    let orch = setup_orchestrator(&client, &owner);
 
-    let large_amount = i128::MAX / 2;
+    let large_amount = MAX_AMOUNT;
 
     let bill_id = client.create_bill(
         &owner,
@@ -113,17 +162,18 @@ fn test_recurring_bill_with_large_amount() {
     );
 
     env.mock_all_auths();
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     // Verify original bill is paid
     let bill = client.get_bill(&bill_id).unwrap();
     assert!(bill.paid);
     assert_eq!(bill.amount, large_amount);
 
-    // Verify next recurring bill was created with same amount
+    // Verify next recurring bill was created with same amount (net-zero total)
     let bill2 = client.get_bill(&2).unwrap();
     assert!(!bill2.paid);
     assert_eq!(bill2.amount, large_amount);
+    assert_eq!(client.get_total_unpaid(&owner), large_amount);
 }
 
 #[test]
@@ -135,8 +185,8 @@ fn test_get_total_unpaid_with_two_large_bills() {
 
     env.mock_all_auths();
 
-    // Create two bills, each at i128::MAX / 4 to safely add them
-    let amount = i128::MAX / 4;
+    // Two MAX_AMOUNT bills: the total is exactly 2 × 10³⁰ (no saturation).
+    let amount = MAX_AMOUNT;
 
     client.create_bill(
         &owner,
@@ -168,7 +218,9 @@ fn test_get_total_unpaid_with_two_large_bills() {
 }
 
 #[test]
-fn test_get_total_unpaid_saturates_on_overflow() {
+fn test_get_total_unpaid_exact_no_saturation() {
+    // Regression for the pre-fix saturating aggregation: the total must be
+    // the exact sum of validated amounts, never silently clamped.
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -176,8 +228,7 @@ fn test_get_total_unpaid_saturates_on_overflow() {
 
     env.mock_all_auths();
 
-    // Create two bills that would overflow when added normally
-    let amount = i128::MAX / 2 + 1000;
+    let amount = MAX_AMOUNT;
 
     client.create_bill(
         &owner,
@@ -204,18 +255,14 @@ fn test_get_total_unpaid_saturates_on_overflow() {
         &None,
     );
 
-    // get_total_unpaid should saturate instead of panicking
-    // When overflow would occur, result should be i128::MAX
+    // Exact sum of two MAX_AMOUNT bills — never saturates to i128::MAX.
     let total = client.get_total_unpaid(&owner);
-    assert_eq!(
-        total,
-        i128::MAX,
-        "get_total_unpaid should saturate to i128::MAX on overflow, not panic"
-    );
+    assert_eq!(total, 2 * MAX_AMOUNT);
+    assert!(total < i128::MAX);
 }
 
 #[test]
-fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
+fn test_get_total_unpaid_by_currency_exact() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -223,8 +270,8 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
 
     env.mock_all_auths();
 
-    // Create two large bills in USDC that would overflow
-    let amount = i128::MAX / 2 + 1000;
+    // Two MAX_AMOUNT USDC bills: exact sum, no saturation.
+    let amount = MAX_AMOUNT;
 
     client.create_bill(
         &owner,
@@ -251,13 +298,8 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
         &None,
     );
 
-    // get_total_unpaid_by_currency should saturate on overflow
     let total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
-    assert_eq!(
-        total,
-        i128::MAX,
-        "get_total_unpaid_by_currency should saturate to i128::MAX on overflow"
-    );
+    assert_eq!(total, 2 * MAX_AMOUNT);
 
     // Create a XLM bill and verify it's not included in USDC total
     env.mock_all_auths();
@@ -273,11 +315,9 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
         &None,
     );
 
-    // USDC total should still be saturated
+    // USDC total unchanged; XLM total only includes XLM bills.
     let usdc_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
-    assert_eq!(usdc_total, i128::MAX);
-
-    // XLM total should only include XLM bills
+    assert_eq!(usdc_total, 2 * MAX_AMOUNT);
     let xlm_total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "XLM"));
     assert_eq!(xlm_total, 1000);
 }
@@ -292,7 +332,7 @@ fn test_multiple_large_bills_different_owners() {
 
     env.mock_all_auths();
 
-    let large_amount = i128::MAX / 2;
+    let large_amount = MAX_AMOUNT;
 
     // Each owner can have large bills independently
     client.create_bill(
@@ -337,8 +377,9 @@ fn test_archive_large_amount_bill() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    let orch = setup_orchestrator(&client, &owner);
 
-    let large_amount = i128::MAX / 2;
+    let large_amount = MAX_AMOUNT;
 
     let bill_id = client.create_bill(
         &owner,
@@ -353,7 +394,7 @@ fn test_archive_large_amount_bill() {
     );
 
     env.mock_all_auths();
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     env.mock_all_auths();
     let before_timestamp: u64 = 2_000_000;
@@ -372,7 +413,7 @@ fn test_batch_pay_large_bills() {
 
     env.mock_all_auths();
 
-    let amount = i128::MAX / 10; // Safe for multiple bills
+    let amount = MAX_AMOUNT;
 
     let mut bill_ids = soroban_sdk::Vec::new(&env);
 
@@ -393,48 +434,20 @@ fn test_batch_pay_large_bills() {
     }
 
     env.mock_all_auths();
-    let paid_count = client.batch_pay_bills(&owner, &bill_ids);
+    let result = client.batch_pay_bills(&owner, &bill_ids);
+    assert!(result.is_ok(), "batch of MAX_AMOUNT bills must succeed exactly");
 
-    assert_eq!(paid_count, 5);
-
-    // Verify all bills are paid
+    // Verify all bills are paid and the total is exactly zero.
     for bill_id in bill_ids.iter() {
         let bill = client.get_bill(&bill_id).unwrap();
         assert!(bill.paid);
         assert_eq!(bill.amount, amount);
     }
+    assert_eq!(client.get_total_unpaid(&owner), 0);
 }
 
-// #[test]
-// fn test_overdue_bills_with_large_amounts() {
-//     let env = Env::default();
-//     set_time(&env, 2_000_000);
-
-//     let contract_id = env.register_contract(None, BillPayments);
-//     let client = BillPaymentsClient::new(&env, &contract_id);
-//     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
-
-//     env.mock_all_auths();
-
-//     let large_amount = i128::MAX / 2;
-
-//     client.create_bill(
-//         &owner,
-//         &String::from_str(&env, "Overdue Large"),
-//         &large_amount,
-//         &1000000, // Past due
-//         &false,
-//         &0,
-//         &String::from_str(&env, "XLM"),
-//     );
-
-//     let page = client.get_overdue_bills(&0, &10);
-//     assert_eq!(page.count, 1);
-//     assert_eq!(page.items.get(0).unwrap().amount, large_amount);
-// }
-
 #[test]
-fn test_edge_case_i128_max_minus_one() {
+fn test_edge_case_max_amount() {
     let env = Env::default();
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
@@ -442,8 +455,8 @@ fn test_edge_case_i128_max_minus_one() {
 
     env.mock_all_auths();
 
-    // Test with i128::MAX - 1
-    let edge_amount = i128::MAX - 1;
+    // Test with MAX_AMOUNT — the exact upper boundary.
+    let edge_amount = MAX_AMOUNT;
 
     let bill_id = client.create_bill(
         &owner,
@@ -470,7 +483,7 @@ fn test_pagination_with_large_amounts() {
 
     env.mock_all_auths();
 
-    let large_amount = i128::MAX / 100;
+    let large_amount = MAX_AMOUNT;
 
     // Create multiple bills with large amounts
     for i in 0..15 {
@@ -513,6 +526,7 @@ fn test_recurring_bill_max_frequency() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    let orch = setup_orchestrator(&client, &owner);
 
     // Use the maximum allowed frequency (36500 days = 100 years)
     let max_freq = 36500;
@@ -534,7 +548,7 @@ fn test_recurring_bill_max_frequency() {
 
     // Pay it and verify next bill
     env.mock_all_auths();
-    client.pay_bill(&owner, &bill_id);
+    client.pay_bill(&orch, &0, &owner, &bill_id);
 
     let next_bill = client.get_bill(&2).unwrap();
     let expected_due = 1000000u64 + (max_freq as u64 * 86400);
@@ -576,6 +590,7 @@ fn test_recurring_bill_date_overflow_protection() {
     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
     env.mock_all_auths();
+    let orch = setup_orchestrator(&client, &owner);
 
     // Create a bill with a due date very close to u64::MAX
     let near_max_due = u64::MAX - 86400;
@@ -595,9 +610,10 @@ fn test_recurring_bill_date_overflow_protection() {
         &None,
     );
 
-    // Paying this should fail due to date overflow
+    // Paying this should fail due to date overflow (recurring child's due
+    // date cannot be represented) — deterministic, no partial state.
     env.mock_all_auths();
-    let result = client.try_pay_bill(&owner, &bill_id);
+    let result = client.try_pay_bill(&orch, &0, &owner, &bill_id);
 
     use bill_payments::Error;
     assert_eq!(result, Err(Ok(Error::InvalidDueDate)));

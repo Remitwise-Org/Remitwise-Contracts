@@ -558,7 +558,6 @@ fn test_pagination_with_large_amounts() {
     }
 }
 #[test]
-#[test]
 fn test_lock_unlock_with_large_amounts() {
     let env = Env::default();
     let contract_id = env.register_contract(None, SavingsGoalContract);

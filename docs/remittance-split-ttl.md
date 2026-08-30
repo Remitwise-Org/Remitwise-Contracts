@@ -18,9 +18,8 @@ The contract uses standardized constants from `remitwise-common`:
 Instance storage entries are extended to `INSTANCE_BUMP_AMOUNT` whenever they have less than `INSTANCE_LIFETIME_THRESHOLD` remaining.
 
 | Key | Governance | Trigger |
-|-----|------------|---------|
-| `CONFIG` | `INSTANCE_BUMP_AMOUNT` | Every read/write |
-| `SPLIT` | `INSTANCE_BUMP_AMOUNT` | Every read/write |
+|-----|------------|---------|| `CONFIG`  | `INSTANCE_BUMP_AMOUNT` | Every read/write |
+| *(SPLIT removed)* | — | Percentages now derived from CONFIG |
 | `NONCES` | `INSTANCE_BUMP_AMOUNT` | Every read/write |
 | `AUDIT` | `INSTANCE_BUMP_AMOUNT` | Every read/write |
 | `VERSION` | `INSTANCE_BUMP_AMOUNT` | Every read/write |

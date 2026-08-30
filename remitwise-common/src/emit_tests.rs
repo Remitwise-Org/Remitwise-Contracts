@@ -4,7 +4,7 @@ use soroban_sdk::{symbol_short, Env, IntoVal, Val, Vec};
 #[test]
 fn test_compact_event_passes() {
     let env = Env::default();
-    // A small payload
+    let contract_id = env.register_contract(None, EventHarness);
     let data = 42u32;
     RemitwiseEvents::emit(
         &env,
@@ -16,10 +16,10 @@ fn test_compact_event_passes() {
 }
 
 #[test]
-#[should_panic(expected = "exceeds the 256-byte budget")]
+#[should_panic(expected = "exceeds 256-byte budget")]
 fn test_oversized_event_flagged() {
     let env = Env::default();
-    // A very large payload
+    let contract_id = env.register_contract(None, EventHarness);
     let mut large_data = Vec::<u32>::new(&env);
     for i in 0..100 {
         large_data.push_back(i);

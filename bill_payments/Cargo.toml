@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "=21.7.7"
+soroban-sdk = { version = "=21.7.7", default-features = false }
 remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
@@ -32,5 +32,21 @@ name = "tests_overdue"
 path = "tests/tests_overdue.rs"
 
 [[test]]
+name = "tests_bill_schedule_exec"
+path = "src/tests_bill_schedule_exec.rs"
+
+[[test]]
+name = "archived_pagination_tests"
+path = "tests/archived_pagination_tests.rs"
+
+[[test]]
 name = "unpaid_by_currency_pagination"
 path = "tests/unpaid_by_currency_pagination.rs"
+
+[[test]]
+name = "gas_bench"
+path = "tests/gas_bench.rs"
+
+[[test]]
+name = "test_state_transition_invariants"
+path = "tests/test_state_transition_invariants.rs"
