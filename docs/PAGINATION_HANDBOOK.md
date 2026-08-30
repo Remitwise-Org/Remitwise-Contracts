@@ -212,7 +212,7 @@ let limit = clamp_limit(limit);  // 0→20, 1-50→pass, >50→50
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `owner` | `Address` | Account whose bills to fetch |
+| `owner` | `Address` | Account whose bills to fetch (requires auth) |
 | `currency` | `String` | Currency filter (normalized to uppercase) |
 | `cursor` | `u32` | Exclusive bill ID boundary (0 = start) |
 | `limit` | `u32` | Max bills to return (clamped to `MAX_PAGE_LIMIT = 50`) |
@@ -229,6 +229,9 @@ let limit = clamp_limit(limit);  // 0→20, 1-50→pass, >50→50
 - `bill.owner == owner`
 - `bill.paid == false`
 - `bill.currency == normalized(currency)`
+
+**Security:** `owner.require_auth()` enforced at function entry — the per-`(owner, currency)`
+index is scoped to `owner`, so no cross-owner leakage can occur via cursor manipulation.
 
 **Currency normalization:**
 1. Trim leading/trailing ASCII whitespace
@@ -252,6 +255,63 @@ Example: `" usdc "` → `"USDC"`, `""` → `"XLM"`
 
 ---
 
+### `get_bills_by_currency(owner, currency, cursor, limit)` — Bill Payments
+
+**File:** `bill_payments/src/lib.rs`
+
+**Purpose:** Returns a page of ALL bills (paid + unpaid) for `owner` that match `currency`.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `owner` | `Address` | Account whose bills to fetch (requires auth) |
+| `currency` | `String` | Currency filter (normalized to uppercase) |
+| `cursor` | `u32` | Exclusive bill ID boundary (0 = start) |
+| `limit` | `u32` | Max bills to return (clamped to `MAX_PAGE_LIMIT = 50`) |
+
+**Returns:** `BillPage { items: Vec<Bill>, next_cursor: u32, count: u32 }`
+
+**Ordering:** Ascending by bill ID within the currency index.
+
+**Filters:** `bill.owner == owner`, `bill.currency == normalized(currency)` (paid and unpaid both included).
+
+**Cursor semantics (EXCLUSIVE):** Same as `get_unpaid_bills()`.
+
+**Security:** `owner.require_auth()` enforced at function entry — the per-`(owner, currency)`
+index is scoped to `owner`, so no cross-owner leakage can occur via cursor manipulation.
+
+---
+
+### `get_archived_bills(owner, cursor, limit)` / `get_archived_bills_page(owner, cursor, limit)` — Bill Payments
+
+**File:** `bill_payments/src/lib.rs`
+
+**Purpose:** Returns a page of archived bills for `owner`. Two equivalent entrypoints exist
+for this query (`get_archived_bills` is the original entrypoint, `get_archived_bills_page`
+is a later, more thoroughly documented one); both share identical cursor, limit, and
+ordering semantics and return the same `ArchivedBillPage` shape.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `owner` | `Address` | Account whose archived bills to fetch (requires auth) |
+| `cursor` | `u32` | Exclusive bill ID boundary (0 = start) |
+| `limit` | `u32` | Max items to return (clamped to `MAX_PAGE_LIMIT = 50`) |
+
+**Returns:** `ArchivedBillPage { items: Vec<ArchivedBill>, next_cursor: u32, count: u32 }`
+
+**Storage reads:** Per-owner `ARCH_IDX` index → `Vec<u32>` of archived bill IDs; `ARCH_BILL` map lookup per ID.
+
+**Ordering:** Strictly ascending by bill ID.
+
+**Cursor semantics (EXCLUSIVE):** Same as `get_unpaid_bills()`.
+
+**Security:** `owner.require_auth()` enforced at function entry — the archived-bill index is
+scoped to `owner`, so no cross-owner leakage can occur via cursor manipulation.
+
+---
 
 ### `get_bill_schedules_page(owner, cursor, limit)` — Bill Payments
 
@@ -1237,6 +1297,9 @@ for id in ids {
 | Savings Goals | `get_archived_goals_page()` | Exclusive ID | 50 | `ArchivedGoalPage` | lib.rs:1904 |
 | Bill Payments | `get_unpaid_bills()` | Exclusive ID | 50 | `BillPage` | lib.rs:2153 |
 | Bill Payments | `get_unpaid_bills_by_currency()` | Exclusive ID | 50 | `BillPage` | lib.rs:3286 |
+| Bill Payments | `get_bills_by_currency()` | Exclusive ID | 50 | `BillPage` | lib.rs |
+| Bill Payments | `get_archived_bills()` | Exclusive ID | 50 | `ArchivedBillPage` | lib.rs |
+| Bill Payments | `get_archived_bills_page()` | Exclusive ID | 50 | `ArchivedBillPage` | lib.rs |
 | Bill Payments | `get_bill_schedules_page()` | Exclusive ID | 50 | `BillSchedulePage` | lib.rs (Issue #1751) |
 | Insurance | `get_active_policies()` | Exclusive ID | 50 | `PolicyPage` | lib.rs:742 |
 | Insurance | `get_deactivated_policies()` | Exclusive ID | 50 | `PolicyPage` | lib.rs:799 |

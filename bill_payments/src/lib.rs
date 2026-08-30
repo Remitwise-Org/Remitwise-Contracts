@@ -3044,12 +3044,18 @@ impl BillPayments {
     /// Get a page of archived bills for `owner`.
     ///
     /// Returned order is canonical bill ID ascending across pages.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The archived-bill index is per-owner, so
+    /// results are scoped to `owner` and no cross-owner leakage can occur via
+    /// cursor manipulation.
     pub fn get_archived_bills(
         env: Env,
         owner: Address,
         cursor: u32,
         limit: u32,
     ) -> ArchivedBillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let archived: Map<u32, ArchivedBill> = env
             .storage()
@@ -3123,12 +3129,18 @@ impl BillPayments {
     /// # Gas Complexity
     /// O(clamp_limit(limit)) `ARCH_BILL` map lookups regardless of total archive size, because
     /// only the owner's index entry is read rather than scanning the full `ARCH_BILL` map.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The archived-bill index is per-owner, so
+    /// results are scoped to `owner` and no cross-owner leakage can occur via
+    /// cursor manipulation.
     pub fn get_archived_bills_page(
         env: Env,
         owner: Address,
         cursor: u32,
         limit: u32,
     ) -> ArchivedBillPage {
+        owner.require_auth();
         let effective_limit = clamp_limit(limit);
         let archived: Map<u32, ArchivedBill> = env
             .storage()
@@ -3845,6 +3857,11 @@ impl BillPayments {
     ///
     /// The currency string is normalized for consistent lookup.
     /// Pagination uses the existing currency index for O(currency_bills) traversal.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The per-`(owner, currency)` index is
+    /// scoped to `owner`, so no cross-owner leakage can occur via cursor
+    /// manipulation.
     pub fn get_unpaid_bills_by_currency(
         env: Env,
         owner: Address,
@@ -3852,6 +3869,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let normalized_currency = Self::normalize_currency(&env, &currency);
         let bills: Map<u32, Bill> = env
@@ -3920,6 +3938,11 @@ impl BillPayments {
     /// # Canonical Ordering
     /// Results are always ordered by bill ID ascending. Pagination uses the same
     /// ordering, so `cursor` is stable across repeated calls.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The per-`(owner, currency)` index is
+    /// scoped to `owner`, so no cross-owner leakage can occur via cursor
+    /// manipulation.
     pub fn get_bills_by_currency(
         env: Env,
         owner: Address,
@@ -3927,6 +3950,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let normalized_currency = Self::normalize_currency(&env, &currency);
         let bills: Map<u32, Bill> = env
