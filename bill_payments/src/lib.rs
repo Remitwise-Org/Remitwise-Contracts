@@ -100,6 +100,19 @@ pub struct BillSchedule {
 }
 
 /// Paginated result for bill queries
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BillSchedule {
+    pub id: u32,
+    pub owner: Address,
+    pub bill_id: u32,
+    pub next_due: u64,
+    pub interval: u64,
+    pub active: bool,
+    pub missed_count: u32,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct BillPage {

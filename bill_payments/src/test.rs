@@ -1642,7 +1642,6 @@ mod testsuit {
     // These tests were added to main before the contract methods were implemented.
     // Uncomment once the schedule functionality is added to the contract.
 
-    /*
     #[test]
     fn test_create_schedule() {
         let env = Env::default();
@@ -1863,7 +1862,6 @@ mod testsuit {
         let schedules = client.get_schedules(&owner);
         assert_eq!(schedules.len(), 2);
     }
-    */
     #[test]
     fn test_create_bill_emits_event() {
         use soroban_sdk::testutils::Events;
