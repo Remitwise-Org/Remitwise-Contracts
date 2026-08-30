@@ -1,9 +1,10 @@
 #![no_std]
 //! ## Storage-key layout
 //!
-//! All contract state lives in **instance storage** under two
-//! `symbol_short!` keys (short symbols are capped at 9 characters, which is
-//! why `NEXT_ID` and `BILLS` -- not more descriptive names -- are used):
+//! Bill and schedule state lives in **instance storage**. Request-key receipts
+//! use individual persistent-storage entries so one retry record can expire or
+//! be extended independently from the business state. The two primary bill
+//! keys are:
 //!
 //! - `NEXT_ID: u32` -- a monotonically increasing counter. It only ever
 //!   increases (on `create_bill`, and again on the auto-created next bill
@@ -18,11 +19,12 @@
 //!   `get_overdue_bills`) but must always be probed with `Map::get` --
 //!   never assumed to be present -- since cancelled ids leave gaps.
 //!
-//! Both keys share one TTL, bumped together by `extend_instance_ttl` on
+//! The instance keys share one TTL, bumped together by `extend_instance_ttl` on
 //! every write. There is no per-bill TTL: a single bill cannot outlive (or
 //! be evicted independently of) the rest of this contract's instance
 //! storage.
 use remitwise_common::{
+    amount::{AmountValidationError, validate_amount},
     bump_cross_contract_epoch, check_and_increment_rate_limit, clamp_limit,
     get_cross_contract_epoch, get_trusted_orchestrator, guard_cross_contract_write,
     require_no_active_kill_switch, require_stable_currency, require_within_settlement_window,
@@ -31,11 +33,11 @@ use remitwise_common::{
     EventCategory, EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT,
     ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN, MAX_SETTLEMENT_WINDOW_SECS,
-    SNAPSHOT_KEY, SNAPSHOT_VERSION,
+    PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, Map, String, Symbol, Vec,
+    BytesN, Env, Map, String, Symbol, Vec,
 };
 
 mod state;
@@ -193,6 +195,107 @@ const STORAGE_NEXT_BSCH: Symbol = symbol_short!("NEXT_BSCH");
 const STORAGE_OWNER_BSCH_IDX: Symbol = symbol_short!("OWN_BSCH");
 const STORAGE_BSCHEDS: Symbol = symbol_short!("BSCHEDS");
 
+#[contracttype]
+#[derive(Clone)]
+struct RequestJournalKey {
+    actor: Address,
+    request_key: BytesN<32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateBillRequest {
+    pub owner: Address,
+    pub name: String,
+    pub amount: i128,
+    pub due_date: u64,
+    pub recurring: bool,
+    pub frequency_days: u32,
+    pub external_ref: Option<String>,
+    pub currency: String,
+    pub schedule_id: Option<u32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PayBillRequest {
+    pub caller: Address,
+    pub orchestrator: Address,
+    pub epoch: u64,
+    pub bill_id: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BillTransitionRequest {
+    pub caller: Address,
+    pub bill_id: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateBillScheduleRequest {
+    pub owner: Address,
+    pub name: String,
+    pub amount: i128,
+    pub currency: String,
+    pub next_due: u64,
+    pub interval: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModifyBillScheduleRequest {
+    pub caller: Address,
+    pub schedule_id: u32,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BillScheduleTransitionRequest {
+    pub caller: Address,
+    pub schedule_id: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecuteBillSchedulesRequest {
+    pub executor: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BillPaymentRequest {
+    CreateBill(CreateBillRequest),
+    PayBill(PayBillRequest),
+    CancelBill(BillTransitionRequest),
+    RestoreBill(BillTransitionRequest),
+    CreateBillSchedule(CreateBillScheduleRequest),
+    ModifyBillSchedule(ModifyBillScheduleRequest),
+    CancelBillSchedule(BillScheduleTransitionRequest),
+    ExecuteDueBillSchedules(ExecuteBillSchedulesRequest),
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub enum BillPaymentResult {
+    BillId(u32),
+    Pay(AtomicPayReceipt),
+    Unit,
+    Bool(bool),
+    ScheduleIds(Vec<u32>),
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct RequestJournalEntry {
+    pub request: BillPaymentRequest,
+    pub result: BillPaymentResult,
+}
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -259,76 +362,28 @@ pub enum BillPaymentsError {
     InvalidTagContent = 32,
     /// Batch operation exceeds the maximum batch size.
     BatchTooLarge = 33,
-    /// The entire contract is paused
-    ContractPaused = 6,
-    /// Caller is not authorized to pause/unpause
-    UnauthorizedPause = 7,
-    /// This specific function is paused
-    FunctionPaused = 8,
-    /// Batch exceeds maximum allowed size
-    BatchTooLarge = 9,
-    /// One or more bills in the batch failed validation
-    BatchValidationFailed = 10,
-    /// Pagination limit is out of allowed range
-    InvalidLimit = 11,
-    /// Due date is in the past or otherwise invalid (error code 12).
-    ///
-    /// Triggered when `due_date == 0` OR `due_date < env.ledger().timestamp()`.
-    /// Boundary: `due_date == now` is **accepted** (strict less-than comparison).
-    InvalidDueDate = 12,
-    /// Tag string is invalid (empty or too long)
-    InvalidTag = 13,
-    /// Tags list is empty
-    EmptyTags = 14,
-    /// Currency code is invalid (empty, too long, or contains non-alphanumeric)
-    InvalidCurrency = 15,
-    /// External reference is invalid (empty, too long, or contains disallowed chars)
-    InvalidExternalRef = 16,
-    /// External reference already used by another active bill for this owner
-    DuplicateExternalRef = 17,
-    /// Owner has reached the maximum number of allowed active bills.
-    OwnerBillCapExceeded = 18,
-    /// Tag content contains invalid characters (must be [a-z0-9-_])
-    InvalidTagContent = 19,
-    /// Rate limit exceeded for this operation
-    RateLimitExceeded = 20,
-    /// Schedule interval is below the minimum allowed duration
-    ScheduleIntervalTooShort = 21,
-    /// Schedule lead time exceeds the maximum allowed duration
-    ScheduleLeadTimeTooLong = 22,
-    /// Owner has reached the maximum number of bill schedules
-    ScheduleCapExceeded = 23,
-    /// Bill schedule with the given ID does not exist
-    ScheduleNotFound = 24,
-    /// Bill schedule is not active
-    ScheduleNotActive = 25,
-    /// The currency is not a recognized stable asset.
-    /// Rebase/deflationary/elastic-supply tokens (e.g., AMPL, OHM) are intentionally rejected.
-    UnsupportedCurrency = 31,
-    /// No pre-upgrade snapshot was persisted for restore.
-    SnapshotNotFound = 26,
-    /// The pre-upgrade snapshot is older than the freshness window.
-    SnapshotTooOld = 27,
-    /// The admin grant has expired and must be refreshed.
-    AdminGrantExpired = 28,
-    /// The page is empty so there is no first item to return.
-    EmptyPage = 29,
-    /// Bill or schedule name is invalid (empty or exceeds max length)
-    InvalidName = 30,
-    /// Settlement occurred outside the allowed settlement window
-    SettlementWindowExpired = 32,
     /// `set_upgrade_admin` was called with `new_admin` equal to the current
     /// upgrade admin — rejected so a mistyped no-op rotation is caught at the
     /// call site instead of silently doing nothing.
-    SameAdmin = 33,
+    SameAdmin = 34,
     /// `init_admin` was called with a `rotation_timelock_seconds` below
     /// `MIN_SCHEDULE_INTERVAL` — too short to serve its purpose of giving the
     /// legitimate admin a window to notice and react to a rotation proposal.
-    RotationTimelockTooShort = 34,
+    RotationTimelockTooShort = 35,
     /// State transition is not allowed.
-    InvalidStateTransition = 35,
+    InvalidStateTransition = 36,
     /// Invariant violation detected - bill data is inconsistent.
     InvariantViolation = 36,
+    /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
+    /// overflow `i128`. Rejected deterministically (panic → full revert)
+    /// instead of silently saturating, so balances can never be truncated.
+    AmountOverflow = 37,
+    /// Amount exceeds the shared maximum (`remitwise_common::MAX_AMOUNT`).
+    AmountExceedsMax = 38,
+    /// Schedule interval exceeds `MAX_SCHEDULE_INTERVAL` (100 years).
+    ScheduleIntervalTooLong = 39,
+    /// The `u32` bill/schedule id counter is exhausted (`u32::MAX`).
+    IdSpaceExhausted = 40,
 }
 
 pub type Error = BillPaymentsError;
@@ -358,20 +413,22 @@ pub struct AtomicBatchPayReceipt {
     pub receipts: Vec<AtomicPayReceipt>,
 }
 #[contracttype]
-#[derive(Clone)]
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BillEvent {
-    Created,
-    Paid,
-    ExternalRefUpdated,
-    Cancelled,
-    Archived,
-    Restored,
-    ScheduleCreated,
-    ScheduleExecuted,
-    ScheduleMissed,
-    ScheduleModified,
-    ScheduleCancelled,
-    RecurringBillCreated,
+    Created = 0,
+    Paid = 1,
+    ExternalRefUpdated = 2,
+    Cancelled = 3,
+    Archived = 4,
+    Restored = 5,
+    ScheduleCreated = 6,
+    ScheduleExecuted = 7,
+    ScheduleMissed = 8,
+    ScheduleModified = 9,
+    ScheduleCancelled = 10,
+    RecurringBillCreated = 11,
 }
 
 #[derive(Clone, Debug)]
@@ -794,6 +851,55 @@ impl BillPayments {
     // Internal helpers
     // -----------------------------------------------------------------------
 
+    fn request_journal_key(actor: &Address, request_key: &BytesN<32>) -> RequestJournalKey {
+        RequestJournalKey {
+            actor: actor.clone(),
+            request_key: request_key.clone(),
+        }
+    }
+
+    fn lookup_request(
+        env: &Env,
+        actor: &Address,
+        request_key: &BytesN<32>,
+        request: &BillPaymentRequest,
+    ) -> Result<Option<BillPaymentResult>, BillPaymentsError> {
+        let key = Self::request_journal_key(actor, request_key);
+        let entry: Option<RequestJournalEntry> = env.storage().persistent().get(&key);
+        if let Some(entry) = entry {
+            if entry.request == *request {
+                env.storage().persistent().extend_ttl(
+                    &key,
+                    PERSISTENT_LIFETIME_THRESHOLD,
+                    PERSISTENT_BUMP_AMOUNT,
+                );
+                Ok(Some(entry.result))
+            } else {
+                Err(BillPaymentsError::RequestKeyConflict)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn commit_request(
+        env: &Env,
+        actor: &Address,
+        request_key: &BytesN<32>,
+        request: BillPaymentRequest,
+        result: BillPaymentResult,
+    ) {
+        let key = Self::request_journal_key(actor, request_key);
+        env.storage()
+            .persistent()
+            .set(&key, &RequestJournalEntry { request, result });
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+    }
+
     /// Validate and normalize a currency string for consistent storage and comparison.
     ///
     /// # Arguments
@@ -873,6 +979,25 @@ impl BillPayments {
         match Self::validate_and_normalize_currency(env, currency) {
             Ok(normalized) => normalized,
             Err(_) => String::from_str(env, DEFAULT_CURRENCY),
+        }
+    }
+
+    /// Validate an amount against the shared exact-integer rules.
+    ///
+    /// Amounts are exact integers in the asset's smallest unit. Two rules are
+    /// enforced at **every** boundary that accepts an amount:
+    /// 1. **Sign** — zero and negative amounts are rejected (`InvalidAmount`).
+    /// 2. **Scale / magnitude** — amounts above
+    ///    [`remitwise_common::MAX_AMOUNT`] are rejected (`AmountExceedsMax`)
+    ///    so that per-owner totals and batch deltas can never overflow `i128`.
+    ///
+    /// This check runs **before any state change**, so a rejected value can
+    /// never leave partial state behind.
+    fn validate_bill_amount(amount: i128) -> Result<(), BillPaymentsError> {
+        match validate_amount(amount) {
+            Ok(()) => Ok(()),
+            Err(AmountValidationError::NonPositive) => Err(BillPaymentsError::InvalidAmount),
+            Err(AmountValidationError::ExceedsMaximum) => Err(BillPaymentsError::AmountExceedsMax),
         }
     }
 
@@ -1567,37 +1692,111 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
+        Self::create_bill_schedule_core(
+            &env, owner, name, amount, currency, next_due, interval,
+        )
+    }
 
+    pub fn create_bill_schedule_keyed(
+        env: Env,
+        owner: Address,
+        request_key: BytesN<32>,
+        name: String,
+        amount: i128,
+        currency: String,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<u32, BillPaymentsError> {
+        owner.require_auth();
+        let request = BillPaymentRequest::CreateBillSchedule(CreateBillScheduleRequest {
+            owner: owner.clone(),
+            name: name.clone(),
+            amount,
+            currency: currency.clone(),
+            next_due,
+            interval,
+        });
+        if let Some(result) = Self::lookup_request(&env, &owner, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::BillId(id) => Ok(id),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        Self::require_not_paused(&env, pause_functions::CREATE_BILL_SCHEDULE)?;
+        let schedule_id = Self::create_bill_schedule_core(
+            &env, owner.clone(), name, amount, currency, next_due, interval,
+        )?;
+        Self::commit_request(
+            &env,
+            &owner,
+            &request_key,
+            request,
+            BillPaymentResult::BillId(schedule_id),
+        );
+        Ok(schedule_id)
+    }
+
+    fn create_bill_schedule_core(
+        env: &Env,
+        owner: Address,
+        name: String,
+        amount: i128,
+        currency: String,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<u32, BillPaymentsError> {
         // Validate schedule name length
         if name.is_empty() || name.len() > MAX_NAME_LEN {
             return Err(BillPaymentsError::InvalidName);
         }
+        if amount <= 0 {
+            return Err(BillPaymentsError::InvalidAmount);
+        }
+
+        // Amount must satisfy the shared exact-integer rules (positive sign,
+        // bounded magnitude) BEFORE any state change. Previously the amount
+        // was accepted unvalidated, letting a zero/negative/oversized value
+        // propagate into generated bills and per-owner totals.
+        Self::validate_bill_amount(amount)?;
 
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
             return Err(BillPaymentsError::InvalidDueDate);
         }
 
-        let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
+        let resolved_currency = Self::validate_and_normalize_currency(env, &currency)?;
 
         if interval > 0 && interval < MIN_SCHEDULE_INTERVAL {
             return Err(BillPaymentsError::ScheduleIntervalTooShort);
+        }
+
+        // Cap the interval so execution can always make progress: a bound
+        // interval guarantees the child `frequency_days` fits the per-bill
+        // cap and `next_due + interval` can never overflow `u64`.
+        if interval > MAX_SCHEDULE_INTERVAL {
+            return Err(BillPaymentsError::ScheduleIntervalTooLong);
         }
 
         if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
         }
 
-        let owner_schedule_count = Self::get_owner_bill_schedules(&env, &owner).len();
+        let owner_schedule_count = Self::get_owner_bill_schedules(env, &owner).len();
         if owner_schedule_count >= MAX_BILL_SCHEDULES_PER_OWNER {
             return Err(BillPaymentsError::ScheduleCapExceeded);
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
 
-        let next_schedule_id = Self::get_next_bill_schedule_id(&env) + 1;
+        // Checked increment: id exhaustion (u32::MAX) is rejected instead of
+        // silently wrapping and reusing an existing schedule id.
+        let next_schedule_id = Self::get_next_bill_schedule_id(&env)
+            .checked_add(1)
+            .ok_or(BillPaymentsError::IdSpaceExhausted)?;
 
         let schedule = BillSchedule {
             id: next_schedule_id,
@@ -1618,7 +1817,7 @@ impl BillPayments {
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
         schedules.set(next_schedule_id, schedule);
         env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
@@ -1626,7 +1825,7 @@ impl BillPayments {
             .instance()
             .set(&STORAGE_NEXT_BSCH, &next_schedule_id);
 
-        Self::index_add_bill_schedule(&env, &owner, next_schedule_id);
+        Self::index_add_bill_schedule(env, &owner, next_schedule_id);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleCreated),
@@ -1645,12 +1844,17 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<bool, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
+        Self::modify_bill_schedule_core(&env, caller, schedule_id, amount, next_due, interval)
+    }
 
-        if amount <= 0 {
-            return Err(BillPaymentsError::InvalidAmount);
-        }
+        // Shared exact-integer amount rules (sign + magnitude), before any
+        // state change. The previous `amount <= 0` guard did not bound the
+        // magnitude; an oversized amount could threaten per-owner totals.
+        Self::validate_bill_amount(amount)?;
 
         let current_time = env.ledger().timestamp();
         if next_due <= current_time {
@@ -1661,17 +1865,21 @@ impl BillPayments {
             return Err(BillPaymentsError::ScheduleIntervalTooShort);
         }
 
+        if interval > MAX_SCHEDULE_INTERVAL {
+            return Err(BillPaymentsError::ScheduleIntervalTooLong);
+        }
+
         if Timestamp::seconds_until(current_time, next_due) > MAX_SCHEDULE_LEAD_TIME {
             return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
         }
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let mut schedule = schedules
             .get(schedule_id)
@@ -1707,8 +1915,20 @@ impl BillPayments {
         caller: Address,
         schedule_id: u32,
     ) -> Result<bool, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
+        Self::cancel_bill_schedule_core(&env, caller, schedule_id)
+    }
+
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::CANCEL_BILL_SCHEDULE,
+            CANCEL_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
         Self::extend_instance_ttl(&env);
 
@@ -1716,7 +1936,7 @@ impl BillPayments {
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let mut schedule = schedules
             .get(schedule_id)
@@ -1735,7 +1955,7 @@ impl BillPayments {
         schedules.set(schedule_id, schedule);
         env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
-        Self::index_remove_bill_schedule(&env, &caller, schedule_id);
+        Self::index_remove_bill_schedule(env, &caller, schedule_id);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleCancelled),
@@ -1762,28 +1982,64 @@ impl BillPayments {
     pub fn execute_due_bill_schedules(env: Env) -> Vec<u32> {
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
-        Self::extend_instance_ttl(&env);
+        Self::execute_due_bill_schedules_core(&env)
+    }
 
+    pub fn execute_due_bill_schedules_keyed(
+        env: Env,
+        executor: Address,
+        request_key: BytesN<32>,
+    ) -> Result<Vec<u32>, BillPaymentsError> {
+        executor.require_auth();
+        let request =
+            BillPaymentRequest::ExecuteDueBillSchedules(ExecuteBillSchedulesRequest {
+                executor: executor.clone(),
+            });
+        if let Some(result) = Self::lookup_request(&env, &executor, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::ScheduleIds(ids) => Ok(ids),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
         if Self::get_global_paused(&env) {
-            return Vec::new(&env);
+            return Err(BillPaymentsError::ContractPaused);
+        }
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
+        let executed = Self::execute_due_bill_schedules_core(&env);
+        Self::commit_request(
+            &env,
+            &executor,
+            &request_key,
+            request,
+            BillPaymentResult::ScheduleIds(executed.clone()),
+        );
+        Ok(executed)
+    }
+
+    fn execute_due_bill_schedules_core(env: &Env) -> Vec<u32> {
+        Self::extend_instance_ttl(env);
+
+        if Self::get_global_paused(env) {
+            return Vec::new(env);
         }
 
         let current_time = env.ledger().timestamp();
-        let mut executed = Vec::new(&env);
+        let mut executed = Vec::new(env);
 
-        let next_schedule_id = Self::get_next_bill_schedule_id(&env);
+        let next_schedule_id = Self::get_next_bill_schedule_id(env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let mut next_id = env
             .storage()
@@ -1801,7 +2057,12 @@ impl BillPayments {
         let mut next_cursor = start_schedule_id;
 
         for schedule_id in start_schedule_id..=next_schedule_id {
-            next_cursor = schedule_id + 1;
+            // Checked cursor increment: at `u32::MAX` the "past the end"
+            // cursor is unrepresentable; reject deterministically rather than
+            // wrapping back into the schedule id space.
+            next_cursor = schedule_id
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(&env, BillPaymentsError::IdSpaceExhausted));
             schedules_checked += 1;
 
             if schedules_checked > MAX_BATCH_SIZE as u32 {
@@ -1817,22 +2078,55 @@ impl BillPayments {
                 continue;
             }
 
+            // Legacy state may contain non-positive amounts from before schedule
+            // creation validated them. Leave such schedules untouched so they
+            // remain inspectable and cancellable without minting invalid bills.
+            if schedule.amount <= 0 {
+                continue;
+            }
+
             if let Some(last_exec) = schedule.last_executed {
                 if last_exec >= schedule.next_due {
                     continue;
                 }
             }
 
+            // Defence-in-depth: a schedule stored before amount validation
+            // existed (or restored from a corrupt snapshot) must not be able
+            // to mint an invalid bill or move an owner's unpaid total. The
+            // panic reverts the whole invocation, so nothing above is
+            // committed and no partial state survives.
+            Self::validate_bill_amount(schedule.amount)
+                .unwrap_or_else(|e| panic_with_error!(&env, e));
+
             schedule.last_executed = Some(current_time);
 
             if schedule.recurring && schedule.interval > 0 {
                 let mut missed = 0u32;
-                let mut next = schedule.next_due + schedule.interval;
+                // Checked next-due arithmetic. The first addition previously
+                // used plain `+` (wrap-around risk in release builds); the
+                // catch-up loop previously used `saturating_add`, which could
+                // silently clamp `next_due`. Both now reject deterministically.
+                let mut next = schedule
+                    .next_due
+                    .checked_add(schedule.interval)
+                    .unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::AmountOverflow)
+                    });
                 while next <= current_time {
-                    missed = missed.saturating_add(1);
-                    next = next.saturating_add(schedule.interval);
+                    missed = missed.checked_add(1).unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::AmountOverflow)
+                    });
+                    next = next.checked_add(schedule.interval).unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::AmountOverflow)
+                    });
                 }
-                schedule.missed_count = schedule.missed_count.saturating_add(missed);
+                schedule.missed_count = schedule
+                    .missed_count
+                    .checked_add(missed)
+                    .unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::AmountOverflow)
+                    });
                 schedule.next_due = next;
 
                 if missed > 0 {
@@ -1842,11 +2136,31 @@ impl BillPayments {
                     );
                 }
 
-                let freq_days = (schedule.interval / SECONDS_PER_DAY).max(1) as u32;
+                // Exact interval → frequency_days conversion. `interval` is
+                // capped at `MAX_SCHEDULE_INTERVAL` on create/modify, so this
+                // always fits `[1, MAX_FREQUENCY_DAYS]` for new schedules. A
+                // legacy schedule with an out-of-range interval cannot be
+                // represented exactly and is rejected (owner must modify or
+                // cancel it) instead of silently truncating `frequency_days`.
+                let freq_days_u64 = (schedule.interval / SECONDS_PER_DAY).max(1);
+                let freq_days = u32::try_from(freq_days_u64).unwrap_or_else(|_| {
+                    panic_with_error!(&env, BillPaymentsError::InvariantViolation)
+                });
+                if freq_days > MAX_FREQUENCY_DAYS {
+                    panic_with_error!(&env, BillPaymentsError::InvariantViolation);
+                }
+
                 let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
 
                 if owner_bill_count < MAX_BILLS_PER_OWNER {
-                    next_id = next_id.saturating_add(1);
+                    // Checked increment: at `u32::MAX` the next bill id is
+                    // unrepresentable. The previous `saturating_add(1)` could
+                    // silently reuse an existing bill id and overwrite a live
+                    // record; reject deterministically instead (panic → the
+                    // whole invocation reverts with no partial state).
+                    next_id = next_id.checked_add(1).unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::IdSpaceExhausted)
+                    });
                     let child = Bill {
                         id: next_id,
                         owner: schedule.owner.clone(),
@@ -1860,18 +2174,21 @@ impl BillPayments {
                         created_at: current_time,
                         paid_at: None,
                         schedule_id: Some(schedule.id),
-                        tags: Vec::new(&env),
+                        tags: Vec::new(env),
                         currency: schedule.currency.clone(),
                     };
                     bills.set(next_id, child);
-                    Self::index_add_active(&env, &schedule.owner, next_id);
-                    Self::index_add_currency(&env, &schedule.owner, &schedule.currency, next_id);
-                    Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
+                    Self::index_add_active(env, &schedule.owner, next_id);
+                    Self::index_add_currency(env, &schedule.owner, &schedule.currency, next_id);
+                    Self::adjust_unpaid_total(env, &schedule.owner, schedule.amount);
 
-                    env.events().publish(
-                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                        (next_id, schedule_id, schedule.next_due),
-                    );
+                        env.events().publish(
+                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                            (next_id, schedule_id, schedule.next_due),
+                        );
+
+                        bills_created_this_call = bills_created_this_call.saturating_add(1);
+                    }
                 }
             } else {
                 schedule.active = false;
@@ -2085,9 +2402,92 @@ impl BillPayments {
         currency: String,
         _schedule_id: Option<u32>,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
+        Self::create_bill_core(
+            &env,
+            owner,
+            name,
+            amount,
+            due_date,
+            recurring,
+            frequency_days,
+            external_ref,
+            currency,
+            _schedule_id,
+        )
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_bill_keyed(
+        env: Env,
+        owner: Address,
+        request_key: BytesN<32>,
+        name: String,
+        amount: i128,
+        due_date: u64,
+        recurring: bool,
+        frequency_days: u32,
+        external_ref: Option<String>,
+        currency: String,
+        schedule_id: Option<u32>,
+    ) -> Result<u32, BillPaymentsError> {
+        owner.require_auth();
+        let request = BillPaymentRequest::CreateBill(CreateBillRequest {
+            owner: owner.clone(),
+            name: name.clone(),
+            amount,
+            due_date,
+            recurring,
+            frequency_days,
+            external_ref: external_ref.clone(),
+            currency: currency.clone(),
+            schedule_id,
+        });
+        if let Some(result) = Self::lookup_request(&env, &owner, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::BillId(id) => Ok(id),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
+        let bill_id = Self::create_bill_core(
+            &env,
+            owner.clone(),
+            name,
+            amount,
+            due_date,
+            recurring,
+            frequency_days,
+            external_ref,
+            currency,
+            schedule_id,
+        )?;
+        Self::commit_request(
+            &env,
+            &owner,
+            &request_key,
+            request,
+            BillPaymentResult::BillId(bill_id),
+        );
+        Ok(bill_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_bill_core(
+        env: &Env,
+        owner: Address,
+        name: String,
+        amount: i128,
+        due_date: u64,
+        recurring: bool,
+        frequency_days: u32,
+        external_ref: Option<String>,
+        currency: String,
+        schedule_id: Option<u32>,
+    ) -> Result<u32, BillPaymentsError> {
         // Validate bill name length (defence-in-depth: matches insurance and
         // savings_goals which both validate their name parameters).
         if name.is_empty() || name.len() > MAX_NAME_LEN {
@@ -2096,7 +2496,7 @@ impl BillPayments {
 
         // Check rate limit
         check_and_increment_rate_limit(
-            &env,
+            env,
             &owner,
             pause_functions::CREATE_BILL,
             CREATE_BILL_RATE_LIMIT,
@@ -2108,23 +2508,25 @@ impl BillPayments {
             return Err(BillPaymentsError::InvalidDueDate);
         }
 
-        if amount <= 0 {
-            return Err(BillPaymentsError::InvalidAmount);
-        }
+        // Shared exact-integer amount rules (sign + magnitude), before any
+        // state change. Rejects zero/negative (`InvalidAmount`) and amounts
+        // above the shared maximum (`AmountExceedsMax`) that could overflow
+        // per-owner totals.
+        Self::validate_bill_amount(amount)?;
         if recurring && (frequency_days == 0 || frequency_days > MAX_FREQUENCY_DAYS) {
             return Err(Error::InvalidFrequency);
         }
 
         // Validate and normalize currency (strict validation - rejects invalid codes)
-        let resolved_currency = Self::validate_and_normalize_currency(&env, &currency)?;
+        let resolved_currency = Self::validate_and_normalize_currency(env, &currency)?;
 
         // Validate external_ref if provided
-        let validated_ext_ref = Self::validate_optional_external_ref(&env, &external_ref)?;
+        let validated_ext_ref = Self::validate_optional_external_ref(env, &external_ref)?;
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
 
         // Enforce per-owner bill cap before touching storage.
-        let owner_bill_count = Self::get_owner_bills(&env, &owner).len();
+        let owner_bill_count = Self::get_owner_bills(env, &owner).len();
         if owner_bill_count >= MAX_BILLS_PER_OWNER {
             return Err(BillPaymentsError::OwnerBillCapExceeded);
         }
@@ -2133,18 +2535,22 @@ impl BillPayments {
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
+        // Checked increment: id exhaustion (u32::MAX) is rejected instead of
+        // silently wrapping and reusing an existing bill id (which would
+        // overwrite a live record).
         let next_id = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32)
-            + 1;
+            .checked_add(1)
+            .ok_or(BillPaymentsError::IdSpaceExhausted)?;
 
         // Enforce uniqueness for external_ref if provided
         if let Some(ref r) = validated_ext_ref {
-            Self::claim_external_ref(&env, &owner, r, next_id)?;
+            Self::claim_external_ref(env, &owner, r, next_id)?;
         }
 
         let current_time = env.ledger().timestamp();
@@ -2160,8 +2566,8 @@ impl BillPayments {
             paid: false,
             created_at: current_time,
             paid_at: None,
-            schedule_id: _schedule_id,
-            tags: Vec::new(&env),
+            schedule_id,
+            tags: Vec::new(env),
             currency: resolved_currency,
         };
 
@@ -2176,10 +2582,10 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("NEXT_ID"), &next_id);
         // Update owner index
-        Self::index_add_active(&env, &bill_owner, next_id);
+        Self::index_add_active(env, &bill_owner, next_id);
         // Update currency index
-        Self::index_add_currency(&env, &bill_owner, &bill_currency, next_id);
-        Self::adjust_unpaid_total(&env, &bill_owner, amount);
+        Self::index_add_currency(env, &bill_owner, &bill_currency, next_id);
+        Self::adjust_unpaid_total(env, &bill_owner, amount);
 
         // Emit event for audit trail
         env.events().publish(
@@ -2231,22 +2637,66 @@ impl BillPayments {
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
+        Self::pay_bill_core(&env, caller, bill_id).map(|_| ())
+    }
 
+    pub fn pay_bill_keyed(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        request_key: BytesN<32>,
+        bill_id: u32,
+    ) -> Result<AtomicPayReceipt, BillPaymentsError> {
+        caller.require_auth();
+        let request = BillPaymentRequest::PayBill(PayBillRequest {
+            caller: caller.clone(),
+            orchestrator: orchestrator.clone(),
+            epoch,
+            bill_id,
+        });
+        if let Some(result) = Self::lookup_request(&env, &caller, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::Pay(receipt) => Ok(receipt),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
+        let receipt = Self::pay_bill_core(&env, caller.clone(), bill_id)?;
+        Self::commit_request(
+            &env,
+            &caller,
+            &request_key,
+            request,
+            BillPaymentResult::Pay(receipt.clone()),
+        );
+        Ok(receipt)
+    }
+
+    fn pay_bill_core(
+        env: &Env,
+        caller: Address,
+        bill_id: u32,
+    ) -> Result<AtomicPayReceipt, BillPaymentsError> {
         // Check rate limit
         check_and_increment_rate_limit(
-            &env,
+            env,
             &caller,
             pause_functions::PAY_BILL,
             PAY_BILL_RATE_LIMIT,
         )
         .map_err(|_| BillPaymentsError::RateLimitExceeded)?;
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
@@ -2258,17 +2708,26 @@ impl BillPayments {
         // State transition validation (only for unpaid bills)
         use crate::state::{check_invariants, BillState};
         BillState::validate_transition(&bill, false, BillState::Paid, "pay_bill")?;
-        check_invariants(&env, &bill, false)?;
+        check_invariants(env, &bill, false)?;
 
         if bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
         }
 
         let current_time = env.ledger().timestamp();
+
+        // Reject settlement outside the allowed window (due date plus the
+        // 30-day grace period). This keeps execution deterministic across
+        // missed windows: a bill paid far too late is rejected before any
+        // state change instead of silently processing a stale obligation.
+        require_within_settlement_window(current_time, bill.due_date, MAX_SETTLEMENT_WINDOW_SECS)
+            .map_err(|_| BillPaymentsError::SettlementWindowExpired)?;
+
         let mut child_bill_entry: Option<(u32, Bill)> = None;
 
         if bill.recurring {
-            let owner_bill_count = Self::get_owner_bill_count(env.clone(), bill.owner.clone());
+            let owner_bill_count =
+                Self::get_owner_bill_count((*env).clone(), bill.owner.clone());
             if owner_bill_count >= MAX_BILLS_PER_OWNER {
                 return Err(BillPaymentsError::OwnerBillCapExceeded);
             }
@@ -2286,12 +2745,15 @@ impl BillPayments {
                     .checked_add(period)
                     .ok_or(Error::InvalidDueDate)?;
             }
+            // Checked increment: id exhaustion (u32::MAX) is rejected instead
+            // of silently wrapping and reusing an existing bill id.
             let next_id = env
                 .storage()
                 .instance()
                 .get(&symbol_short!("NEXT_ID"))
                 .unwrap_or(0u32)
-                + 1;
+                .checked_add(1)
+                .ok_or(BillPaymentsError::IdSpaceExhausted)?;
 
             let next_bill = Bill {
                 id: next_id,
@@ -2321,17 +2783,31 @@ impl BillPayments {
         bills.set(bill_id, paid_bill.clone());
 
         let paid_amount = paid_bill.amount;
-        let was_recurring = paid_bill.recurring;
         let bill_ext_ref = paid_bill.external_ref.clone();
+        let child_bill_id = child_bill_entry.as_ref().map(|(id, _)| *id);
+        let child_due_date = child_bill_entry
+            .as_ref()
+            .map(|(_, child)| child.due_date);
+
+        // Net amount added to the owner's unpaid-total cache: paying a bill
+        // subtracts its amount; a recurring renewal inserts a fresh unpaid
+        // child of the same amount, so the two cancel out (net zero). The
+        // child amount is captured before it is moved into storage below.
+        let mut total_delta: i128 = -paid_amount;
 
         if let Some((next_id, next_bill)) = child_bill_entry {
             let child_due_date = next_bill.due_date;
+            let child_amount = next_bill.amount;
+            total_delta = total_delta
+                .checked_add(child_amount)
+                .unwrap_or_else(|| panic_with_error!(&env, BillPaymentsError::AmountOverflow));
             bills.set(next_id, next_bill);
             env.storage()
                 .instance()
                 .set(&symbol_short!("NEXT_ID"), &next_id);
-            Self::index_add_active(&env, &caller, next_id);
-            Self::index_add_currency(&env, &caller, &paid_bill.currency, next_id);
+            Self::index_add_active(env, &caller, next_id);
+            Self::index_add_currency(env, &caller, &paid_bill.currency, next_id);
+            Self::adjust_unpaid_total(env, &caller, child_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, child_due_date),
@@ -2341,8 +2817,10 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
-        // Always adjust unpaid total when a bill is paid, even if it's recurring
-        Self::adjust_unpaid_total(&env, &caller, -paid_amount);
+        // Always adjust the cached unpaid total: subtract the paid amount and,
+        // for recurring renewals, add back the freshly created child so the
+        // running total stays exact (net-zero for a same-amount renewal).
+        Self::adjust_unpaid_total(&env, &caller, total_delta);
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Paid),
             (bill_id, caller.clone(), bill_ext_ref),
@@ -2355,7 +2833,12 @@ impl BillPayments {
             (bill_id, caller, paid_amount),
         );
 
-        Ok(())
+        Ok(AtomicPayReceipt {
+            bill_id,
+            paid_amount,
+            child_bill_id,
+            child_due_date,
+        })
     }
     // -----------------------------------------------------------------------
     // Tag management
@@ -2863,6 +3346,8 @@ impl BillPayments {
         bill_id: u32,
         external_ref: Option<String>,
     ) -> Result<(), BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::SET_EXT_REF)?;
 
@@ -2948,12 +3433,18 @@ impl BillPayments {
     /// Get a page of archived bills for `owner`.
     ///
     /// Returned order is canonical bill ID ascending across pages.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The archived-bill index is per-owner, so
+    /// results are scoped to `owner` and no cross-owner leakage can occur via
+    /// cursor manipulation.
     pub fn get_archived_bills(
         env: Env,
         owner: Address,
         cursor: u32,
         limit: u32,
     ) -> ArchivedBillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let archived: Map<u32, ArchivedBill> = env
             .storage()
@@ -3027,12 +3518,18 @@ impl BillPayments {
     /// # Gas Complexity
     /// O(clamp_limit(limit)) `ARCH_BILL` map lookups regardless of total archive size, because
     /// only the owner's index entry is read rather than scanning the full `ARCH_BILL` map.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The archived-bill index is per-owner, so
+    /// results are scoped to `owner` and no cross-owner leakage can occur via
+    /// cursor manipulation.
     pub fn get_archived_bills_page(
         env: Env,
         owner: Address,
         cursor: u32,
         limit: u32,
     ) -> ArchivedBillPage {
+        owner.require_auth();
         let effective_limit = clamp_limit(limit);
         let archived: Map<u32, ArchivedBill> = env
             .storage()
@@ -3102,10 +3599,48 @@ impl BillPayments {
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
+        Self::cancel_bill_core(&env, caller, bill_id)
+    }
 
+    pub fn cancel_bill_keyed(
+        env: Env,
+        caller: Address,
+        request_key: BytesN<32>,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
+        caller.require_auth();
+        let request = BillPaymentRequest::CancelBill(BillTransitionRequest {
+            caller: caller.clone(),
+            bill_id,
+        });
+        if let Some(result) = Self::lookup_request(&env, &caller, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::Unit => Ok(()),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
+        Self::cancel_bill_core(&env, caller.clone(), bill_id)?;
+        Self::commit_request(
+            &env,
+            &caller,
+            &request_key,
+            request,
+            BillPaymentResult::Unit,
+        );
+        Ok(())
+    }
+
+    fn cancel_bill_core(
+        env: &Env,
+        caller: Address,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
         // Check rate limit
         check_and_increment_rate_limit(
-            &env,
+            env,
             &caller,
             pause_functions::CANCEL_BILL,
             CANCEL_BILL_RATE_LIMIT,
@@ -3115,13 +3650,13 @@ impl BillPayments {
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
         let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
         // State transition validation
         // Check invariants before deletion
         use crate::state::check_invariants;
-        check_invariants(&env, &bill, false)?;
+        check_invariants(env, &bill, false)?;
 
         if bill.owner != caller {
             return Err(BillPaymentsError::Unauthorized);
@@ -3142,7 +3677,7 @@ impl BillPayments {
 
         // Release external_ref if it exists
         if let Some(ref r) = bill.external_ref {
-            Self::release_external_ref(&env, &caller, r);
+            Self::release_external_ref(env, &caller, r);
         }
 
         let removed_unpaid_amount = if bill.paid { 0 } else { bill.amount };
@@ -3152,12 +3687,12 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
         if removed_unpaid_amount > 0 {
-            Self::adjust_unpaid_total(&env, &caller, -removed_unpaid_amount);
+            Self::adjust_unpaid_total(env, &caller, -removed_unpaid_amount);
         }
         // Remove from owner index
-        Self::index_remove_active(&env, &caller, bill_id);
+        Self::index_remove_active(env, &caller, bill_id);
         // Remove from currency index
-        Self::index_remove_currency(&env, &caller, &bill_currency, bill_id);
+        Self::index_remove_currency(env, &caller, &bill_currency, bill_id);
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Cancelled),
             (bill_id, caller.clone(), env.ledger().timestamp()),
@@ -3191,6 +3726,8 @@ impl BillPayments {
         caller: Address,
         before_timestamp: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -3261,7 +3798,6 @@ impl BillPayments {
         // -----------------------------------------------------------------
         // Phase 2: All qualifying bills identified — apply mutations atomically.
         // -----------------------------------------------------------------
-        let mut bills = bills;
         let mut archived: Map<u32, ArchivedBill> = env
             .storage()
             .instance()
@@ -3324,13 +3860,52 @@ impl BillPayments {
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE)?;
-        Self::extend_instance_ttl(&env);
+        Self::restore_bill_core(&env, caller, bill_id)
+    }
+
+    pub fn restore_bill_keyed(
+        env: Env,
+        caller: Address,
+        request_key: BytesN<32>,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
+        caller.require_auth();
+        let request = BillPaymentRequest::RestoreBill(BillTransitionRequest {
+            caller: caller.clone(),
+            bill_id,
+        });
+        if let Some(result) = Self::lookup_request(&env, &caller, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::Unit => Ok(()),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        Self::require_not_paused(&env, pause_functions::RESTORE)?;
+        Self::restore_bill_core(&env, caller.clone(), bill_id)?;
+        Self::commit_request(
+            &env,
+            &caller,
+            &request_key,
+            request,
+            BillPaymentResult::Unit,
+        );
+        Ok(())
+    }
+
+    fn restore_bill_core(
+        env: &Env,
+        caller: Address,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
+        Self::extend_instance_ttl(env);
 
         let mut archived: Map<u32, ArchivedBill> = env
             .storage()
             .instance()
             .get(&symbol_short!("ARCH_BILL"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
         let archived_bill = archived
             .get(bill_id)
             .ok_or(BillPaymentsError::BillNotFound)?;
@@ -3357,7 +3932,7 @@ impl BillPayments {
                 created_at: 0,
                 paid_at: archived_bill.paid_at,
                 schedule_id: None,
-                tags: Vec::new(&env),
+                tags: Vec::new(env),
                 currency: archived_bill.currency.clone(),
             },
             true, // is_archived = true (bill lives in ARCH_BILL)
@@ -3366,14 +3941,14 @@ impl BillPayments {
         )?;
 
         if let Some(ref r) = archived_bill.external_ref {
-            Self::claim_external_ref(&env, &caller, r, bill_id)?;
+            Self::claim_external_ref(env, &caller, r, bill_id)?;
         }
 
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| Map::new(env));
 
         let restored_bill = Bill {
             id: archived_bill.id,
@@ -3395,10 +3970,10 @@ impl BillPayments {
         bills.set(bill_id, restored_bill);
         archived.remove(bill_id);
 
-        Self::index_remove_archived(&env, &caller, bill_id);
-        Self::index_add_active(&env, &caller, bill_id);
+        Self::index_remove_archived(env, &caller, bill_id);
+        Self::index_add_active(env, &caller, bill_id);
         // Add back to currency index
-        Self::index_add_currency(&env, &caller, &archived_bill.currency, bill_id);
+        Self::index_add_currency(env, &caller, &archived_bill.currency, bill_id);
 
         env.storage()
             .instance()
@@ -3407,7 +3982,7 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("ARCH_BILL"), &archived);
 
-        Self::update_storage_stats(&env);
+        Self::update_storage_stats(env);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::Restored),
@@ -3428,6 +4003,8 @@ impl BillPayments {
         caller: Address,
         before_timestamp: u64,
     ) -> Result<u32, BillPaymentsError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -3477,14 +4054,19 @@ impl BillPayments {
 
     /// @notice Pay multiple bills in one call.
     ///
-    /// @dev Atomic batch execution: invalid, unauthorized, or expired bill IDs will revert the
-    /// entire batch, leaving no partial state or hidden state changes.
+    /// @dev Atomic batch execution: all eligible bills in `bill_ids` are paid in a
+    /// single commit. Non-existent, cross-owner, and already-paid IDs are skipped
+    /// (not failed). Any failure during computation (recurring due-date overflow,
+    /// id exhaustion, unpaid-total overflow, invariant violation) returns an error
+    /// with **no partial state** — computation is fully staged in Phase 1 and only
+    /// committed in Phase 2.
     ///
     /// @param caller Authenticated owner attempting the batch payment.
     /// @param bill_ids Candidate bill IDs to process.
     /// @return `Ok(())` after processing the requested bill IDs.
-    /// @security Cross-owner payments are rejected per item; oversized batches are rejected
-    /// before iteration.
+    /// @security Cross-owner payments are skipped per item; oversized batches are
+    /// rejected before iteration. Unpaid-total arithmetic is checked, never
+    /// saturating, so balances cannot be silently truncated.
     pub fn batch_pay_bills(
         env: Env,
         caller: Address,
@@ -3513,34 +4095,62 @@ impl BillPayments {
             .get(&symbol_short!("NEXT_ID"))
             .unwrap_or(0u32);
 
+        // -----------------------------------------------------------------
+        // Phase 1: Validate and compute ALL side-effects in staging buffers.
+        // No storage is modified during this phase. If any bill's recurring
+        // computation overflows (due-date arithmetic, id exhaustion, unpaid-
+        // total arithmetic), the entire batch returns an error with no
+        // partial state — the caller can retry safely.
+        // -----------------------------------------------------------------
+        // staging_paid: bill_id -> paid Bill
+        let mut staging_paid: Map<u32, Bill> = Map::new(&env);
+        // staging_child: next_bill_id -> next Bill (recurring children)
+        let mut staging_child: Map<u32, Bill> = Map::new(&env);
+        // parent_to_child: parent_bill_id -> child_bill_id
+        let mut parent_to_child: Map<u32, u32> = Map::new(&env);
         let mut running_next_id = current_next_id;
-        let mut unpaid_delta = 0i128;
+        let mut total_unpaid_delta: i128 = 0;
 
         for bill_id in bill_ids.iter() {
-            let mut bill = match bills.get(bill_id) {
-                Some(bill) => bill,
-                None => continue,
+            let Some(bill) = bills.get(bill_id) else {
+                continue; // Non-existent bill: skip, do not fail
             };
 
-            // Skip unauthorized or already paid bills
             if bill.owner != caller {
-                continue; // Skip but don't fail - matches test expectation
+                continue; // Cross-owner bill: skip, do not fail
             }
             if bill.paid {
-                continue; // Skip already paid
+                continue; // Already-paid bill: skip, do not fail
             }
 
-            // State transition validation
+            // State-transition + invariant validation (also enforces the
+            // shared amount bounds, rejecting a corrupted/oversized stored
+            // bill before any state change).
             use crate::state::{check_invariants, BillState};
             BillState::validate_transition(&bill, false, BillState::Paid, "batch_pay_bills")?;
             check_invariants(&env, &bill, false)?;
 
-            // Process payment
-            bill.paid = true;
-            bill.paid_at = Some(current_time);
+            // Reject settlement outside the allowed window (due date plus the
+            // 30-day grace period): a stale obligation in the batch fails the
+            // whole batch deterministically rather than being silently paid.
+            require_within_settlement_window(
+                current_time,
+                bill.due_date,
+                MAX_SETTLEMENT_WINDOW_SECS,
+            )
+            .map_err(|_| BillPaymentsError::SettlementWindowExpired)?;
 
-            // Handle recurring bills
+            // Compute the child bill (if recurring) — may fail on overflow.
+            let mut child_entry: Option<(u32, Bill)> = None;
+            let mut unpaid_delta_item: i128 = 0;
+
             if bill.recurring {
+                // Checked increment: id exhaustion (u32::MAX) is rejected
+                // instead of silently wrapping and reusing a bill id.
+                running_next_id = running_next_id
+                    .checked_add(1)
+                    .ok_or(BillPaymentsError::IdSpaceExhausted)?;
+
                 let period = (bill.frequency_days as u64)
                     .checked_mul(SECONDS_PER_DAY)
                     .ok_or(Error::InvalidFrequency)?;
@@ -3555,13 +4165,11 @@ impl BillPayments {
                         .ok_or(Error::InvalidDueDate)?;
                 }
 
-                running_next_id = running_next_id.checked_add(1).ok_or(Error::InvalidDueDate)?;
-
                 let next_bill = Bill {
                     id: running_next_id,
                     owner: bill.owner.clone(),
                     name: bill.name.clone(),
-                    external_ref: None,
+                    external_ref: None, // do not clone: uniqueness is per-bill
                     amount: bill.amount,
                     due_date: next_due_date,
                     recurring: true,
@@ -3573,20 +4181,51 @@ impl BillPayments {
                     tags: bill.tags.clone(),
                     currency: bill.currency.clone(),
                 };
-                bills.set(running_next_id, next_bill);
-                Self::index_add_active(&env, &caller, running_next_id);
-                Self::index_add_currency(&env, &caller, &bill.currency, running_next_id);
-                env.events().publish(
-                    (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                    (running_next_id, bill_id, next_due_date),
-                );
+                child_entry = Some((running_next_id, next_bill));
             } else {
-                unpaid_delta = unpaid_delta.saturating_sub(bill.amount);
+                // Paying a non-recurring bill removes its amount from the
+                // owner's unpaid total. Recurring bills are net-zero: the
+                // parent's amount is removed but the child bill adds it back.
+                unpaid_delta_item = bill.amount;
             }
 
-            let paid_amount = bill.amount;
-            let external_ref = bill.external_ref.clone();
-            bills.set(bill_id, bill);
+            let mut paid_bill = bill.clone();
+            paid_bill.paid = true;
+            paid_bill.paid_at = Some(current_time);
+
+            // Checked, never saturating: a delta overflow would silently
+            // truncate the owner's unpaid total.
+            total_unpaid_delta = total_unpaid_delta
+                .checked_sub(unpaid_delta_item)
+                .ok_or(BillPaymentsError::AmountOverflow)?;
+
+            staging_paid.set(bill_id, paid_bill);
+            if let Some((child_id, child_bill)) = child_entry {
+                parent_to_child.set(bill_id, child_id);
+                staging_child.set(child_id, child_bill);
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Phase 2: All computation succeeded — commit all mutations at once.
+        // -----------------------------------------------------------------
+        for (bill_id, paid_bill) in staging_paid.iter() {
+            let external_ref = paid_bill.external_ref.clone();
+            let amount = paid_bill.amount;
+
+            if let Some(child_id) = parent_to_child.get(bill_id) {
+                if let Some(child_bill) = staging_child.get(child_id) {
+                    bills.set(child_id, child_bill.clone());
+                    Self::index_add_active(&env, &caller, child_id);
+                    Self::index_add_currency(&env, &caller, &child_bill.currency, child_id);
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                        (child_id, bill_id, child_bill.due_date),
+                    );
+                }
+            }
+
+            bills.set(bill_id, paid_bill);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::Paid),
                 (bill_id, caller.clone(), external_ref),
@@ -3596,7 +4235,7 @@ impl BillPayments {
                 EventCategory::Transaction,
                 EventPriority::High,
                 symbol_short!("paid"),
-                (bill_id, caller.clone(), paid_amount),
+                (bill_id, caller.clone(), amount),
             );
         }
 
@@ -3607,8 +4246,8 @@ impl BillPayments {
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
 
-        if unpaid_delta != 0 {
-            Self::adjust_unpaid_total(&env, &caller, unpaid_delta);
+        if total_unpaid_delta != 0 {
+            Self::adjust_unpaid_total(&env, &caller, total_unpaid_delta);
         }
 
         Self::update_storage_stats(&env);
@@ -3618,9 +4257,13 @@ impl BillPayments {
     /// Sum of all **unpaid** bill amounts for the given `owner`.
     ///
     /// # Overflow Behavior
-    /// Uses **saturating addition** to prevent panic on overflow. If the total would
-    /// exceed i128::MAX, returns i128::MAX instead. This ensures the aggregation is
-    /// always bounded and predictable, even with arbitrarily many large bills.
+    /// Since Issue #1737 every stored amount is bounded by `MAX_AMOUNT` and
+    /// every owner is capped at `MAX_BILLS_PER_OWNER` unpaid bills, the sum
+    /// can never exceed `1000 × 10³⁰ = 10³³`, far below `i128::MAX`. The
+    /// cold-path aggregation below therefore uses **checked** addition: if a
+    /// corrupted/legacy bill ever made this unreachable case fire, the panic
+    /// reverts the read rather than silently returning a truncated total
+    /// (identical behavior to the cached-path `adjust_unpaid_total`).
     ///
     /// # Performance Note
     /// Results are cached in an unpaid-totals map for faster repeated queries.
@@ -3640,8 +4283,11 @@ impl BillPayments {
         let mut total = 0i128;
         for (_, bill) in bills.iter() {
             if !bill.paid && bill.owner == owner {
-                // Use saturating_add to prevent overflow panics
-                total = total.saturating_add(bill.amount);
+                // Checked, never saturating: overflow here would mean a
+                // stored bill exceeds MAX_AMOUNT; reject deterministically.
+                total = total
+                    .checked_add(bill.amount)
+                    .unwrap_or_else(|| panic_with_error!(&env, BillPaymentsError::AmountOverflow));
             }
         }
         total
@@ -3663,7 +4309,10 @@ impl BillPayments {
         for id in currency_ids.iter() {
             if let Some(bill) = bills.get(id) {
                 if !bill.paid {
-                    total = total.saturating_add(bill.amount);
+                    // Checked, never saturating (see `get_total_unpaid`).
+                    total = total.checked_add(bill.amount).unwrap_or_else(|| {
+                        panic_with_error!(&env, BillPaymentsError::AmountOverflow)
+                    });
                 }
             }
         }
@@ -3674,6 +4323,11 @@ impl BillPayments {
     ///
     /// The currency string is normalized for consistent lookup.
     /// Pagination uses the existing currency index for O(currency_bills) traversal.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The per-`(owner, currency)` index is
+    /// scoped to `owner`, so no cross-owner leakage can occur via cursor
+    /// manipulation.
     pub fn get_unpaid_bills_by_currency(
         env: Env,
         owner: Address,
@@ -3681,6 +4335,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let normalized_currency = Self::normalize_currency(&env, &currency);
         let bills: Map<u32, Bill> = env
@@ -3749,6 +4404,11 @@ impl BillPayments {
     /// # Canonical Ordering
     /// Results are always ordered by bill ID ascending. Pagination uses the same
     /// ordering, so `cursor` is stable across repeated calls.
+    ///
+    /// # Security
+    /// Requires `owner.require_auth()`. The per-`(owner, currency)` index is
+    /// scoped to `owner`, so no cross-owner leakage can occur via cursor
+    /// manipulation.
     pub fn get_bills_by_currency(
         env: Env,
         owner: Address,
@@ -3756,6 +4416,7 @@ impl BillPayments {
         cursor: u32,
         limit: u32,
     ) -> BillPage {
+        owner.require_auth();
         let limit = clamp_limit(limit);
         let normalized_currency = Self::normalize_currency(&env, &currency);
         let bills: Map<u32, Bill> = env
@@ -3953,17 +4614,26 @@ impl BillPayments {
         let mut active_count = 0u32;
         let mut unpaid_amount = 0i128;
         for (_, bill) in bills.iter() {
-            active_count += 1;
+            active_count = active_count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(env, BillPaymentsError::AmountOverflow));
             if !bill.paid {
-                unpaid_amount = unpaid_amount.saturating_add(bill.amount);
+                // Checked, never saturating: bounded by MAX_AMOUNT per bill.
+                unpaid_amount = unpaid_amount.checked_add(bill.amount).unwrap_or_else(|| {
+                    panic_with_error!(env, BillPaymentsError::AmountOverflow)
+                });
             }
         }
 
         let mut archived_count = 0u32;
         let mut archived_amount = 0i128;
         for (_, bill) in archived.iter() {
-            archived_count += 1;
-            archived_amount = archived_amount.saturating_add(bill.amount);
+            archived_count = archived_count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(env, BillPaymentsError::AmountOverflow));
+            archived_amount = archived_amount.checked_add(bill.amount).unwrap_or_else(|| {
+                panic_with_error!(env, BillPaymentsError::AmountOverflow)
+            });
         }
 
         let stats = StorageStats {
@@ -3992,7 +4662,13 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = current.saturating_add(delta);
+        // Checked, never saturating: an overflow here would silently truncate
+        // an owner's unpaid balance. All amounts are bounded by MAX_AMOUNT at
+        // every boundary, so this is unreachable in practice; if it ever fires
+        // the panic reverts the entire invocation (no partial state).
+        let next = current
+            .checked_add(delta)
+            .unwrap_or_else(|| panic_with_error!(env, BillPaymentsError::AmountOverflow));
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
@@ -4055,6 +4731,8 @@ impl BillPaymentsReversible for BillPayments {
         bill_id: u32,
         _amount: i128,
     ) -> Result<bool, ReversibleOpError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         guard_cross_contract_write(&env, &orchestrator, epoch)
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
@@ -4108,3 +4786,6 @@ mod test;
 
 #[cfg(test)]
 mod test_state_invariants;
+
+#[cfg(test)]
+mod tests_amount_precision;

@@ -28,9 +28,14 @@
 
 #![cfg(test)]
 
-use bill_payments::{Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError,
+    DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
-use soroban_sdk::{Address, Env, IntoVal, String, TryFromVal, Val, Vec as SorobanVec};
+use soroban_sdk::{
+    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+};
 
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -42,6 +47,7 @@ struct RecurringHarness<'a> {
     env: Env,
     client: BillPaymentsClient<'a>,
     owner: Address,
+    orch: Address,
     contract_id: Address,
 }
 
@@ -53,10 +59,16 @@ impl RecurringHarness<'_> {
         let contract_id = env.register_contract(None, BillPayments);
         let client = BillPaymentsClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
+        // Configure the trusted orchestrator required by the cross-contract
+        // epoch guard on `pay_bill` (epoch 0 for a fresh contract).
+        let orch = Address::generate(&env);
+        client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+        client.set_trusted_orchestrator(&owner, &orch);
         Self {
             env,
             client,
             owner,
+            orch,
             contract_id,
         }
     }
@@ -114,7 +126,7 @@ impl RecurringHarness<'_> {
 
     fn pay_at(&self, bill_id: u32, timestamp: u64) {
         self.env.ledger().set_timestamp(timestamp);
-        self.client.pay_bill(&self.owner, &bill_id);
+        self.client.pay_bill(&self.orch, &0, &self.owner, &bill_id);
     }
 
     fn child_id(&self, parent_id: u32) -> u32 {
@@ -195,7 +207,9 @@ fn bill_event_emitted(env: &Env, contract_id: &Address, expected: BillEvent) -> 
         if topics.len() < 2 {
             continue;
         }
-        if bill_event_matches(env, &topics.get(1).unwrap(), &expected) {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && bill_event_matches(env, &topics.get(1).unwrap(), &expected)
+        {
             return true;
         }
     }
@@ -208,7 +222,9 @@ fn count_contract_bill_events(env: &Env, contract_id: &Address) -> u32 {
         if cid != *contract_id || topics.len() < 2 {
             continue;
         }
-        if BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok() {
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) == Ok(symbol_short!("bill"))
+            && BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok()
+        {
             count += 1;
         }
     }
@@ -218,6 +234,38 @@ fn count_contract_bill_events(env: &Env, contract_id: &Address) -> u32 {
 fn child_in_overdue_list(client: &BillPaymentsClient, child_id: u32) -> bool {
     let page = client.get_overdue_bills(&0, &100);
     page.items.iter().any(|bill| bill.id == child_id)
+}
+
+fn request_key(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_recurring_keyed(
+    h: &RecurringHarness,
+    owner: &Address,
+    key: &BytesN<32>,
+    amount: i128,
+) -> u32 {
+    h.client.create_bill_keyed(
+        owner,
+        key,
+        &String::from_str(&h.env, "Keyed recurring"),
+        &amount,
+        &2_000_000u64,
+        &true,
+        &30u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    )
+}
+
+fn configure_pay_guard(h: &RecurringHarness, orchestrator: &Address, epoch: u64) {
+    h.env.as_contract(&h.contract_id, || {
+        set_trusted_orchestrator(&h.env, orchestrator);
+        set_cross_contract_epoch(&h.env, epoch);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +528,237 @@ fn test_sum_unpaid_bills_equals_get_total_unpaid() {
         "after paying recurring, sum remains 200 + 300 (new child)"
     );
     assert_eq!(sum_after_pay_recurring, get_total_after_pay_recurring);
+}
+
+// ---------------------------------------------------------------------------
+// Keyed request idempotency
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_keyed_recurring_create_duplicate_conflict_and_failure_retry() {
+    let h = RecurringHarness::new(1_000_000);
+    let key = request_key(&h.env, 1);
+    let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+
+    let first_id = create_recurring_keyed(&h, &h.owner, &key, 1_250);
+    let duplicate_id = create_recurring_keyed(&h, &h.owner, &key, 1_250);
+    assert_eq!(duplicate_id, first_id);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_250);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before + 1
+    );
+
+    let conflict = h.client.try_create_bill_keyed(
+        &h.owner,
+        &key,
+        &String::from_str(&h.env, "Keyed recurring"),
+        &1_251i128,
+        &2_000_000u64,
+        &true,
+        &30u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_250);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before + 1
+    );
+
+    let retry_key = request_key(&h.env, 2);
+    let invalid = h.client.try_create_bill_keyed(
+        &h.owner,
+        &retry_key,
+        &String::from_str(&h.env, "Correctable"),
+        &0i128,
+        &2_000_000u64,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(invalid, Err(Ok(BillPaymentsError::InvalidAmount)));
+
+    let corrected = h.client.create_bill_keyed(
+        &h.owner,
+        &retry_key,
+        &String::from_str(&h.env, "Correctable"),
+        &500i128,
+        &2_000_000u64,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&h.env, "XLM"),
+        &None,
+    );
+    assert_eq!(corrected, first_id + 1);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 2);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 1_750);
+}
+
+#[test]
+fn test_keyed_create_is_actor_scoped_and_serialized_duplicates_commit_once() {
+    let h = RecurringHarness::new(1_000_000);
+    let owner_b = Address::generate(&h.env);
+    let shared_key = request_key(&h.env, 3);
+
+    let a_first = create_recurring_keyed(&h, &h.owner, &shared_key, 700);
+    let a_concurrent_retry = create_recurring_keyed(&h, &h.owner, &shared_key, 700);
+    let b_independent = create_recurring_keyed(&h, &owner_b, &shared_key, 700);
+
+    assert_eq!(a_concurrent_retry, a_first);
+    assert_ne!(b_independent, a_first);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_owner_bill_count(&owner_b), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 700);
+    assert_eq!(h.client.get_total_unpaid(&owner_b), 700);
+}
+
+#[test]
+fn test_keyed_pay_timeout_retry_is_stable_and_actor_receipts_do_not_leak() {
+    let h = RecurringHarness::new(1_000_000);
+    let orchestrator = Address::generate(&h.env);
+    let intruder = Address::generate(&h.env);
+    let epoch = 9u64;
+    configure_pay_guard(&h, &orchestrator, epoch);
+
+    let parent_id = h.create_recurring("Keyed pay", 900, 1_500_000, 7, "XLM");
+    let other_id = h.create_one_time("Other", 400, 1_500_000);
+    let key = request_key(&h.env, 4);
+    let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+
+    let first = h
+        .client
+        .pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &parent_id);
+    let count_after_first = h.client.get_owner_bill_count(&h.owner);
+    let total_after_first = h.client.get_total_unpaid(&h.owner);
+    let events_after_first = count_contract_bill_events(&h.env, &h.contract_id);
+
+    h.env.ledger().set_timestamp(1_100_000);
+    let retry = h
+        .client
+        .pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &parent_id);
+    assert_eq!(retry.bill_id, first.bill_id);
+    assert_eq!(retry.paid_amount, first.paid_amount);
+    assert_eq!(retry.child_bill_id, first.child_bill_id);
+    assert_eq!(retry.child_due_date, first.child_due_date);
+    assert_eq!(count_after_first, 3);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), count_after_first);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), total_after_first);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_after_first
+    );
+    assert_eq!(events_after_first, events_before + 2);
+
+    let conflict = h
+        .client
+        .try_pay_bill_keyed(&orchestrator, &epoch, &h.owner, &key, &other_id);
+    assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+    assert!(!h.client.get_bill(&other_id).unwrap().paid);
+
+    let unauthorized = h
+        .client
+        .try_pay_bill_keyed(&orchestrator, &epoch, &intruder, &key, &other_id);
+    assert_eq!(unauthorized, Err(Ok(BillPaymentsError::Unauthorized)));
+    assert!(!h.client.get_bill(&other_id).unwrap().paid);
+}
+
+#[test]
+fn test_keyed_cancel_and_restore_replays_emit_once() {
+    let h = RecurringHarness::new(1_000_000);
+    let cancel_id = h.create_one_time("Cancel me", 300, 1_500_000);
+    let cancel_key = request_key(&h.env, 5);
+    let events_before_cancel = count_contract_bill_events(&h.env, &h.contract_id);
+    h.client
+        .cancel_bill_keyed(&h.owner, &cancel_key, &cancel_id);
+    h.client
+        .cancel_bill_keyed(&h.owner, &cancel_key, &cancel_id);
+    assert!(h.client.get_bill(&cancel_id).is_none());
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 0);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 0);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before_cancel + 1
+    );
+
+    let orchestrator = Address::generate(&h.env);
+    configure_pay_guard(&h, &orchestrator, 12);
+    let restore_id = h.create_one_time("Restore me", 800, 1_500_000);
+    h.client.pay_bill_keyed(
+        &orchestrator,
+        &12u64,
+        &h.owner,
+        &request_key(&h.env, 6),
+        &restore_id,
+    );
+    h.env.ledger().set_timestamp(1_100_000);
+    assert_eq!(h.client.archive_paid_bills(&h.owner, &1_050_000u64), 1);
+
+    let restore_key = request_key(&h.env, 7);
+    let events_before_restore = count_contract_bill_events(&h.env, &h.contract_id);
+    h.client
+        .restore_bill_keyed(&h.owner, &restore_key, &restore_id);
+    let restored = h.client.get_bill(&restore_id).unwrap();
+    h.client
+        .restore_bill_keyed(&h.owner, &restore_key, &restore_id);
+    assert!(restored.paid);
+    assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+    assert_eq!(h.client.get_total_unpaid(&h.owner), 0);
+    assert_eq!(
+        count_contract_bill_events(&h.env, &h.contract_id),
+        events_before_restore + 1
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(12))]
+
+    #[test]
+    fn prop_keyed_create_replay_has_one_effect_and_semantic_conflict(
+        amount in 1i128..10_000i128,
+        retries in 2u8..6u8,
+    ) {
+        let h = RecurringHarness::new(1_000_000);
+        let key = request_key(&h.env, 8);
+        let events_before = count_contract_bill_events(&h.env, &h.contract_id);
+        let first_id = create_recurring_keyed(&h, &h.owner, &key, amount);
+
+        for _ in 1..retries {
+            prop_assert_eq!(
+                create_recurring_keyed(&h, &h.owner, &key, amount),
+                first_id
+            );
+        }
+        prop_assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+        prop_assert_eq!(h.client.get_total_unpaid(&h.owner), amount);
+        prop_assert_eq!(
+            count_contract_bill_events(&h.env, &h.contract_id),
+            events_before + 1
+        );
+
+        let conflict = h.client.try_create_bill_keyed(
+            &h.owner,
+            &key,
+            &String::from_str(&h.env, "Keyed recurring"),
+            &(amount + 1),
+            &2_000_000u64,
+            &true,
+            &30u32,
+            &None,
+            &String::from_str(&h.env, "XLM"),
+            &None,
+        );
+        prop_assert_eq!(conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+        prop_assert_eq!(h.client.get_owner_bill_count(&h.owner), 1);
+        prop_assert_eq!(h.client.get_total_unpaid(&h.owner), amount);
+    }
 }
 
 // ===========================================================================

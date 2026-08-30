@@ -194,6 +194,11 @@ fn bill_event_secondary_topics_emit_expected_variants() {
     let contract_id = env.register_contract(None, BillPayments);
     let client = BillPaymentsClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    // pay_bill is guarded by the cross-contract orchestrator check; configure
+    // a trusted orchestrator so the guarded call succeeds.
+    let orch = Address::generate(&env);
+    client.init_admin(&owner, &DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    client.set_trusted_orchestrator(&owner, &orch);
 
     let bill_id_1 = client.create_bill(
         &owner,
@@ -221,7 +226,7 @@ fn bill_event_secondary_topics_emit_expected_variants() {
         &String::from_str(&env, "XLM"),
         &None,
     );
-    client.pay_bill(&owner, &bill_id_2);
+    client.pay_bill(&orch, &0, &owner, &bill_id_2);
     client.archive_paid_bills(&owner, &(env.ledger().timestamp() + 1));
     client.restore_bill(&owner, &bill_id_2);
 
@@ -321,7 +326,8 @@ fn batch_pay_bills_emits_paid_events_matching_pay_bill() {
     let mut batch = Vec::new(&env);
     batch.push_back(bill_a);
     batch.push_back(bill_b);
-    client.batch_pay_bills(&owner, &batch);
+    let result = client.batch_pay_bills(&owner, &batch);
+    assert!(result.is_ok(), "batch must succeed");
 
     let mut paid_events = 0u32;
     for (_cid, topics, data) in env.events().all() {

@@ -91,6 +91,26 @@ This document tracks changes, versions, and migration notes for each of the smar
 - **Breaking Changes**: None.
 - **Migration Notes**: Baseline deployment.
 
+## Emergency Kill Switch (`emergency_killswitch`)
+
+### v0.2.0
+
+- **Summary**: Added a versioned, correlation-tagged control/audit event stream for every committed emergency transition — pause, recovery, threshold approval, and administrator rotation (Issue #1761).
+- **New Features**:
+  - `("emergency", "control")` audit events: `ControlEvent { version, seq, kind, actor, timestamp }` emitted on every committed transition, with `seq` sourced from a new monotonic per-contract counter (`DataKey::EventSeq`) and observable via the new read-only `get_event_seq()`.
+  - `schedule_unpause` is now auditable via the control stream (previously it emitted no event).
+- **Breaking Changes**: None at the ABI/type level — every public entry point keeps its exact signature and error behavior; legacy granular events are emitted unchanged. `CONTRACT_VERSION` bumped `1 → 2` so tooling can detect the new audit-event behavior.
+- **Behavior Change**: `EmergencyStateSnapshot.active_scope` was re-encoded from `Option<PauseScope>` (not spec-serializable in soroban-sdk) to spec-scalar fields `scope_kind` / `scope_module` / `scope_function`. Snapshot semantics are unchanged; snapshots captured by a pre-change build must be discarded (`discard_snapshot`) and re-captured after upgrade (see `docs/issue-1761-emergency-controls-audit-parity.md`).
+- **Migration Notes**: No storage migration required — the new `EventSeq` key is additive and lazily initialized. `STORAGE_VERSION` remains `1`.
+- **Gas**: Gas benchmarks re-measured; write paths grew ~10–40% (one storage read/write + one event publish per committed transition). Baselines in `tests/gas_bench.rs` updated.
+- **Tests**: Added `tests/audit_parity.rs` (7 tests) proving state↔event parity, strict `seq` ordering/versioning, committed-only emission, and consensus-actor semantics at the integration boundary.
+
+### v0.1.0
+
+- **Summary**: Initial release of the Emergency Kill Switch contract.
+- **Breaking Changes**: None.
+- **Migration Notes**: Baseline deployment.
+
 ## Reporting (`reporting`)
 
 ### v0.2.0

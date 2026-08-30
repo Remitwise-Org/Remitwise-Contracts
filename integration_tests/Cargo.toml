@@ -5,7 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
-soroban-sdk = "=21.7.7"
+# No std for WASM contracts
+soroban-sdk = { version = "=21.7.7", default-features = false }
 remittance_split = { path = "../remittance_split" }
 savings_goals = { path = "../savings_goals" }
 bill_payments = { path = "../bill_payments" }
@@ -16,4 +17,5 @@ family_wallet = { path = "../family_wallet" }
 orchestrator = { path = "../orchestrator" }
 
 [dev-dependencies]
-soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+# Test utilities need testutils feature without std
+

@@ -46,8 +46,7 @@ reporting = { path = "./reporting" }
 orchestrator = { path = "./orchestrator" }
 remitwise-common = { path = "./remitwise-common" }
 
-[dev-dependencies]
-soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+
 
 [profile.release]
 opt-level = "z"

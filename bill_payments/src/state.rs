@@ -71,9 +71,17 @@ pub fn check_invariants(
     if bill.recurring && bill.frequency_days == 0 {
         return Err(BillPaymentsError::InvariantViolation);
     }
-    // Amount must be positive
+    // Amount must be positive and within the shared maximum. Every amount
+    // boundary enforces the same rules (see
+    // `BillPayments::validate_bill_amount`), so a bill stored before the
+    // bounds existed, or restored from a corrupt snapshot, is rejected at
+    // every read-mutation boundary (pay, batch pay, cancel, archive) instead
+    // of being processed with an out-of-range amount.
     if bill.amount <= 0 {
         return Err(BillPaymentsError::InvalidAmount);
+    }
+    if bill.amount > remitwise_common::MAX_AMOUNT {
+        return Err(BillPaymentsError::AmountExceedsMax);
     }
     Ok(())
 }

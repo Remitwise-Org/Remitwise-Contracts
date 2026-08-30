@@ -267,6 +267,45 @@ Using these helpers prevents the common mistake of swapping `threshold` and `bum
 - No on-chain TTL handling.
 - No on-chain ID allocation counters.
 
+## emergency_killswitch
+
+### Keys and value types (instance storage)
+
+| Key             | Type                    | Notes                                                           |
+|-----------------|-------------------------|-----------------------------------------------------------------|
+| `ADMIN`         | `Address`               | Killswitch admin                                                |
+| `KILL_SW`       | `u64`                   | Kill-switch epoch (replay protection for `transfer_admin`)       |
+| `SIGNERS`       | `Vec<Address>`          | Signer set for threshold-based activation                       |
+| `SIGNR_THR`     | `u32`                   | Signer threshold (required approvals)                           |
+| `SIGNR_EP`      | `u64`                   | Signer epoch (bumped on set rotation)                           |
+| `ACTVT_EP`      | `u64`                   | Activation epoch (present while threshold activation is active) |
+| `ACTVT_SC`      | `PauseScope`            | Active scope during threshold activation                        |
+| `RCVRY_RDY`     | `u64`                   | Timestamp after which recovery is allowed                       |
+| `SCPE_WPS`      | `bool`                  | Whether the scope was already paused before activation           |
+| `GLOBL_P`       | `bool`                  | Global pause flag                                               |
+| `PAUSED_AT`     | `u64`                   | Timestamp when globally paused                                  |
+| `P_RSN`         | `Symbol`                | Optional reason for the pause                                   |
+| `UNP_AT`        | `u64`                   | Scheduled unpause timestamp                                     |
+| `MOD_P(symbol)` | `bool`                  | Per-module pause flag                                           |
+| `FN_P(symbol)`  | `Vec<Symbol>`           | Paused functions per module (bounded at 10)                     |
+| `STOR_VER`      | `u32`                   | Storage schema version (0 = pre-versioning)                     |
+| `SNAP`          | `EmergencyStateSnapshot`| Pre-upgrade snapshot of full emergency state                    |
+| `SNAP_TS`       | `u64`                   | Timestamp when snapshot was taken                               |
+| `MIGRPRG`       | `MigrationProgress`     | Resumable migration step tracker                                |
+
+### Storage version & migration
+
+- `storage_version()` returns the on-chain version (0 for legacy deployments).
+- `migrate_storage()` advances one version step per call, recording progress in `MIGRPRG`.
+- `pre_upgrade()` / `restore_from_snapshot()` / `discard_snapshot()` manage upgrade snapshots.
+- Snapshots expire after 24 hours (`SNAPSHOT_TTL`).
+
+### TTL and IDs
+
+- Uses instance storage for all keys.
+- No persistent storage or TTL bump helpers.
+- No ID counters — epoch-based tracking only.
+
 ## Audit and Migration Implications
 
 - Audit trails are explicit in:
