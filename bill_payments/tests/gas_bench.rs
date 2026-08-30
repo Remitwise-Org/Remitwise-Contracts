@@ -2,9 +2,12 @@ use bill_payments::{
     BillPayments, BillPaymentsClient, Error, CANCEL_BILL_RATE_LIMIT, CREATE_BILL_RATE_LIMIT,
     DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
 };
-use remitwise_common::{MAX_BATCH_SIZE, RATE_LIMIT_WINDOW_SECONDS};
+use remitwise_common::{
+    set_cross_contract_epoch, set_trusted_orchestrator, MAX_BATCH_SIZE,
+    RATE_LIMIT_WINDOW_SECONDS,
+};
 use soroban_sdk::testutils::{Address as AddressTrait, EnvTestConfig, Ledger, LedgerInfo};
-use soroban_sdk::{Address, Env, String, Vec};
+use soroban_sdk::{Address, BytesN, Env, String, Vec};
 
 const CURRENCY_XLM: &str = "XLM";
 const FAR_FUTURE_TS: u64 = 2_000_000_000;
@@ -52,6 +55,41 @@ const BATCH_PAY_MIXED_50: RegressionSpec = RegressionSpec {
     mem_baseline: 700_000,
     cpu_threshold_percent: 15,
     mem_threshold_percent: 12,
+};
+
+// ---------------------------------------------------------------------------
+// Regression specs for keyed idempotency paths
+//
+// These are deliberately generous first-pass bounds. Each scenario emits its
+// observed cost so the baselines can be tightened after stable CI measurements.
+// ---------------------------------------------------------------------------
+
+const KEYED_RECURRING_PAY_FIRST: RegressionSpec = RegressionSpec {
+    cpu_baseline: 10_000_000,
+    mem_baseline: 2_000_000,
+    cpu_threshold_percent: 35,
+    mem_threshold_percent: 35,
+};
+
+const KEYED_RECURRING_PAY_REPLAY: RegressionSpec = RegressionSpec {
+    cpu_baseline: 3_000_000,
+    mem_baseline: 750_000,
+    cpu_threshold_percent: 35,
+    mem_threshold_percent: 35,
+};
+
+const KEYED_DUE_SCHEDULE_FIRST: RegressionSpec = RegressionSpec {
+    cpu_baseline: 10_000_000,
+    mem_baseline: 2_000_000,
+    cpu_threshold_percent: 35,
+    mem_threshold_percent: 35,
+};
+
+const KEYED_DUE_SCHEDULE_REPLAY: RegressionSpec = RegressionSpec {
+    cpu_baseline: 3_000_000,
+    mem_baseline: 750_000,
+    cpu_threshold_percent: 35,
+    mem_threshold_percent: 35,
 };
 
 // ---------------------------------------------------------------------------
@@ -242,6 +280,22 @@ fn set_time(env: &Env, timestamp: u64) {
     });
 }
 
+fn request_key(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+fn configure_pay_guard(
+    env: &Env,
+    contract_id: &Address,
+    orchestrator: &Address,
+    epoch: u64,
+) {
+    env.as_contract(contract_id, || {
+        set_trusted_orchestrator(env, orchestrator);
+        set_cross_contract_epoch(env, epoch);
+    });
+}
+
 /// Cancel bills while respecting per-address cancel rate limits in tests.
 fn cancel_many_bills(client: &BillPaymentsClient, env: &Env, owner: &Address, bill_ids: &Vec<u32>) {
     for (i, bill_id) in bill_ids.iter().enumerate() {
@@ -408,6 +462,184 @@ fn emit_bench_result(method: &str, scenario: &str, cpu: u64, mem: u64, spec: Reg
         spec.mem_baseline,
         spec.cpu_threshold_percent,
         spec.mem_threshold_percent
+    );
+}
+
+/// Benchmark a keyed recurring payment and its exact receipt replay.
+///
+/// The replay must return the original receipt without paying again or spawning
+/// another child bill.
+#[test]
+fn bench_pay_bill_keyed_recurring_first_and_replay_with_thresholds() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    let orchestrator = <Address as AddressTrait>::generate(&env);
+    let epoch = 7u64;
+    configure_pay_guard(&env, &contract_id, &orchestrator, epoch);
+
+    let bill_id = client.create_bill(
+        &owner,
+        &String::from_str(&env, "Keyed recurring bench"),
+        &1_500i128,
+        &FAR_FUTURE_TS,
+        &true,
+        &30u32,
+        &None,
+        &String::from_str(&env, CURRENCY_XLM),
+        &None,
+    );
+    let key = request_key(&env, 0x51);
+
+    let (first_cpu, first_mem, first_receipt) = measure(&env, || {
+        client.pay_bill_keyed(&orchestrator, &epoch, &owner, &key, &bill_id)
+    });
+    let count_after_first = client.get_owner_bill_count(&owner);
+    let total_after_first = client.get_total_unpaid(&owner);
+    assert_eq!(count_after_first, 2, "payment must add exactly one child");
+    assert_eq!(
+        total_after_first, 1_500,
+        "recurring child must replace the paid amount in unpaid totals"
+    );
+    let child_id = first_receipt
+        .child_bill_id
+        .expect("recurring payment must return a child bill id");
+    let child_after_first = client
+        .get_bill(&child_id)
+        .expect("recurring payment must create its child bill");
+
+    let (replay_cpu, replay_mem, replay_receipt) = measure(&env, || {
+        client.pay_bill_keyed(&orchestrator, &epoch, &owner, &key, &bill_id)
+    });
+
+    assert_eq!(replay_receipt.bill_id, first_receipt.bill_id);
+    assert_eq!(replay_receipt.paid_amount, first_receipt.paid_amount);
+    assert_eq!(replay_receipt.child_bill_id, first_receipt.child_bill_id);
+    assert_eq!(replay_receipt.child_due_date, first_receipt.child_due_date);
+    assert!(client.get_bill(&bill_id).unwrap().paid);
+    assert_eq!(client.get_owner_bill_count(&owner), count_after_first);
+    assert_eq!(client.get_total_unpaid(&owner), total_after_first);
+    let child_after_replay = client.get_bill(&child_id).unwrap();
+    assert_eq!(child_after_replay.id, child_after_first.id);
+    assert_eq!(child_after_replay.due_date, child_after_first.due_date);
+    assert!(
+        client.get_bill(&(child_id + 1)).is_none(),
+        "receipt replay must not spawn a second child"
+    );
+
+    emit_bench_result(
+        "pay_bill_keyed",
+        "recurring_first_execution",
+        first_cpu,
+        first_mem,
+        KEYED_RECURRING_PAY_FIRST,
+    );
+    assert_regression_bounds(
+        "pay_bill_keyed",
+        "recurring_first_execution",
+        first_cpu,
+        first_mem,
+        KEYED_RECURRING_PAY_FIRST,
+    );
+    emit_bench_result(
+        "pay_bill_keyed",
+        "recurring_exact_receipt_replay",
+        replay_cpu,
+        replay_mem,
+        KEYED_RECURRING_PAY_REPLAY,
+    );
+    assert_regression_bounds(
+        "pay_bill_keyed",
+        "recurring_exact_receipt_replay",
+        replay_cpu,
+        replay_mem,
+        KEYED_RECURRING_PAY_REPLAY,
+    );
+}
+
+/// Benchmark keyed due-schedule execution and exact replay of its schedule IDs.
+///
+/// The replay must not mint another bill or advance the schedule a second time.
+#[test]
+fn bench_execute_due_bill_schedules_keyed_first_and_replay_with_thresholds() {
+    let env = bench_env();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <Address as AddressTrait>::generate(&env);
+    let executor = <Address as AddressTrait>::generate(&env);
+    let now = env.ledger().timestamp();
+    let schedule_id = client.create_bill_schedule(
+        &owner,
+        &String::from_str(&env, "Keyed schedule bench"),
+        &2_500i128,
+        &String::from_str(&env, CURRENCY_XLM),
+        &(now + 1_000),
+        &86_400u64,
+    );
+    let key = request_key(&env, 0x52);
+    set_time(&env, now + 2_000);
+
+    let (first_cpu, first_mem, first_ids) = measure(&env, || {
+        client.execute_due_bill_schedules_keyed(&executor, &key)
+    });
+    assert_eq!(first_ids.len(), 1);
+    assert_eq!(first_ids.get(0).unwrap(), schedule_id);
+    let schedule_after_first = client.get_bill_schedule(&schedule_id).unwrap();
+    let count_after_first = client.get_owner_bill_count(&owner);
+    let total_after_first = client.get_total_unpaid(&owner);
+    assert_eq!(
+        count_after_first, 1,
+        "schedule execution must mint exactly one bill"
+    );
+    assert_eq!(total_after_first, 2_500);
+
+    let (replay_cpu, replay_mem, replay_ids) = measure(&env, || {
+        client.execute_due_bill_schedules_keyed(&executor, &key)
+    });
+
+    assert_eq!(replay_ids.len(), first_ids.len());
+    assert_eq!(replay_ids.get(0).unwrap(), first_ids.get(0).unwrap());
+    assert_eq!(client.get_owner_bill_count(&owner), count_after_first);
+    assert_eq!(client.get_total_unpaid(&owner), total_after_first);
+    let schedule_after_replay = client.get_bill_schedule(&schedule_id).unwrap();
+    assert_eq!(
+        schedule_after_replay.last_executed,
+        schedule_after_first.last_executed
+    );
+    assert_eq!(schedule_after_replay.next_due, schedule_after_first.next_due);
+    assert_eq!(
+        schedule_after_replay.missed_count,
+        schedule_after_first.missed_count
+    );
+
+    emit_bench_result(
+        "execute_due_bill_schedules_keyed",
+        "single_due_schedule_first_execution",
+        first_cpu,
+        first_mem,
+        KEYED_DUE_SCHEDULE_FIRST,
+    );
+    assert_regression_bounds(
+        "execute_due_bill_schedules_keyed",
+        "single_due_schedule_first_execution",
+        first_cpu,
+        first_mem,
+        KEYED_DUE_SCHEDULE_FIRST,
+    );
+    emit_bench_result(
+        "execute_due_bill_schedules_keyed",
+        "single_due_schedule_exact_replay",
+        replay_cpu,
+        replay_mem,
+        KEYED_DUE_SCHEDULE_REPLAY,
+    );
+    assert_regression_bounds(
+        "execute_due_bill_schedules_keyed",
+        "single_due_schedule_exact_replay",
+        replay_cpu,
+        replay_mem,
+        KEYED_DUE_SCHEDULE_REPLAY,
     );
 }
 

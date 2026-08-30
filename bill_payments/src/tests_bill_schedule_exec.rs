@@ -2,10 +2,12 @@
 
 extern crate std;
 
-use bill_payments::{BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError};
+use bill_payments::{
+    BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError, BillSchedule,
+};
 use soroban_sdk::{
-    testutils::{EnvTestConfig, Events},
-    Address, Env, String, TryFromVal,
+    testutils::{EnvTestConfig, Events, Ledger},
+    symbol_short, Address, BytesN, Env, Map, String, TryFromVal,
 };
 use testutils::{generate_test_address, set_ledger_time};
 
@@ -41,6 +43,25 @@ fn create_owner_bill(
         &String::from_str(&client.env, "XLM"),
         &None,
     )
+}
+
+fn request_key(env: &Env, byte: u8) -> BytesN<32> {
+    BytesN::from_array(env, &[byte; 32])
+}
+
+fn count_owner_schedules(client: &BillPaymentsClient, owner: &Address) -> u32 {
+    client.get_bill_schedules_page(owner, &0, &50).count
+}
+
+fn count_all_bill_events(env: &Env) -> u32 {
+    env.events()
+        .all()
+        .iter()
+        .filter(|(_, topics, _)| {
+            topics.len() >= 2
+                && BillEvent::try_from_val(env, &topics.get(1).unwrap()).is_ok()
+        })
+        .count() as u32
 }
 
 // ─── 1. Schedule creation and bill generation ─────────────────────────────────
@@ -401,6 +422,8 @@ fn count_bill_event_variant(env: &Env, expected: &BillEvent) -> u32 {
                 (&event, expected),
                 (BillEvent::ScheduleCreated, BillEvent::ScheduleCreated)
                     | (BillEvent::ScheduleExecuted, BillEvent::ScheduleExecuted)
+                    | (BillEvent::ScheduleModified, BillEvent::ScheduleModified)
+                    | (BillEvent::ScheduleCancelled, BillEvent::ScheduleCancelled)
             ) {
                 count += 1;
             }
