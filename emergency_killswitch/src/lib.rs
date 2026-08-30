@@ -529,9 +529,7 @@ impl EmergencyKillswitch {
 
         // Apply the scope pause.
         match scope.clone() {
-            PauseScope::Global => {
-                env.storage().instance().set(&DataKey::GlobalPaused, &true)
-            }
+            PauseScope::Global => env.storage().instance().set(&DataKey::GlobalPaused, &true),
             PauseScope::Module(module) => env
                 .storage()
                 .instance()
@@ -1082,8 +1080,16 @@ impl EmergencyKillswitch {
 
     /// Clamp a user-supplied page limit to [`DEFAULT_PAGE_LIMIT`]..[`MAX_PAGE_LIMIT`].
     fn clamp_page_limit(limit: u32) -> u32 {
-        let effective = if limit == 0 { DEFAULT_PAGE_LIMIT } else { limit };
-        if effective > MAX_PAGE_LIMIT { MAX_PAGE_LIMIT } else { effective }
+        let effective = if limit == 0 {
+            DEFAULT_PAGE_LIMIT
+        } else {
+            limit
+        };
+        if effective > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            effective
+        }
     }
 
     /// Return a cursor-paginated page of configured signers.
@@ -1101,11 +1107,7 @@ impl EmergencyKillswitch {
     /// # Security
     /// No authentication required — the signer list is observable on-chain
     /// (it determines who can authorize threshold operations).
-    pub fn list_signers_page(
-        env: Env,
-        cursor: Option<u32>,
-        limit: u32,
-    ) -> Vec<Address> {
+    pub fn list_signers_page(env: Env, cursor: Option<u32>, limit: u32) -> Vec<Address> {
         let all = Self::configured_signers(&env);
         let effective_limit = Self::clamp_page_limit(limit);
         let start = cursor.unwrap_or(0);
@@ -1777,10 +1779,7 @@ pub enum TransitionError {
 /// that the caller intends to represent as the transition target, since
 /// the read would then reflect the post-write state.
 pub fn current_state(env: &Env) -> KillSwitchState {
-    let threshold_active = env
-        .storage()
-        .instance()
-        .has(&DataKey::ActivationEpoch);
+    let threshold_active = env.storage().instance().has(&DataKey::ActivationEpoch);
     let global_paused: bool = env
         .storage()
         .instance()
@@ -1793,7 +1792,6 @@ pub fn current_state(env: &Env) -> KillSwitchState {
         (true, true) => KillSwitchState::ThresholdActiveAndAdminPaused,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -2970,9 +2968,11 @@ mod snapshot_function_pause_restore_tests {
 
 #[cfg(test)]
 mod pagination_tests {
+    extern crate alloc;
     use super::*;
+    use alloc::format;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::symbol_short;
+    use soroban_sdk::{symbol_short, vec};
 
     fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
         let env = Env::default();
@@ -2989,7 +2989,7 @@ mod pagination_tests {
     /// Before configure_signers, list_signers_page returns empty.
     #[test]
     fn signers_page_empty_before_config() {
-        let (env, client, _admin) = setup();
+        let (_env, client, _admin) = setup();
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 0);
     }
@@ -3004,7 +3004,7 @@ mod pagination_tests {
         let second = Address::generate(&env);
         let third = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone(), third.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 3);
@@ -3022,7 +3022,7 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -3042,7 +3042,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &100);
         assert_eq!(result.len(), 1);
@@ -3054,9 +3054,11 @@ mod pagination_tests {
     #[test]
     fn signers_page_multi_page_cursor_progression() {
         let (env, client, admin) = setup();
-        let addrs: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
-        let signers = vec![&env, addrs[0].clone(), addrs[1].clone(), addrs[2].clone(), addrs[3].clone(), addrs[4].clone()];
-        client.configure_signers(&admin, &signers, 1);
+        let mut signers = Vec::new(&env);
+        for _ in 0..5 {
+            signers.push_back(Address::generate(&env));
+        }
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -3081,12 +3083,12 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page_none = client.list_signers_page(&None, &10);
         let page_zero = client.list_signers_page(&Some(0), &10);
         assert_eq!(page_none.len(), page_zero.len());
-        assert!(page_none.contains(first));
+        assert!(page_none.contains(first.clone()));
         assert!(page_zero.contains(first));
     }
 
@@ -3098,7 +3100,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&Some(999), &10);
         assert_eq!(result.len(), 0);
@@ -3116,7 +3118,8 @@ mod pagination_tests {
             signers_vec.push_back(Address::generate(&env));
             expected_count += 1;
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        let _ = expected_count;
+        client.configure_signers(&admin, &signers_vec, &1);
 
         // Request 100 but should get MAX_PAGE_LIMIT (50)
         let page1 = client.list_signers_page(&None, &100);
@@ -3137,7 +3140,7 @@ mod pagination_tests {
         for _ in 0..30 {
             signers_vec.push_back(Address::generate(&env));
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        client.configure_signers(&admin, &signers_vec, &1);
 
         let page = client.list_signers_page(&None, &0);
         assert_eq!(page.len(), DEFAULT_PAGE_LIMIT);
@@ -3219,10 +3222,16 @@ mod pagination_tests {
         let module = symbol_short!("bill");
         let func = symbol_short!("pay");
         client.pause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 1);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            1
+        );
 
         client.unpause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 0);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            0
+        );
     }
 
     // ── list_paused_functions_page: cursor beyond end ──────────────────────
@@ -3282,9 +3291,11 @@ mod pagination_tests {
 
 #[cfg(test)]
 mod state_transition_invariant_tests {
+    extern crate alloc;
     use super::*;
+    use alloc::format;
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{vec, symbol_short};
+    use soroban_sdk::{symbol_short, vec};
 
     // ─── Setup helpers ────────────────────────────────────────────────────────
 
@@ -3347,7 +3358,7 @@ mod state_transition_invariant_tests {
     /// Idle → AdminPaused via admin `pause`.
     #[test]
     fn legal_idle_to_admin_paused() {
-        let (_env, client, admin) = setup();
+        let (_env, client, _admin) = setup();
         assert!(!client.is_paused());
         client.pause();
         assert!(client.is_paused());
@@ -3356,7 +3367,7 @@ mod state_transition_invariant_tests {
     /// AdminPaused → Idle via `unpause` (with valid schedule).
     #[test]
     fn legal_admin_paused_to_idle_via_unpause() {
-        let (env, client, admin) = setup();
+        let (env, client, _admin) = setup();
         client.pause();
         let future = env.ledger().timestamp() + 100;
         client.schedule_unpause(&future);
@@ -3368,7 +3379,7 @@ mod state_transition_invariant_tests {
     /// AdminPaused → Idle via `clear_emergency_state` (bypass path).
     #[test]
     fn legal_admin_paused_to_idle_via_clear() {
-        let (_env, client, admin) = setup();
+        let (_env, client, _admin) = setup();
         client.pause();
         client.clear_emergency_state();
         assert!(!client.is_paused());
@@ -3487,7 +3498,10 @@ mod state_transition_invariant_tests {
         let future = env.ledger().timestamp() + 100;
         // schedule_unpause should also be blocked while ThresholdActive:
         let res_sched = client.try_schedule_unpause(&future);
-        assert!(res_sched.is_err(), "schedule_unpause from ThresholdActive must fail");
+        assert!(
+            res_sched.is_err(),
+            "schedule_unpause from ThresholdActive must fail"
+        );
 
         // Attempt unpause directly — also blocked by transition guard.
         // We advance time past any schedule anyway.
@@ -3533,7 +3547,7 @@ mod state_transition_invariant_tests {
     /// `pause` twice is idempotent — second call succeeds from AdminPaused.
     #[test]
     fn idempotent_pause_twice_succeeds() {
-        let (_env, client, admin) = setup();
+        let (_env, client, _admin) = setup();
         client.pause();
         client.pause(); // idempotent — should succeed
         assert!(client.is_paused());
@@ -3542,7 +3556,7 @@ mod state_transition_invariant_tests {
     /// `clear_emergency_state` when `Idle` is a successful no-op.
     #[test]
     fn idempotent_clear_when_idle_is_noop() {
-        let (_env, client, admin) = setup();
+        let (_env, client, _admin) = setup();
         assert!(!client.is_paused());
         let res = client.try_clear_emergency_state();
         assert_eq!(res, Ok(Ok(())));
@@ -3722,7 +3736,10 @@ mod state_transition_invariant_tests {
         assert!(!client.is_paused()); // global still false
 
         let res = client.try_pause_with_reason(&symbol_short!("drill"));
-        assert!(res.is_err(), "pause_with_reason from ThresholdActive must fail");
+        assert!(
+            res.is_err(),
+            "pause_with_reason from ThresholdActive must fail"
+        );
         assert!(!client.is_paused());
     }
 
@@ -3796,16 +3813,23 @@ mod state_transition_invariant_tests {
         let module = symbol_short!("mod");
         // Fill cap.
         for i in 0..MAX_PAUSED_FUNCTIONS {
-            client.pause_function(&module, &Symbol::new(&env, &soroban_sdk::String::from_str(&env, &format!("f{}", i))));
+            client.pause_function(&module, &Symbol::new(&env, &format!("f{}", i)));
         }
         let (epoch, s1, s2) = configure_quorum(&env, &client, &admin);
         let approvals = quorum_approvals(&env, &s1, &s2);
-        let extra = Symbol::new(&env, &soroban_sdk::String::from_str(&env, "fX"));
-        let res = client.try_activate(&epoch, &approvals, &PauseScope::Function(module.clone(), extra));
+        let extra = Symbol::new(&env, "fX");
+        let res = client.try_activate(
+            &epoch,
+            &approvals,
+            &PauseScope::Function(module.clone(), extra),
+        );
         assert_eq!(res, Err(Ok(Error::LimitExceeded)));
         let contract_id = contract_id_from_client(&client);
         assert_no_activation_state(&env, &contract_id);
-        assert_eq!(client.list_paused_functions(&module).len(), MAX_PAUSED_FUNCTIONS);
+        assert_eq!(
+            client.list_paused_functions(&module).len(),
+            MAX_PAUSED_FUNCTIONS
+        );
     }
 
     /// `configure_signers` with threshold > signers count leaves signer epoch unchanged.
@@ -3825,7 +3849,7 @@ mod state_transition_invariant_tests {
     /// `current_state` returns `Idle` before any operation.
     #[test]
     fn current_state_idle_after_init() {
-        let (env, client, admin) = setup();
+        let (env, client, _admin) = setup();
         let contract_id = contract_id_from_client(&client);
         env.as_contract(&contract_id, || {
             assert_eq!(current_state(&env), KillSwitchState::Idle);
@@ -3835,7 +3859,7 @@ mod state_transition_invariant_tests {
     /// `current_state` returns `AdminPaused` after admin `pause`.
     #[test]
     fn current_state_admin_paused_after_pause() {
-        let (env, client, admin) = setup();
+        let (env, client, _admin) = setup();
         client.pause();
         let contract_id = contract_id_from_client(&client);
         env.as_contract(&contract_id, || {

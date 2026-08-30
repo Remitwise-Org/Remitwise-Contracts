@@ -37,23 +37,26 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
   Uses `panic_with_error!(&env, e)` pattern for Result-returning functions (since `KillSwitchError` is a cross-crate type that can't use `?` with contract-specific error types) and `.is_err()` early-return for non-Result functions.
 
 - **This session (Issue #1715 — Role Lifecycle Security):** Added 3 security-focused tests to `family_wallet/src/test.rs` closing the pre-merge review gaps: `test_role_removal_takes_effect_immediately` (removed member rejected at sign gate), `test_concurrent_role_demotion_strips_signature_and_blocks_signing` (Admin demoted to Viewer → sig stripped, sign blocked), `test_unauthorized_viewer_fails_before_mutation` (Viewer rejected at auth gate with zero side-effects). Created `docs/issue-1715-role-lifecycle-security.md` with full PR description, auth-matrix design, backward-compatibility analysis, rollback notes, and validation checklist.
-- **This session (State-Transition Invariants — Emergency Killswitch):** Implemented formal state-transition matrix in `emergency_killswitch/src/lib.rs`. Fixed missing `Error::Overflow = 21` declaration and free helper functions (`checked_add_u64`, `checked_add_u32`, `snapshot_age`, `recovery_ready_at`). Added `KillSwitchState` enum, `TransitionError` contracterror, and `current_state` inspection helper. Applied transition guards to `activate`, `pause_internal`, `unpause`, and `schedule_unpause` ensuring zero partial state on rejection. Replaced unchecked `saturating_add` with `recovery_ready_at()` in `activate`. Added 38 regression tests in `state_transition_invariant_tests` covering legal/illegal edges, idempotency, stale epochs, concurrent lanes, and invariant bounds. Created `docs/state-transition-invariants.md`.
+- **This session (CI Build & Test Fixes — 1.74.0 Compatibility):**
+  - `emergency_killswitch/src/lib.rs`: Fixed type mismatches in pagination test suites (passing threshold by reference `&1` to `client.configure_signers`), fixed non-`FromIterator` `(0..5).map(...).collect()` by using `Vec::new(&env)` with `push_back`, resolved `Symbol::new` invocation with `&str` instead of `&soroban_sdk::String`, resolved use-after-move in `page_zero.contains(first)`, added missing `extern crate alloc; use alloc::format;` and `use soroban_sdk::vec;` imports for `#![no_std]` test modules, and fixed unused `_admin` variables.
+  - `data_migration/src/lib.rs`: Closed unclosed delimiter in `impl SharedMigrationTracker`, added missing closing brace for `proptest::proptest!`, defined `ImportRecord` struct (`#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]`), added `PartialEq, Eq` derive to `MigrationTracker`, cleaned up unused `staged_state` assignment warning, and aligned legacy layout test to bincode struct layout.
+  - `data_migration/tests/concurrency_confilct.rs`: Fixed `reconciliation_artifacts_are_byte_deterministic_across_runs` assertion to verify byte determinism on sorted `imported_records()` instead of thread-order-dependent whole-tracker state.
+  - Formatted codebase using `cargo fmt` to satisfy `cargo fmt -p emergency_killswitch -- --check`.
 
 ### Verified
-- Code review confirms correctness of pattern, consistency, and error bounds.
-- 38 new unit tests in `emergency_killswitch/src/lib.rs` covering all legal and illegal transition edges.
+- `cargo test --lib -p emergency_killswitch`: All 134 unit and invariant tests PASS.
+- `cargo clippy -p emergency_killswitch -- -D warnings`: Clean (0 errors, 0 warnings).
+- `cargo fmt -p emergency_killswitch -- --check`: Clean formatting.
+- `cargo test -p data_migration`: All 287 unit, concurrency, and property tests PASS.
 
-### Remaining / Untested
-- Needs `cargo check` / `cargo test` on environment with Rust toolchain.
-- CI (`check_ci.sh`) not yet run.
-
-## Key Decisions
-- Transition guards fire before any mutation (Phase 1 validation) so rejections leave zero partial or orphaned state.
-- `clear_emergency_state` intentionally bypasses transition guards as the emergency admin recovery escape hatch.
-- `Error::Overflow` assigned discriminant `21` to avoid conflicting with `InvalidCursor = 20`.
-- Transition states (`KillSwitchState`) are derived dynamically from storage (`current_state`) rather than stored separately, eliminating state synchronization desync.
+### Key Decisions
+- Threshold in contract client methods must be passed by reference (`&threshold`) matching the Soroban SDK client contract.
+- In `#![no_std]` crates, `format!` must be explicitly brought in via `extern crate alloc; use alloc::format;`.
+- `MigrationTracker` derives `PartialEq, Eq` for test assertions and diffing.
 
 ## File Changes
-- `/emergency_killswitch/src/lib.rs`: Fixed `Error::Overflow = 21`, added free arithmetic/time helper functions, `KillSwitchState`, `TransitionError`, `current_state`, applied entry-point guards, fixed discriminant tests, and added 38 tests in `state_transition_invariant_tests`.
-- `/docs/state-transition-invariants.md`: Created comprehensive design and invariants documentation.
+- `/emergency_killswitch/src/lib.rs`: Fixed test type mismatches, imports, moved values, and formatting.
+- `/data_migration/src/lib.rs`: Fixed delimiters, defined `ImportRecord`, derived `PartialEq, Eq` on `MigrationTracker`, and updated tests.
+- `/data_migration/tests/concurrency_confilct.rs`: Fixed deterministic serialization test assertion.
+- `/AGENTS.md`: Updated progress and session documentation.
 
