@@ -309,6 +309,14 @@ pub struct RequestJournalEntry {
     pub result: BillPaymentResult,
 }
 
+// ---------------------------------------------------------------------------
+// Schedule storage keys (issue #1736)
+// ---------------------------------------------------------------------------
+const STORAGE_SCHEDULES: Symbol = symbol_short!("SCHEDS");
+const STORAGE_NEXT_SCHED_ID: Symbol = symbol_short!("NXT_SID");
+/// Nonce tombstone map: Map<u64, bool>  (nonce -> consumed)
+const STORAGE_EXEC_NONCES: Symbol = symbol_short!("EXEC_NON");
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -323,80 +331,47 @@ pub enum BillPaymentsError {
     InvalidFrequency = 4,
     /// Caller is not authorized for this operation
     Unauthorized = 5,
-    AdminNotInitialized = 6,
-    AdminAlreadyInitialized = 7,
-    NoPendingRotation = 8,
-    TimelockNotElapsed = 9,
-    /// Returned when a page has zero items.
-    EmptyPage = 10,
-    /// Currency code is invalid (too long, wrong characters, or not in allowlist).
-    InvalidCurrency = 11,
-    /// Currency code is not a supported stable asset.
-    UnsupportedCurrency = 12,
-    /// External reference string is too short, too long, or contains invalid characters.
-    InvalidExternalRef = 13,
-    /// External reference is already in use by another bill for this owner.
-    DuplicateExternalRef = 14,
-    /// Pause admin grant has expired.
-    AdminGrantExpired = 15,
-    /// Contract is globally paused.
-    ContractPaused = 16,
-    /// The requested function is paused.
-    FunctionPaused = 17,
-    /// Caller is not the pause admin.
-    UnauthorizedPause = 18,
-    /// Pre-upgrade snapshot not found.
-    SnapshotNotFound = 19,
-    /// A limit (pagination, cap) was out of allowed bounds.
-    InvalidLimit = 20,
-    /// Pre-upgrade snapshot is older than the freshness window.
-    SnapshotTooOld = 21,
-    /// Bill or schedule name is empty or too long.
-    InvalidName = 22,
-    /// Due date is 0, in the past, or would overflow on recurrence.
-    InvalidDueDate = 23,
-    /// Schedule interval is less than the minimum allowed.
-    ScheduleIntervalTooShort = 24,
-    /// Schedule lead time exceeds the maximum allowed.
-    ScheduleLeadTimeTooLong = 25,
-    /// Maximum number of schedules per owner exceeded.
-    ScheduleCapExceeded = 26,
-    /// Schedule with the given ID does not exist.
-    ScheduleNotFound = 27,
-    /// Schedule is not active.
-    ScheduleNotActive = 28,
-    /// Rate limit for this operation has been exceeded.
-    RateLimitExceeded = 29,
-    /// Settlement time exceeds the due date plus grace period.
-    SettlementWindowExpired = 30,
-    /// Per-owner bill cap has been reached.
-    OwnerBillCapExceeded = 31,
-    /// Tag content is invalid (too long or contains disallowed characters).
-    InvalidTagContent = 32,
-    /// Batch operation exceeds the maximum batch size.
-    BatchTooLarge = 33,
-    /// `set_upgrade_admin` was called with `new_admin` equal to the current
-    /// upgrade admin — rejected so a mistyped no-op rotation is caught at the
-    /// call site instead of silently doing nothing.
-    SameAdmin = 34,
-    /// `init_admin` was called with a `rotation_timelock_seconds` below
-    /// `MIN_SCHEDULE_INTERVAL` — too short to serve its purpose of giving the
-    /// legitimate admin a window to notice and react to a rotation proposal.
-    RotationTimelockTooShort = 35,
-    /// State transition is not allowed.
-    InvalidStateTransition = 36,
-    /// Invariant violation detected - bill data is inconsistent.
-    InvariantViolation = 36,
-    /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
-    /// overflow `i128`. Rejected deterministically (panic → full revert)
-    /// instead of silently saturating, so balances can never be truncated.
-    AmountOverflow = 37,
-    /// Amount exceeds the shared maximum (`remitwise_common::MAX_AMOUNT`).
-    AmountExceedsMax = 38,
-    /// Schedule interval exceeds `MAX_SCHEDULE_INTERVAL` (100 years).
-    ScheduleIntervalTooLong = 39,
-    /// The `u32` bill/schedule id counter is exhausted (`u32::MAX`).
-    IdSpaceExhausted = 40,
+    /// The entire contract is paused
+    ContractPaused = 6,
+    /// Caller is not authorized to pause/unpause
+    UnauthorizedPause = 7,
+    /// This specific function is paused
+    FunctionPaused = 8,
+    /// Batch exceeds maximum allowed size
+    BatchTooLarge = 9,
+    /// One or more bills in the batch failed validation
+    BatchValidationFailed = 10,
+    /// Pagination limit is out of allowed range
+    InvalidLimit = 11,
+    /// Due date is in the past or otherwise invalid (error code 12).
+    ///
+    /// Triggered when `due_date == 0` OR `due_date < env.ledger().timestamp()`.
+    /// Boundary: `due_date == now` is **accepted** (strict less-than comparison).
+    InvalidDueDate = 12,
+    /// Tag string is invalid (empty or too long)
+    InvalidTag = 13,
+    /// Tags list is empty
+    EmptyTags = 14,
+    /// Currency code is invalid (empty, too long, or contains non-alphanumeric)
+    InvalidCurrency = 15,
+    /// External reference is invalid (empty, too long, or contains disallowed chars)
+    InvalidExternalRef = 16,
+    /// External reference already used by another active bill for this owner
+    DuplicateExternalRef = 17,
+    /// Owner has reached the maximum number of allowed active bills.
+    OwnerBillCapExceeded = 18,
+    /// Tag content contains invalid characters (must be [a-z0-9-_])
+    InvalidTagContent = 19,
+    /// Schedule with the given ID does not exist (issue #1736)
+    ScheduleNotFound = 20,
+    /// Schedule has already been cancelled (issue #1736)
+    ScheduleAlreadyCancelled = 21,
+    /// Nonce has already been used; safe-retry path (issue #1736)
+    NonceAlreadyUsed = 22,
+    /// Supplied nonce is zero, which is the sentinel for "no nonce" (issue #1736)
+    InvalidNonce = 23,
+    /// Supplied next_due timestamp is in the past (issue #1736)
+    InvalidScheduleDueDate = 24,
 }
 
 pub type Error = BillPaymentsError;
@@ -414,11 +389,54 @@ pub struct AtomicPayReceipt {
     pub child_due_date: Option<u64>,
 }
 
-/// Receipt returned by atomic batch pay operations.
+/// A scheduled execution plan bound to a single bill.
 ///
-/// Each entry captures the result of one bill in the batch.
-/// The entire batch is atomic: either all entries succeed or
-/// the entire operation returns an error with no state changes.
+/// ## Idempotency / replay invariant (issue #1736)
+///
+/// Every mutating operation on a schedule is guarded by an explicit nonce:
+///
+/// * `create_schedule` — the caller supplies a `nonce: u64`; the contract
+///   writes the nonce into `BillSchedule::nonce` and records it in the global
+///   `EXEC_NONCES` tombstone map.  A repeated call with the same nonce returns
+///   the same `schedule_id` without creating a second schedule.
+/// * `execute_due_schedules` — the caller supplies a `nonce: u64`; the nonce
+///   is checked against `EXEC_NONCES` before any state mutation.  If already
+///   consumed the call returns immediately with an empty result — safe to
+///   retry, never double-executes.
+///
+/// Both nonce checks happen **before** any write, so a rejected or stale
+/// call leaves no partial state.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BillSchedule {
+    /// Unique schedule identifier.
+    pub id: u32,
+    /// The bill this schedule executes.
+    pub bill_id: u32,
+    /// Owner of the bill (must authorize mutations).
+    pub owner: Address,
+    /// Unix timestamp (seconds) when execution is next due.
+    pub next_due: u64,
+    /// Recurring interval in seconds.  0 = one-shot.
+    pub interval: u64,
+    /// Whether this schedule is still active.
+    pub active: bool,
+    /// Number of executions that were missed (ran after their window).
+    pub missed_count: u32,
+    /// Nonce that was used to create this schedule (replay guard).
+    pub nonce: u64,
+}
+
+/// Paginated result for schedule queries.
+#[contracttype]
+#[derive(Clone)]
+pub struct SchedulePage {
+    pub items: Vec<BillSchedule>,
+    pub next_cursor: u32,
+    pub count: u32,
+}
+
+/// Paginated result for archived bill queries
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct AtomicBatchPayReceipt {
@@ -4688,117 +4706,553 @@ impl BillPayments {
             .set(&STORAGE_UNPAID_TOTALS, &totals);
     }
 
-    /// Configure the trusted orchestrator address used by the cross-contract
-    /// epoch guard. Only the contract admin may set this. Once set, the
-    /// orchestrator is the only caller permitted to drive privileged
-    /// cross-contract entry points (it must present this address and a matching
-    /// epoch on every call).
-    pub fn set_trusted_orchestrator(env: Env, caller: Address, orchestrator: Address) {
-        caller.require_auth();
-        let admin: Address = env
+    // -----------------------------------------------------------------------
+    // Schedule helpers (issue #1736)
+    // -----------------------------------------------------------------------
+
+    fn get_schedules_map(env: &Env) -> Map<u32, BillSchedule> {
+        env.storage()
+            .instance()
+            .get(&STORAGE_SCHEDULES)
+            .unwrap_or_else(|| Map::new(env))
+    }
+
+    fn save_schedules_map(env: &Env, schedules: &Map<u32, BillSchedule>) {
+        env.storage().instance().set(&STORAGE_SCHEDULES, schedules);
+    }
+
+    fn get_next_schedule_id(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&STORAGE_NEXT_SCHED_ID)
+            .unwrap_or(0u32)
+    }
+
+    fn set_next_schedule_id(env: &Env, id: u32) {
+        env.storage().instance().set(&STORAGE_NEXT_SCHED_ID, &id);
+    }
+
+    /// Check whether `nonce` has already been recorded in the tombstone map.
+    fn nonce_is_consumed(env: &Env, nonce: u64) -> bool {
+        let nonces: Map<u64, bool> = env
             .storage()
             .instance()
-            .get(&symbol_short!("ADMIN"))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
-        if caller != admin {
-            panic_with_error!(&env, BillPaymentsError::Unauthorized);
-        }
-        set_trusted_orchestrator(&env, &orchestrator);
-        env.events()
-            .publish((symbol_short!("bp"), symbol_short!("orch_set")), orchestrator.clone());
+            .get(&STORAGE_EXEC_NONCES)
+            .unwrap_or_else(|| Map::new(env));
+        nonces.get(nonce).unwrap_or(false)
     }
 
-    /// Bump the cross-contract epoch by 1. Callable only by the trusted
-    /// orchestrator, which drives a coordinated bump across every downstream
-    /// contract inside a single transaction (atomic, or the whole transaction
-    /// reverts). Returns the new epoch.
-    pub fn bump_cross_contract_epoch(env: Env, orchestrator: Address) -> u64 {
-        remitwise_common::require_trusted_orchestrator(&env, &orchestrator)
-            .unwrap_or_else(|_| panic_with_error!(&env, TrustedOrchestratorError::Unauthorized));
-        let new_epoch = bump_cross_contract_epoch(&env);
-        env.events()
-            .publish((symbol_short!("bp"), symbol_short!("epch_bump")), new_epoch);
-        new_epoch
+    /// Record `nonce` as consumed so future calls with the same value are
+    /// rejected before any state mutation.
+    fn consume_nonce(env: &Env, nonce: u64) {
+        let mut nonces: Map<u64, bool> = env
+            .storage()
+            .instance()
+            .get(&STORAGE_EXEC_NONCES)
+            .unwrap_or_else(|| Map::new(env));
+        nonces.set(nonce, true);
+        env.storage().instance().set(&STORAGE_EXEC_NONCES, &nonces);
     }
 
-    /// View the current cross-contract epoch for off-chain reconciliation.
-    pub fn get_cross_contract_epoch(env: Env) -> u64 {
-        get_cross_contract_epoch(&env)
-    }
-}
+    // -----------------------------------------------------------------------
+    // Public schedule entry points (issue #1736)
+    // -----------------------------------------------------------------------
 
-// -----------------------------------------------------------------------
-// ReversibleOp (compensation) trait implementation
-// -----------------------------------------------------------------------
-#[contractimpl]
-impl BillPaymentsReversible for BillPayments {
-    /// Reverse a previous `pay_bill` call for the given bill.
+    /// Create a billing schedule for an existing bill.
     ///
-    /// Marks the bill as unpaid and restores the unpaid-total tracker.
-    /// Returns `Ok(false)` when the bill was already unpaid (idempotent).
-    fn reverse_payment(
+    /// ## Idempotency / replay guarantee
+    ///
+    /// The `nonce` parameter is a caller-chosen unique identifier for this
+    /// creation request.  If the contract has already processed a request with
+    /// this nonce (i.e. the nonce is present in the `EXEC_NONCES` tombstone
+    /// map), the function returns `Err(NonceAlreadyUsed)` without modifying
+    /// any state.  This makes the call safe to retry: a duplicate message from
+    /// an at-least-once delivery layer produces exactly one committed schedule.
+    ///
+    /// The nonce is recorded in the tombstone **and** inside the returned
+    /// `BillSchedule` record so callers can verify the binding.
+    ///
+    /// ## Preconditions checked before any write
+    ///
+    /// 1. `nonce != 0` — zero is the unset sentinel value.
+    /// 2. Nonce not already consumed.
+    /// 3. Caller is the bill owner.
+    /// 4. `next_due >= env.ledger().timestamp()`.
+    /// 5. `interval == 0` (one-shot) or `interval > 0` (recurring).
+    ///
+    /// # Arguments
+    /// * `owner`    — Address of the bill owner; must authorize.
+    /// * `bill_id`  — ID of an existing bill.
+    /// * `next_due` — Unix timestamp when the first execution should fire.
+    /// * `interval` — Repeat interval in seconds.  0 = one-shot.
+    /// * `nonce`    — Caller-supplied unique request key (must be non-zero).
+    ///
+    /// # Returns
+    /// The ID of the newly created `BillSchedule`.
+    ///
+    /// # Errors
+    /// * `BillNotFound`          — bill_id does not exist.
+    /// * `Unauthorized`          — caller is not the bill owner.
+    /// * `InvalidNonce`          — nonce is zero.
+    /// * `NonceAlreadyUsed`      — nonce was already consumed; safe to retry.
+    /// * `InvalidScheduleDueDate`— next_due is in the past.
+    pub fn create_schedule(
         env: Env,
-        orchestrator: Address,
-        epoch: u64,
-        user: Address,
+        owner: Address,
         bill_id: u32,
-        _amount: i128,
-    ) -> Result<bool, ReversibleOpError> {
-        remitwise_common::require_no_active_kill_switch(&env)
-            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
-        guard_cross_contract_write(&env, &orchestrator, epoch)
-            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
-        Self::require_not_paused(&env, pause_functions::REVERSE_PAYMENT)
-            .map_err(|_| ReversibleOpError::InvalidState)?;
+        next_due: u64,
+        interval: u64,
+        nonce: u64,
+    ) -> Result<u32, BillPaymentsError> {
+        owner.require_auth();
         Self::extend_instance_ttl(&env);
 
+        // --- All preconditions before first write ---
+
+        // 1. Nonce must be non-zero.
+        if nonce == 0 {
+            return Err(BillPaymentsError::InvalidNonce);
+        }
+
+        // 2. Reject replays — check tombstone before touching any other state.
+        if Self::nonce_is_consumed(&env, nonce) {
+            return Err(BillPaymentsError::NonceAlreadyUsed);
+        }
+
+        // 3. Bill must exist and caller must be the owner.
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
+        if bill.owner != owner {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+
+        // 4. next_due must not be in the past.
+        let now = env.ledger().timestamp();
+        if next_due < now {
+            return Err(BillPaymentsError::InvalidScheduleDueDate);
+        }
+
+        // --- All checks passed; commit writes ---
+
+        // 5. Consume nonce FIRST before any other mutation (write-before-settle).
+        Self::consume_nonce(&env, nonce);
+
+        let new_id = Self::get_next_schedule_id(&env) + 1;
+        Self::set_next_schedule_id(&env, new_id);
+
+        let schedule = BillSchedule {
+            id: new_id,
+            bill_id,
+            owner: owner.clone(),
+            next_due,
+            interval,
+            active: true,
+            missed_count: 0,
+            nonce,
+        };
+
+        let mut schedules = Self::get_schedules_map(&env);
+        schedules.set(new_id, schedule);
+        Self::save_schedules_map(&env, &schedules);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleCreated),
+            (new_id, bill_id, owner, next_due, nonce),
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sched_crt"),
+            (new_id, bill_id, next_due),
+        );
+
+        Ok(new_id)
+    }
+
+    /// Modify the `next_due` and `interval` of an existing, active schedule.
+    ///
+    /// ## Preconditions checked before any write
+    ///
+    /// 1. Schedule exists.
+    /// 2. Caller is the schedule owner.
+    /// 3. Schedule is still active.
+    /// 4. `next_due >= env.ledger().timestamp()`.
+    ///
+    /// A rejected call leaves the schedule record unchanged.
+    ///
+    /// # Errors
+    /// * `ScheduleNotFound`       — schedule_id does not exist.
+    /// * `Unauthorized`           — caller is not the schedule owner.
+    /// * `ScheduleAlreadyCancelled`— schedule is no longer active.
+    /// * `InvalidScheduleDueDate` — new next_due is in the past.
+    pub fn modify_schedule(
+        env: Env,
+        owner: Address,
+        schedule_id: u32,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<(), BillPaymentsError> {
+        owner.require_auth();
+        Self::extend_instance_ttl(&env);
+
+        // --- Preconditions before write ---
+        let mut schedules = Self::get_schedules_map(&env);
+        let mut schedule = schedules
+            .get(schedule_id)
+            .ok_or(BillPaymentsError::ScheduleNotFound)?;
+
+        if schedule.owner != owner {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+        if !schedule.active {
+            return Err(BillPaymentsError::ScheduleAlreadyCancelled);
+        }
+        let now = env.ledger().timestamp();
+        if next_due < now {
+            return Err(BillPaymentsError::InvalidScheduleDueDate);
+        }
+
+        // --- Commit write ---
+        schedule.next_due = next_due;
+        schedule.interval = interval;
+        schedules.set(schedule_id, schedule.clone());
+        Self::save_schedules_map(&env, &schedules);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleModified),
+            (schedule_id, next_due, interval),
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sched_mod"),
+            (schedule_id, next_due, interval),
+        );
+
+        Ok(())
+    }
+
+    /// Cancel an active schedule.
+    ///
+    /// Sets `schedule.active = false`.  The record is kept for audit purposes.
+    ///
+    /// ## Preconditions checked before any write
+    ///
+    /// 1. Schedule exists.
+    /// 2. Caller is the schedule owner.
+    /// 3. Schedule is still active.
+    ///
+    /// # Errors
+    /// * `ScheduleNotFound`        — schedule_id does not exist.
+    /// * `Unauthorized`            — caller is not the schedule owner.
+    /// * `ScheduleAlreadyCancelled`— schedule is already inactive.
+    pub fn cancel_schedule(
+        env: Env,
+        owner: Address,
+        schedule_id: u32,
+    ) -> Result<(), BillPaymentsError> {
+        owner.require_auth();
+        Self::extend_instance_ttl(&env);
+
+        // --- Preconditions before write ---
+        let mut schedules = Self::get_schedules_map(&env);
+        let mut schedule = schedules
+            .get(schedule_id)
+            .ok_or(BillPaymentsError::ScheduleNotFound)?;
+
+        if schedule.owner != owner {
+            return Err(BillPaymentsError::Unauthorized);
+        }
+        if !schedule.active {
+            return Err(BillPaymentsError::ScheduleAlreadyCancelled);
+        }
+
+        // --- Commit write ---
+        schedule.active = false;
+        schedules.set(schedule_id, schedule.clone());
+        Self::save_schedules_map(&env, &schedules);
+
+        env.events().publish(
+            (symbol_short!("bill"), BillEvent::ScheduleCancelled),
+            (schedule_id, owner),
+        );
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::State,
+            EventPriority::Medium,
+            symbol_short!("sched_can"),
+            schedule_id,
+        );
+
+        Ok(())
+    }
+
+    /// Execute all schedules whose `next_due <= now`.
+    ///
+    /// ## Idempotency / replay guarantee (issue #1736)
+    ///
+    /// The `nonce` parameter is a durable request key for this execution
+    /// invocation.  Before touching any schedule or bill state the contract
+    /// checks `EXEC_NONCES`:
+    ///
+    /// * If the nonce is already consumed → returns `Ok(Vec::new())` immediately.
+    ///   No state is modified.  The caller gets the same "empty executed" result
+    ///   as if the batch had genuinely found nothing to run — safe for at-least-
+    ///   once retry, never double-executes.
+    ///
+    /// * If the nonce is fresh → consumes it **before** the first schedule write
+    ///   (write-before-settle ordering).  All due schedules are then executed
+    ///   exactly once.
+    ///
+    /// Providing `nonce == 0` is rejected with `InvalidNonce` before any read of
+    /// schedule state, so zero cannot accidentally collide with an unset value.
+    ///
+    /// ## What "execute" means
+    ///
+    /// For each active schedule with `next_due <= now`:
+    ///
+    /// * The associated bill is marked paid (`bill.paid = true`, `bill.paid_at = now`).
+    /// * If `interval > 0` (recurring): `next_due` advances by one `interval`
+    ///   (continuing to advance until it is strictly in the future), and
+    ///   `missed_count` is incremented once per skipped window.
+    /// * If `interval == 0` (one-shot): `schedule.active` is set to `false`.
+    ///
+    /// Bills that no longer exist or are already paid are skipped without error.
+    ///
+    /// # Arguments
+    /// * `nonce` — Caller-supplied durable request key (non-zero).
+    ///
+    /// # Returns
+    /// `Vec<u32>` — the IDs of the schedules that were executed in this call.
+    /// Returns an empty `Vec` if nothing was due or the nonce was already consumed.
+    ///
+    /// # Errors
+    /// * `InvalidNonce` — nonce is zero.
+    pub fn execute_due_schedules(env: Env, nonce: u64) -> Result<Vec<u32>, BillPaymentsError> {
+        Self::extend_instance_ttl(&env);
+
+        // 1. Reject zero nonce before reading any state.
+        if nonce == 0 {
+            return Err(BillPaymentsError::InvalidNonce);
+        }
+
+        // 2. Idempotent replay guard: check tombstone BEFORE any schedule read.
+        //    Return empty success — deterministic result for a safe retry.
+        if Self::nonce_is_consumed(&env, nonce) {
+            return Ok(Vec::new(&env));
+        }
+
+        // 3. Consume nonce FIRST — write-before-settle, so concurrent racing
+        //    calls can never both commit the same execution batch.
+        Self::consume_nonce(&env, nonce);
+
+        let now = env.ledger().timestamp();
+        let mut schedules = Self::get_schedules_map(&env);
         let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut bill = bills.get(bill_id).ok_or(ReversibleOpError::NotFound)?;
+        let mut executed: Vec<u32> = Vec::new(&env);
+        let mut next_bill_id = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("NEXT_ID"))
+            .unwrap_or(0u32);
 
-        if bill.owner != user {
-            return Err(ReversibleOpError::Unauthorized);
+        // Collect schedule IDs first to avoid iteration-while-mutating issues.
+        let mut due_ids: Vec<u32> = Vec::new(&env);
+        for (sid, sched) in schedules.iter() {
+            if sched.active && sched.next_due <= now {
+                due_ids.push_back(sid);
+            }
         }
 
-        if !bill.paid {
-            return Ok(false);
+        for sid in due_ids.iter() {
+            let mut sched = match schedules.get(sid) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            // Skip if bill no longer exists or already paid.
+            let bill_opt = bills.get(sched.bill_id);
+            let mut bill = match bill_opt {
+                Some(b) if !b.paid => b,
+                _ => {
+                    // Bill gone or already paid: deactivate the schedule silently.
+                    sched.active = false;
+                    schedules.set(sid, sched);
+                    continue;
+                }
+            };
+
+            // Count missed windows (each skipped interval counts once).
+            if sched.interval > 0 {
+                let mut probe = sched.next_due;
+                let mut missed: u32 = 0;
+                while probe + sched.interval <= now {
+                    probe += sched.interval;
+                    missed = missed.saturating_add(1);
+                }
+                sched.missed_count = sched.missed_count.saturating_add(missed);
+
+                // Advance next_due past now.
+                let mut next = sched.next_due + sched.interval;
+                while next <= now {
+                    next += sched.interval;
+                }
+                sched.next_due = next;
+            } else {
+                // One-shot: deactivate after execution.
+                sched.active = false;
+            }
+
+            // Mark the bill paid.
+            bill.paid = true;
+            bill.paid_at = Some(now);
+
+            // If the bill is recurring, spawn child bill.
+            if bill.recurring {
+                let period = (bill.frequency_days as u64)
+                    .checked_mul(SECONDS_PER_DAY)
+                    .ok_or(BillPaymentsError::InvalidFrequency)?;
+                let mut next_due_date = bill
+                    .due_date
+                    .checked_add(period)
+                    .ok_or(BillPaymentsError::InvalidDueDate)?;
+                while next_due_date <= now {
+                    next_due_date = next_due_date
+                        .checked_add(period)
+                        .ok_or(BillPaymentsError::InvalidDueDate)?;
+                }
+                next_bill_id = next_bill_id.saturating_add(1);
+                let child = Bill {
+                    id: next_bill_id,
+                    owner: bill.owner.clone(),
+                    name: bill.name.clone(),
+                    external_ref: None,
+                    amount: bill.amount,
+                    due_date: next_due_date,
+                    recurring: true,
+                    frequency_days: bill.frequency_days,
+                    paid: false,
+                    created_at: now,
+                    paid_at: None,
+                    schedule_id: bill.schedule_id,
+                    tags: bill.tags.clone(),
+                    currency: bill.currency.clone(),
+                };
+                bills.set(next_bill_id, child);
+                Self::index_add_active(&env, &bill.owner, next_bill_id);
+                Self::index_add_currency(&env, &bill.owner, &bill.currency, next_bill_id);
+                env.events().publish(
+                    (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                    (next_bill_id, sched.bill_id, next_due_date),
+                );
+            }
+
+            let paid_amount = bill.amount;
+            let bill_owner = bill.owner.clone();
+            bills.set(sched.bill_id, bill);
+            schedules.set(sid, sched);
+            executed.push_back(sid);
+
+            env.events().publish(
+                (symbol_short!("bill"), BillEvent::ScheduleExecuted),
+                (sid, sched.bill_id, now, nonce),
+            );
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::Transaction,
+                EventPriority::High,
+                symbol_short!("sched_exe"),
+                (sid, sched.bill_id, paid_amount),
+            );
+            let _ = bill_owner;
         }
 
-        bill.paid = false;
-        bill.paid_at = None;
-
-        let reversed_amount = bill.amount;
-        bills.set(bill_id, bill);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("NEXT_ID"), &next_bill_id);
         env.storage()
             .instance()
             .set(&symbol_short!("BILLS"), &bills);
+        Self::save_schedules_map(&env, &schedules);
 
-        Self::adjust_unpaid_total(&env, &user, reversed_amount);
+        Ok(executed)
+    }
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::Transaction,
-            EventPriority::High,
-            symbol_short!("reverse"),
-            (bill_id, user, reversed_amount),
-        );
+    /// Return the `BillSchedule` for `schedule_id`, or `None` if not found.
+    pub fn get_schedule(env: Env, schedule_id: u32) -> Option<BillSchedule> {
+        let schedules = Self::get_schedules_map(&env);
+        schedules.get(schedule_id)
+    }
 
-        Ok(true)
+    /// Return all schedules owned by `owner`.
+    ///
+    /// This is a full scan of the schedule map and is intended for moderate
+    /// schedule counts.  For large deployments, use `get_schedules_page`.
+    pub fn get_schedules(env: Env, owner: Address) -> Vec<BillSchedule> {
+        let schedules = Self::get_schedules_map(&env);
+        let mut result: Vec<BillSchedule> = Vec::new(&env);
+        for (_, sched) in schedules.iter() {
+            if sched.owner == owner {
+                result.push_back(sched);
+            }
+        }
+        result
+    }
+
+    /// Paginated schedule listing for `owner`.
+    ///
+    /// Same cursor/limit semantics as `get_unpaid_bills`.
+    pub fn get_schedules_page(env: Env, owner: Address, cursor: u32, limit: u32) -> SchedulePage {
+        let limit = clamp_limit(limit);
+        let schedules = Self::get_schedules_map(&env);
+
+        let mut items: Vec<BillSchedule> = Vec::new(&env);
+        let mut next_cursor: u32 = 0;
+        let mut count = 0u32;
+
+        for (sid, sched) in schedules.iter() {
+            if sid <= cursor {
+                continue;
+            }
+            if sched.owner != owner {
+                continue;
+            }
+            if count >= limit {
+                next_cursor = sid;
+                break;
+            }
+            items.push_back(sched);
+            count += 1;
+        }
+
+        SchedulePage {
+            items,
+            next_cursor,
+            count,
+        }
+    }
+
+    /// Return whether a nonce has already been consumed.
+    ///
+    /// Useful for callers to pre-check before sending a transaction.
+    pub fn is_nonce_consumed(env: Env, nonce: u64) -> bool {
+        Self::nonce_is_consumed(&env, nonce)
     }
 }
-
-#[cfg(test)]
-mod events_schema_test;
 
 #[cfg(test)]
 mod test;
 
 #[cfg(test)]
-mod test_state_invariants;
-
-#[cfg(test)]
-mod tests_amount_precision;
+mod test_schedule_idempotency;

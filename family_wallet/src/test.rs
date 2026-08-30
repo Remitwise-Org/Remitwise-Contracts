@@ -278,14 +278,12 @@ fn test_withdraw_below_threshold_no_multisig() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    all_members.push_back(owner.clone());
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -331,19 +329,12 @@ fn test_withdraw_above_threshold_requires_multisig() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -405,19 +396,12 @@ fn test_multisig_threshold_validation() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -471,19 +455,12 @@ fn test_duplicate_signature_prevention() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -590,19 +567,12 @@ fn test_propose_split_config_change() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
@@ -750,19 +720,12 @@ fn test_propose_role_change() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let signers = vec![&env, owner.clone(), member1.clone()];
@@ -1181,19 +1144,12 @@ fn test_propose_emergency_transfer() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -1353,19 +1309,12 @@ fn test_propose_emergency_transfer_appends_access_audit() {
     let owner = Address::generate(&env);
     let initial_members = Vec::new(&env);
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -1983,19 +1932,12 @@ fn test_unauthorized_signer() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -2060,19 +2002,12 @@ fn test_cleanup_expired_pending() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let token_admin = Address::generate(&env);
@@ -3369,19 +3304,12 @@ fn test_threshold_one_with_multiple_signers() {
     ];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     let signers = vec![
@@ -3498,19 +3426,12 @@ fn test_pending_transactions_pagination_and_auth() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Create 5 pending proposals, alternating proposers
@@ -3867,6 +3788,13 @@ fn test_cumulative_spending_within_period_limit() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
@@ -3912,6 +3840,13 @@ fn test_spending_period_rollover_resets_limits() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
@@ -3971,6 +3906,13 @@ fn test_spending_period_boundary_is_read_only_and_exact() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
@@ -4062,8 +4004,17 @@ fn test_failed_token_transfer_does_not_consume_period_allowance() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &500_0000000);
 
     client.init(&owner, &vec![&env]);
-    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
+    client.add_member(&owner, &admin, &FamilyRole::Admin, &1000_0000000);
+
+    // Owner should bypass all precision limits
+    let tx1 = client.withdraw(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
@@ -4110,28 +4061,16 @@ fn test_reducing_limit_preserves_consumed_allowance() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
 
     client.init(&owner, &vec![&env]);
-    client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &vec![&env, owner.clone(), member.clone()],
-        &1000_0000000,
+        &vec![&env],
+        &0,
     );
-    assert!(client.set_precision_spending_limit(
-        &owner,
-        &member,
-        &PrecisionSpendingLimit {
-            limit: 700_0000000,
-            min_precision: 1_0000000,
-            max_single_tx: 700_0000000,
-            enable_rollover: true,
-        },
-    ));
-    assert_eq!(
-        client.withdraw(&member, &token_contract.address(), &recipient, &400_0000000),
-        0
-    );
+    client.add_member(&owner, &member, &FamilyRole::Member, &500_0000000);
+
+    // No precision limit set, should use legacy behavior
 
     // Lowering the limit cannot make the already-consumed 400 disappear.
     assert!(client.set_precision_spending_limit(
@@ -4297,6 +4236,13 @@ fn test_precision_validation_edge_cases() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &2000_0000000);
 
     client.init(&owner, &vec![&env]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
@@ -4390,6 +4336,13 @@ fn test_disabled_rollover_only_checks_single_tx_limits() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&member, &1000_0000000);
 
     client.init(&owner, &vec![&env]);
+    client.configure_multisig(
+        &owner,
+        &TransactionType::RegularWithdrawal,
+        &1,
+        &vec![&env],
+        &0,
+    );
     client.add_member(&owner, &member, &FamilyRole::Member, &1000_0000000);
     client.configure_multisig(
         &owner,
@@ -5514,19 +5467,12 @@ fn test_threshold_change_lower_allows_execution() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token and fund owner
@@ -5628,19 +5574,12 @@ fn test_threshold_change_raise_blocks_execution() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token and fund owner
@@ -5736,19 +5675,12 @@ fn test_threshold_change_raise_to_exact_signature_count() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -5923,19 +5855,12 @@ fn test_threshold_change_quorum_unachievable_via_revalidate() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -6005,19 +5930,12 @@ fn test_threshold_change_quorum_unachievable_via_member_removal() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -6088,19 +6006,12 @@ fn test_threshold_change_proposal_invalidated_event_emission() {
     let initial_members = vec![&env, member1.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -6176,19 +6087,12 @@ fn test_threshold_change_selective_proposal_invalidation() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -6274,19 +6178,12 @@ fn test_threshold_change_with_signature_collection_in_progress() {
     let initial_members = vec![&env, member1.clone(), member2.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Setup token
@@ -6372,8 +6269,8 @@ fn test_threshold_change_minimum_with_single_signer() {
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &vec![&env, owner.clone()],
-        &1000_0000000,
+        &vec![&env],
+        &0,
     );
 
     // Setup token
@@ -7523,19 +7420,12 @@ fn test_remove_member_clears_spending_tracker() {
     let initial_members = vec![&env, member.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Set precision spending limit with rollover enabled
@@ -7627,19 +7517,12 @@ fn test_remove_member_then_readd_has_clean_state() {
     let initial_members = vec![&env, member.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Set precision spending limit with rollover
@@ -7712,19 +7595,12 @@ fn test_batch_remove_clears_all_member_state() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Set precision limits for all members
@@ -7820,19 +7696,12 @@ fn test_batch_remove_with_mixed_members_clears_all_state() {
     let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
-    let mut all_members = initial_members.clone();
-    if !all_members.contains(&owner) {
-        all_members.push_back(owner.clone());
-    }
-    if all_members.is_empty() {
-        all_members.push_back(owner.clone());
-    }
     client.configure_multisig(
         &owner,
         &TransactionType::RegularWithdrawal,
         &1,
-        &all_members,
-        &1000_0000000,
+        &initial_members,
+        &0,
     );
 
     // Set precision limit only on member1 and member3

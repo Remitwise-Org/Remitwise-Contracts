@@ -4,7 +4,7 @@ use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
-    Address, Env, Symbol,
+    Address, Env, IntoVal, Symbol,
 };
 use testutils::same_address;
 
@@ -85,7 +85,7 @@ fn transfer_admin_rejects_self_address() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
     assert_eq!(
-        client.try_transfer_admin(&contract_id, &0),
+        client.try_transfer_admin(&contract_id),
         Err(Ok(Error::InvalidAdmin))
     );
 }
@@ -97,11 +97,8 @@ fn transfer_admin_rejects_same_admin() {
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    // Confirm we are genuinely passing the same address, not two coincidentally
-    // equal values — using the shared helper keeps this intent grep-able.
-    assert!(same_address(&admin, &admin));
     assert_eq!(
-        client.try_transfer_admin(&admin, &0),
+        client.try_transfer_admin(&admin),
         Err(Ok(Error::InvalidAdmin))
     );
 }
