@@ -70,6 +70,10 @@ enum DataKey {
     /// Tracks the migration step last completed so `migrate_storage` is
     /// resumable after a partial failure.
     MigrationProgress,
+    /// Monotonic correlation counter consumed by every committed emergency
+    /// transition so emitted control/audit events carry a deterministic id
+    /// and a strict, observable ordering.
+    EventSeq,
 }
 
 /// Delay between a threshold-approved activation and recovery.
@@ -79,7 +83,11 @@ pub const MAX_PAUSED_FUNCTIONS: u32 = 10;
 
 /// Contract version, bumped on every on-chain-upgrade-relevant change so
 /// callers/tooling can detect which build of the WASM they are talking to.
-pub const CONTRACT_VERSION: u32 = 1;
+///
+/// v2 adds the versioned `("emergency", "control")` audit-event stream
+/// (correlation `seq` + `ControlEvent` records) on every committed emergency
+/// transition (issue #1761).
+pub const CONTRACT_VERSION: u32 = 2;
 
 /// Storage schema version. Bumped whenever the on-chain key layout changes.
 /// `migrate_storage` advances this value one step at a time so callers can
@@ -89,6 +97,33 @@ pub const STORAGE_VERSION: u32 = 1;
 /// How many seconds a pre-upgrade snapshot remains valid.  After this
 /// window the snapshot is considered stale and must be refreshed.
 pub const SNAPSHOT_TTL: u64 = 86_400; // 24 hours
+
+/// Schema version of the [`ControlEvent`] audit record. Bump only under the
+/// documented upgrade workflow when the on-wire event shape changes, and
+/// keep old shapes documented side-by-side in `docs/EVENTS.md`.
+pub const EVENT_VERSION: u32 = 1;
+
+/// Versioned, complete, correlation-tagged audit record emitted by **every
+/// committed** emergency transition.
+///
+/// `seq` is a monotonic, per-contract counter consumed from instance storage
+/// (`DataKey::EventSeq`). Because it is strictly increasing it provides both
+/// the correlation identifier and a deterministic global ordering for every
+/// emergency event the contract produces. `kind` names the operation and
+/// `actor` is the authorizing principal — `None` for consensus-driven
+/// transitions (threshold signer quorums) where no single address is the
+/// actor. The record is published on the fixed `("emergency", "control")`
+/// topic so indexers can subscribe to the entire emergency audit stream with
+/// a single filter.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ControlEvent {
+    pub version: u32,
+    pub seq: u64,
+    pub kind: Symbol,
+    pub actor: Option<Address>,
+    pub timestamp: u64,
+}
 
 /// Emitted when the killswitch admin is successfully transferred.
 #[contracttype]
@@ -103,9 +138,16 @@ pub struct AdminTransferred {
 /// upgrade.  Stored under [`DataKey::Snapshot`] and consumed by
 /// [`EmergencyKillswitch::restore_from_snapshot`].
 ///
-/// Every field uses `Option` so that forward-compatible additions to the
+/// Most fields use `Option` so that forward-compatible additions to the
 /// snapshot never break deserialization of older payloads — the Soroban
 /// XDR decoder treats missing fields as `None`.
+///
+/// The active scope is **not** stored as `Option<PauseScope>`: soroban-sdk's
+/// `#[contracttype]` spec only derives fallible `TryFrom` for custom
+/// contracttype types, while `Option<T>` requires infallible `From<T>`, so
+/// `Option` of a custom enum/struct is not spec-serializable. Instead the
+/// scope is split into scalar fields (`scope_kind` + ids) so the snapshot
+/// remains fully representable on-chain.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct EmergencyStateSnapshot {
@@ -121,7 +163,12 @@ pub struct EmergencyStateSnapshot {
     pub signer_epoch: u64,
     pub signer_threshold: Option<u32>,
     pub activation_epoch: Option<u64>,
-    pub active_scope: Option<PauseScope>,
+    /// Encoded active scope. `scope_kind` is 0 = none, 1 = global,
+    /// 2 = module, 3 = function; `scope_module` / `scope_function` carry the
+    /// identifiers for module/function scopes. See `pre_upgrade`.
+    pub scope_kind: u32,
+    pub scope_module: Symbol,
+    pub scope_function: Symbol,
     pub recovery_ready_at: Option<u64>,
     pub scope_was_paused: Option<bool>,
 }
@@ -165,7 +212,55 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .set(&DataKey::KillSwitchEpoch, &0u64);
+        Self::emit_control_event(
+            &env,
+            symbol_short!("init"),
+            Some(&admin),
+            env.ledger().timestamp(),
+        );
         Ok(())
+    }
+
+    /// Consume and return the next monotonic correlation sequence number.
+    ///
+    /// Persisted in instance storage so ordering is stable across
+    /// transactions and never rewinds. Saturates on a (practically
+    /// unreachable) 64-bit wrap so the counter can never panic the contract.
+    fn next_event_seq(env: &Env) -> u64 {
+        let prev: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSeq)
+            .unwrap_or(0);
+        let next = prev.saturating_add(1);
+        env.storage().instance().set(&DataKey::EventSeq, &next);
+        next
+    }
+
+    /// Publish a versioned, correlation-tagged audit record for a committed
+    /// emergency transition.
+    ///
+    /// # Contract
+    /// - Must only be called **after** every state mutation for the transition
+    ///   has succeeded (immediately before returning `Ok`). A transition that
+    ///   rejects — or that panics and is rolled back by Soroban's atomic
+    ///   transaction semantics — never reaches this call, so the on-chain
+    ///   event log always matches committed state.
+    /// - Consumes a fresh `seq` from [`Self::next_event_seq`], so records are
+    ///   strictly ordered and uniquely correlated.
+    /// - Emits on the fixed `("emergency", "control")` topic.
+    fn emit_control_event(env: &Env, kind: Symbol, actor: Option<&Address>, timestamp: u64) {
+        let seq = Self::next_event_seq(env);
+        env.events().publish(
+            (symbol_short!("emergency"), symbol_short!("control")),
+            ControlEvent {
+                version: EVENT_VERSION,
+                seq,
+                kind,
+                actor: actor.cloned(),
+                timestamp,
+            },
+        );
     }
 
     fn configured_signers(env: &Env) -> Vec<Address> {
@@ -248,6 +343,12 @@ impl EmergencyKillswitch {
         env.events().publish(
             (symbol_short!("emergency"), Symbol::new(&env, "signers_set")),
             (epoch, threshold, signers.len()),
+        );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("signers"),
+            Some(&admin),
+            env.ledger().timestamp(),
         );
         Ok(epoch)
     }
@@ -340,6 +441,12 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("activated")),
             (epoch, scope),
         );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("activated"),
+            None,
+            env.ledger().timestamp(),
+        );
         Ok(())
     }
 
@@ -408,6 +515,12 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("recovered")),
             (epoch, scope),
         );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("recovered"),
+            None,
+            env.ledger().timestamp(),
+        );
         Ok(())
     }
 
@@ -475,6 +588,12 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), symbol_short!("epch_bump")),
             (old_epoch, new_epoch),
         );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("epch_bump"),
+            Some(&admin),
+            env.ledger().timestamp(),
+        );
         Ok(new_epoch)
     }
 
@@ -494,6 +613,19 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .get(&DataKey::KillSwitchEpoch)
+            .unwrap_or(0)
+    }
+
+    /// Return the current control-event correlation counter.
+    ///
+    /// Strictly monotonically increases with every committed emergency
+    /// transition. Read-only and observable on-chain; used off-chain to
+    /// confirm ordering continuity across the `("emergency", "control")`
+    /// audit stream.
+    pub fn get_event_seq(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::EventSeq)
             .unwrap_or(0)
     }
 
@@ -531,6 +663,12 @@ impl EmergencyKillswitch {
                 new_admin: new_admin.clone(),
                 timestamp: env.ledger().timestamp(),
             },
+        );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("admn_xfer"),
+            Some(&admin),
+            env.ledger().timestamp(),
         );
         Ok(())
     }
@@ -571,6 +709,7 @@ impl EmergencyKillswitch {
                 paused_by: admin.clone(),
             },
         );
+        Self::emit_control_event(&env, symbol_short!("pause"), Some(&admin), now);
         Ok(())
     }
 
@@ -611,6 +750,7 @@ impl EmergencyKillswitch {
                 unpaused_by: admin.clone(),
             },
         );
+        Self::emit_control_event(&env, symbol_short!("unpause"), Some(&admin), now);
         Ok(())
     }
 
@@ -653,6 +793,12 @@ impl EmergencyKillswitch {
                 unpaused_by: admin.clone(),
             },
         );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("cleared"),
+            Some(&admin),
+            env.ledger().timestamp(),
+        );
         Ok(())
     }
 
@@ -669,6 +815,12 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .set(&DataKey::UnpauseSchedule, &time);
+        Self::emit_control_event(
+            &env,
+            symbol_short!("schedule"),
+            Some(&admin),
+            env.ledger().timestamp(),
+        );
         Ok(())
     }
 
@@ -763,6 +915,12 @@ impl EmergencyKillswitch {
                     paused_by: admin.clone(),
                 },
             );
+            Self::emit_control_event(
+                &env,
+                symbol_short!("fpause"),
+                Some(&admin),
+                env.ledger().timestamp(),
+            );
         }
         Ok(())
     }
@@ -795,6 +953,12 @@ impl EmergencyKillswitch {
                     unpaused_at: env.ledger().timestamp(),
                     unpaused_by: admin.clone(),
                 },
+            );
+            Self::emit_control_event(
+                &env,
+                symbol_short!("funpause"),
+                Some(&admin),
+                env.ledger().timestamp(),
             );
         }
         Ok(())
@@ -846,6 +1010,12 @@ impl EmergencyKillswitch {
                 paused_by: admin.clone(),
             },
         );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("mpause"),
+            Some(&admin),
+            env.ledger().timestamp(),
+        );
         Ok(())
     }
 
@@ -869,6 +1039,12 @@ impl EmergencyKillswitch {
                 unpaused_at: env.ledger().timestamp(),
                 unpaused_by: admin.clone(),
             },
+        );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("munpause"),
+            Some(&admin),
+            env.ledger().timestamp(),
         );
         Ok(())
     }
@@ -981,6 +1157,7 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), Symbol::new(&env, "migr_done")),
             (target_version, now),
         );
+        Self::emit_control_event(&env, symbol_short!("migr"), Some(&admin), now);
 
         Ok(target_version)
     }
@@ -1021,6 +1198,16 @@ impl EmergencyKillswitch {
         }
 
         let now = env.ledger().timestamp();
+        // Encode the active scope as spec-scalar fields because
+        // `Option<CustomEnum>` is not spec-serializable in soroban-sdk.
+        // kind 0 = none, 1 = global, 2 = module, 3 = function.
+        let active_scope: Option<PauseScope> = env.storage().instance().get(&DataKey::ActiveScope);
+        let (scope_kind, scope_module, scope_function) = match active_scope {
+            None => (0u32, symbol_short!("none"), symbol_short!("none")),
+            Some(PauseScope::Global) => (1u32, symbol_short!("none"), symbol_short!("none")),
+            Some(PauseScope::Module(m)) => (2u32, m, symbol_short!("none")),
+            Some(PauseScope::Function(m, f)) => (3u32, m, f),
+        };
         let snapshot = EmergencyStateSnapshot {
             schema_version: Self::storage_version(env.clone()),
             global_paused: env
@@ -1043,7 +1230,9 @@ impl EmergencyKillswitch {
                 .unwrap_or(0),
             signer_threshold: env.storage().instance().get(&DataKey::SignerThreshold),
             activation_epoch: env.storage().instance().get(&DataKey::ActivationEpoch),
-            active_scope: env.storage().instance().get(&DataKey::ActiveScope),
+            scope_kind,
+            scope_module,
+            scope_function,
             recovery_ready_at: env.storage().instance().get(&DataKey::RecoveryReadyAt),
             scope_was_paused: env.storage().instance().get(&DataKey::ScopeWasPaused),
         };
@@ -1055,6 +1244,7 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), Symbol::new(&env, "snap_pre")),
             (snapshot.schema_version, now),
         );
+        Self::emit_control_event(&env, symbol_short!("snap_pre"), Some(&admin), now);
         Ok(())
     }
 
@@ -1138,10 +1328,23 @@ impl EmergencyKillswitch {
         } else {
             env.storage().instance().remove(&DataKey::ActivationEpoch);
         }
-        if let Some(v) = &snapshot.active_scope {
-            env.storage().instance().set(&DataKey::ActiveScope, v);
-        } else {
-            env.storage().instance().remove(&DataKey::ActiveScope);
+        match snapshot.scope_kind {
+            0 => env.storage().instance().remove(&DataKey::ActiveScope),
+            1 => env
+                .storage()
+                .instance()
+                .set(&DataKey::ActiveScope, &PauseScope::Global),
+            2 => env.storage().instance().set(
+                &DataKey::ActiveScope,
+                &PauseScope::Module(snapshot.scope_module.clone()),
+            ),
+            _ => env.storage().instance().set(
+                &DataKey::ActiveScope,
+                &PauseScope::Function(
+                    snapshot.scope_module.clone(),
+                    snapshot.scope_function.clone(),
+                ),
+            ),
         }
         if let Some(v) = &snapshot.recovery_ready_at {
             env.storage().instance().set(&DataKey::RecoveryReadyAt, v);
@@ -1162,6 +1365,7 @@ impl EmergencyKillswitch {
             (symbol_short!("emergency"), Symbol::new(&env, "snap_rst")),
             (snapshot.schema_version, now),
         );
+        Self::emit_control_event(&env, symbol_short!("snap_rst"), Some(&admin), now);
         Ok(())
     }
 
@@ -1187,6 +1391,12 @@ impl EmergencyKillswitch {
         env.events().publish(
             (symbol_short!("emergency"), Symbol::new(&env, "snap_dsc")),
             (env.ledger().timestamp(),),
+        );
+        Self::emit_control_event(
+            &env,
+            symbol_short!("snap_dsc"),
+            Some(&admin),
+            env.ledger().timestamp(),
         );
         Ok(())
     }
@@ -1598,7 +1808,7 @@ mod kill_switch_epoch_guard_comprehensive_tests {
     /// The replay must fail with EpochMismatch.
     #[test]
     fn stale_authorization_replay_rejected_after_epoch_bump() {
-        let (env, client, admin) = setup();
+        let (env, client, _admin) = setup();
         let new_admin = Address::generate(&env);
 
         // Capture current epoch (0) — represents a "signed" transfer_admin call.
@@ -1873,6 +2083,10 @@ mod storage_migration_tests {
     #[test]
     fn migration_progress_reflects_completed_state() {
         let (env, client, admin) = setup();
+        // The default test Env starts at ledger timestamp 0, which would make
+        // the recorded `last_run_at` 0 too. Set a nonzero base so the
+        // monotonic-clock invariant is actually exercised.
+        env.ledger().set_timestamp(1234);
         client.migrate_storage(&admin);
         let progress = client.get_migration_progress();
         assert!(progress.is_some());
@@ -1941,7 +2155,7 @@ mod storage_migration_tests {
     /// `pre_upgrade` is idempotent — second call overwrites the first.
     #[test]
     fn pre_upgrade_overwrites_existing_snapshot() {
-        let (env, client, admin) = setup();
+        let (_env, client, admin) = setup();
 
         // Snapshot while unpaused.
         client.pre_upgrade(&admin);
@@ -2033,12 +2247,17 @@ mod storage_migration_tests {
     #[test]
     fn restore_from_snapshot_fails_after_ttl() {
         let (env, client, admin) = setup();
+        // Start from a nonzero timestamp base. Advancing the ledger with
+        // `with_mut` from the default 0 timestamp immediately after a contract
+        // invoke triggers a "ledger.try_borrow failed" InternalError in
+        // soroban-env-host 21.2.1; `set_timestamp` from a nonzero base avoids
+        // that host quirk.
+        env.ledger().set_timestamp(SNAPSHOT_TTL);
         client.pause();
         client.pre_upgrade(&admin);
 
         // Fast-forward past the snapshot TTL.
-        env.ledger()
-            .with_mut(|li| li.timestamp = env.ledger().timestamp() + SNAPSHOT_TTL + 1);
+        env.ledger().set_timestamp(SNAPSHOT_TTL + SNAPSHOT_TTL + 1);
 
         let res = client.try_restore_from_snapshot(&admin);
         assert_eq!(res, Err(Ok(Error::SnapshotExpired)));
@@ -2054,7 +2273,7 @@ mod storage_migration_tests {
         let second = Address::generate(&env);
 
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 2);
+        client.configure_signers(&admin, &signers, &2);
         assert_eq!(client.get_signer_epoch(), 1);
         assert_eq!(client.get_signer_threshold(), 2);
 
@@ -2083,7 +2302,7 @@ mod storage_migration_tests {
     /// Snapshot preserves the pause reason.
     #[test]
     fn snapshot_preserves_pause_reason() {
-        let (env, client, admin) = setup();
+        let (_env, client, admin) = setup();
         client.pause_with_reason(&symbol_short!("drill"));
         assert_eq!(client.pause_reason(), Some(symbol_short!("drill")));
 
@@ -2152,7 +2371,7 @@ mod storage_migration_tests {
         // Step 1: establish state.
         client.pause();
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 2);
+        client.configure_signers(&admin, &signers, &2);
         client.bump_kill_switch_epoch(&admin);
 
         // Step 2: snapshot.
@@ -2163,7 +2382,7 @@ mod storage_migration_tests {
         env.ledger().with_mut(|li| li.timestamp += 200);
         client.unpause();
         let new_signers = vec![&env, second, third];
-        client.configure_signers(&admin, &new_signers, 1);
+        client.configure_signers(&admin, &new_signers, &1);
         client.bump_kill_switch_epoch(&admin);
 
         assert!(!client.is_paused());
@@ -2335,7 +2554,7 @@ mod snapshot_function_pause_restore_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        let epoch = client.configure_signers(&admin, &signers, 2);
+        let epoch = client.configure_signers(&admin, &signers, &2);
         let approvals = vec![&env, first, second];
         let mod_sym = symbol_short!("bill");
         client.activate(&epoch, &approvals, &PauseScope::Module(mod_sym.clone()));

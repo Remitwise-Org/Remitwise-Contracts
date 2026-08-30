@@ -1269,6 +1269,80 @@ pub struct ReportsArchivedEvent {
 
 ---
 
+## Emergency Kill Switch Contract
+
+**Contract Name:** `emergency_killswitch`  
+**Primary Topic Prefix:** `"emergency"`
+
+### Versioned control/audit stream (issue #1761)
+
+**Topic:** `("emergency", "control")`  
+**Emitted by:** every **committed** emergency transition — `initialize`,
+`configure_signers`, `activate`, `recover`, `bump_kill_switch_epoch`,
+`transfer_admin`, `pause` / `pause_with_reason`, `unpause`,
+`schedule_unpause`, `clear_emergency_state`, `pause_module` /
+`unpause_module`, `pause_function` / `unpause_function`, `migrate_storage`,
+`pre_upgrade`, `restore_from_snapshot`, `discard_snapshot`.
+
+**Data Structure:**
+
+```rust
+pub struct ControlEvent {
+    pub version: u32,          // EVENT_VERSION (schema version, currently 1)
+    pub seq: u64,              // monotonic per-contract correlation id
+    pub kind: Symbol,          // operation symbol, e.g. "pause", "admn_xfer"
+    pub actor: Option<Address>,// authorizing principal; None for consensus-driven
+                               // (threshold activation / recovery)
+    pub timestamp: u64,        // ledger timestamp at commit
+}
+```
+
+**Guarantees**
+
+- **Committed-only:** the record is published only *after* every state mutation
+  for the transition succeeded. Rejected, stale, repeated, or failed operations
+  emit nothing and leave no partial state.
+- **Correlation & ordering:** `seq` is a strictly increasing per-contract
+  counter persisted in instance storage (`DataKey::EventSeq`, observable via
+  `get_event_seq()`), so the audit stream is deterministically ordered and each
+  record is uniquely correlated.
+- **Versioned:** every record carries the event schema `version` so indexers
+  can detect on-wire changes without guessing.
+- **Complete:** `kind` + `actor` + `timestamp` identify what happened, who
+  authorized it (when a single principal exists), and when.
+
+**Ordering within one transition:** the granular per-transition event (e.g.
+`paused_v2`, `admn_xfer`) is emitted first, then the `control` record. Across
+transactions, ordering is by `seq`.
+
+### Legacy granular events (unchanged, backward compatible)
+
+Existing per-transition events continue to be emitted unchanged, e.g.:
+
+| Event | Topic | Payload |
+| ----- | ----- | ------- |
+| Global pause | `("emergency", "paused_v2")` | `PauseEvent { paused_at, paused_by }` |
+| Global unpause | `("emergency", "unpaused_v2")` | `UnpauseEvent { unpaused_at, unpaused_by }` |
+| Module pause | `("emergency", "m_paused_v2")` | `ModulePauseEvent { module_id, paused_at, paused_by }` |
+| Module unpause | `("emergency", "m_unpause_v2")` | `ModuleUnpauseEvent { module_id, unpaused_at, unpaused_by }` |
+| Function pause | `("emergency", "f_paused_v2")` | `FunctionPauseEvent { module_id, func, paused_at, paused_by }` |
+| Function unpause | `("emergency", "f_unpause_v2")` | `FunctionUnpauseEvent { module_id, func, unpaused_at, unpaused_by }` |
+| Admin transferred | `("emergency", "admn_xfer")` | `AdminTransferred { old_admin, new_admin, timestamp }` |
+| Signers configured | `("emergency", "signers_set")` | `(epoch, threshold, signer_count)` |
+| Activation | `("emergency", "activated")` | `(epoch, scope)` |
+| Recovery | `("emergency", "recovered")` | `(epoch, scope)` |
+| Epoch bump | `("emergency", "epch_bump")` | `(old_epoch, new_epoch)` |
+| Migration step | `("emergency", "migr_step")` | `(from_ver, to_ver, step, total)` |
+| Migration done | `("emergency", "migr_done")` | `(new_version, timestamp)` |
+| Snapshot taken | `("emergency", "snap_pre")` | `(schema_version, timestamp)` |
+| Snapshot restored | `("emergency", "snap_rst")` | `(schema_version, timestamp)` |
+| Snapshot discarded | `("emergency", "snap_dsc")` | `(timestamp,)` |
+
+`schedule_unpause` emits no granular event; it is auditable via the
+`("emergency", "control")` stream (`kind = "schedule"`).
+
+---
+
 ## Version Compatibility
 
 ### Contract Versioning
