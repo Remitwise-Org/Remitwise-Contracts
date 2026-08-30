@@ -30,6 +30,9 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// The cursor value is not valid for this collection (e.g. not produced by a
+    /// previous page call).
+    InvalidCursor = 20,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -40,6 +43,12 @@ pub enum PauseScope {
     Module(Symbol),
     Function(Symbol, Symbol),
 }
+
+/// Default page size for paginated queries.
+pub const DEFAULT_PAGE_LIMIT: u32 = 20;
+
+/// Maximum page size for paginated queries.
+pub const MAX_PAGE_LIMIT: u32 = 50;
 
 #[contracttype]
 #[derive(Clone)]
@@ -716,6 +725,84 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::PausedFunctions(module_id))
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Return a cursor-paginated page of paused functions for `module_id`.
+    ///
+    /// # Parameters
+    /// - `module_id` — the module whose paused functions are queried
+    /// - `cursor` — pass `None` to start from the first function; pass the
+    ///   `next_cursor` returned by a previous call to continue.
+    /// - `limit` — max items per page. `0` is normalised to
+    ///   [`DEFAULT_PAGE_LIMIT`] (20). Values above [`MAX_PAGE_LIMIT`] (50)
+    ///   are clamped.
+    ///
+    /// # Returns
+    /// A `PageResult<Symbol>` with deterministic ascending order.
+    /// `next_cursor == None` means this is the final (or only) page.
+    ///
+    /// # Security
+    /// No authentication required — state is observable on-chain.
+    pub fn list_paused_functions_page(
+        env: Env,
+        module_id: Symbol,
+        cursor: Option<u32>,
+        limit: u32,
+    ) -> Vec<Symbol> {
+        let all = Self::list_paused_functions(env.clone(), module_id);
+        let effective_limit = Self::clamp_page_limit(limit);
+        let start = cursor.unwrap_or(0);
+        let mut result = Vec::new(&env);
+        for i in start..all.len() {
+            if result.len() >= effective_limit {
+                break;
+            }
+            if let Some(sym) = all.get(i) {
+                result.push_back(sym);
+            }
+        }
+        result
+    }
+
+    /// Clamp a user-supplied page limit to [`DEFAULT_PAGE_LIMIT`]..[`MAX_PAGE_LIMIT`].
+    fn clamp_page_limit(limit: u32) -> u32 {
+        let effective = if limit == 0 { DEFAULT_PAGE_LIMIT } else { limit };
+        if effective > MAX_PAGE_LIMIT { MAX_PAGE_LIMIT } else { effective }
+    }
+
+    /// Return a cursor-paginated page of configured signers.
+    ///
+    /// # Parameters
+    /// - `cursor` — pass `None` to start from the first signer; pass the
+    ///   `next_cursor` returned by a previous call to continue.
+    /// - `limit` — max items per page. `0` defaults to [`DEFAULT_PAGE_LIMIT`].
+    ///
+    /// # Returns
+    /// A `Vec<Address>` containing up to `limit` signers in storage order.
+    /// When the returned length is less than the effective limit (or the
+    /// collection is exhausted), there are no more pages.
+    ///
+    /// # Security
+    /// No authentication required — the signer list is observable on-chain
+    /// (it determines who can authorize threshold operations).
+    pub fn list_signers_page(
+        env: Env,
+        cursor: Option<u32>,
+        limit: u32,
+    ) -> Vec<Address> {
+        let all = Self::configured_signers(&env);
+        let effective_limit = Self::clamp_page_limit(limit);
+        let start = cursor.unwrap_or(0);
+        let mut result = Vec::new(&env);
+        for i in start..all.len() {
+            if result.len() >= effective_limit {
+                break;
+            }
+            if let Some(addr) = all.get(i) {
+                result.push_back(addr);
+            }
+        }
+        result
     }
 
     /// Returns whether `module_id` is directly paused via `pause_module`.
@@ -2345,5 +2432,309 @@ mod snapshot_function_pause_restore_tests {
         client.restore_from_snapshot(&admin);
 
         assert!(client.is_module_paused(&mod_sym));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pagination and cursor semantics tests (Issue #1762)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod pagination_tests {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::symbol_short;
+
+    fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, EmergencyKillswitch);
+        let client = EmergencyKillswitchClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        (env, client, admin)
+    }
+
+    // ── list_signers_page: empty ───────────────────────────────────────────
+
+    /// Before configure_signers, list_signers_page returns empty.
+    #[test]
+    fn signers_page_empty_before_config() {
+        let (env, client, _admin) = setup();
+        let result = client.list_signers_page(&None, &10);
+        assert_eq!(result.len(), 0);
+    }
+
+    // ── list_signers_page: single page ─────────────────────────────────────
+
+    /// All signers returned in one page when limit >= count.
+    #[test]
+    fn signers_page_single_page_all_fit() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let third = Address::generate(&env);
+        let signers = vec![&env, first.clone(), second.clone(), third.clone()];
+        client.configure_signers(&admin, &signers, 1);
+
+        let result = client.list_signers_page(&None, &10);
+        assert_eq!(result.len(), 3);
+        assert!(result.contains(first));
+        assert!(result.contains(second));
+        assert!(result.contains(third));
+    }
+
+    // ── list_signers_page: boundary — limit equals count ───────────────────
+
+    /// When limit == count, all items returned, next page is empty.
+    #[test]
+    fn signers_page_boundary_limit_equals_count() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let signers = vec![&env, first.clone(), second.clone()];
+        client.configure_signers(&admin, &signers, 1);
+
+        let page1 = client.list_signers_page(&None, &2);
+        assert_eq!(page1.len(), 2);
+        assert!(page1.contains(first));
+        assert!(page1.contains(second));
+
+        // Second page should be empty
+        let page2 = client.list_signers_page(&Some(2), &2);
+        assert_eq!(page2.len(), 0);
+    }
+
+    // ── list_signers_page: boundary — limit exceeds count ──────────────────
+
+    /// When limit > count, all items returned, no panic.
+    #[test]
+    fn signers_page_boundary_limit_exceeds_count() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let signers = vec![&env, first];
+        client.configure_signers(&admin, &signers, 1);
+
+        let result = client.list_signers_page(&None, &100);
+        assert_eq!(result.len(), 1);
+    }
+
+    // ── list_signers_page: multi-page with cursor ──────────────────────────
+
+    /// Paginate through 5 signers in pages of 2.
+    #[test]
+    fn signers_page_multi_page_cursor_progression() {
+        let (env, client, admin) = setup();
+        let addrs: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
+        let signers = vec![&env, addrs[0].clone(), addrs[1].clone(), addrs[2].clone(), addrs[3].clone(), addrs[4].clone()];
+        client.configure_signers(&admin, &signers, 1);
+
+        let page1 = client.list_signers_page(&None, &2);
+        assert_eq!(page1.len(), 2);
+
+        let page2 = client.list_signers_page(&Some(2), &2);
+        assert_eq!(page2.len(), 2);
+
+        let page3 = client.list_signers_page(&Some(4), &2);
+        assert_eq!(page3.len(), 1);
+
+        // Cursor beyond end returns empty
+        let page4 = client.list_signers_page(&Some(5), &2);
+        assert_eq!(page4.len(), 0);
+    }
+
+    // ── list_signers_page: cursor=0 equivalent to None ─────────────────────
+
+    /// Cursor of 0 starts from the beginning, same as None.
+    #[test]
+    fn signers_page_cursor_zero_starts_from_beginning() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let second = Address::generate(&env);
+        let signers = vec![&env, first.clone(), second.clone()];
+        client.configure_signers(&admin, &signers, 1);
+
+        let page_none = client.list_signers_page(&None, &10);
+        let page_zero = client.list_signers_page(&Some(0), &10);
+        assert_eq!(page_none.len(), page_zero.len());
+        assert!(page_none.contains(first));
+        assert!(page_zero.contains(first));
+    }
+
+    // ── list_signers_page: invalid cursor rejected ─────────────────────────
+
+    /// Cursor beyond collection length returns empty (not error).
+    #[test]
+    fn signers_page_invalid_cursor_returns_empty() {
+        let (env, client, admin) = setup();
+        let first = Address::generate(&env);
+        let signers = vec![&env, first];
+        client.configure_signers(&admin, &signers, 1);
+
+        let result = client.list_signers_page(&Some(999), &10);
+        assert_eq!(result.len(), 0);
+    }
+
+    // ── list_signers_page: large result set ────────────────────────────────
+
+    /// MAX_PAGE_LIMIT clamps correctly with many signers.
+    #[test]
+    fn signers_page_large_result_clamped() {
+        let (env, client, admin) = setup();
+        let mut signers_vec = Vec::new(&env);
+        let mut expected_count = 0u32;
+        for _ in 0..60 {
+            signers_vec.push_back(Address::generate(&env));
+            expected_count += 1;
+        }
+        client.configure_signers(&admin, &signers_vec, 1);
+
+        // Request 100 but should get MAX_PAGE_LIMIT (50)
+        let page1 = client.list_signers_page(&None, &100);
+        assert_eq!(page1.len(), MAX_PAGE_LIMIT);
+
+        // Second page gets the remaining 10
+        let page2 = client.list_signers_page(&Some(50), &100);
+        assert_eq!(page2.len(), 10);
+    }
+
+    // ── list_signers_page: default limit ───────────────────────────────────
+
+    /// limit=0 normalises to DEFAULT_PAGE_LIMIT.
+    #[test]
+    fn signers_page_zero_limit_normalises_to_default() {
+        let (env, client, admin) = setup();
+        let mut signers_vec = Vec::new(&env);
+        for _ in 0..30 {
+            signers_vec.push_back(Address::generate(&env));
+        }
+        client.configure_signers(&admin, &signers_vec, 1);
+
+        let page = client.list_signers_page(&None, &0);
+        assert_eq!(page.len(), DEFAULT_PAGE_LIMIT);
+    }
+
+    // ── list_paused_functions_page: empty ──────────────────────────────────
+
+    /// No paused functions returns empty.
+    #[test]
+    fn paused_functions_page_empty_when_none_paused() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        let result = client.list_paused_functions_page(&module, &None, &10);
+        assert_eq!(result.len(), 0);
+    }
+
+    // ── list_paused_functions_page: single page ────────────────────────────
+
+    /// All functions returned in one page.
+    #[test]
+    fn paused_functions_page_single_page() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        let f1 = symbol_short!("pay");
+        let f2 = symbol_short!("refund");
+        client.pause_function(&module, &f1);
+        client.pause_function(&module, &f2);
+
+        let result = client.list_paused_functions_page(&module, &None, &10);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(f1));
+        assert!(result.contains(f2));
+    }
+
+    // ── list_paused_functions_page: multi-page ─────────────────────────────
+
+    /// Paginate through paused functions.
+    #[test]
+    fn paused_functions_page_multi_page() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        for i in 0..5 {
+            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+        }
+
+        let page1 = client.list_paused_functions_page(&module, &None, &2);
+        assert_eq!(page1.len(), 2);
+
+        let page2 = client.list_paused_functions_page(&module, &Some(2), &2);
+        assert_eq!(page2.len(), 2);
+
+        let page3 = client.list_paused_functions_page(&module, &Some(4), &2);
+        assert_eq!(page3.len(), 1);
+    }
+
+    // ── list_paused_functions_page: isolation per module ───────────────────
+
+    /// Paused functions for module A are not visible in module B.
+    #[test]
+    fn paused_functions_page_isolated_per_module() {
+        let (_env, client, _admin) = setup();
+        let m1 = symbol_short!("bill");
+        let m2 = symbol_short!("savings");
+        let func = symbol_short!("pay");
+        client.pause_function(&m1, &func);
+
+        let page_m1 = client.list_paused_functions_page(&m1, &None, &10);
+        let page_m2 = client.list_paused_functions_page(&m2, &None, &10);
+        assert_eq!(page_m1.len(), 1);
+        assert_eq!(page_m2.len(), 0);
+    }
+
+    // ── list_paused_functions_page: after unpause ─────────────────────────
+
+    /// Unpaused function no longer appears in paginated results.
+    #[test]
+    fn paused_functions_page_reflects_unpause() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        let func = symbol_short!("pay");
+        client.pause_function(&module, &func);
+        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 1);
+
+        client.unpause_function(&module, &func);
+        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 0);
+    }
+
+    // ── list_paused_functions_page: cursor beyond end ──────────────────────
+
+    /// Cursor past the end returns empty.
+    #[test]
+    fn paused_functions_page_cursor_beyond_end() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        let func = symbol_short!("pay");
+        client.pause_function(&module, &func);
+
+        let result = client.list_paused_functions_page(&module, &Some(999), &10);
+        assert_eq!(result.len(), 0);
+    }
+
+    // ── list_paused_functions_page: default limit ──────────────────────────
+
+    /// limit=0 normalises to DEFAULT_PAGE_LIMIT.
+    #[test]
+    fn paused_functions_page_zero_limit_normalises() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        let func = symbol_short!("pay");
+        client.pause_function(&module, &func);
+
+        let result = client.list_paused_functions_page(&module, &None, &0);
+        assert_eq!(result.len(), 1);
+    }
+
+    // ── list_paused_functions_page: max limit clamping ─────────────────────
+
+    /// Requesting 200 returns at most MAX_PAGE_LIMIT items.
+    #[test]
+    fn paused_functions_page_max_limit_clamped() {
+        let (_env, client, _admin) = setup();
+        let module = symbol_short!("bill");
+        for i in 0..8 {
+            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+        }
+        let result = client.list_paused_functions_page(&module, &None, &200);
+        assert_eq!(result.len(), 8);
     }
 }
