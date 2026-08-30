@@ -41,6 +41,19 @@ pub enum PauseScope {
     Function(Symbol, Symbol),
 }
 
+/// Standalone snapshot representation of [`PauseScope`] for [`EmergencyStateSnapshot`].
+///
+/// Avoids wrapping complex enums in `Option` inside `#[contracttype]` structs,
+/// ensuring clean compatibility with Soroban XDR `ScVal` serialization.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PauseScopeSnapshot {
+    None,
+    Global,
+    Module(Symbol),
+    Function(Symbol, Symbol),
+}
+
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
@@ -121,7 +134,7 @@ pub struct EmergencyStateSnapshot {
     pub signer_epoch: u64,
     pub signer_threshold: Option<u32>,
     pub activation_epoch: Option<u64>,
-    pub active_scope: Option<PauseScope>,
+    pub active_scope: PauseScopeSnapshot,
     pub recovery_ready_at: Option<u64>,
     pub scope_was_paused: Option<bool>,
 }
@@ -576,9 +589,17 @@ impl EmergencyKillswitch {
             Some(r) => env.storage().instance().set(&DataKey::PauseReason, r),
             None => env.storage().instance().remove(&DataKey::PauseReason),
         }
-        if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
-            if scope == PauseScope::Global {
-                env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+        if env.storage().instance().has(&DataKey::ActivationEpoch) {
+            if let Some(scope) = env
+                .storage()
+                .instance()
+                .get::<DataKey, PauseScope>(&DataKey::ActiveScope)
+            {
+                if scope == PauseScope::Global {
+                    env.storage()
+                        .instance()
+                        .set(&DataKey::ScopeWasPaused, &true);
+                }
             }
         }
         env.events().publish(
@@ -608,7 +629,12 @@ impl EmergencyKillswitch {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
-        if !Self::is_paused(env.clone()) {
+        let paused = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalPaused)
+            .unwrap_or(false);
+        if !paused {
             return Err(Error::NotActive);
         }
         let schedule: u64 = env
@@ -777,9 +803,17 @@ impl EmergencyKillswitch {
             env.storage()
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
-            if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
-                if scope == PauseScope::Function(module_id.clone(), func.clone()) {
-                    env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+            if env.storage().instance().has(&DataKey::ActivationEpoch) {
+                if let Some(scope) = env
+                    .storage()
+                    .instance()
+                    .get::<DataKey, PauseScope>(&DataKey::ActiveScope)
+                {
+                    if scope == PauseScope::Function(module_id.clone(), func.clone()) {
+                        env.storage()
+                            .instance()
+                            .set(&DataKey::ScopeWasPaused, &true);
+                    }
                 }
             }
             env.events().publish(
@@ -866,9 +900,15 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &true);
-        if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
+        if let Some(scope) = env
+            .storage()
+            .instance()
+            .get::<DataKey, PauseScope>(&DataKey::ActiveScope)
+        {
             if scope == PauseScope::Module(module_id.clone()) {
-                env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::ScopeWasPaused, &true);
             }
         }
         env.events().publish(
@@ -1057,6 +1097,16 @@ impl EmergencyKillswitch {
         }
 
         let now = env.ledger().timestamp();
+        let raw_scope: Option<PauseScope> = env
+            .storage()
+            .instance()
+            .get::<DataKey, PauseScope>(&DataKey::ActiveScope);
+        let active_scope = match raw_scope {
+            None => PauseScopeSnapshot::None,
+            Some(PauseScope::Global) => PauseScopeSnapshot::Global,
+            Some(PauseScope::Module(m)) => PauseScopeSnapshot::Module(m),
+            Some(PauseScope::Function(m, f)) => PauseScopeSnapshot::Function(m, f),
+        };
         let snapshot = EmergencyStateSnapshot {
             schema_version: Self::storage_version(env.clone()),
             global_paused: env
@@ -1079,7 +1129,7 @@ impl EmergencyKillswitch {
                 .unwrap_or(0),
             signer_threshold: env.storage().instance().get(&DataKey::SignerThreshold),
             activation_epoch: env.storage().instance().get(&DataKey::ActivationEpoch),
-            active_scope: env.storage().instance().get(&DataKey::ActiveScope),
+            active_scope,
             recovery_ready_at: env.storage().instance().get(&DataKey::RecoveryReadyAt),
             scope_was_paused: env.storage().instance().get(&DataKey::ScopeWasPaused),
         };
@@ -1174,10 +1224,26 @@ impl EmergencyKillswitch {
         } else {
             env.storage().instance().remove(&DataKey::ActivationEpoch);
         }
-        if let Some(v) = &snapshot.active_scope {
-            env.storage().instance().set(&DataKey::ActiveScope, v);
-        } else {
-            env.storage().instance().remove(&DataKey::ActiveScope);
+        match &snapshot.active_scope {
+            PauseScopeSnapshot::None => {
+                env.storage().instance().remove(&DataKey::ActiveScope);
+            }
+            PauseScopeSnapshot::Global => {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::ActiveScope, &PauseScope::Global);
+            }
+            PauseScopeSnapshot::Module(m) => {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::ActiveScope, &PauseScope::Module(m.clone()));
+            }
+            PauseScopeSnapshot::Function(m, f) => {
+                env.storage().instance().set(
+                    &DataKey::ActiveScope,
+                    &PauseScope::Function(m.clone(), f.clone()),
+                );
+            }
         }
         if let Some(v) = &snapshot.recovery_ready_at {
             env.storage().instance().set(&DataKey::RecoveryReadyAt, v);
@@ -1909,6 +1975,7 @@ mod storage_migration_tests {
     #[test]
     fn migration_progress_reflects_completed_state() {
         let (env, client, admin) = setup();
+        env.ledger().set_timestamp(100);
         client.migrate_storage(&admin);
         let progress = client.get_migration_progress();
         assert!(progress.is_some());
@@ -2073,8 +2140,9 @@ mod storage_migration_tests {
         client.pre_upgrade(&admin);
 
         // Fast-forward past the snapshot TTL.
+        let now = env.ledger().timestamp();
         env.ledger()
-            .with_mut(|li| li.timestamp = env.ledger().timestamp() + SNAPSHOT_TTL + 1);
+            .with_mut(|li| li.timestamp = now + SNAPSHOT_TTL + 1);
 
         let res = client.try_restore_from_snapshot(&admin);
         assert_eq!(res, Err(Ok(Error::SnapshotExpired)));

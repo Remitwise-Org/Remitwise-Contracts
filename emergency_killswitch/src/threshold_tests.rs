@@ -233,4 +233,3 @@ fn test_concurrent_activation_attempts_serialization() {
         Err(Ok(Error::ActivationAlreadyActive))
     );
 }
-

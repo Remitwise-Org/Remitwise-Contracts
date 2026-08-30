@@ -757,7 +757,11 @@ fn test_rejected_operations_leave_zero_partial_state() {
 
     // Rejected configure_signers_with_epoch leaves signers clean.
     let signers = soroban_sdk::vec![&env, Address::generate(&env)];
-    let _ = client.try_configure_signers_with_epoch(&admin, &(initial_signer_epoch + 999), &signers, &1);
+    let _ = client.try_configure_signers_with_epoch(
+        &admin,
+        &(initial_signer_epoch + 999),
+        &signers,
+        &1,
+    );
     assert_eq!(client.get_signer_epoch(), initial_signer_epoch);
 }
-
