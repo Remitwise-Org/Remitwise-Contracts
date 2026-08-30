@@ -1712,6 +1712,14 @@ impl BillPayments {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
 
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::CANCEL_BILL_SCHEDULE,
+            CANCEL_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         Self::extend_instance_ttl(&env);
 
         let mut schedules: Map<u32, BillSchedule> = env
@@ -1921,10 +1929,13 @@ impl BillPayments {
                     Self::index_add_currency(&env, &schedule.owner, &schedule.currency, next_id);
                     Self::adjust_unpaid_total(&env, &schedule.owner, schedule.amount);
 
-                    env.events().publish(
-                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                        (next_id, schedule_id, schedule.next_due),
-                    );
+                        env.events().publish(
+                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                            (next_id, schedule_id, schedule.next_due),
+                        );
+
+                        bills_created_this_call = bills_created_this_call.saturating_add(1);
+                    }
                 }
             } else {
                 schedule.active = false;
