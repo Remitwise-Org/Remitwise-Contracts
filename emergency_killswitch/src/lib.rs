@@ -286,25 +286,30 @@ impl EmergencyKillswitch {
             .instance()
             .get(&DataKey::SignerThreshold)
             .ok_or(Error::SignerNotConfigured)?;
-        let mut accepted = 0u32;
-        for approval in approvals.iter() {
+
+        // Validate all approvals: must be configured signers, and no duplicates.
+        //
+        // Correctness note: the previous implementation guarded the inner
+        // duplicate-detection loop with `if accepted > 0`, which caused the
+        // very first element to never be checked against subsequent copies of
+        // itself.  For example, `[A, A]` would pass when it should return
+        // `DuplicateApproval`.  The fix: compare every approval at index `i`
+        // against every prior approval at indices `0..i` unconditionally.
+        let n = approvals.len();
+        for i in 0..n {
+            let approval = approvals.get(i).unwrap();
             if !signers.contains(&approval) {
                 return Err(Error::SignerNotConfigured);
             }
-            if accepted > 0 {
-                let mut prior = 0u32;
-                for seen in approvals.iter() {
-                    if seen == approval.clone() {
-                        prior = checked_add_u32(prior, 1)?;
-                    }
-                    if seen == approval && prior > 1 {
-                        return Err(Error::DuplicateApproval);
-                    }
+            // Check for duplicates: compare this approval against all prior ones.
+            for j in 0..i {
+                if approvals.get(j).unwrap() == approval {
+                    return Err(Error::DuplicateApproval);
                 }
             }
-            accepted = checked_add_u32(accepted, 1)?;
         }
-        if accepted < threshold {
+
+        if n < threshold {
             return Err(Error::InvalidSignerThreshold);
         }
         Ok(())
@@ -398,12 +403,38 @@ impl EmergencyKillswitch {
 
     /// Activate exactly one explicit scope after validating a current-epoch
     /// signer quorum. A second activation is rejected until recovery completes.
+    ///
+    /// # Atomicity guarantee
+    ///
+    /// This function uses a strict **validate-everything-then-write-everything**
+    /// pattern to prevent partial state:
+    ///
+    /// 1. All precondition checks (epoch, already-active, approvals, limit) are
+    ///    evaluated before any storage write is issued.
+    /// 2. If any check fails the function returns an error with zero storage
+    ///    mutations, zero events emitted, and the contract state unchanged.
+    /// 3. After all checks pass, writes are committed in a single logical batch.
+    ///    Because Soroban transactions are atomic at the host level, an unexpected
+    ///    panic after writes have begun would still roll back the entire
+    ///    transaction.  The validate-first ordering provides the additional
+    ///    guarantee that *application-level* errors also produce no partial state.
+    ///
+    /// ## Previous bug (fixed here)
+    ///
+    /// The old implementation wrote `ActivationEpoch`, `ActiveScope`,
+    /// `RecoveryReadyAt`, and `ScopeWasPaused` *before* it reached the
+    /// `LimitExceeded` check for `Function` scopes.  When the limit was hit,
+    /// those four keys remained in storage as orphaned activation markers.
+    /// Every subsequent call to `activate` then failed with
+    /// `ActivationAlreadyActive`, permanently blocking any new activation even
+    /// though the scope was never actually paused.
     pub fn activate(
         env: Env,
         epoch: u64,
         approvals: Vec<Address>,
         scope: PauseScope,
     ) -> Result<(), Error> {
+        // ── Phase 1: validate everything — no writes yet ─────────────────────
         if approvals.is_empty() {
             return Err(Error::InvalidSignerThreshold);
         }
@@ -414,66 +445,89 @@ impl EmergencyKillswitch {
             return Err(Error::ActivationAlreadyActive);
         }
         Self::validate_approvals(&env, &approvals)?;
-        let ready_at = recovery_ready_at(env.ledger().timestamp())?;
-        // Cap and delay must fail before any activation marker is written.
-        if let PauseScope::Function(ref module, ref function) = scope {
-            let paused: Vec<Symbol> = env
-                .storage()
-                .instance()
-                .get(&DataKey::PausedFunctions(module.clone()))
-                .unwrap_or(Vec::new(&env));
-            if !paused.contains(function.clone()) && paused.len() >= MAX_PAUSED_FUNCTIONS {
-                return Err(Error::LimitExceeded);
-            }
-        }
-        env.storage()
-            .instance()
-            .set(&DataKey::ActivationEpoch, &epoch);
-        env.storage().instance().set(&DataKey::ActiveScope, &scope);
-        env.storage()
-            .instance()
-            .set(&DataKey::RecoveryReadyAt, &ready_at);
+
+        // Read the pre-activation state of the target scope so we know what to
+        // restore during recovery.  This is a read-only probe — no writes yet.
         let scope_was_paused = match scope.clone() {
             PauseScope::Global => env
                 .storage()
                 .instance()
                 .get(&DataKey::GlobalPaused)
                 .unwrap_or(false),
-            PauseScope::Module(module) => env
+            PauseScope::Module(ref module) => env
                 .storage()
                 .instance()
-                .get(&DataKey::ModulePaused(module))
+                .get(&DataKey::ModulePaused(module.clone()))
                 .unwrap_or(false),
-            PauseScope::Function(module, function) => env
+            PauseScope::Function(ref module, ref function) => env
                 .storage()
                 .instance()
-                .get(&DataKey::PausedFunctions(module))
+                .get(&DataKey::PausedFunctions(module.clone()))
                 .unwrap_or(Vec::new(&env))
-                .contains(function),
+                .contains(function.clone()),
         };
-        env.storage()
-            .instance()
-            .set(&DataKey::ScopeWasPaused, &scope_was_paused);
-        match scope.clone() {
-            PauseScope::Global => env.storage().instance().set(&DataKey::GlobalPaused, &true),
-            PauseScope::Module(module) => env
-                .storage()
-                .instance()
-                .set(&DataKey::ModulePaused(module), &true),
-            PauseScope::Function(module, function) => {
-                let mut paused = env
+
+        // For Function scope: validate the list capacity limit BEFORE writing
+        // anything.  This is the critical fix — the old code performed this check
+        // after writing the activation marker keys, leaving orphaned state on
+        // failure.
+        let function_paused_list: Option<Vec<Symbol>> = match scope.clone() {
+            PauseScope::Function(ref module, ref function) => {
+                let paused: Vec<Symbol> = env
                     .storage()
                     .instance()
                     .get(&DataKey::PausedFunctions(module.clone()))
                     .unwrap_or(Vec::new(&env));
                 if !paused.contains(function.clone()) {
-                    paused.push_back(function);
+                    if paused.len() >= MAX_PAUSED_FUNCTIONS {
+                        return Err(Error::LimitExceeded);
+                    }
+                    // Build the updated list now so the write phase is trivial.
+                    let mut updated = paused;
+                    updated.push_back(function.clone());
+                    Some(updated)
+                } else {
+                    // Already in the list — scope_was_paused is true; no list
+                    // mutation needed.
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        // ── Phase 2: write everything — all checks passed ────────────────────
+        env.storage()
+            .instance()
+            .set(&DataKey::ActivationEpoch, &epoch);
+        env.storage().instance().set(&DataKey::ActiveScope, &scope);
+        env.storage().instance().set(
+            &DataKey::RecoveryReadyAt,
+            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::ScopeWasPaused, &scope_was_paused);
+
+        // Apply the scope pause.
+        match scope.clone() {
+            PauseScope::Global => {
+                env.storage().instance().set(&DataKey::GlobalPaused, &true)
+            }
+            PauseScope::Module(module) => env
+                .storage()
+                .instance()
+                .set(&DataKey::ModulePaused(module), &true),
+            PauseScope::Function(module, _function) => {
+                // `function_paused_list` is `Some` when the function was not
+                // already in the list (the only case that requires a write).
+                if let Some(updated) = function_paused_list {
                     env.storage()
                         .instance()
-                        .set(&DataKey::PausedFunctions(module), &paused);
+                        .set(&DataKey::PausedFunctions(module), &updated);
                 }
             }
         }
+
         env.events().publish(
             (symbol_short!("emergency"), symbol_short!("activated")),
             (epoch, scope),

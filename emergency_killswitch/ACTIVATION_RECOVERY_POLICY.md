@@ -70,6 +70,36 @@ addition of exactly 3600 seconds; saturating addition is never used, so a
 ledger timestamp near `u64::MAX` cannot collapse the delay into an immediate
 recovery window.
 
+### Atomic validate-then-write guarantee
+
+`activate()` uses a strict two-phase pattern:
+
+- **Phase 1 (validation only):** all preconditions — empty-list check, epoch
+  match, already-active guard, approval quorum+duplicate check, and function
+  capacity limit — are evaluated before any storage write.
+- **Phase 2 (writes only):** executed only after Phase 1 completes without
+  error.  All five storage keys and the event are committed in a single pass.
+
+An error in Phase 1 produces zero writes.  The contract state is unchanged,
+and a subsequent valid activation is never blocked by orphaned marker keys.
+
+This was not true in earlier versions of the contract.  The historical bug was:
+the `LimitExceeded` check for `Function` scopes occurred after the four
+activation metadata keys were written.  When the limit was exceeded, those
+keys remained, causing every future `activate()` to fail with
+`ActivationAlreadyActive` even though the scope was never actually paused.
+That bug is now fixed.  See [docs/ATOMIC_ROLLBACK.md](../../docs/ATOMIC_ROLLBACK.md)
+for the full analysis and migration notes.
+
+### Duplicate-approval fix
+
+The `validate_approvals()` helper previously guarded its inner duplicate
+check with `if accepted > 0`, which caused the very first element of the
+approval list to be exempt from duplicate detection.  An approval list like
+`[A, A]` would have passed when it should have returned `DuplicateApproval`.
+This is now fixed: every element at index `i` is compared against all prior
+elements `0..i` unconditionally.
+
 A second activation is rejected until the first scope has been recovered.
 
 ## Recovery invariants

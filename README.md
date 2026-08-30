@@ -357,6 +357,7 @@ To run an example, use `cargo run --example <example_name>`:
 - [Killswitch Trust Model](docs/killswitch-trust-model.md) - Who can trigger, who can clear, what state is preserved in the emergency killswitch
 - [Killswitch Pause/Unpause State Machine](docs/killswitch-pause-state-machine.md) - The global Unpaused/Paused/PendingUnpause states and transitions, plus how module- and function-level pauses layer on top
 - [Kill-Switch Recovery Runbook](docs/KILL_SWITCH_RECOVERY.md) - Operator runbook: how to engage the kill switch, verify the freeze, and safely resume operations after an incident
+- [Atomic Rollback and Compensating-Write Guarantees](docs/ATOMIC_ROLLBACK.md) - The validate-then-write pattern in `activate()`, the partial-write and duplicate-approval bugs that were fixed, failure invariants, and regression test coverage
 - [Ledger Monotonicity](docs/LEDGER_MONOTONICITY.md) - Where and why contract code relies on ledger sequence and timestamp monotonicity
 - [Timestamp Conventions](docs/TIMESTAMP_CONVENTIONS.md) - How timestamps are represented, stored, and compared across all contracts
 - [Tagging Feature](TAGGING_FEATURE.md) - Tag-based organization system
