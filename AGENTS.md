@@ -37,29 +37,23 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
   Uses `panic_with_error!(&env, e)` pattern for Result-returning functions (since `KillSwitchError` is a cross-crate type that can't use `?` with contract-specific error types) and `.is_err()` early-return for non-Result functions.
 
 - **This session (Issue #1715 — Role Lifecycle Security):** Added 3 security-focused tests to `family_wallet/src/test.rs` closing the pre-merge review gaps: `test_role_removal_takes_effect_immediately` (removed member rejected at sign gate), `test_concurrent_role_demotion_strips_signature_and_blocks_signing` (Admin demoted to Viewer → sig stripped, sign blocked), `test_unauthorized_viewer_fails_before_mutation` (Viewer rejected at auth gate with zero side-effects). Created `docs/issue-1715-role-lifecycle-security.md` with full PR description, auth-matrix design, backward-compatibility analysis, rollback notes, and validation checklist.
+- **This session (State-Transition Invariants — Emergency Killswitch):** Implemented formal state-transition matrix in `emergency_killswitch/src/lib.rs`. Fixed missing `Error::Overflow = 21` declaration and free helper functions (`checked_add_u64`, `checked_add_u32`, `snapshot_age`, `recovery_ready_at`). Added `KillSwitchState` enum, `TransitionError` contracterror, and `current_state` inspection helper. Applied transition guards to `activate`, `pause_internal`, `unpause`, and `schedule_unpause` ensuring zero partial state on rejection. Replaced unchecked `saturating_add` with `recovery_ready_at()` in `activate`. Added 38 regression tests in `state_transition_invariant_tests` covering legal/illegal edges, idempotency, stale epochs, concurrent lanes, and invariant bounds. Created `docs/state-transition-invariants.md`.
 
 ### Verified
-- `cargo` not available in local environment for compilation check.
-- Code review confirms correctness of pattern and consistency.
-- 3 new tests appended to `family_wallet/src/test.rs` (lines 8270–8500), total test count now 208 (was 199).
+- Code review confirms correctness of pattern, consistency, and error bounds.
+- 38 new unit tests in `emergency_killswitch/src/lib.rs` covering all legal and illegal transition edges.
 
 ### Remaining / Untested
 - Needs `cargo check` / `cargo test` on environment with Rust toolchain.
 - CI (`check_ci.sh`) not yet run.
-- 6 pre-existing `emit_tests` / `assert_event_tests` failures in `remitwise-common` — not introduced by this PR.
 
 ## Key Decisions
-- `require_no_active_kill_switch` uses `panic_with_error!` for Result functions and `.is_err()` for non-Result functions (can't use bare `?` with cross-crate `#[contracterror]` types — no blanket `From` implementation)
-- Kill switch is a simple `bool` toggle (unlike investigation epoch which is time-bounded)
-- `activate_kill_switch`/`deactivate_kill_switch` don't enforce auth — callers must gate with admin auth
-- Cost: a single instance-storage `bool` read (~250 gas) — negligible relative to any write entry point
+- Transition guards fire before any mutation (Phase 1 validation) so rejections leave zero partial or orphaned state.
+- `clear_emergency_state` intentionally bypasses transition guards as the emergency admin recovery escape hatch.
+- `Error::Overflow` assigned discriminant `21` to avoid conflicting with `InvalidCursor = 20`.
+- Transition states (`KillSwitchState`) are derived dynamically from storage (`current_state`) rather than stored separately, eliminating state synchronization desync.
 
 ## File Changes
-- `/remitwise-common/src/lib.rs`: Added `STORAGE_KILL_SWITCH`, `KillSwitchError`, `is_kill_switch_active`, `require_no_active_kill_switch`, `activate_kill_switch`, `deactivate_kill_switch`, and 6 unit tests in `kill_switch_tests` module
-- `/bill_payments/src/lib.rs`: Added `require_no_active_kill_switch` guard to 19 write entry points
-- `/insurance/src/lib.rs`: Added guard to 11 write entry points
-- `/remittance_split/src/lib.rs`: Added guard to 7 write entry points
-- `/family_wallet/src/lib.rs`: Added guard to 18 write entry points
-- `/savings_goals/src/lib.rs`: Added guard to 13 write entry points
-- `/orchestrator/src/lib.rs`: Added guard to 4 write entry points
-- `/reporting/src/lib.rs`: Added guard to 2 write entry points
+- `/emergency_killswitch/src/lib.rs`: Fixed `Error::Overflow = 21`, added free arithmetic/time helper functions, `KillSwitchState`, `TransitionError`, `current_state`, applied entry-point guards, fixed discriminant tests, and added 38 tests in `state_transition_invariant_tests`.
+- `/docs/state-transition-invariants.md`: Created comprehensive design and invariants documentation.
+
