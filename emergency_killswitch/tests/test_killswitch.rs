@@ -683,3 +683,81 @@ fn pause_reason_cleared_by_clear_emergency_state() {
     assert!(!client.is_paused());
     assert_eq!(client.pause_reason(), None);
 }
+
+#[test]
+fn test_schedule_unpause_when_not_paused_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    assert!(!client.is_paused());
+    let future = env.ledger().timestamp() + 3600;
+    assert_eq!(
+        client.try_schedule_unpause(&future),
+        Err(Ok(Error::NotActive))
+    );
+}
+
+#[test]
+fn test_unpause_when_not_paused_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    assert!(!client.is_paused());
+    assert_eq!(client.try_unpause(), Err(Ok(Error::NotActive)));
+}
+
+#[test]
+fn test_concurrent_admin_transfer_and_epoch_bump_conflict() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let captured_epoch = client.get_kill_switch_epoch(); // 0
+
+    // Admin bumps epoch concurrently.
+    client.bump_kill_switch_epoch(&admin);
+    assert_eq!(client.get_kill_switch_epoch(), 1);
+
+    // Stale transfer admin attempt using epoch 0 fails with EpochMismatch.
+    assert_eq!(
+        client.try_transfer_admin(&new_admin, &captured_epoch),
+        Err(Ok(Error::EpochMismatch))
+    );
+}
+
+#[test]
+fn test_rejected_operations_leave_zero_partial_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, client) = setup(&env);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let initial_epoch = client.get_kill_switch_epoch();
+    let initial_signer_epoch = client.get_signer_epoch();
+
+    // Rejected schedule_unpause leaves storage clean.
+    let future = env.ledger().timestamp() + 3600;
+    let _ = client.try_schedule_unpause(&future);
+    assert_eq!(client.get_unpause_schedule(), None);
+
+    // Rejected transfer_admin leaves epoch and admin clean.
+    let new_admin = Address::generate(&env);
+    let _ = client.try_transfer_admin(&new_admin, &(initial_epoch + 999));
+    assert_eq!(client.get_kill_switch_epoch(), initial_epoch);
+
+    // Rejected configure_signers_with_epoch leaves signers clean.
+    let signers = soroban_sdk::vec![&env, Address::generate(&env)];
+    let _ = client.try_configure_signers_with_epoch(&admin, &(initial_signer_epoch + 999), &signers, &1);
+    assert_eq!(client.get_signer_epoch(), initial_signer_epoch);
+}
+

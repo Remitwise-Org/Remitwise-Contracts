@@ -206,15 +206,22 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
-    /// Configure the signer set used by the explicit activation protocol.
-    /// Updating the set increments its epoch and invalidates all old approval
-    /// bundles. The admin remains the only authority that can change policy.
-    pub fn configure_signers(
+    /// Configure signers while explicitly checking `expected_epoch`.
+    ///
+    /// Provides optimistic concurrency control (OCC). If another admin or
+    /// transaction updated the signer configuration concurrently (bumping
+    /// the signer epoch), this call returns [`Error::EpochMismatch`].
+    pub fn configure_signers_with_epoch(
         env: Env,
         caller: Address,
+        expected_epoch: u64,
         signers: Vec<Address>,
         threshold: u32,
     ) -> Result<u64, Error> {
+        let current_epoch = Self::get_signer_epoch(env.clone());
+        if expected_epoch != current_epoch {
+            return Err(Error::EpochMismatch);
+        }
         let admin: Address = env
             .storage()
             .instance()
@@ -234,12 +241,7 @@ impl EmergencyKillswitch {
                 }
             }
         }
-        let old_epoch: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::SignerEpoch)
-            .unwrap_or(0);
-        let epoch = old_epoch.checked_add(1).ok_or(Error::EpochMismatch)?;
+        let epoch = current_epoch.checked_add(1).ok_or(Error::EpochMismatch)?;
         env.storage().instance().set(&DataKey::Signers, &signers);
         env.storage()
             .instance()
@@ -250,6 +252,19 @@ impl EmergencyKillswitch {
             (epoch, threshold, signers.len()),
         );
         Ok(epoch)
+    }
+
+    /// Configure the signer set used by the explicit activation protocol.
+    /// Updating the set increments its epoch and invalidates all old approval
+    /// bundles. The admin remains the only authority that can change policy.
+    pub fn configure_signers(
+        env: Env,
+        caller: Address,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<u64, Error> {
+        let current_epoch = Self::get_signer_epoch(env.clone());
+        Self::configure_signers_with_epoch(env, caller, current_epoch, signers, threshold)
     }
 
     pub fn get_signer_epoch(env: Env) -> u64 {
@@ -561,6 +576,11 @@ impl EmergencyKillswitch {
             Some(r) => env.storage().instance().set(&DataKey::PauseReason, r),
             None => env.storage().instance().remove(&DataKey::PauseReason),
         }
+        if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
+            if scope == PauseScope::Global {
+                env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+            }
+        }
         env.events().publish(
             (
                 symbol_short!("emergency"),
@@ -588,6 +608,9 @@ impl EmergencyKillswitch {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        if !Self::is_paused(env.clone()) {
+            return Err(Error::NotActive);
+        }
         let schedule: u64 = env
             .storage()
             .instance()
@@ -663,6 +686,9 @@ impl EmergencyKillswitch {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+        if !Self::is_paused(env.clone()) {
+            return Err(Error::NotActive);
+        }
         if time < env.ledger().timestamp() {
             return Err(Error::InvalidSchedule);
         }
@@ -751,6 +777,11 @@ impl EmergencyKillswitch {
             env.storage()
                 .instance()
                 .set(&DataKey::PausedFunctions(module_id.clone()), &paused_funcs);
+            if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
+                if scope == PauseScope::Function(module_id.clone(), func.clone()) {
+                    env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+                }
+            }
             env.events().publish(
                 (
                     symbol_short!("emergency"),
@@ -835,6 +866,11 @@ impl EmergencyKillswitch {
         env.storage()
             .instance()
             .set(&DataKey::ModulePaused(module_id.clone()), &true);
+        if let Some(scope) = env.storage().instance().get::<DataKey, PauseScope>(&DataKey::ActiveScope) {
+            if scope == PauseScope::Module(module_id.clone()) {
+                env.storage().instance().set(&DataKey::ScopeWasPaused, &true);
+            }
+        }
         env.events().publish(
             (
                 symbol_short!("emergency"),
@@ -2054,7 +2090,7 @@ mod storage_migration_tests {
         let second = Address::generate(&env);
 
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 2);
+        client.configure_signers(&admin, &signers, &2);
         assert_eq!(client.get_signer_epoch(), 1);
         assert_eq!(client.get_signer_threshold(), 2);
 
@@ -2152,7 +2188,7 @@ mod storage_migration_tests {
         // Step 1: establish state.
         client.pause();
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 2);
+        client.configure_signers(&admin, &signers, &2);
         client.bump_kill_switch_epoch(&admin);
 
         // Step 2: snapshot.
@@ -2163,7 +2199,7 @@ mod storage_migration_tests {
         env.ledger().with_mut(|li| li.timestamp += 200);
         client.unpause();
         let new_signers = vec![&env, second, third];
-        client.configure_signers(&admin, &new_signers, 1);
+        client.configure_signers(&admin, &new_signers, &1);
         client.bump_kill_switch_epoch(&admin);
 
         assert!(!client.is_paused());
@@ -2335,7 +2371,7 @@ mod snapshot_function_pause_restore_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        let epoch = client.configure_signers(&admin, &signers, 2);
+        let epoch = client.configure_signers(&admin, &signers, &2);
         let approvals = vec![&env, first, second];
         let mod_sym = symbol_short!("bill");
         client.activate(&epoch, &approvals, &PauseScope::Module(mod_sym.clone()));
