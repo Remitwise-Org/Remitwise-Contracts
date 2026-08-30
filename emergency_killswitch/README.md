@@ -100,3 +100,12 @@ Checks if a function is paused (considering global, module, and function-level p
 cargo test -p emergency_killswitch
 ```
 
+## Design Documentation
+
+- [Activation and Recovery Policy](ACTIVATION_RECOVERY_POLICY.md) — Epoch semantics, scope invariants, activation/recovery protocol, failure matrix.
+- [Atomic Rollback Guarantees](../docs/ATOMIC_ROLLBACK.md) — The validate-then-write pattern enforced by `activate()`, the two bugs that were fixed, and regression test coverage.
+- [Killswitch Trust Model](../docs/killswitch-trust-model.md) — Who can trigger/clear, what state is preserved.
+- [Pause/Unpause State Machine](../docs/killswitch-pause-state-machine.md) — Global state transitions and the module/function layers.
+- [Kill-Switch Recovery Runbook](../docs/KILL_SWITCH_RECOVERY.md) — Operator guide for engaging and recovering the kill switch.
+
+
