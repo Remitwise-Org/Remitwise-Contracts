@@ -369,20 +369,22 @@ pub struct AtomicBatchPayReceipt {
     pub receipts: Vec<AtomicPayReceipt>,
 }
 #[contracttype]
-#[derive(Clone)]
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BillEvent {
-    Created,
-    Paid,
-    ExternalRefUpdated,
-    Cancelled,
-    Archived,
-    Restored,
-    ScheduleCreated,
-    ScheduleExecuted,
-    ScheduleMissed,
-    ScheduleModified,
-    ScheduleCancelled,
-    RecurringBillCreated,
+    Created = 0,
+    Paid = 1,
+    ExternalRefUpdated = 2,
+    Cancelled = 3,
+    Archived = 4,
+    Restored = 5,
+    ScheduleCreated = 6,
+    ScheduleExecuted = 7,
+    ScheduleMissed = 8,
+    ScheduleModified = 9,
+    ScheduleCancelled = 10,
+    RecurringBillCreated = 11,
 }
 
 #[derive(Clone, Debug)]

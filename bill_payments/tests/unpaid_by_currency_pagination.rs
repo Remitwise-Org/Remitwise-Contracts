@@ -114,6 +114,7 @@ fn collect_unpaid_by_currency(
     let mut prev_cursor = 0u32;
 
     loop {
+        env.budget().reset_unlimited();
         let page = client.get_unpaid_bills_by_currency(owner, &currency_str, &cursor, &page_size);
         for bill in page.items.iter() {
             ids.push(bill.id);
@@ -156,6 +157,10 @@ fn seed_mixed(
     let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
 
     for i in 0..n_target {
+        env.budget().reset_unlimited();
+        if i > 0 && i % 30 == 0 {
+            env.ledger().set_timestamp(env.ledger().timestamp() + 86_401);
+        }
         // Unpaid USDC bill (target)
         let id = create_bill_currency(env, client, owner, "USDC");
         expected_ids.push(id);
@@ -257,6 +262,10 @@ fn union_equals_set_n1000() {
     // Use n_target = 500 with interleaving ratio trimmed to stay under cap.
     let mut expected_ids: std::vec::Vec<u32> = std::vec::Vec::new();
     for i in 0u32..500 {
+        env.budget().reset_unlimited();
+        if i > 0 && i % 20 == 0 {
+            env.ledger().set_timestamp(env.ledger().timestamp() + 86_401);
+        }
         let id = create_bill_currency(&env, &client, &owner, "USDC");
         expected_ids.push(id);
         // Only add paid bill every 4th to stay under the 1000-bill cap

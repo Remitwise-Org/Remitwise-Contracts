@@ -303,6 +303,7 @@ enum KillswitchCommands {
 // Entry point
 // ---------------------------------------------------------------------------
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -316,6 +317,11 @@ async fn main() -> Result<()> {
         Commands::Orchestrator { subcommand } => handle_orchestrator(subcommand).await,
         Commands::Killswitch { subcommand } => handle_killswitch(subcommand).await,
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // No-op for wasm builds
 }
 
 // ---------------------------------------------------------------------------
