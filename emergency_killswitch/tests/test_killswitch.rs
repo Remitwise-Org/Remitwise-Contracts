@@ -4,7 +4,7 @@ use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
-    Address, Env, Symbol, IntoVal,
+    Address, Env, IntoVal, Symbol,
 };
 
 fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
@@ -17,7 +17,10 @@ fn setup(env: &Env) -> (Address, EmergencyKillswitchClient<'_>) {
 fn initialize_rejects_self_address() {
     let env = Env::default();
     let (contract_id, client) = setup(&env);
-    assert_eq!(client.try_initialize(&contract_id), Err(Ok(Error::InvalidAdmin)));
+    assert_eq!(
+        client.try_initialize(&contract_id),
+        Err(Ok(Error::InvalidAdmin))
+    );
 }
 
 #[test]
@@ -35,7 +38,10 @@ fn transfer_admin_rejects_self_address() {
     let (contract_id, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    assert_eq!(client.try_transfer_admin(&contract_id), Err(Ok(Error::InvalidAdmin)));
+    assert_eq!(
+        client.try_transfer_admin(&contract_id),
+        Err(Ok(Error::InvalidAdmin))
+    );
 }
 
 #[test]
@@ -45,7 +51,10 @@ fn transfer_admin_rejects_same_admin() {
     let (_, client) = setup(&env);
     let admin = Address::generate(&env);
     client.initialize(&admin);
-    assert_eq!(client.try_transfer_admin(&admin), Err(Ok(Error::InvalidAdmin)));
+    assert_eq!(
+        client.try_transfer_admin(&admin),
+        Err(Ok(Error::InvalidAdmin))
+    );
 }
 
 #[test]
@@ -120,7 +129,10 @@ fn test_timelock_bypass_rejection() {
     client.initialize(&admin);
     client.pause();
     env.ledger().set_timestamp(1000);
-    assert_eq!(client.try_schedule_unpause(&999), Err(Ok(Error::InvalidSchedule)));
+    assert_eq!(
+        client.try_schedule_unpause(&999),
+        Err(Ok(Error::InvalidSchedule))
+    );
     client.schedule_unpause(&1000);
 }
 
@@ -191,7 +203,10 @@ fn test_max_paused_functions_limit() {
     for i in 0..10 {
         client.pause_function(&module, &Symbol::new(&env, &format!("f{}", i)));
     }
-    assert_eq!(client.try_pause_function(&module, &symbol_short!("one_more")), Err(Ok(Error::LimitExceeded)));
+    assert_eq!(
+        client.try_pause_function(&module, &symbol_short!("one_more")),
+        Err(Ok(Error::LimitExceeded))
+    );
 }
 
 #[test]
