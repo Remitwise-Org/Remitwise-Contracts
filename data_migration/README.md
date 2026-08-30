@@ -214,6 +214,40 @@ operator restarts, replay attacks — requires a long-lived `MigrationTracker`. 
 > `MigrationTracker`. A future breaking release may remove the untracked helpers
 > entirely.
 
+## Concurrency, conflict, and retry contract
+
+For parallel migration runners and indexers, [`SharedMigrationTracker`] shares one
+tracker across worker threads with a deterministic conflict contract: each import
+holds an internal lock across validation **and** the replay commit as one atomic
+section, so for any `(checksum, version)` identity exactly one concurrent caller
+sees `Ok` and every conflicting caller deterministically receives
+`Err(MigrationError::DuplicateImport)` with zero state mutation.
+
+```rust
+use data_migration::SharedMigrationTracker;
+
+let tracker = SharedMigrationTracker::new();
+// Safe to share across threads: tracker is Send + Sync.
+let snapshot = tracker.import_from_json(&json_bytes, timestamp_ms)?;
+```
+
+**Client retry contract:**
+
+| Outcome | Meaning | Retry? |
+|---|---|---|
+| `Ok` | Validated and applied exactly once | No |
+| `Err(DuplicateImport)` | Identity already applied — treat as idempotent success | No (deterministic re-rejection) |
+| `Err(_)` validation/size/version | Permanent rejection, tracker untouched | No — fix the payload first |
+| After `restore_rollback` | Failed identity un-marked | Yes — the only retryable path |
+
+**Deterministic, gap-free reconciliation:** `imported_records()` enumerates every
+applied identity exactly once, sorted by `(checksum, version)`, regardless of
+application order or thread scheduling; a record exists iff a fully validated
+import committed. Tracker serialization (bincode) is byte-deterministic
+(`BTreeMap` storage), so persisted reconciliation artifacts are diffable across
+runs and upgrades. See [`docs/DATA_MIGRATION_CONCURRENCY.md`](../docs/DATA_MIGRATION_CONCURRENCY.md)
+for the full design, invariant list, failure behavior, and compatibility notes.
+
 ## Data structures
 
 ### `SnapshotHeader`
