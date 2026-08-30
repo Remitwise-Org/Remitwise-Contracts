@@ -90,6 +90,7 @@ must collect a new quorum and create a new activation marker.
 | --- | --- | --- |
 | missing signer set | rejected | unchanged |
 | wrong signer epoch | rejected | unchanged |
+| signer rotation with stale epoch | rejected (`EpochMismatch`) | unchanged |
 | duplicate approval | rejected | unchanged |
 | unknown approval | rejected | unchanged |
 | below threshold | rejected | unchanged |
@@ -98,7 +99,8 @@ must collect a new quorum and create a new activation marker.
 | function scope over cap | `LimitExceeded` | unchanged (no activation marker) |
 | recovery before delay | rejected | pause retained |
 | recovery with stale epoch | rejected | pause retained |
-| valid recovery | accepted once | scope cleared |
+| admin pause during activation | accepted | admin pause preserved on threshold recovery |
+| valid recovery | accepted once | scope cleared (unless admin pause active) |
 
 This matrix is intentionally fail-closed. Operators should not retry a stale
 epoch automatically; they should reload the signer policy and collect fresh
