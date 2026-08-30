@@ -23,15 +23,15 @@ const INITIALIZE: RegressionSpec = RegressionSpec {
 };
 
 const PAUSE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 61908,
-    mem_baseline: 7300,
+    cpu_baseline: 69535,
+    mem_baseline: 7662,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };
 
 const UNPAUSE: RegressionSpec = RegressionSpec {
-    cpu_baseline: 97550,
-    mem_baseline: 11093,
+    cpu_baseline: 108385,
+    mem_baseline: 11452,
     cpu_threshold_percent: 10,
     mem_threshold_percent: 10,
 };

@@ -230,9 +230,9 @@ fn test_clear_emergency_state_bypasses_timelock() {
     client.clear_emergency_state();
     assert!(!client.is_paused());
 
-    // The pending schedule was wiped: a later unpause has nothing to act on.
+    // The pending schedule was wiped and contract is unpaused: a later unpause returns NotActive.
     env.ledger().set_timestamp(future);
-    assert_eq!(client.try_unpause(), Err(Ok(Error::InvalidSchedule)));
+    assert_eq!(client.try_unpause(), Err(Ok(Error::NotActive)));
 }
 
 #[test]
