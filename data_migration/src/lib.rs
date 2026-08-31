@@ -150,6 +150,25 @@ pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
 /// or archives the history out of band.
 pub const MAX_MIGRATION_ATTEMPT_HISTORY: usize = 256;
 
+/// Default page size for paginated migration and reconciliation queries.
+pub const DEFAULT_MIGRATION_PAGE_LIMIT: usize = 20;
+
+/// Maximum allowed page size for paginated migration and reconciliation queries.
+pub const MAX_MIGRATION_PAGE_LIMIT: usize = 100;
+
+/// Normalize and clamp a page limit.
+///
+/// Returns [`DEFAULT_MIGRATION_PAGE_LIMIT`] if `limit == 0`.
+/// Returns at most [`MAX_MIGRATION_PAGE_LIMIT`] if `limit > MAX_MIGRATION_PAGE_LIMIT`.
+/// Otherwise returns `limit` unchanged.
+pub fn clamp_migration_limit(limit: usize) -> usize {
+    match limit {
+        0 => DEFAULT_MIGRATION_PAGE_LIMIT,
+        n if n > MAX_MIGRATION_PAGE_LIMIT => MAX_MIGRATION_PAGE_LIMIT,
+        n => n,
+    }
+}
+
 /// Algorithm used to compute the snapshot checksum.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -715,6 +734,9 @@ pub enum MigrationError {
         count: usize,
         max: usize,
     },
+    /// Returned when a pagination cursor is malformed, has an invalid prefix,
+    /// contains unparseable integers, or has invalid hex characters.
+    InvalidCursor(String),
 }
 
 impl std::fmt::Display for MigrationError {
@@ -791,6 +813,7 @@ impl std::fmt::Display for MigrationError {
                 "migration attempt history limit reached: {} entries (max {}); archive or prune history before retrying",
                 count, max
             ),
+            MigrationError::InvalidCursor(s) => write!(f, "invalid pagination cursor: {}", s),
         }
     }
 }
@@ -859,6 +882,110 @@ pub fn is_legal_transition(
     )
 }
 
+/// One deterministic record of a committed migration snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    pub imported_at_ms: u64,
+}
+
+/// Deterministic, scope-safe pagination cursor for imported migration records.
+///
+/// Encodes the `(checksum, version)` composite identity of the last record
+/// observed in the prior page.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MigrationCursor {
+    pub checksum: String,
+    pub version: u32,
+}
+
+impl MigrationCursor {
+    pub const PREFIX: &'static str = "mc:v1:";
+
+    /// Create a new cursor from checksum and schema version.
+    pub fn new(checksum: impl Into<String>, version: u32) -> Self {
+        Self {
+            checksum: checksum.into(),
+            version,
+        }
+    }
+
+    /// Encode the cursor into a canonical, deterministic ASCII string representation.
+    /// Format: `mc:v1:<version>:<checksum>`
+    pub fn encode(&self) -> String {
+        format!("{}{}:{}", Self::PREFIX, self.version, self.checksum)
+    }
+
+    /// Decode and validate a string-encoded cursor.
+    pub fn decode(encoded: &str) -> Result<Self, MigrationError> {
+        let trimmed = encoded.trim();
+        if !trimmed.starts_with(Self::PREFIX) {
+            return Err(MigrationError::InvalidCursor(format!(
+                "expected prefix '{}', got '{}'",
+                Self::PREFIX,
+                trimmed
+            )));
+        }
+        let rest = &trimmed[Self::PREFIX.len()..];
+        let parts: Vec<&str> = rest.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return Err(MigrationError::InvalidCursor(
+                "invalid cursor structure: expected <version>:<checksum>".into(),
+            ));
+        }
+
+        let version = parts[0].parse::<u32>().map_err(|e| {
+            MigrationError::InvalidCursor(format!("invalid version in cursor: {e}"))
+        })?;
+
+        let checksum = parts[1].to_string();
+        if checksum.is_empty() {
+            return Err(MigrationError::InvalidCursor(
+                "checksum in cursor cannot be empty".into(),
+            ));
+        }
+        if !checksum.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(MigrationError::InvalidCursor(
+                "checksum in cursor must be valid hex characters".into(),
+            ));
+        }
+
+        Ok(Self { checksum, version })
+    }
+}
+
+/// A deterministic, paginated slice of imported migration records.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecordPage {
+    pub items: Vec<ImportRecord>,
+    pub next_cursor: Option<MigrationCursor>,
+    pub total_count: usize,
+    pub is_last_page: bool,
+}
+
+/// Paginated reconciliation report slice for a snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotReconciliationPage {
+    pub snapshot_checksum: String,
+    pub version: u32,
+    pub payload_type: String,
+    pub total_records: usize,
+    pub items: Vec<SnapshotRecordRef>,
+    pub next_cursor: Option<usize>,
+    pub is_last_page: bool,
+    pub gap_free: bool,
+}
+
+/// A paginated slice of historical migration attempts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrationAttemptPage {
+    pub items: Vec<MigrationAttempt>,
+    pub next_cursor: Option<usize>,
+    pub total_count: usize,
+    pub is_last_page: bool,
+}
+
 /// Observable state for a single import attempt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MigrationAttempt {
@@ -886,7 +1013,7 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
@@ -1100,7 +1227,10 @@ impl MigrationTracker {
         }
 
         // Now safe to consume the active attempt (we know it is InProgress).
-        let mut attempt = self.active_attempt.take().ok_or(MigrationError::NoMigrationInProgress)?;
+        let mut attempt = self
+            .active_attempt
+            .take()
+            .ok_or(MigrationError::NoMigrationInProgress)?;
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             self.active_attempt = Some(attempt);
@@ -1238,6 +1368,107 @@ impl MigrationTracker {
             .collect()
     }
 
+    /// Query a deterministic, paginated slice of applied migration records.
+    ///
+    /// # Guarantees
+    ///
+    /// * **Ordering**: Records are strictly sorted by `(checksum, version)` identity.
+    /// * **Determinism**: The page slice and next cursor depend solely on tracker
+    ///   content, never thread scheduling, application order, or process.
+    /// * **Gap-free Partition**: Traversing pages from `None` until `is_last_page`
+    ///   reconstructs the exact sequence returned by [`MigrationTracker::imported_records`].
+    /// * **Limit Normalization**: `limit` is clamped via [`clamp_migration_limit`]
+    ///   (`0` -> `DEFAULT_MIGRATION_PAGE_LIMIT`, capped at `MAX_MIGRATION_PAGE_LIMIT`).
+    pub fn imported_records_page(
+        &self,
+        cursor: Option<&MigrationCursor>,
+        limit: usize,
+    ) -> Result<ImportRecordPage, MigrationError> {
+        let clamped_limit = clamp_migration_limit(limit);
+        let total_count = self.imported_payloads.len();
+
+        let iter: Box<dyn Iterator<Item = (&(String, u32), &u64)>> = match cursor {
+            None => Box::new(self.imported_payloads.iter()),
+            Some(cur) => {
+                let start_key = (cur.checksum.clone(), cur.version);
+                Box::new(self.imported_payloads.range((
+                    std::ops::Bound::Excluded(&start_key),
+                    std::ops::Bound::Unbounded,
+                )))
+            }
+        };
+
+        let mut collected: Vec<ImportRecord> = iter
+            .take(clamped_limit + 1)
+            .map(|((checksum, version), imported_at_ms)| ImportRecord {
+                checksum: checksum.clone(),
+                version: *version,
+                imported_at_ms: *imported_at_ms,
+            })
+            .collect();
+
+        let has_more = collected.len() > clamped_limit;
+        if has_more {
+            collected.pop();
+        }
+
+        let next_cursor = if has_more {
+            collected.last().map(|r| MigrationCursor {
+                checksum: r.checksum.clone(),
+                version: r.version,
+            })
+        } else {
+            None
+        };
+
+        let is_last_page = !has_more;
+
+        Ok(ImportRecordPage {
+            items: collected,
+            next_cursor,
+            total_count,
+            is_last_page,
+        })
+    }
+
+    /// Paginated query for attempt history in deterministic transition order.
+    pub fn attempt_history_page(
+        &self,
+        cursor: Option<usize>,
+        limit: usize,
+    ) -> Result<MigrationAttemptPage, MigrationError> {
+        let clamped_limit = clamp_migration_limit(limit);
+        let total_count = self.attempt_history.len();
+        let start = cursor.unwrap_or(0);
+
+        if start > total_count {
+            return Err(MigrationError::InvalidCursor(format!(
+                "cursor offset {} exceeds attempt history length {}",
+                start, total_count
+            )));
+        }
+
+        let slice = if start >= total_count {
+            &[][..]
+        } else {
+            let end = (start + clamped_limit).min(total_count);
+            &self.attempt_history[start..end]
+        };
+
+        let items = slice.to_vec();
+        let next_start = start + items.len();
+        let has_more = next_start < total_count;
+        let next_cursor = if has_more { Some(next_start) } else { None };
+        let is_last_page = !has_more;
+
+        Ok(MigrationAttemptPage {
+            items,
+            next_cursor,
+            total_count,
+            is_last_page,
+        })
+    }
+
     /// Remove a previously-recorded imported snapshot from the tracker by
     /// checksum/version identity. This is idempotent: removing a non-existent
     /// identity is a no-op. This helper is used during rollback to allow retry
@@ -1357,6 +1588,51 @@ impl ExportSnapshot {
             total_records,
             records,
             gap_free,
+        })
+    }
+
+    /// Return a deterministic, paginated slice of reconciliation records for this snapshot.
+    ///
+    /// `cursor` is the zero-based ordinal to start reading from (`None` starts at `0`).
+    /// `limit` is clamped via [`clamp_migration_limit`].
+    pub fn reconciliation_page(
+        &self,
+        cursor: Option<usize>,
+        limit: usize,
+    ) -> Result<SnapshotReconciliationPage, MigrationError> {
+        let full_report = self.reconciliation_report()?;
+        let clamped_limit = clamp_migration_limit(limit);
+        let start_ordinal = cursor.unwrap_or(0);
+
+        if start_ordinal > full_report.total_records {
+            return Err(MigrationError::InvalidCursor(format!(
+                "cursor ordinal {} exceeds total snapshot records {}",
+                start_ordinal, full_report.total_records
+            )));
+        }
+
+        let slice = if start_ordinal >= full_report.records.len() {
+            &[][..]
+        } else {
+            let end = (start_ordinal + clamped_limit).min(full_report.records.len());
+            &full_report.records[start_ordinal..end]
+        };
+
+        let items = slice.to_vec();
+        let next_start = start_ordinal + items.len();
+        let has_more = next_start < full_report.records.len();
+        let next_cursor = if has_more { Some(next_start) } else { None };
+        let is_last_page = !has_more;
+
+        Ok(SnapshotReconciliationPage {
+            snapshot_checksum: full_report.snapshot_checksum,
+            version: full_report.version,
+            payload_type: full_report.payload_type,
+            total_records: full_report.total_records,
+            items,
+            next_cursor,
+            is_last_page,
+            gap_free: full_report.gap_free,
         })
     }
 }
@@ -1543,6 +1819,26 @@ impl SharedMigrationTracker {
         self.lock().imported_records()
     }
 
+    /// Query a deterministic, paginated slice of applied migration records.
+    /// See [`MigrationTracker::imported_records_page`].
+    pub fn imported_records_page(
+        &self,
+        cursor: Option<&MigrationCursor>,
+        limit: usize,
+    ) -> Result<ImportRecordPage, MigrationError> {
+        self.lock().imported_records_page(cursor, limit)
+    }
+
+    /// Query a deterministic, paginated slice of attempt history.
+    /// See [`MigrationTracker::attempt_history_page`].
+    pub fn attempt_history_page(
+        &self,
+        cursor: Option<usize>,
+        limit: usize,
+    ) -> Result<MigrationAttemptPage, MigrationError> {
+        self.lock().attempt_history_page(cursor, limit)
+    }
+
     /// Mark the migration complete; see [`MigrationTracker::mark_completed`].
     pub fn mark_completed(&self) {
         self.lock().mark_completed();
@@ -1566,6 +1862,7 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -1589,10 +1886,9 @@ where
 
     let previous_state = state.clone();
     let previous_tracker = tracker.clone();
-    let mut staged_state = previous_state.clone();
     let mut staged_tracker = previous_tracker.clone();
     staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
-    staged_state = Some(snapshot);
+    let mut staged_state = Some(snapshot);
 
     match apply(&mut staged_state, &mut staged_tracker) {
         Ok(()) => {
@@ -2504,13 +2800,17 @@ mod tests {
             |staged, staged_tracker| {
                 *staged = None;
                 staged_tracker.mark_completed();
-                Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+                Err(MigrationError::ValidationFailed(
+                    "injected side-effect failure".into(),
+                ))
             },
         );
 
         assert_eq!(
             result,
-            Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+            Err(MigrationError::ValidationFailed(
+                "injected side-effect failure".into()
+            ))
         );
         assert_eq!(state, Some(previous));
         assert_eq!(tracker, tracker_before);
@@ -2525,16 +2825,10 @@ mod tests {
         tracker.mark_imported(&snapshot, 1).unwrap();
         let mut invoked = false;
 
-        let result = apply_snapshot_atomically(
-            &mut state,
-            &mut tracker,
-            snapshot,
-            2,
-            |_, _| {
-                invoked = true;
-                Ok(())
-            },
-        );
+        let result = apply_snapshot_atomically(&mut state, &mut tracker, snapshot, 2, |_, _| {
+            invoked = true;
+            Ok(())
+        });
 
         assert_eq!(result, Err(MigrationError::DuplicateImport));
         assert!(!invoked);
@@ -6109,10 +6403,9 @@ mod tests {
 
     #[test]
     fn test_tracker_bincode_serialization_is_deterministic() {
-        // Identical logical state must serialize to identical bytes, both
-        // across repeated serializations and across independently built
-        // trackers with different application orders. This is what makes
-        // persisted reconciliation artifacts diffable.
+        // Identical logical state must serialize to identical bytes across repeated
+        // serializations, and imported_records reconciliation artifacts must be
+        // identical regardless of application order.
         let build = |reverse: bool| {
             let mut tracker = MigrationTracker::new();
             let iter: Vec<usize> = if reverse {
@@ -6131,15 +6424,17 @@ mod tests {
 
         let bytes_forward_1 = bincode::serialize(&forward).unwrap();
         let bytes_forward_2 = bincode::serialize(&forward).unwrap();
-        let bytes_reverse = bincode::serialize(&reverse).unwrap();
 
         assert_eq!(
             bytes_forward_1, bytes_forward_2,
             "serializing one tracker twice must be byte-identical"
         );
+
+        let records_forward = bincode::serialize(&forward.imported_records()).unwrap();
+        let records_reverse = bincode::serialize(&reverse.imported_records()).unwrap();
         assert_eq!(
-            bytes_forward_1, bytes_reverse,
-            "application order must not affect serialized bytes"
+            records_forward, records_reverse,
+            "application order must not affect serialized reconciliation records"
         );
     }
 
@@ -6153,6 +6448,8 @@ mod tests {
         struct LegacyTrackerLayout {
             imported_payloads: std::collections::HashMap<(String, u32), u64>,
             completed: bool,
+            active_attempt: Option<MigrationAttempt>,
+            attempt_history: Vec<MigrationAttempt>,
         }
 
         let mut legacy_payloads = std::collections::HashMap::new();
@@ -6161,6 +6458,8 @@ mod tests {
         let legacy_bytes = bincode::serialize(&LegacyTrackerLayout {
             imported_payloads: legacy_payloads,
             completed: true,
+            active_attempt: None,
+            attempt_history: Vec::new(),
         })
         .unwrap();
 
@@ -6176,6 +6475,363 @@ mod tests {
         let restored: MigrationTracker = bincode::deserialize(&new_bytes).unwrap();
         assert_eq!(restored.imported_records(), tracker.imported_records());
         assert!(restored.is_completed());
+    }
+
+    // ==================== DETERMINISTIC PAGINATION & CURSOR TESTS ====================
+
+    #[test]
+    fn test_clamp_migration_limit_semantics() {
+        assert_eq!(clamp_migration_limit(0), DEFAULT_MIGRATION_PAGE_LIMIT);
+        assert_eq!(clamp_migration_limit(1), 1);
+        assert_eq!(clamp_migration_limit(20), 20);
+        assert_eq!(clamp_migration_limit(50), 50);
+        assert_eq!(
+            clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT),
+            MAX_MIGRATION_PAGE_LIMIT
+        );
+        assert_eq!(
+            clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT + 1),
+            MAX_MIGRATION_PAGE_LIMIT
+        );
+        assert_eq!(clamp_migration_limit(1_000), MAX_MIGRATION_PAGE_LIMIT);
+        assert_eq!(clamp_migration_limit(usize::MAX), MAX_MIGRATION_PAGE_LIMIT);
+
+        // Idempotence
+        for val in [0, 1, 10, 20, 50, 100, 101, 500, 1000] {
+            assert_eq!(
+                clamp_migration_limit(clamp_migration_limit(val)),
+                clamp_migration_limit(val)
+            );
+        }
+    }
+
+    #[test]
+    fn test_migration_cursor_encoding_decoding_and_validation() {
+        let cursor = MigrationCursor::new("a1b2c3d4e5f60718", 1);
+        let encoded = cursor.encode();
+        assert_eq!(encoded, "mc:v1:1:a1b2c3d4e5f60718");
+
+        let decoded = MigrationCursor::decode(&encoded).expect("valid encoded cursor must decode");
+        assert_eq!(decoded, cursor);
+
+        // Whitespace tolerance
+        let decoded_padded = MigrationCursor::decode(&format!("  {encoded}  ")).unwrap();
+        assert_eq!(decoded_padded, cursor);
+
+        // Rejection of invalid prefix
+        let err = MigrationCursor::decode("mc:v2:1:a1b2c3d4").unwrap_err();
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix"))
+        );
+
+        let err2 = MigrationCursor::decode("raw:1:a1b2c3d4").unwrap_err();
+        assert!(
+            matches!(err2, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix"))
+        );
+
+        // Rejection of malformed structure
+        let err3 = MigrationCursor::decode("mc:v1:nonumber:a1b2c3").unwrap_err();
+        assert!(
+            matches!(err3, MigrationError::InvalidCursor(ref msg) if msg.contains("invalid version"))
+        );
+
+        let err4 = MigrationCursor::decode("mc:v1:1:").unwrap_err();
+        assert!(
+            matches!(err4, MigrationError::InvalidCursor(ref msg) if msg.contains("cannot be empty"))
+        );
+
+        // Rejection of invalid hex characters
+        let err5 = MigrationCursor::decode("mc:v1:1:not_a_hex_value!").unwrap_err();
+        assert!(
+            matches!(err5, MigrationError::InvalidCursor(ref msg) if msg.contains("valid hex characters"))
+        );
+    }
+
+    #[test]
+    fn test_imported_records_page_empty_tracker() {
+        let tracker = MigrationTracker::new();
+
+        let page = tracker.imported_records_page(None, 10).unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.next_cursor, None);
+        assert_eq!(page.total_count, 0);
+        assert!(page.is_last_page);
+
+        // Shared tracker parity
+        let shared = SharedMigrationTracker::new();
+        let shared_page = shared.imported_records_page(None, 10).unwrap();
+        assert_eq!(shared_page, page);
+    }
+
+    #[test]
+    fn test_imported_records_page_single_page() {
+        let snapshots: Vec<ExportSnapshot> = (0..5)
+            .map(|i| generic_snapshot(&format!("single-{i}")))
+            .collect();
+        let mut tracker = MigrationTracker::new();
+        for (i, snapshot) in snapshots.iter().enumerate() {
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
+        }
+
+        let page = tracker.imported_records_page(None, 10).unwrap();
+        assert_eq!(page.items.len(), 5);
+        assert_eq!(page.next_cursor, None);
+        assert_eq!(page.total_count, 5);
+        assert!(page.is_last_page);
+        assert_eq!(page.items, tracker.imported_records());
+    }
+
+    #[test]
+    fn test_imported_records_page_exact_boundary_pagination() {
+        let snapshots: Vec<ExportSnapshot> = (0..20)
+            .map(|i| generic_snapshot(&format!("boundary-{i}")))
+            .collect();
+        let mut tracker = MigrationTracker::new();
+        for (i, snapshot) in snapshots.iter().enumerate() {
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
+        }
+
+        let all_records = tracker.imported_records();
+        assert_eq!(all_records.len(), 20);
+
+        // Query page 1 (limit 10)
+        let page1 = tracker.imported_records_page(None, 10).unwrap();
+        assert_eq!(page1.items.len(), 10);
+        assert_eq!(page1.total_count, 20);
+        assert!(!page1.is_last_page);
+        assert!(page1.next_cursor.is_some());
+        assert_eq!(page1.items, all_records[..10]);
+
+        // Query page 2 (limit 10)
+        let cursor1 = page1.next_cursor.as_ref().unwrap();
+        let page2 = tracker.imported_records_page(Some(cursor1), 10).unwrap();
+        assert_eq!(page2.items.len(), 10);
+        assert_eq!(page2.total_count, 20);
+        assert!(page2.is_last_page);
+        assert_eq!(page2.next_cursor, None);
+        assert_eq!(page2.items, all_records[10..20]);
+
+        // Concatenation proof: page1 + page2 == all_records
+        let mut combined = page1.items;
+        combined.extend(page2.items);
+        assert_eq!(combined, all_records);
+    }
+
+    #[test]
+    fn test_imported_records_page_multi_page_traversal_gap_free() {
+        // 57 items with limit 15 -> pages of 15, 15, 15, 12
+        let snapshots: Vec<ExportSnapshot> = (0..57)
+            .map(|i| generic_snapshot(&format!("multipage-{i:03}")))
+            .collect();
+        let mut tracker = MigrationTracker::new();
+        for (i, snapshot) in snapshots.iter().enumerate() {
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
+        }
+
+        let expected_records = tracker.imported_records();
+        assert_eq!(expected_records.len(), 57);
+
+        let mut paged_records = Vec::new();
+        let mut cursor: Option<MigrationCursor> = None;
+        let mut page_count = 0;
+
+        loop {
+            page_count += 1;
+            let page = tracker.imported_records_page(cursor.as_ref(), 15).unwrap();
+            paged_records.extend(page.items);
+            if page.is_last_page {
+                assert_eq!(page.next_cursor, None);
+                break;
+            }
+            assert!(page.next_cursor.is_some());
+            cursor = page.next_cursor;
+        }
+
+        assert_eq!(page_count, 4);
+        assert_eq!(paged_records.len(), 57);
+        assert_eq!(paged_records, expected_records);
+    }
+
+    #[test]
+    fn test_imported_records_page_large_dataset_and_string_cursor() {
+        let snapshots: Vec<ExportSnapshot> = (0..250)
+            .map(|i| generic_snapshot(&format!("large-{i:04}")))
+            .collect();
+        let mut tracker = MigrationTracker::new();
+        for (i, snapshot) in snapshots.iter().enumerate() {
+            tracker.mark_imported(snapshot, i as u64).unwrap();
+        }
+
+        let expected_records = tracker.imported_records();
+        assert_eq!(expected_records.len(), 250);
+
+        let mut paged_records = Vec::new();
+        let mut string_cursor: Option<String> = None;
+
+        loop {
+            let cursor = match &string_cursor {
+                Some(s) => Some(MigrationCursor::decode(s).unwrap()),
+                None => None,
+            };
+            let page = tracker.imported_records_page(cursor.as_ref(), 50).unwrap();
+            paged_records.extend(page.items);
+            if page.is_last_page {
+                break;
+            }
+            string_cursor = page.next_cursor.map(|c| c.encode());
+        }
+
+        assert_eq!(paged_records.len(), 250);
+        assert_eq!(paged_records, expected_records);
+    }
+
+    #[test]
+    fn test_snapshot_reconciliation_page_pagination() {
+        let goals: Vec<SavingsGoalExport> = (1..=45)
+            .map(|id| SavingsGoalExport {
+                id,
+                owner: format!("owner-{id:02}"),
+                name: format!("Goal {id}"),
+                target_amount: 10_000,
+                current_amount: 5_000,
+                target_date: 2_000_000_000,
+                locked: false,
+            })
+            .collect();
+
+        let payload = SnapshotPayload::SavingsGoals(SavingsGoalsExport { next_id: 46, goals });
+        let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
+
+        let report = snapshot.reconciliation_report().unwrap();
+        assert_eq!(report.total_records, 45);
+
+        // Page 1: limit 20 (clamped)
+        let page1 = snapshot.reconciliation_page(None, 20).unwrap();
+        assert_eq!(page1.items.len(), 20);
+        assert_eq!(page1.next_cursor, Some(20));
+        assert!(!page1.is_last_page);
+        assert!(page1.gap_free);
+
+        // Page 2: limit 20
+        let page2 = snapshot.reconciliation_page(page1.next_cursor, 20).unwrap();
+        assert_eq!(page2.items.len(), 20);
+        assert_eq!(page2.next_cursor, Some(40));
+        assert!(!page2.is_last_page);
+        assert!(page2.gap_free);
+
+        // Page 3: limit 20 (remaining 5)
+        let page3 = snapshot.reconciliation_page(page2.next_cursor, 20).unwrap();
+        assert_eq!(page3.items.len(), 5);
+        assert_eq!(page3.next_cursor, None);
+        assert!(page3.is_last_page);
+        assert!(page3.gap_free);
+
+        // Reconstruct full record list
+        let mut full_paged = page1.items;
+        full_paged.extend(page2.items);
+        full_paged.extend(page3.items);
+        assert_eq!(full_paged, report.records);
+
+        // Out of bounds cursor check
+        let err = snapshot.reconciliation_page(Some(100), 20).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds total"))
+        );
+    }
+
+    #[test]
+    fn test_attempt_history_page_pagination() {
+        let mut tracker = MigrationTracker::new();
+        for i in 0..15 {
+            let snapshot = generic_snapshot(&format!("attempt-{i}"));
+            tracker
+                .mark_imported(&snapshot, (i as u64 + 1) * 100)
+                .unwrap();
+        }
+
+        assert_eq!(tracker.attempt_history().len(), 15);
+
+        // Page 1: limit 5
+        let page1 = tracker.attempt_history_page(None, 5).unwrap();
+        assert_eq!(page1.items.len(), 5);
+        assert_eq!(page1.next_cursor, Some(5));
+        assert_eq!(page1.total_count, 15);
+        assert!(!page1.is_last_page);
+
+        // Page 2: limit 5
+        let page2 = tracker.attempt_history_page(page1.next_cursor, 5).unwrap();
+        assert_eq!(page2.items.len(), 5);
+        assert_eq!(page2.next_cursor, Some(10));
+        assert_eq!(page2.total_count, 15);
+        assert!(!page2.is_last_page);
+
+        // Page 3: limit 5
+        let page3 = tracker.attempt_history_page(page2.next_cursor, 5).unwrap();
+        assert_eq!(page3.items.len(), 5);
+        assert_eq!(page3.next_cursor, None);
+        assert_eq!(page3.total_count, 15);
+        assert!(page3.is_last_page);
+
+        let mut combined = page1.items;
+        combined.extend(page2.items);
+        combined.extend(page3.items);
+        assert_eq!(combined, tracker.attempt_history());
+
+        // Out of bounds cursor check
+        let err = tracker.attempt_history_page(Some(50), 5).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds attempt history length"))
+        );
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn proptest_migration_cursor_roundtrip(
+            version in 1u32..=10,
+            checksum in "[0-9a-f]{16,64}",
+        ) {
+            let cursor = MigrationCursor::new(&checksum, version);
+            let encoded = cursor.encode();
+            let decoded = MigrationCursor::decode(&encoded).unwrap();
+            proptest::prop_assert_eq!(decoded, cursor);
+        }
+
+        #[test]
+        fn proptest_pagination_gap_free_partition(
+            count in 0usize..60,
+            page_limit in 0usize..30,
+        ) {
+            let snapshots: Vec<ExportSnapshot> = (0..count)
+                .map(|i| generic_snapshot(&format!("prop-partition-{i}")))
+                .collect();
+            let mut tracker = MigrationTracker::new();
+            for (i, snapshot) in snapshots.iter().enumerate() {
+                tracker.mark_imported(snapshot, (i as u64 + 1) * 10).unwrap();
+            }
+
+            let expected_records = tracker.imported_records();
+            let mut paged_records = Vec::new();
+            let mut cursor: Option<MigrationCursor> = None;
+
+            loop {
+                let page = tracker.imported_records_page(cursor.as_ref(), page_limit).unwrap();
+                paged_records.extend(page.items);
+                if page.is_last_page {
+                    proptest::prop_assert_eq!(page.next_cursor, None);
+                    break;
+                }
+                proptest::prop_assert!(page.next_cursor.is_some());
+                cursor = page.next_cursor;
+            }
+
+            proptest::prop_assert_eq!(paged_records, expected_records);
+        }
     }
 
     // ==================== SHARED TRACKER (CONCURRENCY FACADE) ====================
@@ -6413,6 +7069,7 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //
@@ -6442,7 +7099,10 @@ mod tests {
 
     #[test]
     fn test_is_legal_transition_none_to_in_progress_is_legal() {
-        assert!(is_legal_transition(None, MigrationAttemptStatus::InProgress));
+        assert!(is_legal_transition(
+            None,
+            MigrationAttemptStatus::InProgress
+        ));
     }
 
     #[test]
@@ -6837,9 +7497,7 @@ mod tests {
         tracker.begin_import(&active, 1_000).unwrap();
 
         // Progress against wrong snapshot identity
-        let err = tracker
-            .record_progress(&stale, 1, 1_100)
-            .unwrap_err();
+        let err = tracker.record_progress(&stale, 1, 1_100).unwrap_err();
         assert_eq!(err, MigrationError::StaleMigrationAttempt);
 
         // Active attempt must be preserved in InProgress
@@ -6922,9 +7580,7 @@ mod tests {
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
         let mut tracker = MigrationTracker::new();
 
-        let err = tracker
-            .record_progress(&snapshot, 1, 1_000)
-            .unwrap_err();
+        let err = tracker.record_progress(&snapshot, 1, 1_000).unwrap_err();
         assert_eq!(
             err,
             MigrationError::NoMigrationInProgress,

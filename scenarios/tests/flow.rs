@@ -190,7 +190,10 @@ fn test_recurring_obligations_flow() {
     // The cross-contract epoch guard on `pay_bill` requires a trusted
     // orchestrator (epoch 0 is the default for a fresh contract).
     let orchestrator = Address::generate(&env);
-    bill_payments.init_admin(&admin, &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS);
+    bill_payments.init_admin(
+        &admin,
+        &bill_payments::DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
+    );
     bill_payments.set_trusted_orchestrator(&admin, &orchestrator);
 
     // Initialize Reporting with the designated admin address (Requirement 1.2).

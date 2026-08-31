@@ -9,8 +9,8 @@ use remitwise_common::{
     bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
     guard_cross_contract_read, require_matching_cross_contract_epoch, set_trusted_orchestrator,
     CrossContractEpochError, EventCategory, EventPriority, FamilyRole, RemitwiseEvents,
-    RoleGrantedEvent, RoleRevokedEvent, TrustedOrchestratorError, CONTRACT_VERSION,
-    SNAPSHOT_KEY, SNAPSHOT_VERSION, STROOPS_PER_XLM,
+    RoleGrantedEvent, RoleRevokedEvent, TrustedOrchestratorError, CONTRACT_VERSION, SNAPSHOT_KEY,
+    SNAPSHOT_VERSION, STROOPS_PER_XLM,
 };
 
 // Storage TTL constants for active data

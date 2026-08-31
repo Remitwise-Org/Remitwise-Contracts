@@ -240,13 +240,19 @@ let snapshot = tracker.import_from_json(&json_bytes, timestamp_ms)?;
 | `Err(_)` validation/size/version | Permanent rejection, tracker untouched | No — fix the payload first |
 | After `restore_rollback` | Failed identity un-marked | Yes — the only retryable path |
 
-**Deterministic, gap-free reconciliation:** `imported_records()` enumerates every
+**Deterministic, gap-free reconciliation & pagination:** `imported_records()` enumerates every
 applied identity exactly once, sorted by `(checksum, version)`, regardless of
 application order or thread scheduling; a record exists iff a fully validated
-import committed. Tracker serialization (bincode) is byte-deterministic
-(`BTreeMap` storage), so persisted reconciliation artifacts are diffable across
-runs and upgrades. See [`docs/DATA_MIGRATION_CONCURRENCY.md`](../docs/DATA_MIGRATION_CONCURRENCY.md)
-for the full design, invariant list, failure behavior, and compatibility notes.
+import committed.
+
+For large datasets, [`MigrationTracker::imported_records_page`] and [`SharedMigrationTracker::imported_records_page`]
+provide deterministic, paginated querying using typed, scope-safe [`MigrationCursor`] tokens (`mc:v1:<version>:<checksum>`).
+Page limits are normalized via [`clamp_migration_limit`] (default 20, max 100).
+Snapshot logical records can similarly be paginated via [`ExportSnapshot::reconciliation_page`].
+
+Tracker serialization is byte-deterministic (`BTreeMap` storage), so persisted reconciliation
+artifacts are diffable across runs and upgrades. See [`docs/PAGINATION_CURSOR_SEMANTICS.md`](../docs/PAGINATION_CURSOR_SEMANTICS.md)
+and [`docs/DATA_MIGRATION_CONCURRENCY.md`](../docs/DATA_MIGRATION_CONCURRENCY.md) for full specifications.
 
 ## Data structures
 
@@ -294,6 +300,10 @@ is backwards-compatible; existing import and rollback helpers remain available.
 | `InvalidFormat` | CSV or serialisation format error |
 | `DeserializeError` | JSON/binary deserialisation failure |
 | `ValidationFailed` | Semantic invariant violated (percent sum ≠ 100, `next_id` wound back, `current_amount > target_amount`) |
+| `DuplicateImport` | Payload identity already recorded in tracker |
+| `InvalidCursor` | Pagination cursor is malformed, has invalid prefix, or contains invalid hex characters |
+| `AttemptHistoryLimitExceeded` | Attempt history reached capacity cap (`MAX_MIGRATION_ATTEMPT_HISTORY`) |
+| `MigrationNotCompleted` | Live write attempted before migration is explicitly marked complete |
 
 ## Security assumptions
 
