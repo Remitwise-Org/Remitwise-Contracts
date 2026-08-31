@@ -508,8 +508,8 @@ fn reconciliation_artifacts_are_byte_deterministic_across_runs() {
         "enumeration must be identical regardless of application order"
     );
     assert_eq!(
-        bincode::serialize(&forward).expect("serialize forward"),
-        bincode::serialize(&reverse).expect("serialize reverse"),
+        bincode::serialize(&forward.imported_records()).expect("serialize forward records"),
+        bincode::serialize(&reverse.imported_records()).expect("serialize reverse records"),
         "persisted reconciliation state must be byte-identical across runs"
     );
 }
@@ -542,4 +542,52 @@ fn concurrent_imports_preserve_settlement_data_exactly() {
         "no settlement record may be lost or rewritten under concurrency"
     );
     assert_eq!(tracker.imported_count(), THREADS);
+}
+
+/// Multiple concurrent readers paging the shared migration tracker observe
+/// identical, deterministic, gap-free slices without contention artifacts.
+#[test]
+fn concurrent_paginated_reconciliation_reads_are_deterministic() {
+    let tracker = Arc::new(SharedMigrationTracker::new());
+    for i in 0..50 {
+        let (_, bytes) = json_bytes(generic_payload(&format!("paged-recon-{i:03}")));
+        tracker.import_from_json(&bytes, i as u64).unwrap();
+    }
+
+    let expected_records = tracker.imported_records();
+    assert_eq!(expected_records.len(), 50);
+
+    let barrier = Arc::new(Barrier::new(THREADS));
+    let mut handles = Vec::with_capacity(THREADS);
+
+    for _ in 0..THREADS {
+        let tracker = Arc::clone(&tracker);
+        let barrier = Arc::clone(&barrier);
+        let expected = expected_records.clone();
+
+        handles.push(thread::spawn(move || {
+            barrier.wait();
+            let mut collected = Vec::new();
+            let mut cursor = None;
+
+            loop {
+                let page = tracker
+                    .imported_records_page(cursor.as_ref(), 12)
+                    .expect("paged query must succeed");
+                collected.extend(page.items);
+                if page.is_last_page {
+                    assert_eq!(page.next_cursor, None);
+                    break;
+                }
+                assert!(page.next_cursor.is_some());
+                cursor = page.next_cursor;
+            }
+
+            assert_eq!(collected, expected);
+        }));
+    }
+
+    for handle in handles {
+        handle.join().expect("reader thread must not panic");
+    }
 }

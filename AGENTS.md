@@ -63,3 +63,7 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `/savings_goals/src/lib.rs`: Added guard to 13 write entry points
 - `/orchestrator/src/lib.rs`: Added guard to 4 write entry points
 - `/reporting/src/lib.rs`: Added guard to 2 write entry points
+- `/data_migration/src/lib.rs`: Added `DEFAULT_MIGRATION_PAGE_LIMIT`, `MAX_MIGRATION_PAGE_LIMIT`, `clamp_migration_limit`, `MigrationCursor` (with `encode`/`decode` for `mc:v1:<version>:<checksum_hex>`), `ImportRecord`, `ImportRecordPage`, `SnapshotReconciliationPage`, `MigrationAttemptPage`, `MigrationError::InvalidCursor(String)`, and implemented `imported_records_page`, `attempt_history_page` on `MigrationTracker` and `SharedMigrationTracker`, `reconciliation_page` on `ExportSnapshot`. Fixed unclosed bracket in `impl SharedMigrationTracker`. Added 10+ unit tests and 2 proptests.
+- `/data_migration/tests/concurrency_confilct.rs`: Added `concurrent_paginated_reconciliation_reads_are_deterministic` multi-threaded integration test.
+- `/docs/PAGINATION_CURSOR_SEMANTICS.md`: Added architectural specification for deterministic, gap-free pagination and cursor semantics.
+- `/data_migration/README.md`: Documented paginated reconciliation and error variants.
