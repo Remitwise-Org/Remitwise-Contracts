@@ -31,7 +31,7 @@ use remitwise_common::{
     set_trusted_orchestrator, CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{BillPaymentsReversible, ReversibleOpError},
     EventCategory, EventPriority, RemitwiseEvents, Timestamp, ARCHIVE_BUMP_AMOUNT,
-    ARCHIVE_LIFETIME_THRESHOLD, CONTRACT_VERSION, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT,
+    ARCHIVE_LIFETIME_THRESHOLD, DEFAULT_CURRENCY, INSTANCE_BUMP_AMOUNT,
     INSTANCE_LIFETIME_THRESHOLD, MAX_BATCH_SIZE, MAX_CURRENCY_LEN, MAX_SETTLEMENT_WINDOW_SECS,
     PERSISTENT_BUMP_AMOUNT, PERSISTENT_LIFETIME_THRESHOLD, SNAPSHOT_KEY, SNAPSHOT_VERSION,
 };
@@ -41,6 +41,9 @@ use soroban_sdk::{
 };
 
 mod state;
+
+pub const CONTRACT_VERSION: u32 = 2;
+pub const EVENT_VERSION: u32 = 1;
 
 
 /// Validates that a currency string consists entirely of ASCII alphabetic characters.
@@ -442,6 +445,16 @@ pub enum BillEvent {
     ScheduleModified = 9,
     ScheduleCancelled = 10,
     RecurringBillCreated = 11,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurringControlEvent {
+    pub version: u32,
+    pub seq: u64,
+    pub kind: Symbol,
+    pub actor: Option<Address>,
+    pub timestamp: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -1438,6 +1451,31 @@ impl BillPayments {
             .get(&symbol_short!("VERSION"))
             .unwrap_or(CONTRACT_VERSION)
     }
+
+    fn next_event_seq(env: &Env) -> u64 {
+        let prev: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("EV_SEQ"))
+            .unwrap_or(0);
+        let next = prev.saturating_add(1);
+        env.storage().instance().set(&symbol_short!("EV_SEQ"), &next);
+        next
+    }
+
+    fn emit_control_event(env: &Env, kind: Symbol, actor: Option<&Address>, timestamp: u64) {
+        let seq = Self::next_event_seq(env);
+        env.events().publish(
+            (symbol_short!("recurring"), symbol_short!("control")),
+            RecurringControlEvent {
+                version: EVENT_VERSION,
+                seq,
+                kind,
+                actor: actor.cloned(),
+                timestamp,
+            },
+        );
+    }
     fn get_upgrade_admin(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("UPG_ADM"))
     }
@@ -1842,8 +1880,10 @@ impl BillPayments {
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleCreated),
-            (next_schedule_id, owner),
+            (next_schedule_id, owner.clone()),
         );
+
+        Self::emit_control_event(env, symbol_short!("cre_sch"), Some(&owner), current_time);
 
         Ok(next_schedule_id)
     }
@@ -1864,6 +1904,49 @@ impl BillPayments {
         Self::modify_bill_schedule_core(&env, caller, schedule_id, amount, next_due, interval)
     }
 
+    pub fn modify_bill_schedule_keyed(
+        env: Env,
+        caller: Address,
+        request_key: BytesN<32>,
+        schedule_id: u32,
+        amount: i128,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<bool, BillPaymentsError> {
+        caller.require_auth();
+        let request = BillPaymentRequest::ModifyBillSchedule(ModifyBillScheduleRequest {
+            caller: caller.clone(),
+            schedule_id,
+            amount,
+            next_due,
+            interval,
+        });
+        if let Some(result) = Self::lookup_request(&env, &caller, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::Bool(val) => Ok(val),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
+        let res = Self::modify_bill_schedule_core(&env, caller.clone(), schedule_id, amount, next_due, interval)?;
+        Self::commit_request(
+            &env,
+            &caller,
+            &request_key,
+            request,
+            BillPaymentResult::Bool(res),
+        );
+        Ok(res)
+    }
+
+    fn modify_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+        amount: i128,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<bool, BillPaymentsError> {
         // Shared exact-integer amount rules (sign + magnitude), before any
         // state change. The previous `amount <= 0` guard did not bound the
         // magnitude; an oversized amount could threaten per-owner totals.
@@ -1919,6 +2002,8 @@ impl BillPayments {
             schedule_id,
         );
 
+        Self::emit_control_event(env, symbol_short!("mod_sch"), Some(&caller), current_time);
+
         Ok(true)
     }
 
@@ -1935,15 +2020,50 @@ impl BillPayments {
         Self::cancel_bill_schedule_core(&env, caller, schedule_id)
     }
 
-        check_and_increment_rate_limit(
+    pub fn cancel_bill_schedule_keyed(
+        env: Env,
+        caller: Address,
+        request_key: BytesN<32>,
+        schedule_id: u32,
+    ) -> Result<bool, BillPaymentsError> {
+        caller.require_auth();
+        let request = BillPaymentRequest::CancelBillSchedule(BillScheduleTransitionRequest {
+            caller: caller.clone(),
+            schedule_id,
+        });
+        if let Some(result) = Self::lookup_request(&env, &caller, &request_key, &request)? {
+            return match result {
+                BillPaymentResult::Bool(val) => Ok(val),
+                _ => Err(BillPaymentsError::RequestKeyConflict),
+            };
+        }
+        Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
+        let res = Self::cancel_bill_schedule_core(&env, caller.clone(), schedule_id)?;
+        Self::commit_request(
             &env,
+            &caller,
+            &request_key,
+            request,
+            BillPaymentResult::Bool(res),
+        );
+        Ok(res)
+    }
+
+    fn cancel_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+    ) -> Result<bool, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
             &caller,
             pause_functions::CANCEL_BILL_SCHEDULE,
             CANCEL_SCHEDULE_RATE_LIMIT,
         )
         .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
-        Self::extend_instance_ttl(&env);
+        let current_time = env.ledger().timestamp();
+        Self::extend_instance_ttl(env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
@@ -1975,27 +2095,9 @@ impl BillPayments {
             schedule_id,
         );
 
-        Ok(true)
-    }
+        Self::emit_control_event(env, symbol_short!("can_sch"), Some(&caller), current_time);
 
-    /// Execute all due bill schedules in a permissionless, idempotent manner.
-    ///
-    /// # Idempotency
-    /// A schedule is skipped if its `last_executed` timestamp is >= its `next_due`
-    /// timestamp, preventing double-execution within the same ledger.
-    ///
-    /// # Next-due advancement
-    /// * Recurring schedules (`interval > 0`): `next_due` is advanced by `interval`
-    ///   until strictly greater than `current_time`, incrementing `missed_count`
-    ///   for each skipped interval.
-    /// * One-off schedules (`interval == 0`): deactivated after execution.
-    ///
-    /// # Returns
-    /// Vector of executed schedule IDs.
-    pub fn execute_due_bill_schedules(env: Env) -> Vec<u32> {
-        remitwise_common::require_no_active_kill_switch(&env)
-            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
-        Self::execute_due_bill_schedules_core(&env)
+        Ok(true)
     }
 
     pub fn execute_due_bill_schedules_keyed(
@@ -2019,7 +2121,7 @@ impl BillPayments {
         }
         remitwise_common::require_no_active_kill_switch(&env)
             .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
-        let executed = Self::execute_due_bill_schedules_core(&env);
+        let executed = Self::execute_due_bill_schedules_core(&env, Some(&executor));
         Self::commit_request(
             &env,
             &executor,
@@ -2030,7 +2132,13 @@ impl BillPayments {
         Ok(executed)
     }
 
-    fn execute_due_bill_schedules_core(env: &Env) -> Vec<u32> {
+    pub fn execute_due_bill_schedules(env: Env) -> Vec<u32> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|_| panic!("cannot write: kill switch is active"));
+        Self::execute_due_bill_schedules_core(&env, None)
+    }
+
+    fn execute_due_bill_schedules_core(env: &Env, actor: Option<&Address>) -> Vec<u32> {
         Self::extend_instance_ttl(env);
 
         if Self::get_global_paused(env) {
@@ -2231,6 +2339,10 @@ impl BillPayments {
         env.storage()
             .instance()
             .set(&symbol_short!("NEXT_ID"), &next_id);
+
+        if !executed.is_empty() {
+            Self::emit_control_event(env, symbol_short!("exe_sch"), actor, current_time);
+        }
 
         executed
     }
@@ -2613,6 +2725,10 @@ impl BillPayments {
             (next_id, bill_owner, amount, due_date),
         );
 
+        if recurring {
+            Self::emit_control_event(env, symbol_short!("cre_rec"), Some(&owner), current_time);
+        }
+
         Ok(next_id)
     }
 
@@ -2843,8 +2959,12 @@ impl BillPayments {
             EventCategory::Transaction,
             EventPriority::High,
             symbol_short!("paid"),
-            (bill_id, caller, paid_amount),
+            (bill_id, caller.clone(), paid_amount),
         );
+
+        if bill.recurring {
+            Self::emit_control_event(env, symbol_short!("pay_rec"), Some(&caller), current_time);
+        }
 
         Ok(AtomicPayReceipt {
             bill_id,
