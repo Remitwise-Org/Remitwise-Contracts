@@ -113,11 +113,9 @@ pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, Mig
         let record: CsvGoalRow =
             result.map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
 
-        if record.target_amount < 0 || record.current_amount < 0 {
-            return Err(MigrationError::ValidationFailed(
-                "negative amounts are not allowed".into(),
-            ));
-        }
+        // Validate amounts using the shared precision/overflow checks.
+        super::validate_amount("target_amount", record.target_amount)?;
+        super::validate_amount("current_amount", record.current_amount)?;
 
         goals.push(SavingsGoalExport {
             id: record.id,
