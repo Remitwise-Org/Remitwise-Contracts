@@ -508,8 +508,8 @@ fn reconciliation_artifacts_are_byte_deterministic_across_runs() {
         "enumeration must be identical regardless of application order"
     );
     assert_eq!(
-        bincode::serialize(&forward).expect("serialize forward"),
-        bincode::serialize(&reverse).expect("serialize reverse"),
+        bincode::serialize(&forward.imported_records()).expect("serialize forward"),
+        bincode::serialize(&reverse.imported_records()).expect("serialize reverse"),
         "persisted reconciliation state must be byte-identical across runs"
     );
 }

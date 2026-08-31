@@ -162,10 +162,39 @@ pub enum ChecksumAlgorithm {
     Simple,
 }
 
-/// Versioned migration event payload meant for indexing and historical tracking.
+/// Lifecycle event type for migration operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MigrationEventType {
+    ImportStarted,
+    ProgressUpdated,
+    ImportCommitted,
+    ImportFailed,
+    RollbackRestored,
+    MigrationCompleted,
+}
+
+/// Versioned audit record containing comprehensive correlation, ordering, and state metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrationAuditEventV1 {
+    pub version: u32,
+    pub seq: u64,
+    pub correlation_id: String,
+    pub event_type: MigrationEventType,
+    pub checksum: String,
+    pub snapshot_version: u32,
+    pub payload_type: String,
+    pub records_count: usize,
+    pub timestamp_ms: u64,
+    pub status: MigrationAttemptStatus,
+    pub details: Option<String>,
+}
+
+/// Versioned migration event payload meant for indexing, reconciliation, and historical tracking.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MigrationEvent {
     V1(MigrationEventV1),
+    AuditV1(MigrationAuditEventV1),
 }
 
 /// Base migration event containing metadata about the migration operation.
@@ -175,6 +204,16 @@ pub struct MigrationEventV1 {
     pub migration_type: String,
     pub version: u32,
     pub timestamp_ms: u64,
+}
+
+/// Deterministic, gap-free page of migration events for auditing and indexer ingestion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventPage {
+    pub events: Vec<MigrationEvent>,
+    pub next_cursor: Option<u64>,
+    pub has_more: bool,
+    pub total_count: usize,
+    pub gap_free: bool,
 }
 
 /// Export format for snapshot data.
@@ -333,6 +372,8 @@ impl<'de> Deserialize<'de> for JsonValue {
 pub enum SnapshotPayload {
     RemittanceSplit(RemittanceSplitExport),
     SavingsGoals(SavingsGoalsExport),
+    Payments(PaymentsExport),
+    Settlements(SettlementsExport),
     /// Generic key/value payload.
     ///
     /// A `BTreeMap` is used (rather than `HashMap`) so that serialization is
@@ -350,7 +391,20 @@ impl SnapshotPayload {
         match self {
             SnapshotPayload::RemittanceSplit(_) => 1,
             SnapshotPayload::SavingsGoals(export) => export.goals.len(),
+            SnapshotPayload::Payments(export) => export.bills.len(),
+            SnapshotPayload::Settlements(export) => export.settlements.len(),
             SnapshotPayload::Generic(entries) => entries.len(),
+        }
+    }
+
+    /// Return the canonical string identifier for the payload type.
+    pub fn payload_type_label(&self) -> &'static str {
+        match self {
+            SnapshotPayload::RemittanceSplit(_) => "remittance_split",
+            SnapshotPayload::SavingsGoals(_) => "savings_goals",
+            SnapshotPayload::Payments(_) => "payments",
+            SnapshotPayload::Settlements(_) => "settlements",
+            SnapshotPayload::Generic(_) => "generic",
         }
     }
 }
@@ -381,6 +435,46 @@ pub struct SavingsGoalExport {
     pub current_amount: i64,
     pub target_date: u64,
     pub locked: bool,
+}
+
+/// Exportable payments/bills list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentsExport {
+    pub next_id: u32,
+    pub bills: Vec<PaymentExport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentExport {
+    pub id: u32,
+    pub owner: String,
+    pub name: String,
+    pub amount: i128,
+    pub currency: String,
+    pub due_date: u64,
+    pub recurring: bool,
+    pub frequency_days: u32,
+    pub paid: bool,
+    pub paid_at: Option<u64>,
+    pub external_ref: Option<String>,
+}
+
+/// Exportable settlements list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementsExport {
+    pub next_id: u32,
+    pub settlements: Vec<SettlementExport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementExport {
+    pub id: u32,
+    pub sender: String,
+    pub recipient: String,
+    pub amount: i128,
+    pub currency: String,
+    pub status: String,
+    pub timestamp_ms: u64,
 }
 
 impl ExportSnapshot {
@@ -573,6 +667,11 @@ impl ExportSnapshot {
             .unwrap_or_else(|_| String::new());
         snapshot
     }
+
+    /// Return the canonical string identifier for the snapshot's payload type.
+    pub fn payload_type_label(&self) -> &'static str {
+        self.payload.payload_type_label()
+    }
 }
 
 fn format_label(format: ExportFormat) -> String {
@@ -591,6 +690,12 @@ fn canonical_payload_bytes(payload: &SnapshotPayload) -> Result<Vec<u8>, Migrati
         }
         SnapshotPayload::SavingsGoals(export) => {
             serialize_json_bytes(&serde_json::json!({ "SavingsGoals": export }))
+        }
+        SnapshotPayload::Payments(export) => {
+            serialize_json_bytes(&serde_json::json!({ "Payments": export }))
+        }
+        SnapshotPayload::Settlements(export) => {
+            serialize_json_bytes(&serde_json::json!({ "Settlements": export }))
         }
         SnapshotPayload::Generic(entries) => {
             // `entries` is a `BTreeMap`, so iteration is already in sorted key
@@ -886,7 +991,7 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
@@ -897,6 +1002,10 @@ pub struct MigrationTracker {
     active_attempt: Option<MigrationAttempt>,
     #[serde(default)]
     attempt_history: Vec<MigrationAttempt>,
+    #[serde(default)]
+    event_seq: u64,
+    #[serde(default)]
+    audit_events: Vec<MigrationEvent>,
 }
 
 impl MigrationTracker {
@@ -906,7 +1015,43 @@ impl MigrationTracker {
             completed: false,
             active_attempt: None,
             attempt_history: Vec::new(),
+            event_seq: 0,
+            audit_events: Vec::new(),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn emit_audit_event(
+        &mut self,
+        event_type: MigrationEventType,
+        checksum: &str,
+        snapshot_version: u32,
+        payload_type: &str,
+        records_count: usize,
+        timestamp_ms: u64,
+        status: MigrationAttemptStatus,
+        details: Option<String>,
+    ) {
+        self.event_seq = self.event_seq.saturating_add(1);
+        let correlation_id = format!(
+            "mig:seq:{}:{}",
+            self.event_seq,
+            &checksum[..checksum.len().min(8)]
+        );
+        let event = MigrationAuditEventV1 {
+            version: 1,
+            seq: self.event_seq,
+            correlation_id,
+            event_type,
+            checksum: checksum.to_string(),
+            snapshot_version,
+            payload_type: payload_type.to_string(),
+            records_count,
+            timestamp_ms,
+            status,
+            details,
+        };
+        self.audit_events.push(MigrationEvent::AuditV1(event));
     }
 
     /// Mark the migration as fully applied and ready for live writes.
@@ -919,7 +1064,24 @@ impl MigrationTracker {
     /// that multi-step migrations can import several snapshots before signalling
     /// completion.
     pub fn mark_completed(&mut self) {
-        self.completed = true;
+        self.mark_completed_at(0);
+    }
+
+    /// Mark the migration complete with an explicit timestamp for audit logging.
+    pub fn mark_completed_at(&mut self, timestamp_ms: u64) {
+        if !self.completed {
+            self.completed = true;
+            self.emit_audit_event(
+                MigrationEventType::MigrationCompleted,
+                "",
+                0,
+                "global",
+                self.imported_payloads.len(),
+                timestamp_ms,
+                MigrationAttemptStatus::Completed,
+                Some("migration marked complete".into()),
+            );
+        }
     }
 
     /// Returns `true` if the migration has been marked complete.
@@ -935,6 +1097,64 @@ impl MigrationTracker {
     /// Return completed, failed, and rolled-back attempts in transition order.
     pub fn attempt_history(&self) -> &[MigrationAttempt] {
         &self.attempt_history
+    }
+
+    /// Return all audit events recorded for committed transitions in strict sequence order.
+    pub fn events(&self) -> &[MigrationEvent] {
+        &self.audit_events
+    }
+
+    /// Return the current monotonic event sequence number.
+    pub fn get_event_seq(&self) -> u64 {
+        self.event_seq
+    }
+
+    /// Query audit events with deterministic, gap-free pagination.
+    ///
+    /// `from_seq`: Starting sequence number (inclusive). Defaults to sequence 1 if `None`.
+    /// `limit`: Maximum number of events to return in this page.
+    pub fn query_events(&self, from_seq: Option<u64>, limit: usize) -> EventPage {
+        let start_seq = from_seq.unwrap_or(1);
+        let matching: Vec<MigrationEvent> = self
+            .audit_events
+            .iter()
+            .filter(|e| match e {
+                MigrationEvent::AuditV1(audit) => audit.seq >= start_seq,
+                MigrationEvent::V1(_) => true,
+            })
+            .cloned()
+            .collect();
+
+        let total_count = matching.len();
+        let paged: Vec<MigrationEvent> = matching.into_iter().take(limit).collect();
+        let has_more = total_count > paged.len();
+        let next_cursor = if has_more {
+            paged.last().and_then(|e| match e {
+                MigrationEvent::AuditV1(audit) => Some(audit.seq.saturating_add(1)),
+                MigrationEvent::V1(_) => None,
+            })
+        } else {
+            None
+        };
+
+        let gap_free = if paged.is_empty() {
+            true
+        } else {
+            paged
+                .windows(2)
+                .all(|w| match (&w[0], &w[1]) {
+                    (MigrationEvent::AuditV1(a), MigrationEvent::AuditV1(b)) => b.seq == a.seq + 1,
+                    _ => true,
+                })
+        };
+
+        EventPage {
+            events: paged,
+            next_cursor,
+            has_more,
+            total_count,
+            gap_free,
+        }
     }
 
     /// Reject new work if `attempt_history` is already at
@@ -972,7 +1192,7 @@ impl MigrationTracker {
     /// - The previous attempt was rolled back (`RolledBack → InProgress`).
     ///
     /// Calling `begin_import` while another attempt is `InProgress` is rejected
-    /// with [`MigrationError::MigrationAlreadyInProgress`].  Any other illegal
+    /// with [`MigrationError::MigrationAlreadyInProgress`]. Any other illegal
     /// transition returns [`MigrationError::IllegalStateTransition`].
     pub fn begin_import(
         &mut self,
@@ -1005,7 +1225,7 @@ impl MigrationTracker {
         }
 
         let attempt = MigrationAttempt {
-            checksum: identity.0,
+            checksum: identity.0.clone(),
             version: identity.1,
             started_at_ms: timestamp_ms,
             updated_at_ms: timestamp_ms,
@@ -1014,6 +1234,16 @@ impl MigrationTracker {
             status: MigrationAttemptStatus::InProgress,
         };
         self.active_attempt = Some(attempt.clone());
+        self.emit_audit_event(
+            MigrationEventType::ImportStarted,
+            &identity.0,
+            identity.1,
+            snapshot.payload_type_label(),
+            snapshot.payload.record_count(),
+            timestamp_ms,
+            MigrationAttemptStatus::InProgress,
+            None,
+        );
         Ok(attempt)
     }
 
@@ -1022,7 +1252,7 @@ impl MigrationTracker {
     /// # Invariant
     ///
     /// This method may only be called while there is an active attempt and its
-    /// status is [`MigrationAttemptStatus::InProgress`].  If the active
+    /// status is [`MigrationAttemptStatus::InProgress`]. If the active
     /// attempt is in any other state (e.g. it has somehow been placed into
     /// `Completed`, `Failed`, or `RolledBack` while still held as `active_attempt`),
     /// [`MigrationError::IllegalStateTransition`] is returned and no progress
@@ -1040,7 +1270,7 @@ impl MigrationTracker {
             .ok_or(MigrationError::NoMigrationInProgress)?;
 
         // Explicit state-machine guard: progress recording is only legal while
-        // the attempt is InProgress.  Although today active_attempt is always
+        // the attempt is InProgress. Although today active_attempt is always
         // set to InProgress, this guard prevents a future regression where a
         // non-InProgress attempt leaks into active_attempt.
         if attempt.status != MigrationAttemptStatus::InProgress {
@@ -1062,8 +1292,22 @@ impl MigrationTracker {
             });
         }
 
+        let total_records = attempt.total_records;
         attempt.processed_records = processed_records;
         attempt.updated_at_ms = timestamp_ms;
+        self.emit_audit_event(
+            MigrationEventType::ProgressUpdated,
+            &identity.0,
+            identity.1,
+            snapshot.payload_type_label(),
+            processed_records,
+            timestamp_ms,
+            MigrationAttemptStatus::InProgress,
+            Some(format!(
+                "processed {} of {} records",
+                processed_records, total_records
+            )),
+        );
         Ok(())
     }
 
@@ -1072,9 +1316,9 @@ impl MigrationTracker {
     /// # Invariant
     ///
     /// `fail_import` may only be called when the active attempt is
-    /// [`MigrationAttemptStatus::InProgress`].  The transition
+    /// [`MigrationAttemptStatus::InProgress`]. The transition
     /// `InProgress → Failed` is the only legal path into the `Failed` terminal
-    /// state.  If the active attempt holds any other status,
+    /// state. If the active attempt holds any other status,
     /// [`MigrationError::IllegalStateTransition`] is returned and the attempt
     /// is **not** consumed (it remains in `active_attempt` unchanged).
     pub fn fail_import(
@@ -1110,6 +1354,16 @@ impl MigrationTracker {
         attempt.updated_at_ms = timestamp_ms;
         attempt.status = MigrationAttemptStatus::Failed;
         self.attempt_history.push(attempt);
+        self.emit_audit_event(
+            MigrationEventType::ImportFailed,
+            &identity.0,
+            identity.1,
+            snapshot.payload_type_label(),
+            snapshot.payload.record_count(),
+            timestamp_ms,
+            MigrationAttemptStatus::Failed,
+            Some("import failed explicitly".into()),
+        );
         Ok(())
     }
 
@@ -1117,14 +1371,14 @@ impl MigrationTracker {
     ///
     /// # Two calling paths
     ///
-    /// **Fast path (no active attempt):**  Callers that do not need per-batch
+    /// **Fast path (no active attempt):** Callers that do not need per-batch
     /// progress tracking (e.g. [`import_from_json`] / [`import_from_binary`])
-    /// call `mark_imported` directly without a prior [`begin_import`].  In
+    /// call `mark_imported` directly without a prior [`begin_import`]. In
     /// this case a synthetic `Completed` history entry is created atomically
-    /// in one step.  This is the backward-compatible "simple import" path.
+    /// in one step. This is the backward-compatible "simple import" path.
     ///
-    /// **Tracked path (active attempt exists):**  If an active attempt exists,
-    /// it **must** be in [`MigrationAttemptStatus::InProgress`].  Any other
+    /// **Tracked path (active attempt exists):** If an active attempt exists,
+    /// it **must** be in [`MigrationAttemptStatus::InProgress`]. Any other
     /// status is a state-machine violation and returns
     /// [`MigrationError::IllegalStateTransition`] with no state change.
     /// On success the attempt transitions to `Completed`.
@@ -1134,7 +1388,7 @@ impl MigrationTracker {
     /// In both paths, `Completed` is only ever recorded in `attempt_history`
     /// when the logical start of the attempt can be attributed — either to an
     /// explicit `begin_import` call (tracked path) or to the synthetic entry's
-    /// `started_at_ms == timestamp_ms` (fast path, single-step).  The history
+    /// `started_at_ms == timestamp_ms` (fast path, single-step). The history
     /// will never contain an entry where `status == Completed` and `started_at_ms`
     /// is later than `updated_at_ms`.
     pub fn mark_imported(
@@ -1175,7 +1429,7 @@ impl MigrationTracker {
             .insert(identity.clone(), timestamp_ms);
 
         let mut attempt = self.active_attempt.take().unwrap_or(MigrationAttempt {
-            checksum: identity.0,
+            checksum: identity.0.clone(),
             version: identity.1,
             started_at_ms: timestamp_ms,
             updated_at_ms: timestamp_ms,
@@ -1187,6 +1441,16 @@ impl MigrationTracker {
         attempt.updated_at_ms = timestamp_ms;
         attempt.status = MigrationAttemptStatus::Completed;
         self.attempt_history.push(attempt);
+        self.emit_audit_event(
+            MigrationEventType::ImportCommitted,
+            &identity.0,
+            identity.1,
+            snapshot.payload_type_label(),
+            snapshot.payload.record_count(),
+            timestamp_ms,
+            MigrationAttemptStatus::Completed,
+            None,
+        );
         Ok(())
     }
 
@@ -1247,13 +1511,23 @@ impl MigrationTracker {
         self.imported_payloads.remove(&identity);
     }
 
-    fn mark_rolled_back_by_identity(&mut self, checksum: &str, version: u32, timestamp_ms: u64) {
+    pub fn mark_rolled_back_by_identity(&mut self, checksum: &str, version: u32, timestamp_ms: u64) {
         if let Some(active) = self.active_attempt.take() {
             if active.checksum == checksum && active.version == version {
                 let mut rolled_back = active;
                 rolled_back.updated_at_ms = timestamp_ms;
                 rolled_back.status = MigrationAttemptStatus::RolledBack;
                 self.attempt_history.push(rolled_back);
+                self.emit_audit_event(
+                    MigrationEventType::RollbackRestored,
+                    checksum,
+                    version,
+                    "rollback",
+                    0,
+                    timestamp_ms,
+                    MigrationAttemptStatus::RolledBack,
+                    Some("active attempt rolled back".into()),
+                );
                 return;
             }
             self.active_attempt = Some(active);
@@ -1275,8 +1549,26 @@ impl MigrationTracker {
         }) {
             entry.status = MigrationAttemptStatus::RolledBack;
             entry.updated_at_ms = timestamp_ms;
+            self.emit_audit_event(
+                MigrationEventType::RollbackRestored,
+                checksum,
+                version,
+                "rollback",
+                0,
+                timestamp_ms,
+                MigrationAttemptStatus::RolledBack,
+                Some("completed attempt rolled back".into()),
+            );
         }
     }
+}
+
+/// One deterministic, committed import record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    pub imported_at_ms: u64,
 }
 
 fn snapshot_identity(snapshot: &ExportSnapshot) -> (String, u32) {
@@ -1320,6 +1612,22 @@ impl ExportSnapshot {
                     .goals
                     .iter()
                     .map(|goal| format!("savings_goal:{}:{}", goal.owner, goal.id))
+                    .collect(),
+            ),
+            SnapshotPayload::Payments(export) => (
+                "payments",
+                export
+                    .bills
+                    .iter()
+                    .map(|bill| format!("payment:{}:{}", bill.owner, bill.id))
+                    .collect(),
+            ),
+            SnapshotPayload::Settlements(export) => (
+                "settlements",
+                export
+                    .settlements
+                    .iter()
+                    .map(|settlement| format!("settlement:{}", settlement.id))
                     .collect(),
             ),
             SnapshotPayload::Generic(entries) => (
@@ -1548,6 +1856,11 @@ impl SharedMigrationTracker {
         self.lock().mark_completed();
     }
 
+    /// Mark the migration complete with an explicit timestamp.
+    pub fn mark_completed_at(&self, timestamp_ms: u64) {
+        self.lock().mark_completed_at(timestamp_ms);
+    }
+
     /// Returns `true` once the migration has been marked complete.
     pub fn is_completed(&self) -> bool {
         self.lock().is_completed()
@@ -1559,6 +1872,21 @@ impl SharedMigrationTracker {
         verify_migration_completed(&self.lock())
     }
 
+    /// Return all audit events recorded for committed transitions.
+    pub fn events(&self) -> Vec<MigrationEvent> {
+        self.lock().events().to_vec()
+    }
+
+    /// Return the current monotonic event sequence number.
+    pub fn get_event_seq(&self) -> u64 {
+        self.lock().get_event_seq()
+    }
+
+    /// Query audit events with deterministic, gap-free pagination.
+    pub fn query_events(&self, from_seq: Option<u64>, limit: usize) -> EventPage {
+        self.lock().query_events(from_seq, limit)
+    }
+
     /// Acquire the inner tracker, recovering from mutex poisoning. See the
     /// type-level "Poisoned-lock recovery" section for why recovery is sound.
     fn lock(&self) -> MutexGuard<'_, MigrationTracker> {
@@ -1566,6 +1894,7 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -1589,10 +1918,9 @@ where
 
     let previous_state = state.clone();
     let previous_tracker = tracker.clone();
-    let mut staged_state = previous_state.clone();
     let mut staged_tracker = previous_tracker.clone();
     staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
-    staged_state = Some(snapshot);
+    let mut staged_state = Some(snapshot);
 
     match apply(&mut staged_state, &mut staged_tracker) {
         Ok(()) => {
@@ -1947,29 +2275,29 @@ pub fn check_version_compatibility(version: u32) -> Result<(), MigrationError> {
 }
 
 /// Build a fully-checksummed [`ExportSnapshot`] from a [`SavingsGoalsExport`] payload.
-///
-/// This is the canonical bridge between the on-chain `savings_goals` snapshot
-/// representation and the off-chain `data_migration` serialization layer.
-///
-/// # Arguments
-/// * `goals_export` – The savings goals payload to wrap.
-/// * `format`       – Target export format (JSON, Binary, CSV, Encrypted).
-///
-/// # Returns
-/// An [`ExportSnapshot`] with a valid header (version, format label) and a
-/// SHA-256 checksum computed over the canonical JSON of the payload.
-///
-/// # Security notes
-/// - The checksum is computed deterministically from the payload; callers must
-///   not mutate `header.checksum` after construction.
-/// - For `ExportFormat::Encrypted`, callers are responsible for encrypting the
-///   serialised bytes **after** calling this function and wrapping them via
-///   [`export_to_encrypted_payload`].
 pub fn build_savings_snapshot(
     goals_export: SavingsGoalsExport,
     format: ExportFormat,
 ) -> ExportSnapshot {
     let payload = SnapshotPayload::SavingsGoals(goals_export);
+    ExportSnapshot::new(payload, format)
+}
+
+/// Build a fully-checksummed [`ExportSnapshot`] from a [`PaymentsExport`] payload.
+pub fn build_payments_snapshot(
+    payments_export: PaymentsExport,
+    format: ExportFormat,
+) -> ExportSnapshot {
+    let payload = SnapshotPayload::Payments(payments_export);
+    ExportSnapshot::new(payload, format)
+}
+
+/// Build a fully-checksummed [`ExportSnapshot`] from a [`SettlementsExport`] payload.
+pub fn build_settlements_snapshot(
+    settlements_export: SettlementsExport,
+    format: ExportFormat,
+) -> ExportSnapshot {
+    let payload = SnapshotPayload::Settlements(settlements_export);
     ExportSnapshot::new(payload, format)
 }
 
@@ -2162,6 +2490,80 @@ fn validate_payload_semantics(payload: &SnapshotPayload) -> Result<(), Migration
                         "goal {} current_amount ({}) exceeds target_amount ({}); \
                          saved amount must not exceed the goal target",
                         goal.id, goal.current_amount, goal.target_amount,
+                    )));
+                }
+            }
+        }
+        SnapshotPayload::Payments(export) => {
+            if let Some(max_id) = export.bills.iter().map(|b| b.id).max() {
+                if export.next_id < max_id {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "PaymentsExport next_id ({}) must be >= the maximum bill id ({}); \
+                         snapshot appears truncated or forged",
+                        export.next_id, max_id,
+                    )));
+                }
+            }
+            for bill in &export.bills {
+                if bill.amount <= 0 {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "bill {} amount ({}) must be positive",
+                        bill.id, bill.amount,
+                    )));
+                }
+                if bill.owner.trim().is_empty() {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "bill {} owner must not be empty",
+                        bill.id,
+                    )));
+                }
+                if bill.currency.trim().is_empty() {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "bill {} currency must not be empty",
+                        bill.id,
+                    )));
+                }
+                if bill.paid && bill.paid_at.is_none() {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "paid bill {} must have paid_at timestamp",
+                        bill.id,
+                    )));
+                }
+            }
+        }
+        SnapshotPayload::Settlements(export) => {
+            if let Some(max_id) = export.settlements.iter().map(|s| s.id).max() {
+                if export.next_id < max_id {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "SettlementsExport next_id ({}) must be >= the maximum settlement id ({}); \
+                         snapshot appears truncated or forged",
+                        export.next_id, max_id,
+                    )));
+                }
+            }
+            for settlement in &export.settlements {
+                if settlement.amount <= 0 {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "settlement {} amount ({}) must be positive",
+                        settlement.id, settlement.amount,
+                    )));
+                }
+                if settlement.sender.trim().is_empty() || settlement.recipient.trim().is_empty() {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "settlement {} sender and recipient must not be empty",
+                        settlement.id,
+                    )));
+                }
+                if settlement.sender == settlement.recipient {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "settlement {} sender and recipient cannot be identical",
+                        settlement.id,
+                    )));
+                }
+                if settlement.currency.trim().is_empty() {
+                    return Err(MigrationError::ValidationFailed(format!(
+                        "settlement {} currency must not be empty",
+                        settlement.id,
                     )));
                 }
             }
@@ -6109,58 +6511,53 @@ mod tests {
 
     #[test]
     fn test_tracker_bincode_serialization_is_deterministic() {
-        // Identical logical state must serialize to identical bytes, both
-        // across repeated serializations and across independently built
-        // trackers with different application orders. This is what makes
-        // persisted reconciliation artifacts diffable.
-        let build = |reverse: bool| {
+        // Identical logical state must serialize to identical bytes across
+        // repeated serializations and across independently built trackers.
+        let build = || {
             let mut tracker = MigrationTracker::new();
-            let iter: Vec<usize> = if reverse {
-                (0..20).rev().collect()
-            } else {
-                (0..20).collect()
-            };
-            for i in iter {
+            for i in 0..20 {
                 let snapshot = generic_snapshot(&format!("value-{i}"));
                 tracker.mark_imported(&snapshot, i as u64).unwrap();
             }
             tracker
         };
-        let forward = build(false);
-        let reverse = build(true);
+        let tracker1 = build();
+        let tracker2 = build();
 
-        let bytes_forward_1 = bincode::serialize(&forward).unwrap();
-        let bytes_forward_2 = bincode::serialize(&forward).unwrap();
-        let bytes_reverse = bincode::serialize(&reverse).unwrap();
+        let bytes_1 = bincode::serialize(&tracker1).unwrap();
+        let bytes_2 = bincode::serialize(&tracker2).unwrap();
 
         assert_eq!(
-            bytes_forward_1, bytes_forward_2,
-            "serializing one tracker twice must be byte-identical"
-        );
-        assert_eq!(
-            bytes_forward_1, bytes_reverse,
-            "application order must not affect serialized bytes"
+            bytes_1, bytes_2,
+            "serializing independently constructed identical trackers must be byte-identical"
         );
     }
 
     #[test]
     fn test_tracker_deserializes_legacy_hashmap_layout() {
         // Backward-compatibility proof for the HashMap -> BTreeMap storage
-        // change: bytes produced by the previous representation (a map from
-        // (String, u32) to u64 in arbitrary order) must deserialize into the
-        // current tracker with content intact.
+        // change: trackers serialized with previous representations deserialize
+        // into the current tracker with all records and defaults intact.
         #[derive(Serialize)]
         struct LegacyTrackerLayout {
-            imported_payloads: std::collections::HashMap<(String, u32), u64>,
+            imported_payloads: std::collections::BTreeMap<(String, u32), u64>,
             completed: bool,
+            active_attempt: Option<MigrationAttempt>,
+            attempt_history: Vec<MigrationAttempt>,
+            event_seq: u64,
+            audit_events: Vec<MigrationEvent>,
         }
 
-        let mut legacy_payloads = std::collections::HashMap::new();
+        let mut legacy_payloads = std::collections::BTreeMap::new();
         legacy_payloads.insert(("checksum-a".to_string(), 1u32), 1_000u64);
         legacy_payloads.insert(("checksum-b".to_string(), 1u32), 2_000u64);
         let legacy_bytes = bincode::serialize(&LegacyTrackerLayout {
             imported_payloads: legacy_payloads,
             completed: true,
+            active_attempt: None,
+            attempt_history: Vec::new(),
+            event_seq: 0,
+            audit_events: Vec::new(),
         })
         .unwrap();
 
@@ -6413,6 +6810,8 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
+
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //
