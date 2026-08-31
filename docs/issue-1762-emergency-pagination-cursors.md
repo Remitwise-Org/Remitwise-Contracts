@@ -11,7 +11,7 @@ and scope-safe.
 
 ### 1. New Error Variant
 
-- `InvalidCursor = 20` — reserved for future use when cursor validation is
+- `InvalidCursor = 21` — reserved for future use when cursor validation is
   strictly enforced. Currently, out-of-range cursors return an empty result
   (graceful degradation per the bill_payments pagination pattern).
 
@@ -80,7 +80,7 @@ functions for consistent behavior.
 - **`list_paused_functions` is preserved** — `list_paused_functions_page` is a
   new additive function, not a replacement.
 - **No migration required.** New functions read existing storage layout.
-- **`InvalidCursor` error variant** is reserved for future strict cursor
+- **`InvalidCursor` error variant** (`21`) is reserved for future strict cursor
   validation; currently unused by the paginated functions.
 
 ## Security Assumptions

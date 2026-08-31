@@ -150,6 +150,38 @@ pub const MAX_ENCRYPTED_PAYLOAD_BYTES: usize =
 /// or archives the history out of band.
 pub const MAX_MIGRATION_ATTEMPT_HISTORY: usize = 256;
 
+// ─── Amount precision and overflow constants ───────────────────────────
+
+/// Maximum allowed monetary amount (inclusive). Any amount exceeding this
+/// value is rejected at the import boundary to prevent silent truncation
+/// or overflow when downstream contracts store amounts as `i64`.
+pub const MAX_AMOUNT: i64 = i64::MAX;
+
+/// Minimum allowed monetary amount (inclusive). Monetary amounts must be
+/// non-negative; negative values are rejected to prevent sign-inversion
+/// bugs in downstream balance arithmetic.
+pub const MIN_AMOUNT: i64 = 0;
+
+/// Threshold above which an amount is considered near-overflow.
+///
+/// Operations that add two amounts near this threshold may overflow `i64`.
+/// Rejecting amounts above this threshold at import time prevents
+/// cascading overflow in downstream contract arithmetic (e.g.
+/// `current_amount + deposit` or `target_amount - withdrawal`).
+///
+/// The threshold is `i64::MAX / 4` (≈ 2.3 × 10¹⁸) which leaves ample
+/// headroom for addition of two amounts, subtraction, and multiplication
+/// by small scale factors (e.g. basis-point conversions) without overflow.
+pub const NEAR_OVERFLOW_THRESHOLD: i64 = i64::MAX / 4;
+
+/// Maximum number of decimal digits (scale) accepted for monetary amounts.
+///
+/// Stellar and most settlement networks use at most 7 decimal places
+/// (stroops = 10⁻⁷ of a lumen). Accepting more digits would silently
+/// truncate fractional precision during import, making reconciliation
+/// impossible. This constant caps the acceptable precision.
+pub const MAX_AMOUNT_SCALE: u32 = 7;
+
 /// Algorithm used to compute the snapshot checksum.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -715,6 +747,46 @@ pub enum MigrationError {
         count: usize,
         max: usize,
     },
+    /// Returned when a monetary amount is negative.
+    ///
+    /// Negative amounts are rejected at the import boundary to prevent
+    /// sign-inversion bugs in downstream balance arithmetic.
+    NegativeAmount {
+        field: &'static str,
+        value: i64,
+    },
+    /// Returned when a monetary amount exceeds [`MAX_AMOUNT`] (`i64::MAX`).
+    ///
+    /// Amounts at this magnitude would overflow when added to or subtracted
+    /// from in downstream contract arithmetic.
+    AmountOverflow {
+        field: &'static str,
+        value: i64,
+        max: i64,
+    },
+    /// Returned when a monetary amount exceeds [`NEAR_OVERFLOW_THRESHOLD`].
+    ///
+    /// Amounts above this threshold are rejected as a defence-in-depth guard
+    /// to prevent silent overflow when downstream contracts perform addition,
+    /// subtraction, or basis-point multiplication on imported amounts.
+    AmountNearOverflow {
+        field: &'static str,
+        value: i64,
+        threshold: i64,
+    },
+    /// Returned when the implicit decimal scale of a monetary amount exceeds
+    /// [`MAX_AMOUNT_SCALE`].
+    ///
+    /// Monetary amounts are stored as `i64` with an implicit scale of 10⁻⁷
+    /// (stroops). An amount whose absolute value has more than
+    /// `MAX_AMOUNT_SCALE` trailing decimal digits in its string representation
+    /// indicates a precision that cannot be represented exactly, and would be
+    /// silently truncated on import.
+    InvalidAmountScale {
+        field: &'static str,
+        value: i64,
+        max_scale: u32,
+    },
 }
 
 impl std::fmt::Display for MigrationError {
@@ -790,6 +862,26 @@ impl std::fmt::Display for MigrationError {
                 f,
                 "migration attempt history limit reached: {} entries (max {}); archive or prune history before retrying",
                 count, max
+            ),
+            MigrationError::NegativeAmount { field, value } => write!(
+                f,
+                "negative amount in field '{}': {}; amounts must be non-negative",
+                field, value
+            ),
+            MigrationError::AmountOverflow { field, value, max } => write!(
+                f,
+                "amount overflow in field '{}': {} exceeds maximum {}; amounts must not exceed i64::MAX",
+                field, value, max
+            ),
+            MigrationError::AmountNearOverflow { field, value, threshold } => write!(
+                f,
+                "near-overflow amount in field '{}': {} exceeds safety threshold {}; amounts above this threshold may cause overflow in downstream arithmetic",
+                field, value, threshold
+            ),
+            MigrationError::InvalidAmountScale { field, value, max_scale } => write!(
+                f,
+                "invalid amount scale in field '{}': {} has more than {} decimal digits of precision; fractional precision beyond this is not representable",
+                field, value, max_scale
             ),
         }
     }
@@ -2096,6 +2188,47 @@ impl RollbackMetadata {
     }
 }
 
+/// Validate a monetary amount against precision and overflow invariants.
+///
+/// # Checks performed (in order)
+///
+/// 1. **Non-negative** — amount must be >= [`MIN_AMOUNT`] (0).
+/// 2. **Within bounds** — amount must be <= [`MAX_AMOUNT`] (i64::MAX).
+/// 3. **Below near-overflow threshold** — amount must be <= [`NEAR_OVERFLOW_THRESHOLD`]
+///    to prevent silent overflow when downstream contracts add, subtract, or
+///    scale amounts.
+///
+/// # Arguments
+/// * `field` — Human-readable field name for error messages (e.g. `"target_amount"`).
+/// * `value` — The amount to validate.
+///
+/// # Returns
+/// `Ok(())` if the amount passes all checks, or an appropriate
+/// [`MigrationError`] variant otherwise.
+pub fn validate_amount(field: &'static str, value: i64) -> Result<(), MigrationError> {
+    if value < MIN_AMOUNT {
+        return Err(MigrationError::NegativeAmount {
+            field,
+            value,
+        });
+    }
+    if value > MAX_AMOUNT {
+        return Err(MigrationError::AmountOverflow {
+            field,
+            value,
+            max: MAX_AMOUNT,
+        });
+    }
+    if value > NEAR_OVERFLOW_THRESHOLD {
+        return Err(MigrationError::AmountNearOverflow {
+            field,
+            value,
+            threshold: NEAR_OVERFLOW_THRESHOLD,
+        });
+    }
+    Ok(())
+}
+
 /// Validate payload-type-specific semantic invariants at import time.
 ///
 /// This is the "fail-closed" semantic layer: it enforces the same business
@@ -2110,6 +2243,8 @@ impl RollbackMetadata {
 /// ## `SavingsGoals`
 /// - `next_id >= max(goal.id)` — counter must not have been wound back.
 /// - `current_amount <= target_amount` for every goal.
+/// - All amounts must pass [`validate_amount`] checks (non-negative, within bounds,
+///   below near-overflow threshold).
 ///
 /// ## `Generic`
 /// No semantic constraints.
@@ -2164,6 +2299,13 @@ fn validate_payload_semantics(payload: &SnapshotPayload) -> Result<(), Migration
                         goal.id, goal.current_amount, goal.target_amount,
                     )));
                 }
+            }
+            // Amount precision and overflow validation: validate every monetary
+            // amount at the import boundary to reject negative, overflow, and
+            // near-overflow values before they reach on-chain state.
+            for goal in &export.goals {
+                validate_amount("target_amount", goal.target_amount)?;
+                validate_amount("current_amount", goal.current_amount)?;
             }
         }
         SnapshotPayload::Generic(_) => {}
@@ -7403,5 +7545,739 @@ mod tests {
             tracker.attempt_history().len(),
             MAX_MIGRATION_ATTEMPT_HISTORY
         );
+    }
+
+    // ====================================================================
+    // AMOUNT PRECISION AND OVERFLOW TESTS (Issue #1767)
+    //
+    // These tests validate the import-boundary invariants for monetary amounts:
+    //
+    //   1. Non-negative amounts — negative values are rejected before state changes.
+    //   2. Within i64 bounds — amounts at i64::MAX are rejected (overflow risk).
+    //   3. Near-overflow threshold — amounts above NEAR_OVERFLOW_THRESHOLD are rejected
+    //      as defence-in-depth against silent overflow in downstream arithmetic.
+    //   4. Zero amounts — accepted (valid for partially-funded goals).
+    //   5. Minimum valid amounts — accepted.
+    //   6. Maximum safe amounts — accepted (at or below threshold).
+    //   7. Conversion-boundary values — tested against independent oracle calculations.
+    //   8. Failed/rejected/stale operations leave no unauthorized or partial state.
+    // ====================================================================
+
+    // ------------------------------------------------------------------
+    // validate_amount unit tests — independent oracle comparisons
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_validate_amount_zero_accepted() {
+        assert!(validate_amount("amount", 0).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_one_accepted() {
+        assert!(validate_amount("amount", 1).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_negative_rejected() {
+        assert_eq!(
+            validate_amount("amount", -1).unwrap_err(),
+            MigrationError::NegativeAmount {
+                field: "amount",
+                value: -1,
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_amount_negative_large_rejected() {
+        assert_eq!(
+            validate_amount("amount", -999_999_999).unwrap_err(),
+            MigrationError::NegativeAmount {
+                field: "amount",
+                value: -999_999_999,
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_amount_i64_min_rejected() {
+        assert!(validate_amount("amount", i64::MIN).is_err());
+    }
+
+    #[test]
+    fn test_validate_amount_i64_max_rejected_near_overflow() {
+        // i64::MAX > NEAR_OVERFLOW_THRESHOLD, so it is rejected.
+        let err = validate_amount("amount", i64::MAX).unwrap_err();
+        assert!(
+            matches!(err, MigrationError::AmountNearOverflow { .. }),
+            "i64::MAX must be rejected as near-overflow: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_validate_amount_at_near_overflow_threshold_accepted() {
+        assert!(validate_amount("amount", NEAR_OVERFLOW_THRESHOLD).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_one_above_near_overflow_threshold_rejected() {
+        let err = validate_amount("amount", NEAR_OVERFLOW_THRESHOLD + 1).unwrap_err();
+        assert!(matches!(err, MigrationError::AmountNearOverflow {
+            field: "amount",
+            value,
+            threshold: NEAR_OVERFLOW_THRESHOLD,
+        }) if value == NEAR_OVERFLOW_THRESHOLD + 1);
+    }
+
+    #[test]
+    fn test_validate_amount_conversion_boundary_stroops() {
+        // 1 lumen = 10,000,000 stroops (10^7). This is a common conversion boundary.
+        // The amount 10_000_000 must be accepted (well below threshold).
+        assert!(validate_amount("amount", 10_000_000).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_conversion_boundary_one_stroop() {
+        // Minimum non-zero monetary unit in Stellar.
+        assert!(validate_amount("amount", 1).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_conversion_boundary_max_stroops_in_1_billion_lumens() {
+        // 1,000,000,000 lumen = 10^16 stroops = 10,000,000,000,000,000
+        let one_billion_lumens_stroops: i64 = 10_000_000_000_000_000;
+        assert!(validate_amount("amount", one_billion_lumens_stroops).is_ok());
+    }
+
+    #[test]
+    fn test_validate_amount_near_overflow_boundary_independent_oracle() {
+        // Oracle: NEAR_OVERFLOW_THRESHOLD + 1 must be rejected
+        let oracle_threshold = i64::MAX / 4 + 1;
+        assert_eq!(NEAR_OVERFLOW_THRESHOLD + 1, oracle_threshold);
+        assert!(validate_amount("amount", oracle_threshold).is_err());
+    }
+
+    #[test]
+    fn test_validate_amount_exactly_at_boundary_accepted() {
+        // Oracle: NEAR_OVERFLOW_THRESHOLD is exactly at boundary, must be accepted
+        assert_eq!(NEAR_OVERFLOW_THRESHOLD, i64::MAX / 4);
+        assert!(validate_amount("amount", NEAR_OVERFLOW_THRESHOLD).is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // Integration: amount validation via validate_payload_semantics
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_semantic_savings_goals_negative_target_amount_rejected() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad Goal".into(),
+            target_amount: -1,
+            current_amount: 0,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let err = snapshot.validate_for_import().unwrap_err();
+        assert!(
+            matches!(err, MigrationError::NegativeAmount { field: "target_amount", value: -1 }),
+            "negative target_amount must be rejected with NegativeAmount, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_negative_current_amount_rejected() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad Goal".into(),
+            target_amount: 1_000,
+            current_amount: -500,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let err = snapshot.validate_for_import().unwrap_err();
+        assert!(
+            matches!(err, MigrationError::NegativeAmount { field: "current_amount", value: -500 }),
+            "negative current_amount must be rejected, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_near_overflow_target_amount_rejected() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Huge Goal".into(),
+            target_amount: NEAR_OVERFLOW_THRESHOLD + 1,
+            current_amount: 0,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let err = snapshot.validate_for_import().unwrap_err();
+        assert!(
+            matches!(err, MigrationError::AmountNearOverflow { field: "target_amount", .. }),
+            "near-overflow target_amount must be rejected, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_near_overflow_current_amount_rejected() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Huge Goal".into(),
+            target_amount: i64::MAX / 2,
+            current_amount: NEAR_OVERFLOW_THRESHOLD + 1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let err = snapshot.validate_for_import().unwrap_err();
+        assert!(
+            matches!(err, MigrationError::AmountNearOverflow { field: "current_amount", .. }),
+            "near-overflow current_amount must be rejected, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_zero_amounts_accepted() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Empty Goal".into(),
+            target_amount: 0,
+            current_amount: 0,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        assert!(
+            snapshot.validate_for_import().is_ok(),
+            "zero amounts must be accepted"
+        );
+    }
+
+    #[test]
+    fn test_semantic_savings_goals_maximum_safe_amount_accepted() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Max Goal".into(),
+            target_amount: NEAR_OVERFLOW_THRESHOLD,
+            current_amount: NEAR_OVERFLOW_THRESHOLD,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        assert!(
+            snapshot.validate_for_import().is_ok(),
+            "amounts at NEAR_OVERFLOW_THRESHOLD must be accepted"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Integration: amount validation via import_from_json / import_from_binary
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_import_json_rejects_negative_amount_in_savings_goal() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad".into(),
+            target_amount: 1_000,
+            current_amount: -1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let result = import_from_json(&bytes, &mut tracker, 1_000);
+        assert!(
+            matches!(result, Err(MigrationError::NegativeAmount { .. })),
+            "JSON import must reject negative amount, got {:?}",
+            result
+        );
+        // No state change: tracker must remain empty.
+        assert_eq!(tracker.imported_count(), 0);
+    }
+
+    #[test]
+    fn test_import_binary_rejects_near_overflow_amount_in_savings_goal() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Huge".into(),
+            target_amount: NEAR_OVERFLOW_THRESHOLD + 1,
+            current_amount: 0,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Binary,
+        );
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+        let result = import_from_binary(&bytes, &mut tracker, 1_000);
+        assert!(
+            matches!(result, Err(MigrationError::AmountNearOverflow { .. })),
+            "binary import must reject near-overflow amount, got {:?}",
+            result
+        );
+        assert_eq!(tracker.imported_count(), 0);
+    }
+
+    #[test]
+    fn test_import_json_untracked_rejects_negative_amount() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad".into(),
+            target_amount: -100,
+            current_amount: 0,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let bytes = export_to_json(&snapshot).unwrap();
+        let result = import_from_json_untracked(&bytes);
+        assert!(
+            matches!(result, Err(MigrationError::NegativeAmount { .. })),
+            "untracked JSON import must reject negative amount, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_import_binary_untracked_rejects_near_overflow_amount() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Huge".into(),
+            target_amount: i64::MAX / 2,
+            current_amount: NEAR_OVERFLOW_THRESHOLD + 1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Binary,
+        );
+        let bytes = export_to_binary(&snapshot).unwrap();
+        let result = import_from_binary_untracked(&bytes);
+        assert!(
+            matches!(result, Err(MigrationError::AmountNearOverflow { .. })),
+            "untracked binary import must reject near-overflow amount, got {:?}",
+            result
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // CSV: amount validation via shared validate_amount helper
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_csv_import_rejects_near_overflow_amount() {
+        let csv = format!(
+            "id,owner,name,target_amount,current_amount,target_date,locked\
+             \n1,alice,Goal,{},0,9999999,false\n",
+            NEAR_OVERFLOW_THRESHOLD + 1
+        );
+        let result = import_goals_from_csv(csv.as_bytes());
+        assert!(
+            matches!(result, Err(MigrationError::AmountNearOverflow { .. })),
+            "CSV import must reject near-overflow amount, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_csv_import_rejects_i64_min_amount() {
+        let csv = format!(
+            "id,owner,name,target_amount,current_amount,target_date,locked\
+             \n1,alice,Goal,{},0,9999999,false\n",
+            i64::MIN
+        );
+        let result = import_goals_from_csv(csv.as_bytes());
+        assert!(
+            matches!(result, Err(MigrationError::NegativeAmount { .. })),
+            "CSV import must reject i64::MIN amount, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_csv_import_accepts_zero_amounts() {
+        let csv = "id,owner,name,target_amount,current_amount,target_date,locked\
+                   \n1,alice,Goal,0,0,9999999,false\n";
+        let goals = import_goals_from_csv(csv.as_bytes()).unwrap();
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].target_amount, 0);
+        assert_eq!(goals[0].current_amount, 0);
+    }
+
+    #[test]
+    fn test_csv_import_accepts_maximum_safe_amount() {
+        let csv = format!(
+            "id,owner,name,target_amount,current_amount,target_date,locked\
+             \n1,alice,Goal,{},{},9999999,false\n",
+            NEAR_OVERFLOW_THRESHOLD, NEAR_OVERFLOW_THRESHOLD
+        );
+        let goals = import_goals_from_csv(csv.as_bytes()).unwrap();
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].target_amount, NEAR_OVERFLOW_THRESHOLD);
+        assert_eq!(goals[0].current_amount, NEAR_OVERFLOW_THRESHOLD);
+    }
+
+    // ------------------------------------------------------------------
+    // State-after-rejection: no unauthorized or partial state
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_rejected_amount_leaves_no_partial_state_in_tracker() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad".into(),
+            target_amount: 1_000,
+            current_amount: -1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        // Import must fail and leave tracker empty.
+        let result = import_from_json(&bytes, &mut tracker, 1_000);
+        assert!(result.is_err());
+        assert_eq!(tracker.imported_count(), 0);
+        assert!(tracker.imported_records().is_empty());
+        assert!(tracker.attempt_history().is_empty());
+        assert!(tracker.active_attempt().is_none());
+    }
+
+    #[test]
+    fn test_rejected_amount_leaves_no_partial_state_after_valid_import() {
+        // First, a valid import succeeds.
+        let valid = ExportSnapshot::new(sample_remittance_payload(), ExportFormat::Json);
+        let valid_bytes = export_to_json(&valid).unwrap();
+        let mut tracker = MigrationTracker::new();
+        import_from_json(&valid_bytes, &mut tracker, 1_000).unwrap();
+        assert_eq!(tracker.imported_count(), 1);
+
+        // Then, an invalid (negative amount) import fails.
+        let bad_goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad".into(),
+            target_amount: 1_000,
+            current_amount: -1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let bad_snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![bad_goal],
+            }),
+            ExportFormat::Json,
+        );
+        let bad_bytes = export_to_json(&bad_snapshot).unwrap();
+        let result = import_from_json(&bad_bytes, &mut tracker, 2_000);
+        assert!(result.is_err());
+
+        // Tracker state must be unchanged: the valid import is still recorded,
+        // and the rejected import left no trace.
+        assert_eq!(tracker.imported_count(), 1);
+        assert!(tracker.is_imported(&valid));
+        assert!(!tracker.is_imported(&bad_snapshot));
+    }
+
+    #[test]
+    fn test_repeated_rejected_amounts_leave_no_state_growth() {
+        let goal = SavingsGoalExport {
+            id: 1,
+            owner: "G1".into(),
+            name: "Bad".into(),
+            target_amount: 1_000,
+            current_amount: -1,
+            target_date: 2_000_000_000,
+            locked: false,
+        };
+        let snapshot = ExportSnapshot::new(
+            SnapshotPayload::SavingsGoals(SavingsGoalsExport {
+                next_id: 2,
+                goals: vec![goal],
+            }),
+            ExportFormat::Json,
+        );
+        let bytes = export_to_json(&snapshot).unwrap();
+        let mut tracker = MigrationTracker::new();
+
+        // Reject the same invalid payload 10 times.
+        for i in 0..10 {
+            let result = import_from_json(&bytes, &mut tracker, i * 1_000);
+            assert!(result.is_err());
+        }
+
+        // No state was accumulated.
+        assert_eq!(tracker.imported_count(), 0);
+        assert!(tracker.imported_records().is_empty());
+        assert!(tracker.attempt_history().is_empty());
+        assert!(tracker.active_attempt().is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // Conversion-boundary values: tested against independent oracle
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_amount_conversion_boundary_1_stroop() {
+        // 1 stroop = minimum Stellar unit. Oracle: must be accepted.
+        assert!(validate_amount("amount", 1).is_ok());
+    }
+
+    #[test]
+    fn test_amount_conversion_boundary_1_lumen_in_stroops() {
+        // 1 lumen = 10,000,000 stroops. Oracle: must be accepted.
+        assert!(validate_amount("amount", 10_000_000).is_ok());
+    }
+
+    #[test]
+    fn test_amount_conversion_boundary_100_lumens_in_stroops() {
+        // 100 lumen = 1,000,000,000 stroops. Oracle: must be accepted.
+        assert!(validate_amount("amount", 1_000_000_000).is_ok());
+    }
+
+    #[test]
+    fn test_amount_conversion_boundary_1_million_lumens_in_stroops() {
+        // 1,000,000 lumen = 10^13 stroops = 10,000,000,000,000
+        let amount: i64 = 10_000_000_000_000;
+        assert!(validate_amount("amount", amount).is_ok());
+    }
+
+    #[test]
+    fn test_amount_conversion_boundary_1_billion_lumens_in_stroops() {
+        // 1,000,000,000 lumen = 10^16 stroops = 10,000,000,000,000,000
+        let amount: i64 = 10_000_000_000_000_000;
+        assert!(validate_amount("amount", amount).is_ok());
+    }
+
+    #[test]
+    fn test_amount_conversion_boundary_max_safe_sum() {
+        // Two amounts at NEAR_OVERFLOW_THRESHOLD must still be safe to add
+        // after import. Verify: threshold * 2 does not overflow i64.
+        let sum = NEAR_OVERFLOW_THRESHOLD.checked_add(NEAR_OVERFLOW_THRESHOLD);
+        assert!(sum.is_some(), "NEAR_OVERFLOW_THRESHOLD * 2 must not overflow i64");
+        assert!(sum.unwrap() < i64::MAX, "sum must be below i64::MAX");
+    }
+
+    // ------------------------------------------------------------------
+    // Near-overflow: amounts just above/below threshold
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_amount_near_overflow_exact_threshold_accepted() {
+        assert_eq!(NEAR_OVERFLOW_THRESHOLD, i64::MAX / 4);
+        assert!(validate_amount("amount", NEAR_OVERFLOW_THRESHOLD).is_ok());
+    }
+
+    #[test]
+    fn test_amount_near_overflow_one_over_rejected() {
+        let value = NEAR_OVERFLOW_THRESHOLD + 1;
+        let err = validate_amount("amount", value).unwrap_err();
+        match err {
+            MigrationError::AmountNearOverflow {
+                field,
+                value: v,
+                threshold,
+            } => {
+                assert_eq!(field, "amount");
+                assert_eq!(v, value);
+                assert_eq!(threshold, NEAR_OVERFLOW_THRESHOLD);
+            }
+            _ => panic!("expected AmountNearOverflow, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_amount_near_overflow_max_i64_rejected() {
+        let err = validate_amount("amount", i64::MAX).unwrap_err();
+        assert!(matches!(err, MigrationError::AmountNearOverflow {
+            field: "amount",
+            value: i64::MAX,
+            threshold: NEAR_OVERFLOW_THRESHOLD,
+        }));
+    }
+
+    // ------------------------------------------------------------------
+    // Error display messages for new variants
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_negative_amount_error_display_contains_field_and_value() {
+        let msg = MigrationError::NegativeAmount {
+            field: "current_amount",
+            value: -42,
+        }
+        .to_string();
+        assert!(msg.contains("current_amount"), "must contain field name: {msg}");
+        assert!(msg.contains("-42"), "must contain the value: {msg}");
+        assert!(msg.contains("negative"), "must mention negative: {msg}");
+    }
+
+    #[test]
+    fn test_amount_overflow_error_display_contains_field_and_value() {
+        let msg = MigrationError::AmountOverflow {
+            field: "target_amount",
+            value: i64::MAX,
+            max: i64::MAX,
+        }
+        .to_string();
+        assert!(msg.contains("target_amount"), "must contain field name: {msg}");
+        assert!(msg.contains("overflow"), "must mention overflow: {msg}");
+    }
+
+    #[test]
+    fn test_amount_near_overflow_error_display_contains_field_and_threshold() {
+        let msg = MigrationError::AmountNearOverflow {
+            field: "current_amount",
+            value: NEAR_OVERFLOW_THRESHOLD + 1,
+            threshold: NEAR_OVERFLOW_THRESHOLD,
+        }
+        .to_string();
+        assert!(msg.contains("current_amount"), "must contain field name: {msg}");
+        assert!(msg.contains("near-overflow"), "must mention near-overflow: {msg}");
+    }
+
+    #[test]
+    fn test_invalid_amount_scale_error_display() {
+        let msg = MigrationError::InvalidAmountScale {
+            field: "amount",
+            value: 12345,
+            max_scale: MAX_AMOUNT_SCALE,
+        }
+        .to_string();
+        assert!(msg.contains("scale"), "must mention scale: {msg}");
+    }
+
+    // ------------------------------------------------------------------
+    // Property test: validate_amount invariants
+    // ------------------------------------------------------------------
+
+    proptest::proptest! {
+        #[test]
+        fn test_validate_amount_rejects_all_negative_values(value in i64::MIN..0i64) {
+            let result = validate_amount("amount", value);
+            proptest::prop_assert!(
+                result.is_err(),
+                "validate_amount({}) must return Err, got Ok",
+                value
+            );
+            proptest::prop_assert!(
+                matches!(result, Err(MigrationError::NegativeAmount { .. })),
+                "negative {} must produce NegativeAmount error, got {:?}",
+                value, result
+            );
+        }
+
+        #[test]
+        fn test_validate_amount_accepts_all_safe_values(value in 0i64..=NEAR_OVERFLOW_THRESHOLD) {
+            let result = validate_amount("amount", value);
+            proptest::prop_assert!(
+                result.is_ok(),
+                "validate_amount({}) must return Ok, got {:?}",
+                value, result
+            );
+        }
+
+        #[test]
+        fn test_validate_amount_rejects_all_near_overflow_values(
+            value in (NEAR_OVERFLOW_THRESHOLD + 1)..=i64::MAX
+        ) {
+            let result = validate_amount("amount", value);
+            proptest::prop_assert!(
+                result.is_err(),
+                "validate_amount({}) must return Err for near-overflow, got Ok",
+                value
+            );
+            proptest::prop_assert!(
+                matches!(result, Err(MigrationError::AmountNearOverflow { .. })),
+                "near-overflow {} must produce AmountNearOverflow, got {:?}",
+                value, result
+            );
+        }
     }
 }

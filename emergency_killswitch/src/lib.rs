@@ -30,9 +30,12 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// A saturating arithmetic operation would overflow (e.g. epoch bump at
+    /// `u64::MAX`, recovery deadline past `u64::MAX`, or inverted clock).
+    Overflow = 20,
     /// The cursor value is not valid for this collection (e.g. not produced by a
     /// previous page call).
-    InvalidCursor = 20,
+    InvalidCursor = 21,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -198,6 +201,33 @@ pub struct MigrationProgress {
 
 #[contract]
 pub struct EmergencyKillswitch;
+
+// ── Pure arithmetic helpers (crate-visible) ────────────────────────────────
+
+/// Checked addition for `u64`. Returns [`Error::Overflow`] on wrap.
+fn checked_add_u64(a: u64, b: u64) -> Result<u64, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Checked addition for `u32`. Returns [`Error::Overflow`] on wrap.
+fn checked_add_u32(a: u32, b: u32) -> Result<u32, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Compute the age of a snapshot in seconds (`now - snapshot_ts`).
+///
+/// Returns [`Error::Overflow`] if the clock is inverted (`now < snapshot_ts`).
+fn snapshot_age(now: u64, snapshot_ts: u64) -> Result<u64, Error> {
+    now.checked_sub(snapshot_ts).ok_or(Error::Overflow)
+}
+
+/// Compute the recovery-ready deadline: `now + RECOVERY_DELAY`.
+///
+/// Returns [`Error::Overflow`] if the result would exceed `u64::MAX`.
+#[allow(dead_code)]
+fn recovery_ready_at(now: u64) -> Result<u64, Error> {
+    checked_add_u64(now, RECOVERY_DELAY)
+}
 
 #[contractimpl]
 impl EmergencyKillswitch {
@@ -502,7 +532,7 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::ActiveScope, &scope);
         env.storage().instance().set(
             &DataKey::RecoveryReadyAt,
-            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
+            &checked_add_u64(env.ledger().timestamp(), RECOVERY_DELAY)?,
         );
         env.storage()
             .instance()
@@ -510,9 +540,7 @@ impl EmergencyKillswitch {
 
         // Apply the scope pause.
         match scope.clone() {
-            PauseScope::Global => {
-                env.storage().instance().set(&DataKey::GlobalPaused, &true)
-            }
+            PauseScope::Global => env.storage().instance().set(&DataKey::GlobalPaused, &true),
             PauseScope::Module(module) => env
                 .storage()
                 .instance()
@@ -1032,8 +1060,16 @@ impl EmergencyKillswitch {
 
     /// Clamp a user-supplied page limit to [`DEFAULT_PAGE_LIMIT`]..[`MAX_PAGE_LIMIT`].
     fn clamp_page_limit(limit: u32) -> u32 {
-        let effective = if limit == 0 { DEFAULT_PAGE_LIMIT } else { limit };
-        if effective > MAX_PAGE_LIMIT { MAX_PAGE_LIMIT } else { effective }
+        let effective = if limit == 0 {
+            DEFAULT_PAGE_LIMIT
+        } else {
+            limit
+        };
+        if effective > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            effective
+        }
     }
 
     /// Return a cursor-paginated page of configured signers.
@@ -1051,11 +1087,7 @@ impl EmergencyKillswitch {
     /// # Security
     /// No authentication required — the signer list is observable on-chain
     /// (it determines who can authorize threshold operations).
-    pub fn list_signers_page(
-        env: Env,
-        cursor: Option<u32>,
-        limit: u32,
-    ) -> Vec<Address> {
+    pub fn list_signers_page(env: Env, cursor: Option<u32>, limit: u32) -> Vec<Address> {
         let all = Self::configured_signers(&env);
         let effective_limit = Self::clamp_page_limit(limit);
         let start = cursor.unwrap_or(0);
@@ -2811,7 +2843,7 @@ mod snapshot_function_pause_restore_tests {
 mod pagination_tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::symbol_short;
+    use soroban_sdk::{symbol_short, vec};
 
     fn setup() -> (Env, EmergencyKillswitchClient<'static>, Address) {
         let env = Env::default();
@@ -2828,7 +2860,7 @@ mod pagination_tests {
     /// Before configure_signers, list_signers_page returns empty.
     #[test]
     fn signers_page_empty_before_config() {
-        let (env, client, _admin) = setup();
+        let (_env, client, _admin) = setup();
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 0);
     }
@@ -2843,7 +2875,7 @@ mod pagination_tests {
         let second = Address::generate(&env);
         let third = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone(), third.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &10);
         assert_eq!(result.len(), 3);
@@ -2861,7 +2893,7 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -2881,7 +2913,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&None, &100);
         assert_eq!(result.len(), 1);
@@ -2893,9 +2925,11 @@ mod pagination_tests {
     #[test]
     fn signers_page_multi_page_cursor_progression() {
         let (env, client, admin) = setup();
-        let addrs: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
-        let signers = vec![&env, addrs[0].clone(), addrs[1].clone(), addrs[2].clone(), addrs[3].clone(), addrs[4].clone()];
-        client.configure_signers(&admin, &signers, 1);
+        let mut signers = Vec::new(&env);
+        for _ in 0..5 {
+            signers.push_back(Address::generate(&env));
+        }
+        client.configure_signers(&admin, &signers, &1);
 
         let page1 = client.list_signers_page(&None, &2);
         assert_eq!(page1.len(), 2);
@@ -2920,12 +2954,12 @@ mod pagination_tests {
         let first = Address::generate(&env);
         let second = Address::generate(&env);
         let signers = vec![&env, first.clone(), second.clone()];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let page_none = client.list_signers_page(&None, &10);
         let page_zero = client.list_signers_page(&Some(0), &10);
         assert_eq!(page_none.len(), page_zero.len());
-        assert!(page_none.contains(first));
+        assert!(page_none.contains(first.clone()));
         assert!(page_zero.contains(first));
     }
 
@@ -2937,7 +2971,7 @@ mod pagination_tests {
         let (env, client, admin) = setup();
         let first = Address::generate(&env);
         let signers = vec![&env, first];
-        client.configure_signers(&admin, &signers, 1);
+        client.configure_signers(&admin, &signers, &1);
 
         let result = client.list_signers_page(&Some(999), &10);
         assert_eq!(result.len(), 0);
@@ -2950,12 +2984,10 @@ mod pagination_tests {
     fn signers_page_large_result_clamped() {
         let (env, client, admin) = setup();
         let mut signers_vec = Vec::new(&env);
-        let mut expected_count = 0u32;
         for _ in 0..60 {
             signers_vec.push_back(Address::generate(&env));
-            expected_count += 1;
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        client.configure_signers(&admin, &signers_vec, &1);
 
         // Request 100 but should get MAX_PAGE_LIMIT (50)
         let page1 = client.list_signers_page(&None, &100);
@@ -2976,7 +3008,7 @@ mod pagination_tests {
         for _ in 0..30 {
             signers_vec.push_back(Address::generate(&env));
         }
-        client.configure_signers(&admin, &signers_vec, 1);
+        client.configure_signers(&admin, &signers_vec, &1);
 
         let page = client.list_signers_page(&None, &0);
         assert_eq!(page.len(), DEFAULT_PAGE_LIMIT);
@@ -3018,8 +3050,9 @@ mod pagination_tests {
     fn paused_functions_page_multi_page() {
         let (_env, client, _admin) = setup();
         let module = symbol_short!("bill");
-        for i in 0..5 {
-            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+        let names: [&str; 5] = ["f0", "f1", "f2", "f3", "f4"];
+        for name in names.iter() {
+            client.pause_function(&module, &Symbol::new(&_env, name));
         }
 
         let page1 = client.list_paused_functions_page(&module, &None, &2);
@@ -3058,10 +3091,16 @@ mod pagination_tests {
         let module = symbol_short!("bill");
         let func = symbol_short!("pay");
         client.pause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 1);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            1
+        );
 
         client.unpause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 0);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            0
+        );
     }
 
     // ── list_paused_functions_page: cursor beyond end ──────────────────────
@@ -3099,8 +3138,9 @@ mod pagination_tests {
     fn paused_functions_page_max_limit_clamped() {
         let (_env, client, _admin) = setup();
         let module = symbol_short!("bill");
-        for i in 0..8 {
-            client.pause_function(&module, &Symbol::new(&_env, &format!("f{}", i)));
+        let names: [&str; 8] = ["f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7"];
+        for name in names.iter() {
+            client.pause_function(&module, &Symbol::new(&_env, name));
         }
         let result = client.list_paused_functions_page(&module, &None, &200);
         assert_eq!(result.len(), 8);

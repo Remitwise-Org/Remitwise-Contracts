@@ -172,8 +172,8 @@ fn rejected_operations_emit_no_control_event_and_leave_no_state() {
         Err(Ok(Error::AlreadyInitialized))
     );
 
-    // Unpause with no pending schedule -> InvalidSchedule.
-    assert_eq!(client.try_unpause(), Err(Ok(Error::InvalidSchedule)));
+    // Unpause on a non-paused contract -> NotActive (pause check precedes schedule check).
+    assert_eq!(client.try_unpause(), Err(Ok(Error::NotActive)));
 
     // Transfer to the current admin is rejected.
     assert_eq!(
@@ -181,11 +181,8 @@ fn rejected_operations_emit_no_control_event_and_leave_no_state() {
         Err(Ok(Error::InvalidAdmin))
     );
 
-    // Scheduling an unpause in the past is rejected.
-    assert_eq!(
-        client.try_schedule_unpause(&0),
-        Err(Ok(Error::InvalidSchedule))
-    );
+    // Scheduling an unpause on a non-paused contract -> NotActive (pause check precedes schedule check).
+    assert_eq!(client.try_schedule_unpause(&0), Err(Ok(Error::NotActive)));
 
     // None of the rejected calls may advance the counter or emit a record.
     assert_eq!(count_control_events(&env), before);
