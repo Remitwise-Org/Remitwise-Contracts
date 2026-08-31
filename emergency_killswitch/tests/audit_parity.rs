@@ -182,10 +182,7 @@ fn rejected_operations_emit_no_control_event_and_leave_no_state() {
     );
 
     // Scheduling an unpause on a non-paused contract -> NotActive (pause check precedes schedule check).
-    assert_eq!(
-        client.try_schedule_unpause(&0),
-        Err(Ok(Error::NotActive))
-    );
+    assert_eq!(client.try_schedule_unpause(&0), Err(Ok(Error::NotActive)));
 
     // None of the rejected calls may advance the counter or emit a record.
     assert_eq!(count_control_events(&env), before);

@@ -540,9 +540,7 @@ impl EmergencyKillswitch {
 
         // Apply the scope pause.
         match scope.clone() {
-            PauseScope::Global => {
-                env.storage().instance().set(&DataKey::GlobalPaused, &true)
-            }
+            PauseScope::Global => env.storage().instance().set(&DataKey::GlobalPaused, &true),
             PauseScope::Module(module) => env
                 .storage()
                 .instance()
@@ -1062,8 +1060,16 @@ impl EmergencyKillswitch {
 
     /// Clamp a user-supplied page limit to [`DEFAULT_PAGE_LIMIT`]..[`MAX_PAGE_LIMIT`].
     fn clamp_page_limit(limit: u32) -> u32 {
-        let effective = if limit == 0 { DEFAULT_PAGE_LIMIT } else { limit };
-        if effective > MAX_PAGE_LIMIT { MAX_PAGE_LIMIT } else { effective }
+        let effective = if limit == 0 {
+            DEFAULT_PAGE_LIMIT
+        } else {
+            limit
+        };
+        if effective > MAX_PAGE_LIMIT {
+            MAX_PAGE_LIMIT
+        } else {
+            effective
+        }
     }
 
     /// Return a cursor-paginated page of configured signers.
@@ -1081,11 +1087,7 @@ impl EmergencyKillswitch {
     /// # Security
     /// No authentication required — the signer list is observable on-chain
     /// (it determines who can authorize threshold operations).
-    pub fn list_signers_page(
-        env: Env,
-        cursor: Option<u32>,
-        limit: u32,
-    ) -> Vec<Address> {
+    pub fn list_signers_page(env: Env, cursor: Option<u32>, limit: u32) -> Vec<Address> {
         let all = Self::configured_signers(&env);
         let effective_limit = Self::clamp_page_limit(limit);
         let start = cursor.unwrap_or(0);
@@ -3089,10 +3091,16 @@ mod pagination_tests {
         let module = symbol_short!("bill");
         let func = symbol_short!("pay");
         client.pause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 1);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            1
+        );
 
         client.unpause_function(&module, &func);
-        assert_eq!(client.list_paused_functions_page(&module, &None, &10).len(), 0);
+        assert_eq!(
+            client.list_paused_functions_page(&module, &None, &10).len(),
+            0
+        );
     }
 
     // ── list_paused_functions_page: cursor beyond end ──────────────────────
