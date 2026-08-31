@@ -30,9 +30,12 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// A saturating arithmetic operation would overflow (e.g. epoch bump at
+    /// `u64::MAX`, recovery deadline past `u64::MAX`, or inverted clock).
+    Overflow = 20,
     /// The cursor value is not valid for this collection (e.g. not produced by a
     /// previous page call).
-    InvalidCursor = 20,
+    InvalidCursor = 21,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -198,6 +201,32 @@ pub struct MigrationProgress {
 
 #[contract]
 pub struct EmergencyKillswitch;
+
+// ── Pure arithmetic helpers (crate-visible) ────────────────────────────────
+
+/// Checked addition for `u64`. Returns [`Error::Overflow`] on wrap.
+fn checked_add_u64(a: u64, b: u64) -> Result<u64, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Checked addition for `u32`. Returns [`Error::Overflow`] on wrap.
+fn checked_add_u32(a: u32, b: u32) -> Result<u32, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Compute the age of a snapshot in seconds (`now - snapshot_ts`).
+///
+/// Returns [`Error::Overflow`] if the clock is inverted (`now < snapshot_ts`).
+fn snapshot_age(now: u64, snapshot_ts: u64) -> Result<u64, Error> {
+    now.checked_sub(snapshot_ts).ok_or(Error::Overflow)
+}
+
+/// Compute the recovery-ready deadline: `now + RECOVERY_DELAY`.
+///
+/// Returns [`Error::Overflow`] if the result would exceed `u64::MAX`.
+fn recovery_ready_at(now: u64) -> Result<u64, Error> {
+    checked_add_u64(now, RECOVERY_DELAY)
+}
 
 #[contractimpl]
 impl EmergencyKillswitch {
@@ -502,7 +531,7 @@ impl EmergencyKillswitch {
         env.storage().instance().set(&DataKey::ActiveScope, &scope);
         env.storage().instance().set(
             &DataKey::RecoveryReadyAt,
-            &(env.ledger().timestamp().saturating_add(RECOVERY_DELAY)),
+            &checked_add_u64(env.ledger().timestamp(), RECOVERY_DELAY)?,
         );
         env.storage()
             .instance()
