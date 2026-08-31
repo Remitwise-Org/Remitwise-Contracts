@@ -13,19 +13,76 @@ pub struct MockContract;
 
 #[contractimpl]
 impl MockContract {
-    pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+    pub fn check_spending_limit(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _user: Address,
+        _amount: i128,
+    ) -> bool {
         true
     }
-    pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+    pub fn calculate_split(
+        env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _total_amount: i128,
+    ) -> Vec<i128> {
         soroban_sdk::vec![&env, 2500, 2500, 2500, 2500]
     }
-    pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _goal_id: u32, _amount: i128) {}
-    pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _bill_id: u32) {}
-    pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _caller: Address, _policy_id: u32) {}
+    pub fn add_to_goal(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _caller: Address,
+        _goal_id: u32,
+        _amount: i128,
+    ) {
+    }
+    pub fn pay_bill(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _caller: Address,
+        _bill_id: u32,
+    ) {
+    }
+    pub fn pay_premium(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _caller: Address,
+        _policy_id: u32,
+    ) {
+    }
     // Compensation / reverse methods for rollback support.
-    pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-    pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-    pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+    pub fn remove_from_goal(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _user: Address,
+        _goal_id: u32,
+        _amount: i128,
+    ) {
+    }
+    pub fn reverse_payment(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _user: Address,
+        _bill_id: u32,
+        _amount: i128,
+    ) {
+    }
+    pub fn reverse_premium(
+        _env: Env,
+        _orchestrator: Address,
+        _epoch: u64,
+        _user: Address,
+        _policy_id: u32,
+        _amount: i128,
+    ) {
+    }
 }
 
 #[contract]
@@ -44,17 +101,49 @@ mod mock_fail_savings {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
             panic!("savings step failed")
         }
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -66,17 +155,49 @@ mod mock_fail_bill {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -88,15 +209,47 @@ mod mock_fail_insurance {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
             panic!("insurance step failed")
         }
     }
@@ -110,15 +263,48 @@ mod mock_no_limit {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             false
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -1345,19 +1531,77 @@ mod mock_unsigned_fail_bill {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool { true }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
+            true
+        }
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
         // Compensation methods (reverse interfaces)
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 }
 
@@ -1370,19 +1614,77 @@ mod mock_unsigned_fail_insurance {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool { true }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
+            true
+        }
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
             panic!("insurance step failed")
         }
         // Compensation methods
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 }
 
@@ -2026,15 +2328,48 @@ mod mock_split_0 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             Vec::new(&env)
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -2045,15 +2380,48 @@ mod mock_split_1 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 10000i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -2064,15 +2432,48 @@ mod mock_split_3 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -2083,18 +2484,75 @@ mod mock_split_4 {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 }
 
@@ -2105,15 +2563,48 @@ mod mock_split_negative {
     pub struct Contract;
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, -500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {}
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
     }
 }
 
@@ -2129,24 +2620,78 @@ mod mock_hostile_all_fail {
 
     #[contractimpl]
     impl Contract {
-        pub fn check_spending_limit(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
             panic!("savings step failed")
         }
-        pub fn pay_bill(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32) {
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
             panic!("bill step failed")
         }
-        pub fn pay_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32) {
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
             panic!("insurance step failed")
         }
-        pub fn remove_from_goal(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _orchestrator: Address, _epoch: u64, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 }
 
@@ -2901,7 +3446,12 @@ mod mock_remittance_split {
         pub fn get_split(env: Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             soroban_sdk::vec![&env, 5000u32, 3000u32, 1500u32, 500u32]
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 5000i128, 3000i128, 1500i128, 500i128]
         }
     }
@@ -2919,7 +3469,12 @@ mod mock_remittance_split_invalid {
         pub fn get_split(env: Env, _orchestrator: Address, _epoch: u64) -> Vec<u32> {
             soroban_sdk::vec![&env, 5000u32, 3000u32] // Only 2 entries
         }
-        pub fn calculate_split(env: Env, _orchestrator: Address, _epoch: u64, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 5000i128, 3000i128]
         }
     }

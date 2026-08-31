@@ -1227,7 +1227,10 @@ impl MigrationTracker {
         }
 
         // Now safe to consume the active attempt (we know it is InProgress).
-        let mut attempt = self.active_attempt.take().ok_or(MigrationError::NoMigrationInProgress)?;
+        let mut attempt = self
+            .active_attempt
+            .take()
+            .ok_or(MigrationError::NoMigrationInProgress)?;
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             self.active_attempt = Some(attempt);
@@ -1388,10 +1391,10 @@ impl MigrationTracker {
             None => Box::new(self.imported_payloads.iter()),
             Some(cur) => {
                 let start_key = (cur.checksum.clone(), cur.version);
-                Box::new(
-                    self.imported_payloads
-                        .range((std::ops::Bound::Excluded(&start_key), std::ops::Bound::Unbounded)),
-                )
+                Box::new(self.imported_payloads.range((
+                    std::ops::Bound::Excluded(&start_key),
+                    std::ops::Bound::Unbounded,
+                )))
             }
         };
 
@@ -2797,13 +2800,17 @@ mod tests {
             |staged, staged_tracker| {
                 *staged = None;
                 staged_tracker.mark_completed();
-                Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+                Err(MigrationError::ValidationFailed(
+                    "injected side-effect failure".into(),
+                ))
             },
         );
 
         assert_eq!(
             result,
-            Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+            Err(MigrationError::ValidationFailed(
+                "injected side-effect failure".into()
+            ))
         );
         assert_eq!(state, Some(previous));
         assert_eq!(tracker, tracker_before);
@@ -2818,16 +2825,10 @@ mod tests {
         tracker.mark_imported(&snapshot, 1).unwrap();
         let mut invoked = false;
 
-        let result = apply_snapshot_atomically(
-            &mut state,
-            &mut tracker,
-            snapshot,
-            2,
-            |_, _| {
-                invoked = true;
-                Ok(())
-            },
-        );
+        let result = apply_snapshot_atomically(&mut state, &mut tracker, snapshot, 2, |_, _| {
+            invoked = true;
+            Ok(())
+        });
 
         assert_eq!(result, Err(MigrationError::DuplicateImport));
         assert!(!invoked);
@@ -6484,14 +6485,23 @@ mod tests {
         assert_eq!(clamp_migration_limit(1), 1);
         assert_eq!(clamp_migration_limit(20), 20);
         assert_eq!(clamp_migration_limit(50), 50);
-        assert_eq!(clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT), MAX_MIGRATION_PAGE_LIMIT);
-        assert_eq!(clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT + 1), MAX_MIGRATION_PAGE_LIMIT);
+        assert_eq!(
+            clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT),
+            MAX_MIGRATION_PAGE_LIMIT
+        );
+        assert_eq!(
+            clamp_migration_limit(MAX_MIGRATION_PAGE_LIMIT + 1),
+            MAX_MIGRATION_PAGE_LIMIT
+        );
         assert_eq!(clamp_migration_limit(1_000), MAX_MIGRATION_PAGE_LIMIT);
         assert_eq!(clamp_migration_limit(usize::MAX), MAX_MIGRATION_PAGE_LIMIT);
 
         // Idempotence
         for val in [0, 1, 10, 20, 50, 100, 101, 500, 1000] {
-            assert_eq!(clamp_migration_limit(clamp_migration_limit(val)), clamp_migration_limit(val));
+            assert_eq!(
+                clamp_migration_limit(clamp_migration_limit(val)),
+                clamp_migration_limit(val)
+            );
         }
     }
 
@@ -6510,21 +6520,31 @@ mod tests {
 
         // Rejection of invalid prefix
         let err = MigrationCursor::decode("mc:v2:1:a1b2c3d4").unwrap_err();
-        assert!(matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix")));
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix"))
+        );
 
         let err2 = MigrationCursor::decode("raw:1:a1b2c3d4").unwrap_err();
-        assert!(matches!(err2, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix")));
+        assert!(
+            matches!(err2, MigrationError::InvalidCursor(ref msg) if msg.contains("expected prefix"))
+        );
 
         // Rejection of malformed structure
         let err3 = MigrationCursor::decode("mc:v1:nonumber:a1b2c3").unwrap_err();
-        assert!(matches!(err3, MigrationError::InvalidCursor(ref msg) if msg.contains("invalid version")));
+        assert!(
+            matches!(err3, MigrationError::InvalidCursor(ref msg) if msg.contains("invalid version"))
+        );
 
         let err4 = MigrationCursor::decode("mc:v1:1:").unwrap_err();
-        assert!(matches!(err4, MigrationError::InvalidCursor(ref msg) if msg.contains("cannot be empty")));
+        assert!(
+            matches!(err4, MigrationError::InvalidCursor(ref msg) if msg.contains("cannot be empty"))
+        );
 
         // Rejection of invalid hex characters
         let err5 = MigrationCursor::decode("mc:v1:1:not_a_hex_value!").unwrap_err();
-        assert!(matches!(err5, MigrationError::InvalidCursor(ref msg) if msg.contains("valid hex characters")));
+        assert!(
+            matches!(err5, MigrationError::InvalidCursor(ref msg) if msg.contains("valid hex characters"))
+        );
     }
 
     #[test]
@@ -6550,7 +6570,9 @@ mod tests {
             .collect();
         let mut tracker = MigrationTracker::new();
         for (i, snapshot) in snapshots.iter().enumerate() {
-            tracker.mark_imported(snapshot, (i as u64 + 1) * 100).unwrap();
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
         }
 
         let page = tracker.imported_records_page(None, 10).unwrap();
@@ -6568,7 +6590,9 @@ mod tests {
             .collect();
         let mut tracker = MigrationTracker::new();
         for (i, snapshot) in snapshots.iter().enumerate() {
-            tracker.mark_imported(snapshot, (i as u64 + 1) * 100).unwrap();
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
         }
 
         let all_records = tracker.imported_records();
@@ -6605,7 +6629,9 @@ mod tests {
             .collect();
         let mut tracker = MigrationTracker::new();
         for (i, snapshot) in snapshots.iter().enumerate() {
-            tracker.mark_imported(snapshot, (i as u64 + 1) * 100).unwrap();
+            tracker
+                .mark_imported(snapshot, (i as u64 + 1) * 100)
+                .unwrap();
         }
 
         let expected_records = tracker.imported_records();
@@ -6679,10 +6705,7 @@ mod tests {
             })
             .collect();
 
-        let payload = SnapshotPayload::SavingsGoals(SavingsGoalsExport {
-            next_id: 46,
-            goals,
-        });
+        let payload = SnapshotPayload::SavingsGoals(SavingsGoalsExport { next_id: 46, goals });
         let snapshot = ExportSnapshot::new(payload, ExportFormat::Json);
 
         let report = snapshot.reconciliation_report().unwrap();
@@ -6717,7 +6740,9 @@ mod tests {
 
         // Out of bounds cursor check
         let err = snapshot.reconciliation_page(Some(100), 20).unwrap_err();
-        assert!(matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds total")));
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds total"))
+        );
     }
 
     #[test]
@@ -6725,7 +6750,9 @@ mod tests {
         let mut tracker = MigrationTracker::new();
         for i in 0..15 {
             let snapshot = generic_snapshot(&format!("attempt-{i}"));
-            tracker.mark_imported(&snapshot, (i as u64 + 1) * 100).unwrap();
+            tracker
+                .mark_imported(&snapshot, (i as u64 + 1) * 100)
+                .unwrap();
         }
 
         assert_eq!(tracker.attempt_history().len(), 15);
@@ -6758,7 +6785,9 @@ mod tests {
 
         // Out of bounds cursor check
         let err = tracker.attempt_history_page(Some(50), 5).unwrap_err();
-        assert!(matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds attempt history length")));
+        assert!(
+            matches!(err, MigrationError::InvalidCursor(ref msg) if msg.contains("exceeds attempt history length"))
+        );
     }
 
     proptest::proptest! {
@@ -7070,7 +7099,10 @@ mod tests {
 
     #[test]
     fn test_is_legal_transition_none_to_in_progress_is_legal() {
-        assert!(is_legal_transition(None, MigrationAttemptStatus::InProgress));
+        assert!(is_legal_transition(
+            None,
+            MigrationAttemptStatus::InProgress
+        ));
     }
 
     #[test]
@@ -7465,9 +7497,7 @@ mod tests {
         tracker.begin_import(&active, 1_000).unwrap();
 
         // Progress against wrong snapshot identity
-        let err = tracker
-            .record_progress(&stale, 1, 1_100)
-            .unwrap_err();
+        let err = tracker.record_progress(&stale, 1, 1_100).unwrap_err();
         assert_eq!(err, MigrationError::StaleMigrationAttempt);
 
         // Active attempt must be preserved in InProgress
@@ -7550,9 +7580,7 @@ mod tests {
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
         let mut tracker = MigrationTracker::new();
 
-        let err = tracker
-            .record_progress(&snapshot, 1, 1_000)
-            .unwrap_err();
+        let err = tracker.record_progress(&snapshot, 1, 1_000).unwrap_err();
         assert_eq!(
             err,
             MigrationError::NoMigrationInProgress,
