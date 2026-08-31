@@ -796,7 +796,7 @@ fn activate_function_scope_adds_function_to_paused_list_atomically() {
 fn activate_function_scope_limit_exceeded_leaves_no_partial_state() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, admin, s1, s2, epoch) = setup_with_two_signers(&env);
+    let (client, _admin, s1, s2, epoch) = setup_with_two_signers(&env);
     let approvals = soroban_sdk::vec![&env, s1.clone(), s2.clone()];
     let module = symbol_short!("bill");
 
@@ -845,7 +845,7 @@ fn activate_function_scope_limit_exceeded_leaves_no_partial_state() {
 
     // The overflow function must not have been added to the list.
     assert!(
-        !client.is_function_paused(&module, &new_func),
+        !client.list_paused_functions(&module).contains(new_func.clone()),
         "the overflow function must not appear in the paused list"
     );
 
@@ -1186,7 +1186,7 @@ fn activation_with_unknown_signer_rejected_before_state_writes() {
     let stranger = Address::generate(&env);
 
     // [s1, stranger] — stranger is not in the signer set.
-    let bad_approvals = soroban_sdk::vec![&env, s1, stranger];
+    let bad_approvals = soroban_sdk::vec![&env, s1.clone(), stranger];
     let result = client.try_activate(
         &epoch,
         &bad_approvals,
@@ -1203,7 +1203,7 @@ fn activation_with_unknown_signer_rejected_before_state_writes() {
     // written by the failed call above.
     let result2 = client.try_activate(
         &(epoch + 1),
-        &soroban_sdk::vec![&env],
+        &soroban_sdk::vec![&env, s1],
         &emergency_killswitch::PauseScope::Global,
     );
     assert_eq!(result2, Err(Ok(Error::EpochMismatch)));
