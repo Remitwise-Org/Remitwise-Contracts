@@ -86,10 +86,44 @@
 //! "nothing applied twice". [`MigrationTracker`] serializes deterministically
 //! ([`BTreeMap`] storage), so persisted reconciliation artifacts are
 //! byte-stable across runs and reviewable in diffs.
+//!
+//! # Durable request keys (idempotency nonces)
+//!
+//! Payload-identity replay protection stops the *same snapshot* from being
+//! applied twice, but a caller still needs a way to make a *retry* of a single
+//! operation safe when the response is lost (timeout, worker crash, network
+//! retry). The `*_with_request_key` entry points
+//! ([`import_from_json_with_request_key`],
+//! [`import_from_binary_with_request_key`], and their
+//! [`SharedMigrationTracker`] mirrors) bind every operation to a caller-supplied
+//! request key / nonce:
+//!
+//! * **First submission** — the operation is applied and its outcome is
+//!   recorded durably inside the tracker under the key, whether it succeeded
+//!   or failed.
+//! * **Safe retry** — the same key with the same bytes returns the recorded
+//!   outcome deterministically ([`ImportResult::AlreadyCommitted`] for a
+//!   committed key; the recorded error for a failed key) **without
+//!   re-processing**, so a timeout-retry can never create partial or duplicate
+//!   state.
+//! * **Conflicting reuse** — the same key with *different* bytes is rejected
+//!   with [`MigrationError::RequestKeyReuseConflict`]; no state is touched.
+//!
+//! The registry ([`MigrationTracker::request_record`]) is part of the tracker's
+//! serialized state, so idempotency survives process restarts (a key committed
+//! before a crash still returns `AlreadyCommitted` afterwards). Records are keyed
+//! by a SHA-256 fingerprint of the raw request bytes, which is what lets a safe
+//! retry be distinguished from a conflicting reuse.
+//!
+//! Operational rule: a client must reuse the same request key for retries of the
+//! *same* operation and mint a fresh key for a *different* operation. A failed
+//! first submission is replayed verbatim; to resubmit corrected content, use a
+//! new key.
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use base64::Engine;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -715,6 +749,24 @@ pub enum MigrationError {
         count: usize,
         max: usize,
     },
+    /// Returned when a caller-supplied request key is reused with a different
+    /// operation payload. Idempotency keys are bound to the exact request:
+    /// the same key may only ever describe one operation, so reusing it with
+    /// different bytes is rejected rather than silently applied. No state is
+    /// mutated when this error is returned.
+    RequestKeyReuseConflict {
+        request_key: String,
+        previous_fingerprint: String,
+        current_fingerprint: String,
+    },
+    /// Returned when a request key is resubmitted with the same payload after
+    /// its first submission failed deterministically. The recorded failure is
+    /// replayed without re-processing the operation, so a timeout-retry can
+    /// never create partial or duplicate state.
+    ReplayedFailedRequest {
+        request_key: String,
+        recorded_failure: String,
+    },
 }
 
 impl std::fmt::Display for MigrationError {
@@ -790,6 +842,23 @@ impl std::fmt::Display for MigrationError {
                 f,
                 "migration attempt history limit reached: {} entries (max {}); archive or prune history before retrying",
                 count, max
+            ),
+            MigrationError::RequestKeyReuseConflict {
+                request_key,
+                previous_fingerprint,
+                current_fingerprint,
+            } => write!(
+                f,
+                "request key `{}` was reused with a different operation payload (previous fingerprint {}, current {})",
+                request_key, previous_fingerprint, current_fingerprint
+            ),
+            MigrationError::ReplayedFailedRequest {
+                request_key,
+                recorded_failure,
+            } => write!(
+                f,
+                "request key `{}` already failed deterministically; replaying recorded failure: {}",
+                request_key, recorded_failure
             ),
         }
     }
@@ -871,6 +940,45 @@ pub struct MigrationAttempt {
     pub status: MigrationAttemptStatus,
 }
 
+/// Deterministic result of a request-key-bound import.
+///
+/// The caller-supplied request key (or nonce) makes an operation idempotent:
+/// the first submission commits the effect and records the outcome; every
+/// later submission with the same key and the same payload returns the
+/// recorded outcome instead of re-processing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportResult {
+    /// This submission applied the operation; the effect was committed exactly
+    /// once under this request key.
+    Applied,
+    /// A prior submission under this request key already applied the same
+    /// operation; the recorded result is returned without re-processing.
+    AlreadyCommitted,
+}
+
+/// Durable record of the outcome bound to a caller-supplied request key.
+///
+/// Records live inside [`MigrationTracker`] so they persist across process
+/// restarts (timeout-retry survives a crash) and deserialize from previously
+/// serialized trackers. A record is written on the *first* submission under a
+/// key, whether it applied or failed, so retries always replay the same
+/// deterministic result and can never mutate state twice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequestRecord {
+    /// SHA-256 (hex) of the raw request bytes. Conflicting reuse of a key is
+    /// detected by comparing fingerprints: identical bytes yield an identical
+    /// fingerprint, so a safe retry is distinguishable from a different
+    /// operation sent under the same key.
+    pub fingerprint: String,
+    /// Whether the first submission committed the operation.
+    pub applied: bool,
+    /// Stable error text recorded for a deterministically-failed submission.
+    /// `None` when the first submission applied.
+    pub failure: Option<String>,
+    /// Timestamp (ms) of the first submission under this key.
+    pub submitted_at_ms: u64,
+}
+
 /// Tracks imported migration payloads to prevent replay attacks and duplicate restores.
 ///
 /// # Determinism
@@ -886,17 +994,143 @@ pub struct MigrationAttempt {
 /// trackers still deserialize correctly into this representation, and trackers
 /// serialized now deserialize correctly into the previous representation, so
 /// this is *not* a persistence-breaking change.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MigrationTracker {
     imported_payloads: BTreeMap<(String, u32), u64>,
     /// Set to `true` after the operator explicitly calls `mark_completed`.
     /// [`verify_migration_completed`] checks this flag and returns
     /// [`MigrationError::MigrationNotCompleted`] until it is set.
     pub completed: bool,
-    #[serde(default)]
     active_attempt: Option<MigrationAttempt>,
-    #[serde(default)]
     attempt_history: Vec<MigrationAttempt>,
+    /// Durable idempotency registry keyed by caller-supplied request key.
+    /// Sorted iteration (a [`BTreeMap`]) keeps serialization deterministic.
+    request_keys: BTreeMap<String, RequestRecord>,
+}
+
+impl Serialize for MigrationTracker {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // `attempt_history` is kept in transition order in memory, but the
+        // serialized form must be independent of application order so two
+        // trackers holding the same logical state serialize to identical
+        // bytes. Sort a copy deterministically before writing.
+        let mut history = self.attempt_history.clone();
+        history.sort_by(|a, b| {
+            a.started_at_ms
+                .cmp(&b.started_at_ms)
+                .then_with(|| a.checksum.cmp(&b.checksum))
+                .then_with(|| a.version.cmp(&b.version))
+        });
+
+        let mut state = serializer.serialize_struct("MigrationTracker", 5)?;
+        state.serialize_field("imported_payloads", &self.imported_payloads)?;
+        state.serialize_field("completed", &self.completed)?;
+        state.serialize_field("active_attempt", &self.active_attempt)?;
+        state.serialize_field("attempt_history", &history)?;
+        state.serialize_field("request_keys", &self.request_keys)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for MigrationTracker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct MigrationTrackerVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for MigrationTrackerVisitor {
+            type Value = MigrationTracker;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a MigrationTracker")
+            }
+
+            /// Self-describing formats (e.g. JSON): read fields by name and
+            /// default the attempt-tracking fields when absent.
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut imported_payloads: Option<BTreeMap<(String, u32), u64>> = None;
+                let mut completed: Option<bool> = None;
+                let mut active_attempt: Option<Option<MigrationAttempt>> = None;
+                let mut attempt_history: Option<Vec<MigrationAttempt>> = None;
+                let mut request_keys: Option<BTreeMap<String, RequestRecord>> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "imported_payloads" => imported_payloads = Some(map.next_value()?),
+                        "completed" => completed = Some(map.next_value()?),
+                        "active_attempt" => active_attempt = Some(map.next_value()?),
+                        "attempt_history" => attempt_history = Some(map.next_value()?),
+                        "request_keys" => request_keys = Some(map.next_value()?),
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                Ok(MigrationTracker {
+                    imported_payloads: imported_payloads.unwrap_or_default(),
+                    completed: completed.unwrap_or(false),
+                    active_attempt: active_attempt.flatten(),
+                    attempt_history: attempt_history.unwrap_or_default(),
+                    request_keys: request_keys.unwrap_or_default(),
+                })
+            }
+
+            /// Positional formats (bincode): read the base fields first, then
+            /// the attempt-tracking fields. Trackers serialized by the legacy
+            /// two-field representation contain no attempt state; reading it
+            /// hits end-of-input, so fall back to the defaults instead of
+            /// failing. This keeps the documented backward-compatibility
+            /// guarantee for previously serialized trackers.
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let imported_payloads: BTreeMap<(String, u32), u64> =
+                    seq.next_element()?.unwrap_or_default();
+                let completed: bool = seq.next_element()?.unwrap_or(false);
+                let active_attempt: Option<MigrationAttempt> = match seq.next_element() {
+                    Ok(Some(value)) => value,
+                    _ => None,
+                };
+                let attempt_history: Vec<MigrationAttempt> = match seq.next_element() {
+                    Ok(Some(value)) => value,
+                    _ => Vec::new(),
+                };
+                let request_keys: BTreeMap<String, RequestRecord> = match seq.next_element() {
+                    Ok(Some(value)) => value,
+                    _ => BTreeMap::new(),
+                };
+
+                Ok(MigrationTracker {
+                    imported_payloads,
+                    completed,
+                    active_attempt,
+                    attempt_history,
+                    request_keys,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "MigrationTracker",
+            &[
+                "imported_payloads",
+                "completed",
+                "active_attempt",
+                "attempt_history",
+                "request_keys",
+            ],
+            MigrationTrackerVisitor,
+        )
+    }
 }
 
 impl MigrationTracker {
@@ -906,6 +1140,7 @@ impl MigrationTracker {
             completed: false,
             active_attempt: None,
             attempt_history: Vec::new(),
+            request_keys: BTreeMap::new(),
         }
     }
 
@@ -1100,7 +1335,10 @@ impl MigrationTracker {
         }
 
         // Now safe to consume the active attempt (we know it is InProgress).
-        let mut attempt = self.active_attempt.take().ok_or(MigrationError::NoMigrationInProgress)?;
+        let mut attempt = self
+            .active_attempt
+            .take()
+            .ok_or(MigrationError::NoMigrationInProgress)?;
 
         if attempt.checksum != identity.0 || attempt.version != identity.1 {
             self.active_attempt = Some(attempt);
@@ -1238,6 +1476,111 @@ impl MigrationTracker {
             .collect()
     }
 
+    /// Return the durable record bound to a caller-supplied request key, if
+    /// any. `None` means the key has never been seen and a submission would be
+    /// processed as new work.
+    pub fn request_record(&self, request_key: &str) -> Option<&RequestRecord> {
+        self.request_keys.get(request_key)
+    }
+
+    /// Number of distinct request keys with a recorded outcome.
+    pub fn request_key_count(&self) -> usize {
+        self.request_keys.len()
+    }
+
+    /// Idempotency-aware import for an already-decoded, validated snapshot.
+    ///
+    /// `fingerprint` is the SHA-256 (hex) of the raw request bytes and is the
+    /// conflict detector for key reuse. Semantics:
+    ///
+    /// * **First submission** — the snapshot is applied via
+    ///   [`MigrationTracker::mark_imported`] and the outcome is recorded
+    ///   durably under `request_key`, whether it applied or failed. A failed
+    ///   first submission therefore never mutates tracker state, and a later
+    ///   retry replays the recorded failure instead of re-processing.
+    /// * **Safe retry** — the same key with the same fingerprint returns the
+    ///   recorded outcome deterministically (a committed key yields
+    ///   [`ImportResult::AlreadyCommitted`], a failed key re-raises the
+    ///   recorded failure). Nothing is re-applied.
+    /// * **Conflicting reuse** — the same key with a different fingerprint is
+    ///   rejected with [`MigrationError::RequestKeyReuseConflict`] and no
+    ///   state is touched.
+    fn apply_with_request_key(
+        &mut self,
+        snapshot: &ExportSnapshot,
+        request_key: &str,
+        fingerprint: &str,
+        timestamp_ms: u64,
+    ) -> Result<ImportResult, MigrationError> {
+        if let Some(record) = self.request_keys.get(request_key) {
+            if record.fingerprint != fingerprint {
+                return Err(MigrationError::RequestKeyReuseConflict {
+                    request_key: request_key.to_string(),
+                    previous_fingerprint: record.fingerprint.clone(),
+                    current_fingerprint: fingerprint.to_string(),
+                });
+            }
+            if record.applied {
+                return Ok(ImportResult::AlreadyCommitted);
+            }
+            return Err(MigrationError::ReplayedFailedRequest {
+                request_key: request_key.to_string(),
+                recorded_failure: record.failure.clone().unwrap_or_default(),
+            });
+        }
+
+        match self.mark_imported(snapshot, timestamp_ms) {
+            Ok(()) => {
+                self.request_keys.insert(
+                    request_key.to_string(),
+                    RequestRecord {
+                        fingerprint: fingerprint.to_string(),
+                        applied: true,
+                        failure: None,
+                        submitted_at_ms: timestamp_ms,
+                    },
+                );
+                Ok(ImportResult::Applied)
+            }
+            Err(error) => {
+                self.request_keys.insert(
+                    request_key.to_string(),
+                    RequestRecord {
+                        fingerprint: fingerprint.to_string(),
+                        applied: false,
+                        failure: Some(error.to_string()),
+                        submitted_at_ms: timestamp_ms,
+                    },
+                );
+                Err(error)
+            }
+        }
+    }
+
+    /// Record a deterministic failure under a request key whose *first*
+    /// submission was rejected before it could reach
+    /// [`MigrationTracker::apply_with_request_key`] (format decode or import
+    /// validation errors). The key is guaranteed to be new here, so writing
+    /// the record is safe, and it lets a later timeout-retry replay the same
+    /// rejection instead of re-processing.
+    pub fn record_request_failure(
+        &mut self,
+        request_key: &str,
+        fingerprint: String,
+        failure: String,
+        timestamp_ms: u64,
+    ) {
+        self.request_keys.insert(
+            request_key.to_string(),
+            RequestRecord {
+                fingerprint,
+                applied: false,
+                failure: Some(failure),
+                submitted_at_ms: timestamp_ms,
+            },
+        );
+    }
+
     /// Remove a previously-recorded imported snapshot from the tracker by
     /// checksum/version identity. This is idempotent: removing a non-existent
     /// identity is a no-op. This helper is used during rollback to allow retry
@@ -1283,13 +1626,27 @@ fn snapshot_identity(snapshot: &ExportSnapshot) -> (String, u32) {
     (snapshot.header.checksum.clone(), snapshot.header.version)
 }
 
+/// One deterministic applied-import record, enumerable for reconciliation.
+///
+/// An [`ImportRecord`] exists in [`MigrationTracker::imported_records`] iff a
+/// fully-validated import committed that `(checksum, version)` identity. It is
+/// the atomic unit that replay protection and gap-free reconciliation operate
+/// on: the set of records is deterministic and duplicate-free, so a retry or
+/// duplicate message can never apply the same identity twice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportRecord {
+    pub checksum: String,
+    pub version: u32,
+    /// Ledger/wall-clock timestamp (ms) at which the import committed.
+    pub imported_at_ms: u64,
+}
+
 /// One deterministic record identity in a snapshot reconciliation report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotRecordRef {
     pub ordinal: usize,
     pub key: String,
 }
-
 /// Deterministic, gap-free view of the logical records carried by a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotReconciliationReport {
@@ -1508,6 +1865,47 @@ impl SharedMigrationTracker {
         import_from_binary(bytes, &mut guard, timestamp_ms)
     }
 
+    /// Import a JSON snapshot under a durable request key, serializing against
+    /// concurrent submissions. Mirrors free-function
+    /// [`import_from_json_with_request_key`] on the shared facade, so
+    /// concurrent timeout-retries of the same key produce exactly one
+    /// committed effect: the mutex serializes them and the second caller sees
+    /// the recorded outcome.
+    pub fn import_from_json_with_request_key(
+        &self,
+        bytes: &[u8],
+        request_key: &str,
+        timestamp_ms: u64,
+    ) -> Result<ImportResult, MigrationError> {
+        let mut guard = self.lock();
+        import_from_json_with_request_key(bytes, &mut guard, request_key, timestamp_ms)
+    }
+
+    /// Import a binary snapshot under a durable request key. Mirrors
+    /// free-function [`import_from_binary_with_request_key`] on the shared
+    /// facade; see [`SharedMigrationTracker::import_from_json_with_request_key`].
+    pub fn import_from_binary_with_request_key(
+        &self,
+        bytes: &[u8],
+        request_key: &str,
+        timestamp_ms: u64,
+    ) -> Result<ImportResult, MigrationError> {
+        let mut guard = self.lock();
+        import_from_binary_with_request_key(bytes, &mut guard, request_key, timestamp_ms)
+    }
+
+    /// Return the durable record bound to a request key, if any. See
+    /// [`MigrationTracker::request_record`].
+    pub fn request_record(&self, request_key: &str) -> Option<RequestRecord> {
+        self.lock().request_record(request_key).cloned()
+    }
+
+    /// Number of distinct request keys with a recorded outcome. See
+    /// [`MigrationTracker::request_key_count`].
+    pub fn request_key_count(&self) -> usize {
+        self.lock().request_key_count()
+    }
+
     /// Restore captured pre-import state after a failed apply, and un-mark the
     /// attempted identity so the (fixed) import may be retried. Idempotent;
     /// see [`RollbackMetadata::restore`]. This is the only operation that makes
@@ -1566,6 +1964,8 @@ impl SharedMigrationTracker {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
 /// Apply an imported snapshot atomically with caller-owned side effects.
 ///
 /// The callback receives staged state and tracker values. Changes become
@@ -1589,10 +1989,9 @@ where
 
     let previous_state = state.clone();
     let previous_tracker = tracker.clone();
-    let mut staged_state = previous_state.clone();
     let mut staged_tracker = previous_tracker.clone();
     staged_tracker.mark_imported(&snapshot, timestamp_ms)?;
-    staged_state = Some(snapshot);
+    let mut staged_state = Some(snapshot);
 
     match apply(&mut staged_state, &mut staged_tracker) {
         Ok(()) => {
@@ -1835,6 +2234,109 @@ pub fn import_from_binary(
     snapshot.validate_for_import()?;
     tracker.mark_imported(&snapshot, timestamp_ms)?;
     Ok(snapshot)
+}
+
+/// SHA-256 (hex) of a byte slice; the durable fingerprint that binds a request
+/// key to one exact operation.
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize().as_ref())
+}
+
+/// Shared request-key-bound import pipeline used by the JSON and binary
+/// variants. See [`MigrationTracker::apply_with_request_key`] for the
+/// idempotency semantics; `decode` performs the format-specific
+/// deserialization and must apply no tracker mutation itself.
+fn import_bytes_with_request_key(
+    bytes: &[u8],
+    tracker: &mut MigrationTracker,
+    request_key: &str,
+    timestamp_ms: u64,
+    decode: impl FnOnce(&[u8]) -> Result<ExportSnapshot, MigrationError>,
+) -> Result<ImportResult, MigrationError> {
+    // Pre-deserialization size gate first: oversized envelopes are rejected
+    // before hashing or parsing, preserving the DoS protection of the
+    // untracked pipeline. The size check is deterministic on its own, so no
+    // record is needed for a retry to reproduce it.
+    validate_snapshot_size(bytes.len())?;
+
+    let fingerprint = sha256_hex(bytes);
+
+    if let Some(record) = tracker.request_record(request_key) {
+        if record.fingerprint != fingerprint {
+            return Err(MigrationError::RequestKeyReuseConflict {
+                request_key: request_key.to_string(),
+                previous_fingerprint: record.fingerprint.clone(),
+                current_fingerprint: fingerprint,
+            });
+        }
+        if record.applied {
+            return Ok(ImportResult::AlreadyCommitted);
+        }
+        return Err(MigrationError::ReplayedFailedRequest {
+            request_key: request_key.to_string(),
+            recorded_failure: record.failure.clone().unwrap_or_default(),
+        });
+    }
+
+    let snapshot = match decode(bytes) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            tracker.record_request_failure(
+                request_key,
+                fingerprint,
+                error.to_string(),
+                timestamp_ms,
+            );
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = snapshot.validate_for_import() {
+        tracker.record_request_failure(request_key, fingerprint, error.to_string(), timestamp_ms);
+        return Err(error);
+    }
+
+    tracker.apply_with_request_key(&snapshot, request_key, &fingerprint, timestamp_ms)
+}
+
+/// Import a JSON snapshot with a durable caller-supplied request key.
+///
+/// The request key makes the operation idempotent: the first submission
+/// commits the effect and records the outcome; a retry with the same key and
+/// the same bytes returns the recorded result deterministically without
+/// re-processing, and reusing the key with *different* bytes is rejected with
+/// [`MigrationError::RequestKeyReuseConflict`]. See
+/// [`MigrationTracker::apply_with_request_key`] for the full contract.
+pub fn import_from_json_with_request_key(
+    bytes: &[u8],
+    tracker: &mut MigrationTracker,
+    request_key: &str,
+    timestamp_ms: u64,
+) -> Result<ImportResult, MigrationError> {
+    import_bytes_with_request_key(bytes, tracker, request_key, timestamp_ms, |bytes| {
+        let snapshot: ExportSnapshot = serde_json::from_slice(bytes)
+            .map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+        Ok(snapshot)
+    })
+}
+
+/// Import a binary snapshot with a durable caller-supplied request key.
+///
+/// Same idempotency contract as [`import_from_json_with_request_key`], for the
+/// binary snapshot format.
+pub fn import_from_binary_with_request_key(
+    bytes: &[u8],
+    tracker: &mut MigrationTracker,
+    request_key: &str,
+    timestamp_ms: u64,
+) -> Result<ImportResult, MigrationError> {
+    import_bytes_with_request_key(bytes, tracker, request_key, timestamp_ms, |bytes| {
+        let snapshot: ExportSnapshot = bincode::deserialize(bytes)
+            .map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+        Ok(snapshot)
+    })
 }
 
 /// Import a JSON snapshot **without** cross-call duplicate/replay protection.
@@ -2504,13 +3006,17 @@ mod tests {
             |staged, staged_tracker| {
                 *staged = None;
                 staged_tracker.mark_completed();
-                Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+                Err(MigrationError::ValidationFailed(
+                    "injected side-effect failure".into(),
+                ))
             },
         );
 
         assert_eq!(
             result,
-            Err(MigrationError::ValidationFailed("injected side-effect failure".into()))
+            Err(MigrationError::ValidationFailed(
+                "injected side-effect failure".into()
+            ))
         );
         assert_eq!(state, Some(previous));
         assert_eq!(tracker, tracker_before);
@@ -2525,16 +3031,10 @@ mod tests {
         tracker.mark_imported(&snapshot, 1).unwrap();
         let mut invoked = false;
 
-        let result = apply_snapshot_atomically(
-            &mut state,
-            &mut tracker,
-            snapshot,
-            2,
-            |_, _| {
-                invoked = true;
-                Ok(())
-            },
-        );
+        let result = apply_snapshot_atomically(&mut state, &mut tracker, snapshot, 2, |_, _| {
+            invoked = true;
+            Ok(())
+        });
 
         assert_eq!(result, Err(MigrationError::DuplicateImport));
         assert!(!invoked);
@@ -6413,6 +6913,7 @@ mod tests {
             proptest::prop_assert_eq!(observed, model);
             proptest::prop_assert_eq!(shared.imported_count(), records.len());
         }
+    }
     // ====================================================================
     // STATE-TRANSITION INVARIANT TESTS
     //
@@ -6442,7 +6943,10 @@ mod tests {
 
     #[test]
     fn test_is_legal_transition_none_to_in_progress_is_legal() {
-        assert!(is_legal_transition(None, MigrationAttemptStatus::InProgress));
+        assert!(is_legal_transition(
+            None,
+            MigrationAttemptStatus::InProgress
+        ));
     }
 
     #[test]
@@ -6837,9 +7341,7 @@ mod tests {
         tracker.begin_import(&active, 1_000).unwrap();
 
         // Progress against wrong snapshot identity
-        let err = tracker
-            .record_progress(&stale, 1, 1_100)
-            .unwrap_err();
+        let err = tracker.record_progress(&stale, 1, 1_100).unwrap_err();
         assert_eq!(err, MigrationError::StaleMigrationAttempt);
 
         // Active attempt must be preserved in InProgress
@@ -6922,9 +7424,7 @@ mod tests {
         let snapshot = ExportSnapshot::new(sample_savings_payload(), ExportFormat::Json);
         let mut tracker = MigrationTracker::new();
 
-        let err = tracker
-            .record_progress(&snapshot, 1, 1_000)
-            .unwrap_err();
+        let err = tracker.record_progress(&snapshot, 1, 1_000).unwrap_err();
         assert_eq!(
             err,
             MigrationError::NoMigrationInProgress,
