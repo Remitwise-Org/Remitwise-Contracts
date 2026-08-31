@@ -34,7 +34,7 @@ use bill_payments::{
 };
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{
-    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+    symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 
 const SECONDS_PER_DAY: u64 = 86_400;
@@ -1223,4 +1223,193 @@ fn test_schedule_page_items_have_correct_fields() {
     assert_eq!(sched.interval, 7 * 86400u64);
     assert!(sched.recurring);
     assert!(sched.active);
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SchedulingControlEventDecoded {
+    pub version: u32,
+    pub seq: u64,
+    pub kind: Symbol,
+    pub actor: Option<Address>,
+    pub timestamp: u64,
+}
+
+fn get_scheduling_control_events(env: &Env, contract_id: &Address) -> std::vec::Vec<SchedulingControlEventDecoded> {
+    use soroban_sdk::TryFromVal;
+    let mut events = std::vec::Vec::new();
+    for (cid, topics, data) in env.events().all() {
+        if cid != *contract_id {
+            continue;
+        }
+        if topics.len() < 2 {
+            continue;
+        }
+        let t0 = Symbol::try_from_val(env, &topics.get(0).unwrap());
+        let t1 = Symbol::try_from_val(env, &topics.get(1).unwrap());
+        if t0 == Ok(symbol_short!("scheduling")) && t1 == Ok(symbol_short!("control")) {
+            if let Ok(event) = bill_payments::SchedulingControlEvent::try_from_val(env, &data) {
+                events.push(SchedulingControlEventDecoded {
+                    version: event.version,
+                    seq: event.seq,
+                    kind: event.kind,
+                    actor: event.actor,
+                    timestamp: event.timestamp,
+                });
+            }
+        }
+    }
+    events
+}
+
+#[test]
+fn test_bill_scheduling_execution_control_events() {
+    let h = RecurringHarness::new(100_000);
+
+    // 1. Create a recurring schedule
+    let schedule_id = h.client.create_bill_schedule(
+        &h.owner,
+        &String::from_str(&h.env, "Electricity"),
+        &500i128,
+        &String::from_str(&h.env, "XLM"),
+        &300_000u64,
+        &86400u64,
+    );
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].version, 1);
+    assert_eq!(evs[0].seq, 1);
+    assert_eq!(evs[0].kind, symbol_short!("cre_sch"));
+    assert_eq!(evs[0].actor, Some(h.owner.clone()));
+
+    // 2. Modify the schedule
+    h.client.modify_bill_schedule(
+        &h.owner,
+        &schedule_id,
+        &600i128,
+        &310_000u64,
+        &86400u64,
+    );
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), 2);
+    assert_eq!(evs[1].version, 1);
+    assert_eq!(evs[1].seq, 2);
+    assert_eq!(evs[1].kind, symbol_short!("mod_sch"));
+    assert_eq!(evs[1].actor, Some(h.owner.clone()));
+
+    // 3. Execute schedule when due
+    h.env.ledger().set_timestamp(310_000);
+    h.client.execute_due_bill_schedules();
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), 3);
+    assert_eq!(evs[2].version, 1);
+    assert_eq!(evs[2].seq, 3);
+    assert_eq!(evs[2].kind, symbol_short!("exe_sch"));
+    assert_eq!(evs[2].actor, None); // permissionless/consensus actor is None
+
+    // 4. Cancel the schedule
+    h.client.cancel_bill_schedule(&h.owner, &schedule_id);
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), 4);
+    assert_eq!(evs[3].version, 1);
+    assert_eq!(evs[3].seq, 4);
+    assert_eq!(evs[3].kind, symbol_short!("can_sch"));
+    assert_eq!(evs[3].actor, Some(h.owner.clone()));
+}
+
+#[test]
+fn test_bill_scheduling_control_events_committed_only_on_success() {
+    let h = RecurringHarness::new(100_000);
+
+    // Attempt to modify a non-existent schedule -> should fail
+    let res_mod = h.client.try_modify_bill_schedule(
+        &h.owner,
+        &999u32,
+        &500i128,
+        &200_000u64,
+        &86400u64,
+    );
+    assert!(res_mod.is_err());
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), 0, "No control event emitted for rejected modify_bill_schedule");
+}
+
+#[test]
+fn test_modify_and_cancel_schedule_keyed_idempotency_closes_1742() {
+    let h = RecurringHarness::new(100_000);
+    let schedule_id = h.client.create_bill_schedule(
+        &h.owner,
+        &String::from_str(&h.env, "Electricity"),
+        &500i128,
+        &String::from_str(&h.env, "XLM"),
+        &300_000u64,
+        &86400u64,
+    );
+    
+    // Clear events
+    let events_count_before = get_scheduling_control_events(&h.env, &h.contract_id).len();
+
+    let key_mod = request_key(&h.env, 10);
+    let res1 = h.client.modify_bill_schedule_keyed(
+        &h.owner,
+        &key_mod,
+        &schedule_id,
+        &600i128,
+        &310_000u64,
+        &86400u64,
+    );
+    assert!(res1);
+
+    let evs = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs.len(), events_count_before + 1);
+    let last_seq = evs.last().unwrap().seq;
+    assert_eq!(evs.last().unwrap().kind, symbol_short!("mod_sch"));
+
+    // Replay
+    let res2 = h.client.modify_bill_schedule_keyed(
+        &h.owner,
+        &key_mod,
+        &schedule_id,
+        &600i128,
+        &310_000u64,
+        &86400u64,
+    );
+    assert!(res2);
+
+    let evs2 = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs2.len(), evs.len(), "Replay must not emit new events");
+    assert_eq!(evs2.last().unwrap().seq, last_seq, "Replay must not increment seq");
+
+    // Semantic conflict
+    let res_conflict = h.client.try_modify_bill_schedule_keyed(
+        &h.owner,
+        &key_mod,
+        &schedule_id,
+        &700i128,
+        &310_000u64,
+        &86400u64,
+    );
+    assert_eq!(res_conflict, Err(Ok(BillPaymentsError::RequestKeyConflict)));
+
+    // Cancel keyed
+    let key_cancel = request_key(&h.env, 11);
+    let res_cancel1 = h.client.cancel_bill_schedule_keyed(
+        &h.owner,
+        &key_cancel,
+        &schedule_id,
+    );
+    assert!(res_cancel1);
+
+    let evs3 = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs3.len(), evs2.len() + 1);
+    assert_eq!(evs3.last().unwrap().kind, symbol_short!("can_sch"));
+
+    // Cancel keyed replay
+    let res_cancel2 = h.client.cancel_bill_schedule_keyed(
+        &h.owner,
+        &key_cancel,
+        &schedule_id,
+    );
+    assert!(res_cancel2);
+    let evs4 = get_scheduling_control_events(&h.env, &h.contract_id);
+    assert_eq!(evs4.len(), evs3.len(), "Replay cancel must not emit new events");
 }
