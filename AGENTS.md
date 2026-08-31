@@ -36,16 +36,14 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 
   Uses `panic_with_error!(&env, e)` pattern for Result-returning functions (since `KillSwitchError` is a cross-crate type that can't use `?` with contract-specific error types) and `.is_err()` early-return for non-Result functions.
 
-- **This session (Issue #1715 — Role Lifecycle Security):** Added 3 security-focused tests to `family_wallet/src/test.rs` closing the pre-merge review gaps: `test_role_removal_takes_effect_immediately` (removed member rejected at sign gate), `test_concurrent_role_demotion_strips_signature_and_blocks_signing` (Admin demoted to Viewer → sig stripped, sign blocked), `test_unauthorized_viewer_fails_before_mutation` (Viewer rejected at auth gate with zero side-effects). Created `docs/issue-1715-role-lifecycle-security.md` with full PR description, auth-matrix design, backward-compatibility analysis, rollback notes, and validation checklist.
+- **This session (Events and Audit Parity):** Implemented deterministic event emission and complete audit parity for `data_migration` across all state machine lifecycle operations (`begin_import`, `record_progress`, `fail_import`, `mark_imported`, `RollbackRestored`, `mark_completed_at`). Added `MigrationEventType`, `MigrationAuditEventV1`, `EventPage`, `SnapshotPayload::Payments`, `SnapshotPayload::Settlements`, `PaymentsExport`, `SettlementsExport`, and updated `MigrationTracker` / `SharedMigrationTracker` with `event_seq`, `audit_events`, and deterministic, gap-free `query_events` pagination. Added 5 integration tests in `data_migration/tests/events_audit_parity.rs` and documented the architecture in `docs/events-and-audit-parity.md`.
 
 ### Verified
-- `cargo` not available in local environment for compilation check.
-- Code review confirms correctness of pattern and consistency.
-- 3 new tests appended to `family_wallet/src/test.rs` (lines 8270–8500), total test count now 208 (was 199).
+- `cargo check -p data_migration` passed cleanly.
+- `cargo clippy -p data_migration` passed with 0 warnings.
+- `cargo test -p data_migration` passed all 292 tests (273 unit tests in `lib.rs`, 10 concurrency tests in `concurrency_confilct.rs`, 5 integration tests in `events_audit_parity.rs`, 3 replay protection tests, 1 doc test).
 
 ### Remaining / Untested
-- Needs `cargo check` / `cargo test` on environment with Rust toolchain.
-- CI (`check_ci.sh`) not yet run.
 - 6 pre-existing `emit_tests` / `assert_event_tests` failures in `remitwise-common` — not introduced by this PR.
 
 ## Key Decisions
@@ -53,6 +51,8 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - Kill switch is a simple `bool` toggle (unlike investigation epoch which is time-bounded)
 - `activate_kill_switch`/`deactivate_kill_switch` don't enforce auth — callers must gate with admin auth
 - Cost: a single instance-storage `bool` read (~250 gas) — negligible relative to any write entry point
+- Audit events are emitted only on committed transitions; rejected/stale/duplicate operations leave zero partial state and do not increment `event_seq`.
+- Correlation ID format: `mig:seq:<seq>:<checksum[..8]>`, strictly monotonic and deterministic.
 
 ## File Changes
 - `/remitwise-common/src/lib.rs`: Added `STORAGE_KILL_SWITCH`, `KillSwitchError`, `is_kill_switch_active`, `require_no_active_kill_switch`, `activate_kill_switch`, `deactivate_kill_switch`, and 6 unit tests in `kill_switch_tests` module
@@ -63,3 +63,6 @@ Fix compilation errors blocking `cargo build --release --target wasm32-unknown-u
 - `/savings_goals/src/lib.rs`: Added guard to 13 write entry points
 - `/orchestrator/src/lib.rs`: Added guard to 4 write entry points
 - `/reporting/src/lib.rs`: Added guard to 2 write entry points
+- `/data_migration/src/lib.rs`: Added `MigrationEventType`, `MigrationAuditEventV1`, `EventPage`, `SnapshotPayload::Payments`, `SnapshotPayload::Settlements`, `PaymentsExport`, `SettlementsExport`, and audit tracking + gap-free queries in `MigrationTracker` and `SharedMigrationTracker`.
+- `/data_migration/tests/events_audit_parity.rs`: Added 5 integration tests for event emission parity, gap-free pagination, and concurrent audit guarantees.
+- `/docs/events-and-audit-parity.md`: Full architecture, schema, invariants, and reconciliation guarantee documentation.
