@@ -3977,7 +3977,7 @@ mod testsuit {
     }
 
     /// Verify archive_paid_bills is atomic: if the operation succeeds,
-    all bills are archived; if it fails (none qualifying), no state changes.
+    /// all bills are archived; if it fails (none qualifying), no state changes.
     #[test]
     fn test_archive_paid_bills_atomic_no_qualifying() {
         let env = Env::default();

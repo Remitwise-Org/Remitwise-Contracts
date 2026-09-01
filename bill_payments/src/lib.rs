@@ -99,20 +99,7 @@ pub struct BillSchedule {
     pub missed_count: u32,
 }
 
-/// Paginated result for bill queries
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillSchedule {
-    pub id: u32,
-    pub owner: Address,
-    pub bill_id: u32,
-    pub next_due: u64,
-    pub interval: u64,
-    pub active: bool,
-    pub missed_count: u32,
-}
-
+/// Paginated result for bill queries.
 #[contracttype]
 #[derive(Clone)]
 pub struct BillPage {
@@ -386,7 +373,7 @@ pub enum BillPaymentsError {
     /// State transition is not allowed.
     InvalidStateTransition = 36,
     /// Invariant violation detected - bill data is inconsistent.
-    InvariantViolation = 36,
+    InvariantViolation = 41,
     /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
     /// overflow `i128`. Rejected deterministically (panic → full revert)
     /// instead of silently saturating, so balances can never be truncated.
@@ -397,6 +384,12 @@ pub enum BillPaymentsError {
     ScheduleIntervalTooLong = 39,
     /// The `u32` bill/schedule id counter is exhausted (`u32::MAX`).
     IdSpaceExhausted = 40,
+    /// Rate limit exceeded for a recurring schedule operation
+    /// (create / modify / cancel).
+    ScheduleRateLimitExceeded = 42,
+    /// Per-call bill-creation cap for [`Self::execute_due_bill_schedules`]
+    /// reached; further child-bill creation is deferred to a later window.
+    ScheduleExecutionCapReached = 43,
 }
 
 pub type Error = BillPaymentsError;
@@ -1568,6 +1561,26 @@ impl BillPayments {
         env.storage()
             .persistent()
             .set(&symbol_short!("SNAP_TS"), &env.ledger().timestamp());
+        // Recurring-schedule counter + execution cursor are captured as
+        // additive persistent keys (NOT as new fields of `PreUpgradeSnapshot`)
+        // so that snapshot v1 remains forward- and backward-compatible: older
+        // binaries ignore these keys and older snapshots restore defaults when
+        // the keys are absent. On a failed upgrade these counters are restored
+        // alongside `next_id`, keeping the recurring lifecycle's ID allocation
+        // collision-free and its batched execution resumable (observable).
+        env.storage().persistent().set(
+            &symbol_short!("SNAP_NXTB"),
+            &Self::get_next_bill_schedule_id(&env),
+        );
+        if let Some(exe_curs) = env
+            .storage()
+            .instance()
+            .get::<u32>(&symbol_short!("EXE_CURS"))
+        {
+            env.storage()
+                .persistent()
+                .set(&symbol_short!("SNAP_CURS"), &exe_curs);
+        }
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1641,7 +1654,31 @@ impl BillPayments {
                 .set(&symbol_short!("PAUSE_ADM"), addr),
             None => env.storage().instance().remove(&symbol_short!("PAUSE_ADM")),
         }
+        // Restore the recurring-schedule counters captured by the current
+        // format. These additive keys are absent in legacy (v1) snapshots, in
+        // which case the existing live counters are left untouched — backward
+        // compatible by construction.
+        if let Some(next_sched) = env
+            .storage()
+            .persistent()
+            .get::<u32>(&symbol_short!("SNAP_NXTB"))
+        {
+            env.storage()
+                .instance()
+                .set(&STORAGE_NEXT_BSCH, &next_sched);
+        }
+        if let Some(exe_curs) = env
+            .storage()
+            .persistent()
+            .get::<u32>(&symbol_short!("SNAP_CURS"))
+        {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("EXE_CURS"), &exe_curs);
+        }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.storage().persistent().remove(&symbol_short!("SNAP_NXTB"));
+        env.storage().persistent().remove(&symbol_short!("SNAP_CURS"));
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1670,6 +1707,8 @@ impl BillPayments {
             return Err(BillPaymentsError::Unauthorized);
         }
         env.storage().persistent().remove(&SNAPSHOT_KEY);
+        env.storage().persistent().remove(&symbol_short!("SNAP_NXTB"));
+        env.storage().persistent().remove(&symbol_short!("SNAP_CURS"));
         RemitwiseEvents::emit(
             &env,
             EventCategory::System,
@@ -1762,6 +1801,14 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<u32, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
+            &owner,
+            pause_functions::CREATE_BILL_SCHEDULE,
+            CREATE_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         // Validate schedule name length
         if name.is_empty() || name.len() > MAX_NAME_LEN {
             return Err(BillPaymentsError::InvalidName);
@@ -1864,6 +1911,27 @@ impl BillPayments {
         Self::modify_bill_schedule_core(&env, caller, schedule_id, amount, next_due, interval)
     }
 
+    /// Shared core for [`Self::modify_bill_schedule`].
+    ///
+    /// Validates the modified fields and applies the change atomically. No
+    /// storage is mutated until every validation check has succeeded, so a
+    /// rejected modification leaves the existing schedule untouched.
+    fn modify_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+        amount: i128,
+        next_due: u64,
+        interval: u64,
+    ) -> Result<bool, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
+            &caller,
+            pause_functions::MODIFY_BILL_SCHEDULE,
+            MODIFY_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         // Shared exact-integer amount rules (sign + magnitude), before any
         // state change. The previous `amount <= 0` guard did not bound the
         // magnitude; an oversized amount could threaten per-owner totals.
@@ -1935,15 +2003,26 @@ impl BillPayments {
         Self::cancel_bill_schedule_core(&env, caller, schedule_id)
     }
 
+    /// Shared core for [`Self::cancel_bill_schedule`].
+    ///
+    /// Deactivates an active schedule. The schedule record is preserved in
+    /// `STORAGE_BSCHEDS` with `active = false` for auditability, but its ID is
+    /// removed from the owner index so it no longer appears in schedule lists
+    /// or paginated queries and can never be executed again.
+    fn cancel_bill_schedule_core(
+        env: &Env,
+        caller: Address,
+        schedule_id: u32,
+    ) -> Result<bool, BillPaymentsError> {
         check_and_increment_rate_limit(
-            &env,
+            env,
             &caller,
             pause_functions::CANCEL_BILL_SCHEDULE,
             CANCEL_SCHEDULE_RATE_LIMIT,
         )
         .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
-        Self::extend_instance_ttl(&env);
+        Self::extend_instance_ttl(env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
@@ -2068,6 +2147,11 @@ impl BillPayments {
 
         let mut schedules_checked = 0;
         let mut next_cursor = start_schedule_id;
+        // Per-call resource cap: at most `MAX_BILLS_PER_SCHEDULE_EXECUTION`
+        // child bills may be minted in a single invocation. Counters bound the
+        // work done here so an adversary cannot force unbounded due-schedule
+        // iteration (and bill creation) in one transaction.
+        let mut bills_created_this_call: u32 = 0;
 
         for schedule_id in start_schedule_id..=next_schedule_id {
             // Checked cursor increment: at `u32::MAX` the "past the end"
@@ -2165,7 +2249,15 @@ impl BillPayments {
 
                 let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
 
-                if owner_bill_count < MAX_BILLS_PER_OWNER {
+                // Per-call resource cap: only mint a child bill when neither
+                // the per-owner bill cap nor the per-call execution cap has
+                // been reached. When the cap stops creation, the schedule's
+                // state (`last_executed`/`next_due`/`missed_count`) has
+                // already advanced, so the schedule is not double-executed
+                // and child issuance simply resumes on the next window.
+                if bills_created_this_call < MAX_BILLS_PER_SCHEDULE_EXECUTION
+                    && owner_bill_count < MAX_BILLS_PER_OWNER
+                {
                     // Checked increment: at `u32::MAX` the next bill id is
                     // unrepresentable. The previous `saturating_add(1)` could
                     // silently reuse an existing bill id and overwrite a live
@@ -2195,13 +2287,11 @@ impl BillPayments {
                     Self::index_add_currency(env, &schedule.owner, &schedule.currency, next_id);
                     Self::adjust_unpaid_total(env, &schedule.owner, schedule.amount);
 
-                        env.events().publish(
-                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                            (next_id, schedule_id, schedule.next_due),
-                        );
-
-                        bills_created_this_call = bills_created_this_call.saturating_add(1);
-                    }
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                        (next_id, schedule_id, schedule.next_due),
+                    );
+                    bills_created_this_call = bills_created_this_call.saturating_add(1);
                 }
             } else {
                 schedule.active = false;

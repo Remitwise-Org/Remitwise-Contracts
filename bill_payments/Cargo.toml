@@ -50,3 +50,7 @@ path = "tests/gas_bench.rs"
 [[test]]
 name = "test_state_transition_invariants"
 path = "tests/test_state_transition_invariants.rs"
+
+[[test]]
+name = "tests_schedule_rate_limits"
+path = "tests/tests_schedule_rate_limits.rs"
