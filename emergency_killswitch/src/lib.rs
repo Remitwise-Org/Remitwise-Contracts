@@ -30,9 +30,11 @@ pub enum Error {
     AlreadyMigrated = 18,
     /// A previous migration did not complete — call `migrate_storage` again.
     MigrationIncomplete = 19,
+    /// Arithmetic overflow (e.g. epoch would wrap).
+    Overflow = 20,
     /// The cursor value is not valid for this collection (e.g. not produced by a
     /// previous page call).
-    InvalidCursor = 20,
+    InvalidCursor = 21,
 }
 
 /// The exact pause surface affected by a threshold-approved activation.
@@ -194,6 +196,26 @@ pub struct MigrationProgress {
     pub completed_step: u32,
     pub total_steps: u32,
     pub last_run_at: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Checked-arithmetic helpers
+// ---------------------------------------------------------------------------
+
+/// Checked addition for `u64`, returning `Error::Overflow` on wrap.
+fn checked_add_u64(a: u64, b: u64) -> Result<u64, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Checked addition for `u32`, returning `Error::Overflow` on wrap.
+fn checked_add_u32(a: u32, b: u32) -> Result<u32, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// Compute snapshot age (`now - ts`). Returns `Err(Error::Overflow)` if
+/// `ts > now` (inverted clock).
+fn snapshot_age(now: u64, ts: u64) -> Result<u64, Error> {
+    now.checked_sub(ts).ok_or(Error::Overflow)
 }
 
 #[contract]
