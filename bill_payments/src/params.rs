@@ -11,6 +11,22 @@ pub const MAX_NAME_LEN: u32 = 64;
 pub const CREATE_BILL_RATE_LIMIT: u32 = 100; // per address per 24h
 pub const PAY_BILL_RATE_LIMIT: u32 = 200; // per address per 24h
 pub const CANCEL_BILL_RATE_LIMIT: u32 = 50; // per address per 24h
+
+/// Per-address per-24-hour rate limits for recurring bill schedule operations.
+pub const CREATE_SCHEDULE_RATE_LIMIT: u32 = 50;
+pub const MODIFY_SCHEDULE_RATE_LIMIT: u32 = 50;
+pub const CANCEL_SCHEDULE_RATE_LIMIT: u32 = 50;
+
+/// Maximum number of bills that [`crate::BillPayments::execute_due_bill_schedules`]
+/// may create in a single call.
+///
+/// This bounds per-call work so an adversary cannot force the contract to
+/// iterate an unbounded number of due schedules in one transaction. Schedules
+/// that cannot mint a child this window still have their state advanced
+/// (`last_executed`, `next_due`, `missed_count`), so no schedule is
+/// double-executed and no obligation is silently dropped.
+pub const MAX_BILLS_PER_SCHEDULE_EXECUTION: u32 = 50;
+
 pub const MIN_EXTERNAL_REF_LEN: u32 = 1;
 pub const MAX_EXTERNAL_REF_LEN: u32 = 64;
 pub const MIN_SCHEDULE_INTERVAL: u64 = 3_600;
