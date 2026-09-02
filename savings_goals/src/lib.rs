@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use remitwise_common::{
     bump_cross_contract_epoch, get_cross_contract_epoch, get_trusted_orchestrator,
-    guard_cross_contract_write, require_matching_cross_contract_epoch, set_trusted_orchestrator,
+    guard_cross_contract_write, set_trusted_orchestrator,
     CrossContractEpochError, TrustedOrchestratorError,
     reversible_op::{ReversibleOpError, SavingsGoalsReversible},
     EventCategory, EventPriority, RemitwiseEvents, SNAPSHOT_KEY, SNAPSHOT_VERSION,

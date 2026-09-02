@@ -59,7 +59,13 @@ mod interface {
 
     #[contractclient(name = "InsuranceClient")]
     pub trait InsuranceInterface {
-        fn pay_premium(env: Env, orchestrator: Address, epoch: u64, caller: Address, policy_id: u32);
+        fn pay_premium(
+            env: Env,
+            orchestrator: Address,
+            epoch: u64,
+            caller: Address,
+            policy_id: u32,
+        ) -> bool;
         fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
@@ -90,7 +96,7 @@ mod interface {
             user: Address,
             bill_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     #[contractclient(name = "InsuranceCompClient")]
@@ -102,7 +108,7 @@ mod interface {
             user: Address,
             policy_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     /// External token contract interface used by `claim_rewards_summary_external`.
@@ -783,9 +789,11 @@ impl Orchestrator {
         let b_ok = interface::BillPaymentsClient::new(&env, &routing.bills)
             .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id)
             .is_ok();
-        let i_ok = interface::InsuranceClient::new(&env, &routing.insurance)
-            .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id)
-            .is_ok();
+        let i_ok = matches!(
+            interface::InsuranceClient::new(&env, &routing.insurance)
+                .try_pay_premium(&orch, &epoch, &executor, &routing.policy_id),
+            Ok(Ok(true))
+        );
 
         let savings = FanOutStepResult {
             step: FlowStep::SavingsGoal,
@@ -1592,7 +1600,8 @@ impl Orchestrator {
         if insurance_amt > 0 {
             let i_client = interface::InsuranceClient::new(env, &routing.insurance);
             let rejected_by_contract = match i_client.try_pay_premium(&orch, &epoch, caller, &routing.policy_id) {
-                Ok(Ok(_)) => None,
+                Ok(Ok(true)) => None,
+                Ok(Ok(false)) => Some(true),
                 Ok(Err(_)) => Some(true),
                 Err(_) => Some(false),
             };
@@ -2025,7 +2034,8 @@ mod tests_nonce_eviction {
             _epoch: u64,
             _user: Address,
             _policy_id: u32,
-        ) {
+        ) -> bool {
+            true
         }
         pub fn remove_from_goal(
             _env: Env,
@@ -2044,7 +2054,8 @@ mod tests_nonce_eviction {
             _user: Address,
             _bill_id: u32,
             _amount: i128,
-        ) {
+        ) -> bool {
+            true
         }
         pub fn reverse_premium(
             _env: Env,
@@ -2053,7 +2064,8 @@ mod tests_nonce_eviction {
             _user: Address,
             _policy_id: u32,
             _amount: i128,
-        ) {
+        ) -> bool {
+            true
         }
     }
 
