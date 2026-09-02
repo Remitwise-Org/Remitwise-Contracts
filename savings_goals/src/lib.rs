@@ -1327,6 +1327,134 @@ impl SavingsGoalContract {
         Ok(new_total)
     }
 
+    /// Cross-contract entry point: add funds to a goal on behalf of a user.
+    ///
+    /// Called exclusively by the trusted orchestrator during a remittance fan-out.
+    /// Validates both the orchestrator identity and the current cross-contract epoch
+    /// before delegating to the same core logic as the user-facing [`add_to_goal`].
+    ///
+    /// # Arguments
+    /// * `orchestrator` - The calling orchestrator contract address (must be trusted)
+    /// * `epoch`        - Actor epoch from the orchestrator (must match stored XC epoch)
+    /// * `caller`       - The end-user whose goal receives the funds (must authorize)
+    /// * `goal_id`      - ID of the target savings goal
+    /// * `amount`       - Positive amount to credit (in stroops)
+    ///
+    /// # Errors
+    /// Panics with `CrossContractEpochError::EpochMismatch` if the orchestrator is
+    /// not trusted or the epoch is stale.  All other errors follow `SavingsGoalError`.
+    pub fn add_to_goal_xc(
+        env: Env,
+        orchestrator: Address,
+        epoch: u64,
+        caller: Address,
+        goal_id: u32,
+        amount: i128,
+    ) -> Result<i128, SavingsGoalError> {
+        remitwise_common::require_no_active_kill_switch(&env)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        guard_cross_contract_write(&env, &orchestrator, epoch)
+            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        caller.require_auth();
+        Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
+
+        if amount <= 0 {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::InvalidAmount);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        let mut goal = match env
+            .storage()
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+        {
+            Some(g) => g,
+            None => {
+                Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+                return Err(SavingsGoalError::GoalNotFound);
+            }
+        };
+
+        if goal.owner != caller {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::Unauthorized);
+        }
+
+        let previously_completed = goal.current_amount >= goal.target_amount;
+        let new_total = match goal.current_amount.checked_add(amount) {
+            Some(v) => v,
+            None => {
+                Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+                return Err(SavingsGoalError::Overflow);
+            }
+        };
+
+        if new_total > MAX_SAFE_GOAL_BALANCE {
+            Self::append_audit(&env, symbol_short!("add_xc"), &caller, false);
+            return Err(SavingsGoalError::Overflow);
+        }
+
+        goal.current_amount = new_total;
+        let was_completed = new_total >= goal.target_amount;
+        let now = env.ledger().timestamp();
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Goal(goal_id),
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        RemitwiseEvents::emit(
+            &env,
+            EventCategory::Transaction,
+            EventPriority::Medium,
+            FUNDS_ADDED,
+            FundsAddedEvent {
+                goal_id,
+                owner: caller.clone(),
+                amount,
+                new_total,
+                timestamp: now,
+            },
+        );
+
+        env.events().publish(
+            (symbol_short!("savings"), SavingsEvent::FundsAdded),
+            (goal_id, caller.clone(), amount),
+        );
+
+        if was_completed && !previously_completed {
+            let completed_event = GoalCompletedEvent {
+                goal_id,
+                owner: caller.clone(),
+                amount,
+                new_total,
+                name: goal.name.clone(),
+                timestamp: now,
+            };
+            RemitwiseEvents::emit(
+                &env,
+                EventCategory::State,
+                EventPriority::Medium,
+                GOAL_COMPLETED,
+                completed_event.clone(),
+            );
+            env.events().publish((GOAL_COMPLETED,), completed_event);
+            env.events().publish(
+                (symbol_short!("savings"), SavingsEvent::GoalCompleted),
+                (goal_id, caller.clone()),
+            );
+        }
+
+        Self::append_audit(&env, symbol_short!("add_xc"), &caller, true);
+        Ok(new_total)
+    }
+
     /// Adds contributions to multiple goals in one call.
     ///
     /// Batch semantics are strict and order-sensitive:

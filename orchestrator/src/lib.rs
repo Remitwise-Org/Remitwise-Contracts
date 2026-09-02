@@ -38,14 +38,14 @@ mod interface {
 
     #[contractclient(name = "SavingsGoalsClient")]
     pub trait SavingsGoalsInterface {
-        fn add_to_goal(
+        fn add_to_goal_xc(
             env: Env,
             orchestrator: Address,
             epoch: u64,
             caller: Address,
             goal_id: u32,
             amount: i128,
-        );
+        ) -> i128;
         fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
@@ -78,7 +78,7 @@ mod interface {
             user: Address,
             goal_id: u32,
             amount: i128,
-        );
+        ) -> bool;
     }
 
     #[contractclient(name = "BillPaymentsCompClient")]
@@ -778,7 +778,7 @@ impl Orchestrator {
 
         // --- #1345: use .is_ok() so succeeded=true when the call succeeds -----
         let s_ok = interface::SavingsGoalsClient::new(&env, &routing.savings)
-            .try_add_to_goal(&orch, &epoch, &executor, &routing.goal_id, &savings_amt)
+            .try_add_to_goal_xc(&orch, &epoch, &executor, &routing.goal_id, &savings_amt)
             .is_ok();
         let b_ok = interface::BillPaymentsClient::new(&env, &routing.bills)
             .try_pay_bill(&orch, &epoch, &executor, &routing.bill_id)
@@ -1547,7 +1547,7 @@ impl Orchestrator {
 
         if savings_amt > 0 {
             let s_client = interface::SavingsGoalsClient::new(env, &routing.savings);
-            match s_client.try_add_to_goal(&orch, &epoch, caller, &routing.goal_id, &savings_amt) {
+            match s_client.try_add_to_goal_xc(&orch, &epoch, caller, &routing.goal_id, &savings_amt) {
                 Ok(Ok(_)) => savings_done = true,
                 Ok(Err(_)) => {
                     Self::emit_cross_contract_failure(env, symbol_short!("savings"), true);
@@ -2001,14 +2001,15 @@ mod tests_nonce_eviction {
         ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(
+        pub fn add_to_goal_xc(
             _env: Env,
             _orchestrator: Address,
             _epoch: u64,
             _user: Address,
             _goal_id: u32,
             _amount: i128,
-        ) {
+        ) -> i128 {
+            0i128
         }
         pub fn pay_bill(
             _env: Env,
@@ -2033,7 +2034,8 @@ mod tests_nonce_eviction {
             _user: Address,
             _goal_id: u32,
             _amount: i128,
-        ) {
+        ) -> bool {
+            true
         }
         pub fn reverse_payment(
             _env: Env,
