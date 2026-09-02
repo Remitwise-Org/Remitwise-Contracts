@@ -16,7 +16,7 @@ pub(crate) fn split_amounts(
     savings_pct: u32,
     bills_pct: u32,
 ) -> Option<(i128, i128, i128, i128)> {
-    if total_amount <= 0 {
+    if total_amount <= 0 || total_amount > i128::MAX / 100 {
         return None;
     }
     let denominator: i128 = if spending_pct <= 100 && savings_pct <= 100 && bills_pct <= 100 {
@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn calculates_large_amount_without_intermediate_overflow() {
-        assert_eq!(split_amounts(i128::MAX, 10_000, 0, 0), Some((i128::MAX, 0, 0, 0)));
+    fn rejects_intermediate_multiplication_overflow() {
+        assert_eq!(split_amounts(i128::MAX, 10_000, 0, 0), None);
     }
 }

@@ -1623,6 +1623,9 @@ impl RemittanceSplit {
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
+        if total_amount > i128::MAX / 100 {
+            return Err(RemittanceSplitError::Overflow);
+        }
 
         let allocations = if let Some(config) = env
             .storage()
@@ -2732,6 +2735,9 @@ impl RemittanceSplit {
     ) -> Result<[i128; 4], RemittanceSplitError> {
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
+        }
+        if total_amount > i128::MAX / 100 {
+            return Err(RemittanceSplitError::Overflow);
         }
 
         let s0 = config

@@ -195,26 +195,38 @@ fn checked_mul_conserves_total_for_single_category_config() {
 
 // ─── checked_mul overflow → RemittanceSplitError::Overflow (not a panic) ────
 
+/// total_amount one step above i128::MAX/100 causes checked_mul to return None
+/// which must map to RemittanceSplitError::Overflow, not a panic.
 #[test]
-fn checked_mul_succeeds_on_large_total() {
+fn checked_mul_returns_error_on_overflow() {
     let env = Env::default();
     let (client, owner) = new_client(&env);
+    // Any non-zero pct ≥ 1 will overflow when total > i128::MAX/pct.
+    // 50% means the binding multiplier is 50; i128::MAX/50 + 1 overflows.
     init(&client, &env, &owner, 50, 25, 15, 10);
 
-    let large_total = i128::MAX / 50 + 1;
-    let result = client.try_calculate_split(&large_total);
-    assert!(result.is_ok());
+    let overflow_total = i128::MAX / 50 + 1;
+    let result = client.try_calculate_split(&overflow_total);
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::Overflow)),
+        "checked_mul overflow must produce RemittanceSplitError::Overflow, not a panic"
+    );
 }
 
-/// i128::MAX itself calculates correctly across categories.
+/// i128::MAX itself (much larger than any safe range) returns Overflow.
 #[test]
-fn checked_mul_succeeds_on_i128_max_input() {
+fn checked_mul_returns_error_on_i128_max_input() {
     let env = Env::default();
     let (client, owner) = new_client(&env);
     init(&client, &env, &owner, 25, 25, 25, 25);
 
     let result = client.try_calculate_split(&i128::MAX);
-    assert!(result.is_ok());
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::Overflow)),
+        "i128::MAX must return Overflow error, not a panic"
+    );
 }
 
 // ─── zero / negative amount → RemittanceSplitError::InvalidAmount ────────────
