@@ -30,13 +30,8 @@ mod interface {
 
     #[contractclient(name = "RemittanceSplitClient")]
     pub trait RemittanceSplitInterface {
-        fn calculate_split(
-            env: Env,
-            orchestrator: Address,
-            epoch: u64,
-            total_amount: i128,
-        ) -> Vec<i128>;
-        fn get_split(env: Env, orchestrator: Address, epoch: u64) -> Vec<u32>;
+        fn calculate_split(env: Env, total_amount: i128) -> Vec<i128>;
+        fn get_split(env: Env) -> Vec<u32>;
         fn bump_cross_contract_epoch(env: Env, orchestrator: Address);
         fn get_cross_contract_epoch(env: Env) -> u64;
     }
@@ -444,7 +439,7 @@ impl Orchestrator {
             &params.caller,
             params.total_amount,
             &FlowRouting::from_params(params),
-            false,
+            true,
         )
     }
 
@@ -767,7 +762,7 @@ impl Orchestrator {
         // We call it once and reuse the result for all three fan-out steps,
         // so the fee schedule is fetched exactly once per batch invocation.
         let rs_client = interface::RemittanceSplitClient::new(&env, &routing.remittance_split);
-        let allocations = rs_client.calculate_split(&orch, &epoch, &amount);
+        let allocations = rs_client.calculate_split(&amount);
 
         if allocations.len() < 4 {
             return Err(OrchestratorError::InvalidAmount);
@@ -851,7 +846,7 @@ impl Orchestrator {
         let rs_addr: Address = env.storage().instance().get(&symbol_short!("RS_ADDR"))?;
 
         let rs_client = interface::RemittanceSplitClient::new(&env, &rs_addr);
-        let split = rs_client.get_split(&env.current_contract_address(), &Self::get_actor_epoch(&env));
+        let split = rs_client.get_split();
 
         if split.len() != 4 {
             return None;
@@ -1533,7 +1528,7 @@ impl Orchestrator {
         }
 
         let rs_client = interface::RemittanceSplitClient::new(env, &routing.remittance_split);
-        let allocations = rs_client.calculate_split(&orch, &epoch, &amount);
+        let allocations = rs_client.calculate_split(&amount);
 
         if allocations.len() < 4 {
             return Err(OrchestratorError::InvalidAmount);
@@ -1580,6 +1575,7 @@ impl Orchestrator {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
+                        &routing.savings,
                         &orch,
                         epoch,
                         caller,
@@ -1605,6 +1601,7 @@ impl Orchestrator {
                 if compensate_on_failure {
                     Self::compensate_savings(
                         env,
+                        &routing.savings,
                         &orch,
                         epoch,
                         caller,
@@ -1612,7 +1609,16 @@ impl Orchestrator {
                         savings_amt,
                         savings_done,
                     );
-                    Self::compensate_bill(env, &orch, epoch, caller, routing.bill_id, bills_amt, bills_done);
+                    Self::compensate_bill(
+                        env,
+                        &routing.bills,
+                        &orch,
+                        epoch,
+                        caller,
+                        routing.bill_id,
+                        bills_amt,
+                        bills_done,
+                    );
                     return Err(OrchestratorError::RemittanceFlowRolledBack);
                 }
                 return Err(OrchestratorError::CrossContractCallFailed);
@@ -1639,6 +1645,7 @@ impl Orchestrator {
     /// Compensate a savings-goal contribution if it was applied.
     fn compensate_savings(
         env: &Env,
+        savings_addr: &Address,
         orch: &Address,
         epoch: u64,
         executor: &Address,
@@ -1649,17 +1656,14 @@ impl Orchestrator {
         if !applied || amount <= 0 {
             return;
         }
-        let sg_addr = match env.storage().instance().get(&symbol_short!("SG_ADDR")) {
-            Some(a) => a,
-            None => return,
-        };
-        let client = interface::SavingsGoalsCompClient::new(env, &sg_addr);
+        let client = interface::SavingsGoalsCompClient::new(env, savings_addr);
         let _ = client.try_remove_from_goal(orch, &epoch, executor, &goal_id, &amount);
     }
 
     /// Compensate a bill payment if it was applied.
     fn compensate_bill(
         env: &Env,
+        bill_addr: &Address,
         orch: &Address,
         epoch: u64,
         executor: &Address,
@@ -1670,11 +1674,7 @@ impl Orchestrator {
         if !applied || amount <= 0 {
             return;
         }
-        let bp_addr = match env.storage().instance().get(&symbol_short!("BP_ADDR")) {
-            Some(a) => a,
-            None => return,
-        };
-        let client = interface::BillPaymentsCompClient::new(env, &bp_addr);
+        let client = interface::BillPaymentsCompClient::new(env, bill_addr);
         let _ = client.try_reverse_payment(orch, &epoch, executor, &bill_id, &amount);
     }
 
@@ -1984,18 +1984,75 @@ mod tests_nonce_eviction {
 
     #[contractimpl]
     impl MockSimpleContract {
-        pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+        pub fn check_spending_limit(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _amount: i128,
+        ) -> bool {
             true
         }
-        pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+        pub fn calculate_split(
+            env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _total_amount: i128,
+        ) -> Vec<i128> {
             soroban_sdk::vec![&env, 2500i128, 2500i128, 2500i128, 2500i128]
         }
-        pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
-        pub fn remove_from_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) {}
-        pub fn reverse_payment(_env: Env, _user: Address, _bill_id: u32, _amount: i128) {}
-        pub fn reverse_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) {}
+        pub fn add_to_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn pay_bill(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+        ) {
+        }
+        pub fn pay_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+        ) {
+        }
+        pub fn remove_from_goal(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _goal_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_payment(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _bill_id: u32,
+            _amount: i128,
+        ) {
+        }
+        pub fn reverse_premium(
+            _env: Env,
+            _orchestrator: Address,
+            _epoch: u64,
+            _user: Address,
+            _policy_id: u32,
+            _amount: i128,
+        ) {
+        }
     }
 
     const BASE_TIME: u64 = 1_000;

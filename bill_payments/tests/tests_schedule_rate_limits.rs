@@ -38,7 +38,7 @@ use bill_payments::{
     MAX_BILLS_PER_SCHEDULE_EXECUTION, MODIFY_SCHEDULE_RATE_LIMIT,
 };
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{Address, Env, String, Vec};
 
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -57,6 +57,7 @@ struct ScheduleRateHarness {
 impl ScheduleRateHarness {
     fn new(now: u64) -> Self {
         let env = Env::default();
+        env.budget().reset_unlimited();
         env.ledger().set_timestamp(now);
         env.mock_all_auths();
         let contract_id = env.register_contract(None, BillPayments);
@@ -334,11 +335,24 @@ fn test_modify_schedule_no_partial_state_on_throttle() {
 #[test]
 fn test_cancel_schedule_rate_limit_enforced() {
     let h = ScheduleRateHarness::new(1_000_000);
-    let due = h.now + SECONDS_PER_DAY * 365;
+    let due = h.now + SECONDS_PER_DAY * 30;
 
-    // Create multiple schedules to cancel
+    // Create multiple schedules to cancel (30 in window 1, 30 in window 2)
     let mut ids = Vec::new(&h.env);
-    for i in 0..60u32 {
+    for i in 0..30u32 {
+        let d = due + i as u64;
+        let id = h.client.create_bill_schedule(
+            &h.owner,
+            &String::from_str(&h.env, "C"),
+            &10,
+            &String::from_str(&h.env, "XLM"),
+            &d,
+            &0,
+        );
+        ids.push_back(id);
+    }
+    h.env.ledger().set_timestamp(h.now + SECONDS_PER_DAY + 1);
+    for i in 30..60u32 {
         let d = due + i as u64;
         let id = h.client.create_bill_schedule(
             &h.owner,
@@ -355,7 +369,7 @@ fn test_cancel_schedule_rate_limit_enforced() {
     for i in 0..50u32 {
         let id = ids.get(i).unwrap();
         let result = h.client.try_cancel_bill_schedule(&h.owner, &id);
-        assert!(result.is_ok(), "cancel {i} should succeed within limit");
+        assert!(result.is_ok(), "cancel {i} (id={id}) should succeed within limit: {:?}", result);
     }
 
     // The 51st cancel should be throttled
@@ -404,32 +418,34 @@ fn test_cancel_schedule_clean_state() {
 #[test]
 fn test_execute_schedule_caps_bills_created() {
     let h = ScheduleRateHarness::new(1_000_000);
-    let past_due = 999_999u64; // already in the past
+    let owner_b = Address::generate(&h.env);
+    let due = h.now + 1_000;
 
     let extra = 10u32;
     let total_schedules = MAX_BILLS_PER_SCHEDULE_EXECUTION + extra;
     for i in 0..total_schedules {
+        let owner = if i < 30 { &h.owner } else { &owner_b };
         h.client.create_bill_schedule(
-            &h.owner,
+            owner,
             &String::from_str(&h.env, "Due"),
             &10,
             &String::from_str(&h.env, "XLM"),
-            &past_due,
+            &due,
             &(SECONDS_PER_DAY),
         );
     }
 
+    h.env.ledger().set_timestamp(due + 100);
     let executed = h.client.execute_due_bill_schedules();
     assert_eq!(
         executed.len(),
-        total_schedules,
-        "all schedules should be marked executed"
+        MAX_BILLS_PER_SCHEDULE_EXECUTION,
+        "schedules up to batch execution cap should be marked executed"
     );
 
     // Count bills created by this execution
     let mut bills_created = 0u32;
-    for schedule_id in 1..=total_schedules {
-        let id = schedule_id + 1; // bill IDs start after schedule IDs (roughly)
+    for id in 1..=total_schedules {
         if h.client.get_bill(&id).is_some() {
             bills_created += 1;
         }
@@ -447,43 +463,19 @@ fn test_execute_schedule_caps_bills_created() {
 #[test]
 fn test_execute_schedule_advances_state_even_at_cap() {
     let h = ScheduleRateHarness::new(1_000_000);
-    let past_due = 999_999u64;
+    let due = h.now + 1_000;
 
-    // Create exactly 1 schedule at the cap boundary
-    let schedule_id = h.client.create_bill_schedule(
-        &h.owner,
-        &String::from_str(&h.env, "Cap"),
-        &100,
-        &String::from_str(&h.env, "XLM"),
-        &past_due,
-        &(SECONDS_PER_DAY),
-    );
-
-    // Fill the cap with a different schedule
-    let filler_id = h.client.create_bill_schedule(
-        &h.owner,
-        &String::from_str(&h.env, "Fill"),
-        &50,
-        &String::from_str(&h.env, "XLM"),
-        &past_due,
-        &(SECONDS_PER_DAY),
-    );
-
-    // Set up many schedules so the cap is hit before our target
-    // We want the target to be the first schedule (id=1) so it gets executed
-    // but the filler (id=2) may or may not depending on cap.
-    // Actually, schedule ID 1 is the target. Let's test it differently.
-
-    // Simpler approach: create 1 recurring schedule at past due
+    // Simpler approach: create 1 recurring schedule with future due date
     let target = h.client.create_bill_schedule(
         &h.owner,
         &String::from_str(&h.env, "Target"),
         &100,
         &String::from_str(&h.env, "XLM"),
-        &past_due,
+        &due,
         &(SECONDS_PER_DAY),
     );
 
+    h.env.ledger().set_timestamp(due + 100);
     let _ = h.client.execute_due_bill_schedules();
 
     let sched = h.client.get_bill_schedule(&target).unwrap();
@@ -621,16 +613,28 @@ fn test_cancel_schedule_after_throttle_preserves_state() {
     // Create schedule
     let schedule_id = h.create_recurring_schedule(due, SECONDS_PER_DAY);
 
-    // Exhaust cancel rate limit
+    // Exhaust cancel rate limit (30 in window 1, 30 in window 2)
     let ids: Vec<u32> = {
         let mut v = Vec::new(&h.env);
-        for i in 0..60u32 {
+        for i in 0..30u32 {
             let id = h.client.create_bill_schedule(
                 &h.owner,
                 &String::from_str(&h.env, "X"),
                 &10,
                 &String::from_str(&h.env, "XLM"),
                 &(due + i as u64 * 1000),
+                &0,
+            );
+            v.push_back(id);
+        }
+        h.env.ledger().set_timestamp(h.now + SECONDS_PER_DAY + 1);
+        for i in 30..60u32 {
+            let id = h.client.create_bill_schedule(
+                &h.owner,
+                &String::from_str(&h.env, "X"),
+                &10,
+                &String::from_str(&h.env, "XLM"),
+                &(due + i as u64 * 1000 + SECONDS_PER_DAY),
                 &0,
             );
             v.push_back(id);

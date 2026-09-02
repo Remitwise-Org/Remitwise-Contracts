@@ -335,7 +335,11 @@ fn pay_premium_emits_premium_paid_event() {
     let pid = create_health_policy(&env, &client, &policy_owner);
     env.events().all(); // drain creation events
 
-    client.pay_premium(&policy_owner, &pid);
+    let orch = Address::generate(&env);
+    env.as_contract(&client.address, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
+    client.pay_premium(&orch, &0, &policy_owner, &pid);
 
     let mut found = false;
     for (_cid, topics, data) in env.events().all() {
@@ -570,7 +574,11 @@ fn all_lifecycle_events_use_insurance_namespace() {
     let policy_owner = Address::generate(&env);
 
     let pid = create_health_policy(&env, &client, &policy_owner);
-    client.pay_premium(&policy_owner, &pid);
+    let orch = Address::generate(&env);
+    env.as_contract(&client.address, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
+    client.pay_premium(&orch, &0, &policy_owner, &pid);
     client.deactivate_policy(&policy_owner, &pid);
     env.ledger().with_mut(|l| l.timestamp += 86_401);
     client.reactivate_policy(&policy_owner, &pid);

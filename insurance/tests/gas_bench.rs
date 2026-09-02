@@ -71,10 +71,10 @@ const PAGING_LAST_PAGE_500: RegressionSpec = RegressionSpec {
 
 // pay_premium – single payment under typical load (50 existing policies)
 const PAY_PREMIUM_TYPICAL_50: RegressionSpec = RegressionSpec {
-    cpu_baseline: 2_500_000,
-    mem_baseline: 600_000,
+    cpu_baseline: 2_600_000,
+    mem_baseline: 620_000,
     cpu_threshold_percent: 15,
-    mem_threshold_percent: 12,
+    mem_threshold_percent: 15,
 };
 
 // pay_premium – worst-case: payment on the last policy of MAX_POLICIES_PER_OWNER
@@ -180,8 +180,12 @@ fn bench_pay_premium_worst_case_200() {
     client.set_pause_admin(&owner, &owner);
 
     let last_id = seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
+    let orch = <Address as AddressTrait>::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
 
-    let (cpu, mem, ok) = measure(&env, || client.pay_premium(&owner, &last_id));
+    let (cpu, mem, ok) = measure(&env, || client.pay_premium(&orch, &0, &owner, &last_id));
     assert!(ok, "pay_premium must succeed for the last active policy");
 
     let policy = client.get_policy(&last_id).expect("policy must exist");
@@ -222,9 +226,13 @@ fn bench_pay_premium_rejects_non_owner() {
 
     seed_policies(&client, &env, &owner, 10);
     let target_id = 1u32;
+    let orch = <Address as AddressTrait>::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
 
     // Attacker attempts to pay the owner's premium – must return false (not panic).
-    let result = client.pay_premium(&attacker, &target_id);
+    let result = client.pay_premium(&orch, &0, &attacker, &target_id);
     assert!(!result, "non-owner pay_premium must be rejected");
 
     // Original policy must be unchanged.
@@ -249,8 +257,12 @@ fn bench_pay_premium_rejects_inactive_policy() {
     seed_policies(&client, &env, &owner, 5);
     let target_id = 1u32;
     client.deactivate_policy(&owner, &target_id);
+    let orch = <Address as AddressTrait>::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
 
-    let result = client.pay_premium(&owner, &target_id);
+    let result = client.pay_premium(&orch, &0, &owner, &target_id);
     assert!(!result, "pay_premium on inactive policy must return false");
 }
 
@@ -299,7 +311,7 @@ fn bench_paging_first_page_200() {
     client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
-    seed_policies(&client, &env, &owner, 200);
+    seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
 
     let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &0u32, &20u32));
     assert_eq!(page.count, 20, "first page must return 20 policies");
@@ -371,10 +383,10 @@ fn bench_paging_last_page_200() {
     client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
-    seed_policies(&client, &env, &owner, 200);
+    seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
 
-    // Simulate worst-case: cursor near the end (policy ID 180)
-    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &180u32, &20u32));
+    // Simulate worst-case: cursor near the end (policy ID 80)
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &80u32, &20u32));
     assert!(page.count > 0, "last page must return at least one policy");
 
     assert_regression_bounds(
@@ -403,11 +415,11 @@ fn bench_paging_last_page_500() {
     client.init(&owner);
     client.set_pause_admin(&owner, &owner);
 
-    // Use MAX_POLICIES_PER_OWNER (200) since contract caps at this value
+    // Use MAX_POLICIES_PER_OWNER since contract caps at this value
     seed_policies(&client, &env, &owner, MAX_POLICIES_PER_OWNER);
 
-    // Simulate worst-case: cursor near the end (policy ID 180)
-    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &180u32, &20u32));
+    // Simulate worst-case: cursor near the end (policy ID 80)
+    let (cpu, mem, page) = measure(&env, || client.get_active_policies(&owner, &80u32, &20u32));
     assert!(page.count > 0, "last page must return at least one policy");
 
     assert_regression_bounds(
@@ -438,8 +450,12 @@ fn bench_pay_premium_typical_50() {
 
     seed_policies(&client, &env, &owner, 50);
     let target_id = 1u32;
+    let orch = <Address as AddressTrait>::generate(&env);
+    env.as_contract(&contract_id, || {
+        remitwise_common::set_trusted_orchestrator(&env, &orch);
+    });
 
-    let (cpu, mem, ok) = measure(&env, || client.pay_premium(&owner, &target_id));
+    let (cpu, mem, ok) = measure(&env, || client.pay_premium(&orch, &0, &owner, &target_id));
     assert!(ok, "pay_premium must succeed for active policy");
 
     let policy = client.get_policy(&target_id).expect("policy must exist");

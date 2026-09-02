@@ -18,7 +18,8 @@ use std::collections::HashSet;
 
 /// Helper: register a dummy token address (no real token needed for pure math tests).
 fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
 /// Helper: initialize split with a dummy token address.
@@ -880,6 +881,7 @@ fn fuzz_schedule_one_off_created_and_marked_non_recurring() {
 fn fuzz_schedule_no_storage_write_on_validation_failure() {
     let env = Env::default();
     env.mock_all_auths();
+    env.budget().reset_unlimited();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);

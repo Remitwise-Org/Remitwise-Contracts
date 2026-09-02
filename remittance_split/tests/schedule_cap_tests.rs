@@ -27,7 +27,8 @@ fn checksum(
 
 /// Helper: register a dummy token address
 fn dummy_token(env: &Env) -> Address {
-    Address::generate(env)
+    let admin = Address::generate(env);
+    env.register_stellar_asset_contract_v2(admin).address()
 }
 
 /// Helper: initialize split with a dummy token address

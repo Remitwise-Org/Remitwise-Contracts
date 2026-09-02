@@ -333,6 +333,7 @@ fn viewer_cannot_spend_with_unlimited_legacy_limit() {
     let viewer = Address::generate(&env);
     client.init(&owner, &vec![&env]);
     client.add_family_member(&owner, &viewer, &FamilyRole::Viewer);
-
-    assert!(!client.check_spending_limit(&viewer, &1));
+    let orchestrator = Address::generate(&env);
+    client.set_trusted_orchestrator(&owner, &orchestrator);
+    assert!(!client.check_spending_limit(&orchestrator, &0, &viewer, &1));
 }

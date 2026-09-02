@@ -54,7 +54,7 @@ pub mod params;
 pub use params::*;
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Bill {
     pub id: u32,
     pub owner: Address,
@@ -83,7 +83,7 @@ pub struct Bill {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BillSchedule {
     pub id: u32,
     pub owner: Address,
@@ -99,22 +99,10 @@ pub struct BillSchedule {
     pub missed_count: u32,
 }
 
-/// Paginated result for bill queries
+
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BillSchedule {
-    pub id: u32,
-    pub owner: Address,
-    pub bill_id: u32,
-    pub next_due: u64,
-    pub interval: u64,
-    pub active: bool,
-    pub missed_count: u32,
-}
-
-#[contracttype]
-#[derive(Clone)]
 pub struct BillPage {
     /// The bills for this page
     pub items: Vec<Bill>,
@@ -128,7 +116,7 @@ pub struct BillPage {
 ///
 /// See [Pagination Handbook](../../docs/PAGINATION_HANDBOOK.md) for cursor semantics.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BillSchedulePage {
     /// The bill schedules for this page, ordered by ascending schedule ID.
     pub items: Vec<BillSchedule>,
@@ -140,7 +128,7 @@ pub struct BillSchedulePage {
 
 /// An archived bill that has been moved from active storage to cold storage.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchivedBill {
     pub id: u32,
     pub owner: Address,
@@ -386,17 +374,21 @@ pub enum BillPaymentsError {
     /// State transition is not allowed.
     InvalidStateTransition = 36,
     /// Invariant violation detected - bill data is inconsistent.
-    InvariantViolation = 36,
+    InvariantViolation = 37,
     /// Amount arithmetic (per-owner unpaid totals, batch deltas) would
     /// overflow `i128`. Rejected deterministically (panic → full revert)
     /// instead of silently saturating, so balances can never be truncated.
-    AmountOverflow = 37,
+    AmountOverflow = 38,
     /// Amount exceeds the shared maximum (`remitwise_common::MAX_AMOUNT`).
-    AmountExceedsMax = 38,
+    AmountExceedsMax = 39,
     /// Schedule interval exceeds `MAX_SCHEDULE_INTERVAL` (100 years).
-    ScheduleIntervalTooLong = 39,
+    ScheduleIntervalTooLong = 40,
     /// The `u32` bill/schedule id counter is exhausted (`u32::MAX`).
-    IdSpaceExhausted = 40,
+    IdSpaceExhausted = 41,
+    /// Conflict on idempotency / request key.
+    RequestKeyConflict = 42,
+    /// Schedule rate limit exceeded.
+    ScheduleRateLimitExceeded = 43,
 }
 
 pub type Error = BillPaymentsError;
@@ -406,7 +398,7 @@ pub type Error = BillPaymentsError;
 /// Captures the deterministic result of `pay_bill` so callers can verify
 /// the operation completed without partial state.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AtomicPayReceipt {
     pub bill_id: u32,
     pub paid_amount: i128,
@@ -420,7 +412,7 @@ pub struct AtomicPayReceipt {
 /// The entire batch is atomic: either all entries succeed or
 /// the entire operation returns an error with no state changes.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AtomicBatchPayReceipt {
     pub paid_count: u32,
     pub receipts: Vec<AtomicPayReceipt>,
@@ -444,7 +436,7 @@ pub enum BillEvent {
     RecurringBillCreated = 11,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct StorageStats {
     pub active_bills: u32,
@@ -1762,6 +1754,14 @@ impl BillPayments {
         next_due: u64,
         interval: u64,
     ) -> Result<u32, BillPaymentsError> {
+        check_and_increment_rate_limit(
+            env,
+            &owner,
+            pause_functions::CREATE_BILL_SCHEDULE,
+            CREATE_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
+
         // Validate schedule name length
         if name.is_empty() || name.len() > MAX_NAME_LEN {
             return Err(BillPaymentsError::InvalidName);
@@ -1861,8 +1861,14 @@ impl BillPayments {
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::MODIFY_BILL_SCHEDULE)?;
-        Self::modify_bill_schedule_core(&env, caller, schedule_id, amount, next_due, interval)
-    }
+
+        check_and_increment_rate_limit(
+            &env,
+            &caller,
+            pause_functions::MODIFY_BILL_SCHEDULE,
+            MODIFY_SCHEDULE_RATE_LIMIT,
+        )
+        .map_err(|_| BillPaymentsError::ScheduleRateLimitExceeded)?;
 
         // Shared exact-integer amount rules (sign + magnitude), before any
         // state change. The previous `amount <= 0` guard did not bound the
@@ -1886,13 +1892,13 @@ impl BillPayments {
             return Err(BillPaymentsError::ScheduleLeadTimeTooLong);
         }
 
-        Self::extend_instance_ttl(env);
+        Self::extend_instance_ttl(&env);
 
         let mut schedules: Map<u32, BillSchedule> = env
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(env));
+            .unwrap_or_else(|| Map::new(&env));
 
         let mut schedule = schedules
             .get(schedule_id)
@@ -1932,8 +1938,6 @@ impl BillPayments {
             .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL_SCHEDULE)?;
-        Self::cancel_bill_schedule_core(&env, caller, schedule_id)
-    }
 
         check_and_increment_rate_limit(
             &env,
@@ -1949,7 +1953,7 @@ impl BillPayments {
             .storage()
             .instance()
             .get(&STORAGE_BSCHEDS)
-            .unwrap_or_else(|| Map::new(env));
+            .unwrap_or_else(|| Map::new(&env));
 
         let mut schedule = schedules
             .get(schedule_id)
@@ -1968,7 +1972,7 @@ impl BillPayments {
         schedules.set(schedule_id, schedule);
         env.storage().instance().set(&STORAGE_BSCHEDS, &schedules);
 
-        Self::index_remove_bill_schedule(env, &caller, schedule_id);
+        Self::index_remove_bill_schedule(&env, &caller, schedule_id);
 
         env.events().publish(
             (symbol_short!("bill"), BillEvent::ScheduleCancelled),
@@ -2067,6 +2071,7 @@ impl BillPayments {
             .unwrap_or(1u32);
 
         let mut schedules_checked = 0;
+        let mut bills_created_this_call = 0u32;
         let mut next_cursor = start_schedule_id;
 
         for schedule_id in start_schedule_id..=next_schedule_id {
@@ -2088,13 +2093,6 @@ impl BillPayments {
             };
 
             if !schedule.active || schedule.next_due > current_time {
-                continue;
-            }
-
-            // Legacy state may contain non-positive amounts from before schedule
-            // creation validated them. Leave such schedules untouched so they
-            // remain inspectable and cancellable without minting invalid bills.
-            if schedule.amount <= 0 {
                 continue;
             }
 
@@ -2165,7 +2163,9 @@ impl BillPayments {
 
                 let owner_bill_count = Self::get_owner_bills(&env, &schedule.owner).len();
 
-                if owner_bill_count < MAX_BILLS_PER_OWNER {
+                if owner_bill_count < MAX_BILLS_PER_OWNER
+                    && bills_created_this_call < MAX_BILLS_PER_SCHEDULE_EXECUTION
+                {
                     // Checked increment: at `u32::MAX` the next bill id is
                     // unrepresentable. The previous `saturating_add(1)` could
                     // silently reuse an existing bill id and overwrite a live
@@ -2195,13 +2195,12 @@ impl BillPayments {
                     Self::index_add_currency(env, &schedule.owner, &schedule.currency, next_id);
                     Self::adjust_unpaid_total(env, &schedule.owner, schedule.amount);
 
-                        env.events().publish(
-                            (symbol_short!("bill"), BillEvent::RecurringBillCreated),
-                            (next_id, schedule_id, schedule.next_due),
-                        );
+                    env.events().publish(
+                        (symbol_short!("bill"), BillEvent::RecurringBillCreated),
+                        (next_id, schedule_id, schedule.next_due),
+                    );
 
-                        bills_created_this_call = bills_created_this_call.saturating_add(1);
-                    }
+                    bills_created_this_call = bills_created_this_call.saturating_add(1);
                 }
             } else {
                 schedule.active = false;
@@ -2820,7 +2819,6 @@ impl BillPayments {
                 .set(&symbol_short!("NEXT_ID"), &next_id);
             Self::index_add_active(env, &caller, next_id);
             Self::index_add_currency(env, &caller, &paid_bill.currency, next_id);
-            Self::adjust_unpaid_total(env, &caller, child_amount);
             env.events().publish(
                 (symbol_short!("bill"), BillEvent::RecurringBillCreated),
                 (next_id, bill_id, child_due_date),
@@ -3745,7 +3743,7 @@ impl BillPayments {
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
 
-        let bills: Map<u32, Bill> = env
+        let mut bills: Map<u32, Bill> = env
             .storage()
             .instance()
             .get(&symbol_short!("BILLS"))

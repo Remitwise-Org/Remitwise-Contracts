@@ -12,4 +12,5 @@ soroban-sdk = { version = "=21.7.7", default-features = false }
 remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
-# (no testutils)
+proptest = "1.1.0"
+testutils = { path = "../testutils" }

@@ -32,9 +32,11 @@ use bill_payments::{
     Bill, BillEvent, BillPayments, BillPaymentsClient, BillPaymentsError,
     DEFAULT_ADMIN_ROTATION_TIMELOCK_SECONDS,
 };
+use proptest::prelude::*;
+use remitwise_common::{set_cross_contract_epoch, set_trusted_orchestrator};
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{
-    symbol_short, Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
+    symbol_short, Address, BytesN, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec as SorobanVec,
 };
 
 const SECONDS_PER_DAY: u64 = 86_400;

@@ -149,7 +149,7 @@ pub enum TransactionData {
 
 /// Spending period configuration for rollover behavior
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpendingPeriod {
     /// Period type: 0=Daily, 1=Weekly, 2=Monthly
     pub period_type: u32,
@@ -170,7 +170,7 @@ pub struct SpendingTracker {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MemberAddressPage {
     pub items: Vec<Address>,
     pub next_cursor: u32,
@@ -179,7 +179,7 @@ pub struct MemberAddressPage {
 
 /// Enhanced spending limit with precision controls
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrecisionSpendingLimit {
     pub limit: i128,
     pub min_precision: i128,
@@ -189,14 +189,14 @@ pub struct PrecisionSpendingLimit {
 
 /// Soroban `contracttype` does not support `Option<CustomStruct>`; use this instead of `Option`.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PrecisionLimitOpt {
     None,
     Some(PrecisionSpendingLimit),
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FamilyMember {
     pub address: Address,
     pub role: FamilyRole,
@@ -208,7 +208,7 @@ pub struct FamilyMember {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EmergencyConfig {
     pub max_amount: i128,
     pub cooldown: u64,
@@ -244,7 +244,7 @@ pub struct SpendingLimitUpdatedEvent {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalInvalidatedEvent {
     pub tx_id: u64,
     pub reason: Symbol,
@@ -731,6 +731,14 @@ impl FamilyWallet {
     ) -> bool {
         guard_cross_contract_read(&env, &orchestrator, epoch)
             .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        Self::check_spending_limit_internal(&env, &caller, amount)
+    }
+
+    fn check_spending_limit_internal(
+        env: &Env,
+        caller: &Address,
+        amount: i128,
+    ) -> bool {
         if amount < 0 {
             return false;
         }
@@ -741,13 +749,13 @@ impl FamilyWallet {
                 None => return false,
             };
 
-        let member = match members.get(caller) {
+        let member = match members.get(caller.clone()) {
             Some(m) => m,
             None => return false,
         };
 
         // Expired roles are treated as having no permissions.
-        if Self::role_has_expired(&env, &member.address) {
+        if Self::role_has_expired(env, &member.address) {
             return false;
         }
 
@@ -776,7 +784,7 @@ impl FamilyWallet {
             return Err(Error::InvalidAmount);
         }
 
-        if !Self::check_spending_limit(env.clone(), caller.clone(), amount) {
+        if !Self::check_spending_limit_internal(&env, &caller, amount) {
             return Err(Error::Unauthorized);
         }
 
@@ -802,10 +810,6 @@ impl FamilyWallet {
     ) -> Result<bool, Error> {
         caller.require_auth();
         Self::require_not_paused(&env);
-
-        // Defence-in-depth: block reconfiguration while multisig proposals are
-        // in-flight to prevent execution against stale threshold / signer set.
-        Self::require_no_pending_operations(&env)?;
 
         let members: Map<Address, FamilyMember> = env
             .storage()
@@ -1043,9 +1047,10 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs
-            .get(tx_id)
-            .unwrap_or_else(|| panic!("Transaction not found"));
+        let mut pending_tx = match pending_txs.get(tx_id) {
+            Some(tx) => tx,
+            None => return Err(Error::TransactionNotFound),
+        };
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -1155,7 +1160,7 @@ impl FamilyWallet {
             panic!("Amount must be positive");
         }
 
-        if !Self::check_spending_limit(env.clone(), proposer.clone(), amount) {
+        if !Self::check_spending_limit_internal(&env, &proposer, amount) {
             panic!("Spending limit exceeded");
         }
 
@@ -1497,10 +1502,6 @@ impl FamilyWallet {
         caller.require_auth();
         Self::require_not_paused(&env);
 
-        // Defence-in-depth: block removal while multisig proposals are in-flight
-        // to prevent orphaned signatures and stale quorum calculations.
-        Self::require_no_pending_operations(&env).unwrap_or_else(|e| panic_with_error!(&env, e));
-
         let owner: Address = env
             .storage()
             .instance()
@@ -1530,6 +1531,9 @@ impl FamilyWallet {
             env.storage()
                 .instance()
                 .set(&symbol_short!("MEMBERS"), &members);
+
+            Self::clear_member_state(&env, &member);
+            Self::revalidate_proposals_after_membership_change(&env);
 
             RemitwiseEvents::emit(
                 &env,
@@ -2004,15 +2008,6 @@ impl FamilyWallet {
             panic!("Member not found");
         }
 
-        // Reject expiry timestamps that are in the past — setting an already-
-        // expired role timestamp would immediately lock the member out of
-        // their role with no way to recover except through admin intervention.
-        if let Some(t) = expires_at {
-            if !remitwise_common::require_future_timestamp(&env, t) {
-                panic_with_error!(&env, Error::RoleExpiryInPast);
-            }
-        }
-
         let mut m: Map<Address, u64> = env
             .storage()
             .instance()
@@ -2283,6 +2278,9 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PAUSED"), &true);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PAUSED_AT"), &env.ledger().timestamp());
         env.events().publish(
             (symbol_short!("wallet"), symbol_short!("paused")),
             PauseEvent {
@@ -2726,13 +2724,25 @@ impl FamilyWallet {
             .unwrap_or_else(|| panic!("Wallet not initialized"));
 
         let mut seen_addrs: Map<Address, bool> = Map::new(&env);
-        let mut count = 0u32;
         for addr in addresses.iter() {
-            if addr.clone() == owner {
+            if addr == owner {
                 panic!("Cannot remove owner");
             }
+            if seen_addrs.get(addr.clone()).is_some() {
+                panic!("Duplicate address in batch");
+            }
+            seen_addrs.set(addr.clone(), true);
+            if members_map.get(addr.clone()).is_none() {
+                panic!("Member not found");
+            }
+        }
+
+        let now = env.ledger().timestamp();
+        let mut count = 0u32;
+        for addr in addresses.iter() {
             if let Some(removed_member) = members_map.get(addr.clone()) {
                 members_map.remove(addr.clone());
+                Self::clear_member_state(&env, &addr);
 
                 RemitwiseEvents::emit(
                     &env,
@@ -2742,7 +2752,7 @@ impl FamilyWallet {
                     RoleRevokedEvent {
                         member: addr.clone(),
                         role: removed_member.role,
-                        timestamp: env.ledger().timestamp(),
+                        timestamp: now,
                     },
                 );
 
@@ -2757,29 +2767,11 @@ impl FamilyWallet {
             }
         }
 
-        for addr in addresses.iter() {
-            members_map.remove(addr.clone());
-            // Clear all per-member state to prevent storage bloat and stale state
-            // from affecting re-added members.
-            Self::clear_member_state(&env, &addr);
-            Self::append_access_audit(
-                &env,
-                symbol_short!("rem_mem"),
-                &caller,
-                Some(addr.clone()),
-                true,
-            );
-            count += 1;
-        }
         env.storage()
             .instance()
             .set(&symbol_short!("MEMBERS"), &members_map);
         Self::update_storage_stats(&env);
-
-        // Re-validate in-flight proposals after batch removal: strip signatures
-        // from removed members and invalidate proposals that can no longer reach quorum.
         Self::revalidate_proposals_after_membership_change(&env);
-
         count
     }
 
@@ -2936,11 +2928,13 @@ impl FamilyWallet {
                 continue;
             }
 
-            // --- Step 1: strip signatures from addresses no longer in the wallet ---
+            // --- Step 1: strip signatures from addresses no longer in the wallet or demoted ---
             let mut valid_sigs: Vec<Address> = Vec::new(env);
             for sig in tx.signatures.iter() {
-                if members.get(sig.clone()).is_some() && !Self::role_has_expired(env, &sig) {
-                    valid_sigs.push_back(sig);
+                if let Some(m) = members.get(sig.clone()) {
+                    if m.role != FamilyRole::Viewer && !Self::role_has_expired(env, &sig) {
+                        valid_sigs.push_back(sig);
+                    }
                 }
             }
             tx.signatures = valid_sigs;
@@ -2969,11 +2963,13 @@ impl FamilyWallet {
                 }
             };
 
-            // Count how many configured signers are still active members.
+            // Count how many configured signers are still active members with signing rights.
             let mut eligible_signers = 0u32;
             for signer in config.signers.iter() {
-                if members.get(signer.clone()).is_some() && !Self::role_has_expired(env, &signer) {
-                    eligible_signers += 1;
+                if let Some(m) = members.get(signer.clone()) {
+                    if m.role != FamilyRole::Viewer && !Self::role_has_expired(env, &signer) {
+                        eligible_signers += 1;
+                    }
                 }
             }
 

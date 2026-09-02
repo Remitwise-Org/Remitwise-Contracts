@@ -14,4 +14,6 @@ remitwise-common = { path = "../remitwise-common" }
 [dev-dependencies]
 proptest = "1.10.0"
 data_migration = { path = "../data_migration" }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
+testutils = { path = "../testutils" }
 

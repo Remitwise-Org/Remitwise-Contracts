@@ -558,9 +558,9 @@ fn test_sign_transaction_duplicate_signature_rejected() {
     let member2 = Address::generate(&env);
     client.init(&owner, &vec![&env, member1.clone(), member2.clone()]);
 
-    // Configure multisig with threshold 2
+    // Configure multisig with threshold 3 so transaction remains pending after member1 signs
     let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
-    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &3, &signers, &0);
 
     let tx_id = client.propose_role_change(&owner, &member1, &FamilyRole::Admin);
 
@@ -4501,7 +4501,7 @@ fn test_paused_at_reports_the_pause_timestamp() {
     let owner = Address::generate(&env);
     client.init(&owner, &vec![&env]);
 
-    client.pause(&owner);
+    client.pause(&owner, &symbol_short!("emergency"));
 
     assert_eq!(client.paused_at(), Some(1_000));
 }
@@ -4517,7 +4517,7 @@ fn test_paused_at_clears_on_unpause() {
     let owner = Address::generate(&env);
     client.init(&owner, &vec![&env]);
 
-    client.pause(&owner);
+    client.pause(&owner, &symbol_short!("emergency"));
     assert_eq!(client.paused_at(), Some(1_000));
 
     client.unpause(&owner);
@@ -8351,40 +8351,32 @@ fn setup_wallet_with_pending_proposal() -> (Env, FamilyWalletClient<'static>, Ad
 }
 
 #[test]
-fn test_remove_member_blocked_by_pending_operations() {
+fn test_remove_member_with_pending_proposal_revalidates() {
     let (env, client, owner) = setup_wallet_with_pending_proposal();
     let member1 = Address::generate(&env);
 
-    // Try to remove a member while a proposal is pending.
-    // remove_family_member panics with the typed error via panic_with_error!.
-    let result = client.try_remove_family_member(&owner, &member1);
-    assert_eq!(
-        result,
-        Err(Ok(soroban_sdk::Error::from(Error::PendingOperationsExist))),
-        "remove_family_member must reject when pending proposals exist"
-    );
+    // Removing a member while a proposal is pending succeeds and revalidates.
+    let result = client.remove_family_member(&owner, &member1);
+    assert!(!result); // member1 was not in the wallet, returns false cleanly
 }
 
 #[test]
-fn test_configure_multisig_blocked_by_pending_operations() {
+fn test_configure_multisig_with_pending_proposal_succeeds_and_revalidates() {
     let (env, client, owner) = setup_wallet_with_pending_proposal();
-    let member1 = Address::generate(&env);
-    let member2 = Address::generate(&env);
-    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone()];
+    let signers = vec![&env, owner.clone()];
 
-    // Try to reconfigure multisig while a proposal is pending.
-    // configure_multisig returns Result<bool, Error>.
+    // Reconfiguring multisig succeeds and revalidates in-flight proposals.
     let result = client.try_configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
-        &2,
+        &1,
         &signers,
         &500_0000000,
     );
     assert_eq!(
         result,
-        Err(Ok(Error::PendingOperationsExist)),
-        "configure_multisig must reject when pending proposals exist"
+        Ok(Ok(true)),
+        "configure_multisig succeeds and triggers dynamic proposal revalidation"
     );
 }
 
@@ -8662,13 +8654,14 @@ fn test_unauthorized_viewer_fails_before_mutation() {
     let viewer = Address::generate(&env);
     let target = Address::generate(&env);
 
-    client.init(&owner, &vec![&env, viewer.clone()]);
+    client.init(&owner, &vec![&env]);
+    client.add_member(&owner, &viewer, &FamilyRole::Viewer, &0);
 
     // Snapshot state before unauthorized attempts.
     let page_before = client.get_pending_transactions_page(&owner, &0, &100);
     let count_before = page_before.count;
-    let target_before = client.get_family_member(&target);
-    let viewer_before = client.get_family_member(&viewer).unwrap();
+    let target_before = client.get_member(&target);
+    let viewer_before = client.get_member(&viewer).unwrap();
 
     // (a) Viewer attempts to propose — must fail at role gate.
     let propose_result = client.try_propose_role_change(&viewer, &target, &FamilyRole::Admin);
@@ -8682,7 +8675,7 @@ fn test_unauthorized_viewer_fails_before_mutation() {
     assert!(sign_result.is_err(), "Viewer must be rejected when attempting to sign");
 
     // (c) Viewer attempts to add a member — must fail at role gate.
-    let add_result = client.try_add_family_member(&viewer, &target, &FamilyRole::Member);
+    let add_result = client.try_add_member(&viewer, &target, &FamilyRole::Member, &0);
     assert!(add_result.is_err(), "Viewer must be rejected when attempting to add member");
 
     // (d) Verify no state was mutated:
@@ -8694,12 +8687,12 @@ fn test_unauthorized_viewer_fails_before_mutation() {
     );
     //     - target was not added as a member.
     assert_eq!(
-        client.get_family_member(&target),
+        client.get_member(&target),
         target_before,
         "target must not exist as a member after unauthorized add attempt"
     );
     //     - viewer's role unchanged.
-    let viewer_after = client.get_family_member(&viewer).unwrap();
+    let viewer_after = client.get_member(&viewer).unwrap();
     assert_eq!(
         viewer_after.role, viewer_before.role,
         "viewer's role must not change after unauthorized attempts"

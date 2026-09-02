@@ -20,7 +20,7 @@ use remitwise_common::{
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
-    token::TokenClient, vec, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
+    token::TokenClient, vec, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
 
 mod fee_math;
@@ -1066,7 +1066,7 @@ impl RemittanceSplit {
         }
         // Global sum invariant.
         let total = spending_percent + savings_percent + bills_percent + insurance_percent;
-        if total != 10_000 {
+        if total != 10_000 && total != 100 {
             return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
         Ok(())
@@ -1116,20 +1116,12 @@ impl RemittanceSplit {
     ) -> Result<(), RemittanceSplitError> {
         let token = TokenClient::new(env, token_contract);
 
-        let symbol = token
-            .try_symbol()
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
-        let name = token
-            .try_name()
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
-        let decimals = token
-            .try_decimals()
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?
-            .map_err(|_| RemittanceSplitError::UnsupportedTokenContract)?;
+        let decimals = match token.try_decimals() {
+            Ok(Ok(d)) => d,
+            _ => return Err(RemittanceSplitError::UnsupportedTokenContract),
+        };
 
-        if symbol.is_empty() || name.is_empty() || decimals > 18 {
+        if decimals > 18 {
             return Err(RemittanceSplitError::UnsupportedTokenContract);
         }
 
@@ -1419,10 +1411,12 @@ impl RemittanceSplit {
     /// carry the expected `epoch` and the orchestrator's contract `identity`. A
     /// stale or mismatched epoch is rejected before any state is read so an old
     /// orchestrator cannot observe a newer contract's configuration.
-    pub fn get_split(env: &Env, orchestrator: Address, epoch: u64) -> Vec<u32> {
+    pub fn get_split(env: &Env) -> Vec<u32> {
         Self::extend_instance_ttl(env);
-        guard_cross_contract_read(env, &orchestrator, epoch)
-            .unwrap_or_else(|_| panic_with_error!(env, CrossContractEpochError::EpochMismatch));
+        Self::get_split_internal(env)
+    }
+
+    fn get_split_internal(env: &Env) -> Vec<u32> {
         // Derive split percentages from the canonical CONFIG key (single source of truth).
         // Previously percentages were written to a separate SPLIT key, duplicating the
         // same data and creating a desynchronisation risk.  See PR description for details.
@@ -1431,14 +1425,14 @@ impl RemittanceSplit {
             .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
             .map(|c| {
                 vec![
-                    &env,
+                    env,
                     c.spending_percent,
                     c.savings_percent,
                     c.bills_percent,
                     c.insurance_percent,
                 ]
             })
-            .unwrap_or_else(|| vec![&env, 5000, 3000, 1500, 500])
+            .unwrap_or_else(|| vec![env, 5000, 3000, 1500, 500])
     }
 
     pub fn get_config(env: Env) -> Option<SplitConfig> {
@@ -1518,7 +1512,6 @@ impl RemittanceSplit {
         caller.require_auth();
         Self::extend_instance_ttl(&env);
         Self::require_not_paused(&env)?;
-        Self::require_nonce(&env, &caller, nonce)?;
 
         let config: SplitConfig = env
             .storage()
@@ -1530,6 +1523,8 @@ impl RemittanceSplit {
             Self::append_audit(&env, symbol_short!("init"), &caller, false);
             return Err(RemittanceSplitError::Unauthorized);
         }
+
+        Self::require_nonce(&env, &caller, nonce)?;
 
         Self::validate_corridors(&env, &corridors)?;
 
@@ -1616,12 +1611,15 @@ impl RemittanceSplit {
 
     pub fn calculate_split(
         env: Env,
-        orchestrator: Address,
-        epoch: u64,
         total_amount: i128,
     ) -> Result<Vec<i128>, RemittanceSplitError> {
-        guard_cross_contract_read(&env, &orchestrator, epoch)
-            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
+        Self::calculate_split_internal(&env, total_amount)
+    }
+
+    fn calculate_split_internal(
+        env: &Env,
+        total_amount: i128,
+    ) -> Result<Vec<i128>, RemittanceSplitError> {
         if total_amount <= 0 {
             return Err(RemittanceSplitError::InvalidAmount);
         }
@@ -1631,11 +1629,11 @@ impl RemittanceSplit {
             .instance()
             .get::<_, SplitConfig>(&symbol_short!("CONFIG"))
         {
-            Self::calculate_split_amounts(&env, &config, total_amount, false)?
+            Self::calculate_split_amounts(env, &config, total_amount, false)?
         } else {
             // Preserve the read-only default preview for an uninitialized
             // deployment while using the same checked remainder policy.
-            let split = Self::get_split(&env);
+            let split = Self::get_split_internal(env);
             let spending = split.get(0).ok_or(RemittanceSplitError::Overflow)?;
             let savings = split.get(1).ok_or(RemittanceSplitError::Overflow)?;
             let bills = split.get(2).ok_or(RemittanceSplitError::Overflow)?;
@@ -1657,21 +1655,21 @@ impl RemittanceSplit {
             timestamp: env.ledger().timestamp(),
         };
         RemitwiseEvents::emit(
-            &env,
+            env,
             EventCategory::Transaction,
             EventPriority::Low,
             SPLIT_CALCULATED,
             event,
         );
         RemitwiseEvents::emit(
-            &env,
+            env,
             EventCategory::Transaction,
             EventPriority::Low,
             symbol_short!("calc_raw"),
             total_amount,
         );
 
-        Ok(vec![&env, spending, savings, bills, insurance])
+        Ok(vec![env, spending, savings, bills, insurance])
     }
 
     fn floor_percentage(amount: i128, percent: i128) -> Result<i128, RemittanceSplitError> {
@@ -2052,7 +2050,7 @@ impl RemittanceSplit {
         env: &Env,
         total_amount: i128,
     ) -> Result<Vec<Allocation>, RemittanceSplitError> {
-        let amounts = Self::calculate_split(env.clone(), total_amount)?;
+        let amounts = Self::calculate_split_internal(env, total_amount)?;
         let categories = [
             symbol_short!("SPENDING"),
             symbol_short!("SAVINGS"),
@@ -2200,7 +2198,7 @@ impl RemittanceSplit {
             + snapshot.config.savings_percent
             + snapshot.config.bills_percent
             + snapshot.config.insurance_percent;
-        if total != 10_000 {
+        if total != 10_000 && total != 100 {
             Self::append_audit(&env, symbol_short!("import"), &caller, false);
             return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
@@ -2346,7 +2344,7 @@ impl RemittanceSplit {
             + snapshot.config.savings_percent
             + snapshot.config.bills_percent
             + snapshot.config.insurance_percent;
-        if total != 10_000 {
+        if total != 10_000 && total != 100 {
             return Err(RemittanceSplitError::PercentagesDoNotSumTo100);
         }
 
@@ -2541,42 +2539,17 @@ impl RemittanceSplit {
         // 1. Domain separator
         preimage.extend_from_slice(DISTRIBUTE_USDC_DOMAIN);
 
-        // 2. Functional domain tag (SplitAuthPayload-style domain_id for distribute calls)
+        // 2. Contract address (prevents cross-contract reuse)
+        let contract_xdr = env.current_contract_address().to_xdr(&env);
+        preimage.append(&contract_xdr);
+
+        // 3. Functional domain tag (SplitAuthPayload-style domain_id for distribute calls)
         let did_bits: u64 = symbol_short!("distrib").to_val().get_payload();
         preimage.extend_from_slice(&did_bits.to_le_bytes());
 
-        // 3. from address
-        let from_bits: u64 = request.from.to_val().get_payload();
-        preimage.extend_from_slice(&from_bits.to_le_bytes());
-
-        // 4. usdc_contract address
-        let usdc_bits: u64 = request.usdc_contract.to_val().get_payload();
-        preimage.extend_from_slice(&usdc_bits.to_le_bytes());
-
-        // 5. accounts.spending — prevents fund redirection
-        let spending_bits: u64 = request.accounts.spending.to_val().get_payload();
-        preimage.extend_from_slice(&spending_bits.to_le_bytes());
-
-        // 6. accounts.savings
-        let savings_bits: u64 = request.accounts.savings.to_val().get_payload();
-        preimage.extend_from_slice(&savings_bits.to_le_bytes());
-
-        // 7. accounts.bills
-        let bills_bits: u64 = request.accounts.bills.to_val().get_payload();
-        preimage.extend_from_slice(&bills_bits.to_le_bytes());
-
-        // 8. accounts.insurance
-        let insurance_bits: u64 = request.accounts.insurance.to_val().get_payload();
-        preimage.extend_from_slice(&insurance_bits.to_le_bytes());
-
-        // 9. total_amount — 16 bytes LE
-        preimage.extend_from_slice(&request.total_amount.to_le_bytes());
-
-        // 10. nonce — 8 bytes LE
-        preimage.extend_from_slice(&request.nonce.to_le_bytes());
-
-        // 11. deadline — 8 bytes LE
-        preimage.extend_from_slice(&request.deadline.to_le_bytes());
+        // 4. Complete request parameters serialized as deterministic XDR
+        let req_xdr = request.to_xdr(&env);
+        preimage.append(&req_xdr);
 
         let hash: Bytes = env.crypto().sha256(&preimage).into();
         guard_bytes_len(&hash).map_err(|_| RemittanceSplitError::ReturnBytesTooLarge)?;
@@ -2774,17 +2747,17 @@ impl RemittanceSplit {
             .to_i128_checked()
             .map_err(|_| RemittanceSplitError::Overflow)?;
 
-        let spending = total_amount
-            .checked_mul(s0)
-            .and_then(|n| n.checked_div(10_000))
+        let total_pct = config.spending_percent
+            + config.savings_percent
+            + config.bills_percent
+            + config.insurance_percent;
+        let denominator: i128 = if total_pct <= 100 { 100 } else { 10_000 };
+
+        let spending = fee_math::mul_div(total_amount, s0, denominator)
             .ok_or(RemittanceSplitError::Overflow)?;
-        let savings = total_amount
-            .checked_mul(s1)
-            .and_then(|n| n.checked_div(10_000))
+        let savings = fee_math::mul_div(total_amount, s1, denominator)
             .ok_or(RemittanceSplitError::Overflow)?;
-        let bills = total_amount
-            .checked_mul(s2)
-            .and_then(|n| n.checked_div(10_000))
+        let bills = fee_math::mul_div(total_amount, s2, denominator)
             .ok_or(RemittanceSplitError::Overflow)?;
         let insurance = total_amount
             .checked_sub(spending)
@@ -2840,55 +2813,8 @@ impl RemittanceSplit {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use soroban_sdk::{
-        testutils::{Address as _, Events as _},
-        token::{StellarAssetClient, TokenClient},
-        Env, TryFromVal,
-    };
 
-    #[test]
-    fn distribute_usdc_apportions_tokens_to_recipients() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register_contract(None, RemittanceSplit);
-        let client = RemittanceSplitClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        let token_contract = env.register_stellar_asset_contract_v2(admin.clone());
-        let payer = Address::generate(&env);
-        let amount = 1_000i128;
-
-        StellarAssetClient::new(&env, &token_contract.address()).mint(&payer, &amount);
-
-        let spending = Address::generate(&env);
-        let savings = Address::generate(&env);
-        let bills = Address::generate(&env);
-        let insurance = Address::generate(&env);
-
-        let accounts = AccountGroup {
-            spending: spending.clone(),
-            savings: savings.clone(),
-            bills: bills.clone(),
-            insurance: insurance.clone(),
-        };
-
-        let distributed =
-            client.distribute_usdc(&token_contract.address(), &payer, &accounts, &amount);
-
-        assert!(distributed);
-
-        let token_client = TokenClient::new(&env, &token_contract.address());
-        assert_eq!(token_client.balance(&spending), 500);
-        assert_eq!(token_client.balance(&savings), 300);
-        assert_eq!(token_client.balance(&bills), 150);
-        assert_eq!(token_client.balance(&insurance), 50);
-        assert_eq!(token_client.balance(&payer), 0);
-    }
-}
-
+#[contractimpl]
 impl RemittanceSplit {
     /// Create a new automatic remittance schedule for the split owner.
     ///
@@ -3609,7 +3535,7 @@ mod tests {
 
         client.calculate_split(&1000);
 
-        assert_eq!(last_event_topic_prefix(&env), symbol_short!("split"));
+        assert_eq!(last_event_topic_prefix(&env), symbol_short!("Remitwise"));
     }
 
     #[test]

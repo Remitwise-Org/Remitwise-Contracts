@@ -174,12 +174,15 @@ mod insurance {
                 id: 1,
                 owner: _owner,
                 name: SorobanString::from_str(&env, "Health Insurance"),
-                coverage_type: SorobanString::from_str(&env, "health"),
+                coverage_type: crate::CoverageType::Health,
                 monthly_premium: 200,
                 coverage_amount: 50000,
+                external_ref: None,
                 active: true,
+                created_at: 0,
+                last_payment_at: 0,
                 next_payment_date: 1735689600,
-                schedule_id: None,
+                deactivated_at: 0,
             });
             crate::PolicyPage {
                 items: policies,

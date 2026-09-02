@@ -214,7 +214,7 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     // Phase 2: advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
-        sequence_number: 510_000,
+        sequence_number: 690_000,
         timestamp: 1_705_000_000,
         network_id: [0; 32],
         base_reserve: 10,
@@ -260,7 +260,7 @@ fn stress_ttl_re_bumped_by_add_to_goal_after_ledger_advancement() {
     // Advance ledger so TTL drops below threshold
     env.ledger().set(LedgerInfo {
         protocol_version: env.ledger().protocol_version(),
-        sequence_number: 510_000,
+        sequence_number: 690_000,
         timestamp: 1_705_000_000,
         network_id: [0; 32],
         base_reserve: 10,

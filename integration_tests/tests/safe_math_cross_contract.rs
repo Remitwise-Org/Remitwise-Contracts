@@ -52,7 +52,8 @@ fn new_split_client(
     let cid = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(env, &cid);
     let owner = Address::generate(env);
-    let token = Address::generate(env);
+    let usdc_admin = Address::generate(env);
+    let token = env.register_stellar_asset_contract_v2(usdc_admin).address();
     client.initialize_split(&owner, &0, &token, &sp, &sg, &sb, &si);
     (client, owner)
 }

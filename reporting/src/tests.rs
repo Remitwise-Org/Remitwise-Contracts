@@ -206,7 +206,20 @@ mod insurance {
             _limit: u32,
         ) -> crate::PolicyPage {
             let mut items = Vec::new(&env);
-            items.push_back(1u32);
+            items.push_back(InsurancePolicy {
+                id: 1,
+                owner: Address::generate(&env),
+                name: SorobanString::from_str(&env, "Health Insurance"),
+                coverage_type: CoverageType::Health,
+                monthly_premium: 200,
+                coverage_amount: 50000,
+                external_ref: None,
+                active: true,
+                created_at: 1704067200,
+                last_payment_at: 0,
+                next_payment_date: 1735689600,
+                deactivated_at: 0,
+            });
             crate::PolicyPage {
                 count: items.len(),
                 items,
@@ -228,6 +241,7 @@ mod insurance {
                     created_at: 1704067200,
                     last_payment_at: 0,
                     next_payment_date: 1735689600,
+                    deactivated_at: 0,
                 })
             } else {
                 None
@@ -3355,7 +3369,20 @@ mod insurance_three_pages {
                 _ => (3, 0),
             };
             let mut items = Vec::new(&env);
-            items.push_back(policy_id);
+            items.push_back(InsurancePolicy {
+                id: policy_id,
+                owner: Address::generate(&env),
+                name: SorobanString::from_str(&env, "P"),
+                coverage_type: CoverageType::Health,
+                monthly_premium: 100,
+                coverage_amount: 10_000,
+                external_ref: None,
+                active: true,
+                created_at: 0,
+                last_payment_at: 0,
+                next_payment_date: 1_735_689_600,
+                deactivated_at: 0,
+            });
             PolicyPage {
                 count: items.len(),
                 items,
@@ -3375,6 +3402,7 @@ mod insurance_three_pages {
                 created_at: 0,
                 last_payment_at: 0,
                 next_payment_date: 1_735_689_600,
+                deactivated_at: 0,
             })
         }
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {
@@ -3396,7 +3424,20 @@ mod insurance_infinite {
     impl InsuranceTrait for InsuranceInfinite {
         fn get_active_policies(env: Env, _owner: Address, cursor: u32, _limit: u32) -> PolicyPage {
             let mut items = Vec::new(&env);
-            items.push_back(cursor);
+            items.push_back(InsurancePolicy {
+                id: cursor,
+                owner: Address::generate(&env),
+                name: SorobanString::from_str(&env, "P"),
+                coverage_type: CoverageType::Health,
+                monthly_premium: 100,
+                coverage_amount: 10_000,
+                external_ref: None,
+                active: true,
+                created_at: 0,
+                last_payment_at: 0,
+                next_payment_date: 1_735_689_600,
+                deactivated_at: 0,
+            });
             PolicyPage {
                 count: items.len(),
                 items,
@@ -3416,6 +3457,7 @@ mod insurance_infinite {
                 created_at: 0,
                 last_payment_at: 0,
                 next_payment_date: 1_735_689_600,
+                deactivated_at: 0,
             })
         }
         fn get_total_monthly_premium(_env: Env, _owner: Address) -> i128 {

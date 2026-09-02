@@ -1,13 +1,16 @@
 //! Unit tests for per-owner policy caps and StorageStats determinism.
 
 use insurance::{
-    Insurance, InsuranceClient, MAX_COVERAGE_AMOUNT, MAX_MONTHLY_PREMIUM, MAX_POLICIES_PER_OWNER,
+    Insurance, InsuranceClient, MAX_POLICIES_PER_OWNER,
 };
 use remitwise_common::CoverageType;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
     Address, Env, String,
 };
+
+const MAX_MONTHLY_PREMIUM: i128 = 500_000_000_000;
+const MAX_COVERAGE_AMOUNT: i128 = 100_000_000_000_000;
 
 fn make_env() -> Env {
     let env = Env::new_with_config(EnvTestConfig {

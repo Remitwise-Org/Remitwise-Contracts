@@ -31,6 +31,139 @@ pub enum Error {
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17280; // ~1 day
 const INSTANCE_BUMP_AMOUNT: u32 = 518400; // ~30 days
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalCreatedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,    // Initial amount (0)
+    pub new_total: i128, // Initial total (0)
+    pub name: String,
+    pub target_amount: i128,
+    pub target_date: u64,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct FundsAddedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct FundsWithdrawnEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub new_total: i128,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalCompletedEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,    // Final contribution amount
+    pub new_total: i128, // Total amount reached
+    pub name: String,
+    pub timestamp: u64,
+}
+
+/// Emitted by `lock_goal` (`locked: true`) and `unlock_goal` (`locked: false`).
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GoalLockEvent {
+    pub goal_id: u32,
+    pub owner: Address,
+    pub locked: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleCreatedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleModifiedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub next_due: u64,
+    pub interval: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleCancelledEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted once per successful execution of a due schedule by
+/// `execute_due_savings_schedules`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleExecutedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted alongside `ScheduleExecutedEvent` when one or more recurring
+/// intervals were skipped (delayed execution).
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct ScheduleMissedEvent {
+    pub schedule_id: u32,
+    pub goal_id: u32,
+    pub owner: Address,
+    pub missed_count: u32,
+    pub timestamp: u64,
+}
+
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = remitwise_common::PERSISTENT_LIFETIME_THRESHOLD;
+pub const PERSISTENT_BUMP_AMOUNT: u32 = remitwise_common::PERSISTENT_BUMP_AMOUNT;
+
+/// Pagination constants
+pub const DEFAULT_PAGE_LIMIT: u32 = 20;
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
+/// Maximum safe goal balance allowed by the contract.
+const MAX_SAFE_GOAL_BALANCE: i128 = i128::MAX / 2;
+
+/// Maximum byte length for goal names to prevent storage bloat and DoS attacks.
+const MAX_GOAL_NAME_LEN_BYTES: u32 = 32;
+
+/// Maximum number of goals (active + archived) allowed per owner.
+const MAX_GOALS_PER_OWNER: u32 = 2000;
+
+pub const GOAL_CREATED: Symbol = symbol_short!("created");
+pub const GOAL_COMPLETED: Symbol = symbol_short!("completed");
+pub const FUNDS_ADDED: Symbol = symbol_short!("funds_add");
+pub const FUNDS_WITHDRAWN: Symbol = symbol_short!("funds_rem");
+
 /// Furthest into the future (from the current ledger time) a goal's
 /// `target_date` may be pushed in a single `extend_goal_deadline` call.
 /// This is the "ledger cap": it bounds the extension relative to
@@ -252,8 +385,6 @@ pub enum SavingsGoalError {
     SnapshotNotFound = 16,
     SnapshotTooOld = 17,
 }
-#[contract]
-pub struct SavingsGoalContract;
 
 impl ArchivedSavingsGoal {
     fn from_goal(env: &Env, goal: SavingsGoal) -> Self {
@@ -1087,18 +1218,14 @@ impl SavingsGoalContract {
     /// * If `caller` does not authorize the transaction
     pub fn add_to_goal(
         env: Env,
-        orchestrator: Address,
-        epoch: u64,
         caller: Address,
         goal_id: u32,
         amount: i128,
     ) -> Result<i128, SavingsGoalError> {
-        guard_cross_contract_write(&env, &orchestrator, epoch)
-            .unwrap_or_else(|_| panic_with_error!(&env, CrossContractEpochError::EpochMismatch));
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ADD_TO_GOAL);
 
-        if amount < 0 {
+        if amount <= 0 {
             Self::append_audit(&env, symbol_short!("add"), &caller, false);
             return Err(SavingsGoalError::InvalidAmount);
         }
@@ -1362,13 +1489,13 @@ impl SavingsGoalContract {
         caller: Address,
         goal_id: u32,
         amount: i128,
-    ) -> Result<i128, Error> {
+    ) -> Result<i128, SavingsGoalError> {
         // Access control: require caller authorization
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::WITHDRAW);
 
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(SavingsGoalError::InvalidAmount);
         }
 
         Self::extend_instance_ttl(&env);
@@ -1385,19 +1512,27 @@ impl SavingsGoalContract {
             }
         };
 
-        let mut goal = goals.get(goal_id).ok_or(Error::GoalNotFound)?;
-
         // Access control: verify caller is the owner
         if goal.owner != caller {
-            return Err(Error::Unauthorized);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::Unauthorized);
         }
 
         if goal.locked {
-            return Err(Error::GoalLocked);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::GoalLocked);
+        }
+
+        if let Some(unlock_date) = goal.unlock_date {
+            if env.ledger().timestamp() < unlock_date {
+                Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+                return Err(SavingsGoalError::GoalLocked);
+            }
         }
 
         if amount > goal.current_amount {
-            return Err(Error::InsufficientBalance);
+            Self::append_audit(&env, symbol_short!("withdraw"), &caller, false);
+            return Err(SavingsGoalError::InsufficientBalance);
         }
 
         goal.current_amount = goal
@@ -1592,13 +1727,11 @@ impl SavingsGoalContract {
         // Extend storage TTL
         Self::extend_instance_ttl(&env);
 
-        let mut goals: Map<u32, SavingsGoal> = env
+        let mut goal = env
             .storage()
-            .instance()
-            .get(&symbol_short!("GOALS"))
-            .unwrap_or_else(|| Map::new(&env));
-
-        let mut goal = goals.get(goal_id).expect("Goal not found");
+            .persistent()
+            .get::<_, SavingsGoal>(&DataKey::Goal(goal_id))
+            .expect("Goal not found");
 
         // Access control: verify caller is the owner
         if goal.owner != caller {
@@ -1615,10 +1748,9 @@ impl SavingsGoalContract {
         }
 
         goal.target_date = new_target_date;
-        goals.set(goal_id, goal);
         env.storage()
-            .instance()
-            .set(&symbol_short!("GOALS"), &goals);
+            .persistent()
+            .set(&DataKey::Goal(goal_id), &goal);
 
         new_target_date
     }

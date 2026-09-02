@@ -12,6 +12,6 @@ soroban-sdk = { version = "=21.7.7", default-features = false }
 remitwise-common = { path = "../remitwise-common" }
 
 [dev-dependencies]
-# Test utilities need the testutils feature, but still no std
-soroban-sdk = { version = "=21.7.7", default-features = false }
+soroban-sdk = { version = "=21.7.7", features = ["testutils"] }
 testutils = { path = "../testutils" }
+proptest = "1.1.0"

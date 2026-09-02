@@ -52,7 +52,8 @@ fn test_multi_contract_user_flow() {
     insurance_client.init(&user);
 
     let nonce = 0u64;
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
     remittance_client.initialize_split(
         &user, &nonce, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
     );
@@ -88,6 +89,7 @@ fn test_multi_contract_user_flow() {
         &CoverageType::Health,
         &200i128,
         &50_000i128,
+        &None,
     );
     assert_eq!(policy_id, 1u32, "Policy ID should be 1");
 
@@ -122,7 +124,8 @@ fn test_multi_contract_user_flow() {
 fn test_split_with_rounding() {
     let env = make_env();
     let user = Address::generate(&env);
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
 
     let remittance_contract_id = env.register_contract(None, RemittanceSplit);
     let remittance_client = RemittanceSplitClient::new(&env, &remittance_contract_id);
@@ -212,6 +215,7 @@ fn test_multiple_entities_creation() {
         &CoverageType::Life,
         &150i128,
         &100_000i128,
+        &None,
     );
     assert_eq!(policy1, 1u32);
 
@@ -221,6 +225,7 @@ fn test_multiple_entities_creation() {
         &CoverageType::Health,
         &50i128,
         &10_000i128,
+        &None,
     );
     assert_eq!(policy2, 2u32);
 }
@@ -322,7 +327,8 @@ fn test_reporting_data_availability_complete() {
     );
 
     // Initialize remittance split
-    let mock_usdc = Address::generate(&env);
+    let usdc_admin = Address::generate(&env);
+    let mock_usdc = env.register_stellar_asset_contract_v2(usdc_admin).address();
     remittance_client.initialize_split(
         &user, &0u64, &mock_usdc, &4000u32, &3000u32, &2000u32, &1000u32,
     );
